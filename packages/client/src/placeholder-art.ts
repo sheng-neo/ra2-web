@@ -121,6 +121,19 @@ export function buildArt(app: Application, units: Iterable<UnitType>): ArtAssets
     g.poly(flat(bL, bB, up(bB), up(bL))).fill({ color: 0x10141a, alpha: 0.34 });
     g.poly(flat(bB, bR, up(bR), up(bB))).fill(0xffffff);
     g.poly(flat(bB, bR, up(bR), up(bB))).fill({ color: 0x10141a, alpha: 0.16 });
+    // 墙面窗格（两排小窗，增加建筑质感）
+    const windows = (a: P, b: P, cols: number, alpha: number): void => {
+      for (let c = 0; c < cols; c++) {
+        const t = (c + 0.5) / cols;
+        const bx = a.x + (b.x - a.x) * t;
+        const by = a.y + (b.y - a.y) * t;
+        for (const vy of [0.34, 0.66]) {
+          g.rect(bx - 1.3, by - lift * vy - 1.3, 2.6, 2.6).fill({ color: 0x10141a, alpha });
+        }
+      }
+    };
+    windows(bL, bB, Math.max(2, h * 2), 0.5);
+    windows(bB, bR, Math.max(2, w * 2), 0.32);
     // 顶面
     g.poly(flat(up(bT), up(bR), up(bB), up(bL))).fill(0xffffff).stroke({ color: 0x10141a, alpha: 0.55, width: 1.5 });
     // 屋顶细节
