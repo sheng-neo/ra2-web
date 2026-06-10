@@ -24,6 +24,8 @@ export interface MatchConfig {
   /** 矿田中心（格）。 */
   orePatches: { cellX: number; cellY: number }[];
   inputDelay: number;
+  /** 每位玩家起始资金（默认 5000）。 */
+  startingCredits?: number;
 }
 
 /** 客户端 → 服务器。 */

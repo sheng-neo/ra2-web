@@ -89,6 +89,8 @@ export class MatchView {
   private lastStepAt = 0;
   /** 网络状态行文本（联机时由 driver 写）。 */
   netStatus = '';
+  /** 设置后，结束横幅显示「再来一局」。 */
+  onRestart: (() => void) | null = null;
 
   // DOM 引用
   private creditsEl!: HTMLElement;
@@ -626,8 +628,16 @@ export class MatchView {
       const banner = document.createElement('div');
       banner.className = 'mv-banner';
       banner.style.color = me.defeated && !win ? '#e05050' : '#6fe06f';
-      banner.innerHTML = `<div>${me.defeated && !win ? '战败' : '胜利！'}</div><a href="#">返回首页</a>`;
+      banner.innerHTML =
+        `<div>${me.defeated && !win ? '战败' : '胜利！'}</div>` +
+        (this.onRestart ? `<a href="#" id="mv-restart">再来一局</a>` : '') +
+        `<a href="#">返回首页</a>`;
       this.root.appendChild(banner);
+      const restart = banner.querySelector('#mv-restart');
+      restart?.addEventListener('click', (e) => {
+        e.preventDefault();
+        this.onRestart?.();
+      });
     }
   }
 

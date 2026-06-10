@@ -7,10 +7,31 @@ import type { Command, World } from '@ra2web/game';
 
 const BUILD_ORDER = ['powerplant', 'refinery', 'barracks', 'warfactory', 'tesla'];
 
+export type Difficulty = 'easy' | 'normal' | 'hard';
+
+interface DiffParams {
+  /** 攒够多少作战单位才发起一波。 */
+  waveSize: number;
+  /** 每隔多少次决策（决策周期≈1s）攒兵推进一次。 */
+  waveInterval: number;
+}
+
+const DIFF: Record<Difficulty, DiffParams> = {
+  easy: { waveSize: 6, waveInterval: 20 },
+  normal: { waveSize: 4, waveInterval: 12 },
+  hard: { waveSize: 3, waveInterval: 7 },
+};
+
 export class SimpleAI {
   private waveTimer = 0;
+  private readonly params: DiffParams;
 
-  constructor(private readonly playerId: number) {}
+  constructor(
+    private readonly playerId: number,
+    difficulty: Difficulty = 'normal',
+  ) {
+    this.params = DIFF[difficulty];
+  }
 
   /** 每 15 tick（≈1s）调用一次，返回要应用的命令。 */
   emit(world: World): Command[] {
@@ -48,7 +69,7 @@ export class SimpleAI {
     }
 
     // 攒兵成波推进：用攻击命令咬住敌方最近的建筑（会自动追击+开火）
-    if (++this.waveTimer >= 12) {
+    if (++this.waveTimer >= this.params.waveInterval) {
       this.waveTimer = 0;
       const army: number[] = [];
       for (const e of world.entities.values()) {
@@ -57,7 +78,7 @@ export class SimpleAI {
           army.push(e.id);
         }
       }
-      if (army.length >= 3) {
+      if (army.length >= this.params.waveSize) {
         const targetId = this.nearestEnemyBuilding(world);
         if (targetId !== null) {
           cmds.push({ kind: 'attack', entityIds: army, targetId });

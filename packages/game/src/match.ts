@@ -8,8 +8,9 @@ import type { MatchConfig } from './protocol';
 
 export function createWorldFromConfig(config: MatchConfig): World {
   const world = new World(gridTerrain(config.mapWidth, config.mapHeight), config.seed);
+  const startCredits = config.startingCredits ?? 5000;
   for (const spawn of config.spawns) {
-    world.addPlayer(spawn.playerId, spawn.side, 5000);
+    world.addPlayer(spawn.playerId, spawn.side, startCredits);
     world.spawnUnit(spawn.playerId, 'conyard', spawn.cellX, spawn.cellY);
     world.spawnUnit(spawn.playerId, 'powerplant', spawn.cellX + 4, spawn.cellY);
     world.spawnUnit(spawn.playerId, 'refinery', spawn.cellX, spawn.cellY + 4);

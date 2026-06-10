@@ -6,7 +6,7 @@ import { createWorldFromConfig, type MatchConfig } from '@ra2web/game';
 
 export { createWorldFromConfig as createMatchWorld };
 
-export function localSkirmishConfig(): MatchConfig {
+export function localSkirmishConfig(startingCredits = 5000): MatchConfig {
   const w = 44;
   const h = 44;
   return {
@@ -23,5 +23,6 @@ export function localSkirmishConfig(): MatchConfig {
       { cellX: Math.floor(w / 2), cellY: Math.floor(h / 2) },
     ],
     inputDelay: 0,
+    startingCredits,
   };
 }
