@@ -1,0 +1,18 @@
+{
+  "name": "网页版红色警戒2",
+  "short_name": "红警2",
+  "description": "浏览器即玩的网页版红色警戒2，支持联机对战",
+  "start_url": "./",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#0b0e11",
+  "theme_color": "#0b0e11",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

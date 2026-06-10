@@ -133,6 +133,14 @@ export class MatchView {
     this.bindInput();
     this.rebuildSidebar();
     this.lastStepAt = performance.now();
+
+    if (import.meta.env.DEV) {
+      (window as unknown as { __ra2view?: unknown }).__ra2view = {
+        view: this,
+        selected: this.selected,
+        camera: this.camera,
+      };
+    }
   }
 
   private buildDom(): void {
@@ -150,7 +158,11 @@ export class MatchView {
          <div class="mv-tabs" id="mv-tabs"></div>
          <div class="mv-build" id="mv-build"></div>
        </div>
-       <div class="mv-hint">左键选/框选 · 右键移动或攻击 · 中键拖动 · 滚轮缩放</div>
+       <div class="mv-hint">${
+         matchMedia('(pointer: coarse)').matches
+           ? '点选单位 · 拖动框选 · 单指点地移动/攻击 · 双指平移缩放'
+           : '左键选/框选 · 右键移动或攻击 · 中键拖动 · 滚轮缩放'
+       }</div>
        <div id="mv-selbox"></div>`,
     );
     this.creditsEl = this.root.querySelector('#mv-credits')!;
@@ -280,6 +292,7 @@ export class MatchView {
     const canvas = this.app.canvas;
     canvas.addEventListener('contextmenu', (e) => e.preventDefault());
     canvas.addEventListener('pointermove', (e) => {
+      if (e.pointerType === 'touch') return;
       this.lastPointer.x = e.clientX;
       this.lastPointer.y = e.clientY;
       if (this.dragStart) {
@@ -293,7 +306,7 @@ export class MatchView {
       }
     });
     canvas.addEventListener('pointerdown', (e) => {
-      if (e.button !== 0) return;
+      if (e.pointerType === 'touch' || e.button !== 0) return;
       if (this.placingType) {
         const cell = this.screenToCell(e.clientX, e.clientY);
         if (this.world.canPlace(this.localPlayerId, this.placingType, cell.x, cell.y)) {
@@ -305,6 +318,7 @@ export class MatchView {
       this.dragStart = { x: e.clientX, y: e.clientY };
     });
     canvas.addEventListener('pointerup', (e) => {
+      if (e.pointerType === 'touch') return;
       if (e.button === 0 && this.dragStart) {
         this.finishSelection(e);
       }
@@ -313,12 +327,157 @@ export class MatchView {
         this.issueOrder(e);
       }
     });
+    this.bindTouch();
+  }
+
+  /**
+   * 触控手势：
+   * - 单指轻点：点己方单位=选中；已有选择时点空地=移动、点敌人=攻击；放置态=落地
+   * - 单指拖动：框选
+   * - 双指：平移 + 捏合缩放
+   */
+  private bindTouch(): void {
+    const canvas = this.app.canvas;
+    const pointers = new Map<number, { x: number; y: number; sx: number; sy: number; t: number }>();
+    let mode: 'idle' | 'box' | 'gesture' = 'idle';
+    let prevMid: { x: number; y: number } | null = null;
+    let prevDist = 0;
+    const TAP_MOVE = 10;
+    const TAP_MS = 300;
+
+    const midAndDist = (): { mid: { x: number; y: number }; dist: number } => {
+      const pts = [...pointers.values()];
+      const mid = { x: (pts[0]!.x + pts[1]!.x) / 2, y: (pts[0]!.y + pts[1]!.y) / 2 };
+      const dist = Math.hypot(pts[0]!.x - pts[1]!.x, pts[0]!.y - pts[1]!.y);
+      return { mid, dist };
+    };
+
+    canvas.addEventListener('pointerdown', (e) => {
+      if (e.pointerType !== 'touch') return;
+      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, t: performance.now() });
+      this.lastPointer.x = e.clientX;
+      this.lastPointer.y = e.clientY;
+      if (pointers.size === 2) {
+        mode = 'gesture';
+        this.selBox.style.display = 'none';
+        const { mid, dist } = midAndDist();
+        prevMid = mid;
+        prevDist = dist;
+      } else if (pointers.size === 1 && !this.placingType) {
+        mode = 'idle';
+      }
+    });
+
+    canvas.addEventListener('pointermove', (e) => {
+      if (e.pointerType !== 'touch') return;
+      const p = pointers.get(e.pointerId);
+      if (!p) return;
+      p.x = e.clientX;
+      p.y = e.clientY;
+      this.lastPointer.x = e.clientX;
+      this.lastPointer.y = e.clientY;
+
+      if (mode === 'gesture' && pointers.size >= 2) {
+        const rect = canvas.getBoundingClientRect();
+        const { mid, dist } = midAndDist();
+        if (prevMid) this.camera.panByScreen(mid.x - prevMid.x, mid.y - prevMid.y);
+        if (prevDist > 0) this.camera.zoomAt(mid.x - rect.left, mid.y - rect.top, dist / prevDist);
+        prevMid = mid;
+        prevDist = dist;
+        return;
+      }
+      if (pointers.size === 1 && !this.placingType) {
+        const moved = Math.hypot(p.x - p.sx, p.y - p.sy);
+        if (mode === 'idle' && moved > TAP_MOVE) mode = 'box';
+        if (mode === 'box') {
+          const x0 = Math.min(p.sx, p.x);
+          const y0 = Math.min(p.sy, p.y);
+          this.selBox.style.display = 'block';
+          this.selBox.style.left = `${x0}px`;
+          this.selBox.style.top = `${y0}px`;
+          this.selBox.style.width = `${Math.abs(p.x - p.sx)}px`;
+          this.selBox.style.height = `${Math.abs(p.y - p.sy)}px`;
+        }
+      }
+    });
+
+    const onUp = (e: PointerEvent): void => {
+      if (e.pointerType !== 'touch') return;
+      const p = pointers.get(e.pointerId);
+      pointers.delete(e.pointerId);
+      if (!p) return;
+
+      if (mode === 'gesture') {
+        if (pointers.size < 2) {
+          mode = pointers.size === 1 ? 'idle' : 'idle';
+          prevMid = null;
+        }
+        return;
+      }
+      if (mode === 'box') {
+        this.finishSelectionAt(p.sx, p.sy, p.x, p.y);
+        mode = 'idle';
+        return;
+      }
+      // 轻点
+      const moved = Math.hypot(p.x - p.sx, p.y - p.sy);
+      const quick = performance.now() - p.t < TAP_MS;
+      if (moved <= TAP_MOVE && quick) this.handleTap(p.x, p.y);
+      mode = 'idle';
+    };
+    canvas.addEventListener('pointerup', onUp);
+    canvas.addEventListener('pointercancel', onUp);
+  }
+
+  /** 触控轻点：选中己方单位 / 对已选单位下达移动或攻击 / 放置建筑。 */
+  private handleTap(clientX: number, clientY: number): void {
+    if (this.placingType) {
+      const cell = this.screenToCell(clientX, clientY);
+      if (this.world.canPlace(this.localPlayerId, this.placingType, cell.x, cell.y)) {
+        this.emit({ kind: 'place', owner: this.localPlayerId, typeId: this.placingType.id, cellX: cell.x, cellY: cell.y });
+        this.placingType = null;
+      }
+      return;
+    }
+    const rect = this.app.canvas.getBoundingClientRect();
+    // 先看是否点中己方可移动单位 → 选中
+    let best: { id: number; d: number } | null = null;
+    for (const ent of this.world.entities.values()) {
+      if (ent.owner !== this.localPlayerId) continue;
+      const type = this.world.rules.units.get(ent.typeId);
+      if (!type || type.domain === 'building') continue;
+      const sx = this.camera.zoom * this.leptonScreenX(ent) + this.renderer.stage.position.x;
+      const sy = this.camera.zoom * this.leptonScreenY(ent) + this.renderer.stage.position.y;
+      const d = Math.hypot(sx - (clientX - rect.left), sy - (clientY - rect.top));
+      if (d < 30 && (!best || d < best.d)) best = { id: ent.id, d };
+    }
+    if (best) {
+      this.selected.clear();
+      this.selected.add(best.id);
+      return;
+    }
+    // 否则：对已有选择下令
+    if (this.selected.size > 0) {
+      const cell = this.screenToCell(clientX, clientY);
+      const enemy = this.entityAtCell(cell.x, cell.y, this.localPlayerId);
+      const ids = [...this.selected].sort((a, b) => a - b);
+      if (enemy !== null) this.emit({ kind: 'attack', entityIds: ids, targetId: enemy });
+      else if (cell.x >= 0 && cell.y >= 0 && cell.x < this.mapW && cell.y < this.mapH) {
+        this.emit({ kind: 'move', entityIds: ids, cellX: cell.x, cellY: cell.y });
+      }
+    }
   }
 
   private finishSelection(e: PointerEvent): void {
+    this.finishSelectionAt(this.dragStart!.x, this.dragStart!.y, e.clientX, e.clientY);
+    this.dragStart = null;
+  }
+
+  /** 框选：选中范围内本方可移动单位（客户端坐标）。 */
+  private finishSelectionAt(startX: number, startY: number, endX: number, endY: number): void {
     const rect = this.app.canvas.getBoundingClientRect();
-    const w = Math.abs(e.clientX - this.dragStart!.x);
-    const h = Math.abs(e.clientY - this.dragStart!.y);
+    const w = Math.abs(endX - startX);
+    const h = Math.abs(endY - startY);
     this.selected.clear();
     const screenOf = (ent: { x: number; y: number }): { x: number; y: number } => ({
       x: this.camera.zoom * this.leptonScreenX(ent) + this.renderer.stage.position.x,
@@ -331,13 +490,13 @@ export class MatchView {
         const type = this.world.rules.units.get(ent.typeId);
         if (!type || type.domain === 'building') continue;
         const s = screenOf(ent);
-        const d = Math.hypot(s.x - (e.clientX - rect.left), s.y - (e.clientY - rect.top));
+        const d = Math.hypot(s.x - (endX - rect.left), s.y - (endY - rect.top));
         if (d < 26 && (!best || d < best.d)) best = { id: ent.id, d };
       }
       if (best) this.selected.add(best.id);
     } else {
-      const x0 = Math.min(this.dragStart!.x, e.clientX) - rect.left;
-      const y0 = Math.min(this.dragStart!.y, e.clientY) - rect.top;
+      const x0 = Math.min(startX, endX) - rect.left;
+      const y0 = Math.min(startY, endY) - rect.top;
       for (const ent of this.world.entities.values()) {
         if (ent.owner !== this.localPlayerId) continue;
         const type = this.world.rules.units.get(ent.typeId);
@@ -346,7 +505,6 @@ export class MatchView {
         if (s.x >= x0 && s.x <= x0 + w && s.y >= y0 && s.y <= y0 + h) this.selected.add(ent.id);
       }
     }
-    this.dragStart = null;
     this.selBox.style.display = 'none';
   }
 

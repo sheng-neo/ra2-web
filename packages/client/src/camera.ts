@@ -30,6 +30,22 @@ export class Camera {
     };
   }
 
+  /** 按屏幕像素平移（触控双指拖动 / 鼠标拖动复用）。 */
+  panByScreen(dx: number, dy: number): void {
+    this.x -= dx / this.zoom;
+    this.y -= dy / this.zoom;
+    this.apply();
+  }
+
+  /** 以画布坐标 (sx,sy) 为锚点缩放（滚轮 / 触控捏合复用）。 */
+  zoomAt(sx: number, sy: number, factor: number): void {
+    const before = this.screenToWorld(sx, sy);
+    this.zoom = Math.min(this.maxZoom, Math.max(this.minZoom, this.zoom * factor));
+    this.x = before.x - (sx - this.app.screen.width / 2) / this.zoom;
+    this.y = before.y - (sy - this.app.screen.height / 2) / this.zoom;
+    this.apply();
+  }
+
   /**
    * 绑定鼠标交互；返回解绑函数。
    * panButtons：允许平移的鼠标键（0 左 / 1 中 / 2 右）。
@@ -41,6 +57,7 @@ export class Camera {
     let lastY = 0;
 
     const onDown = (e: PointerEvent): void => {
+      if (e.pointerType === 'touch') return; // 触控由 MatchView 的手势处理
       if (!panButtons.includes(e.button)) return;
       dragging = true;
       lastX = e.clientX;
@@ -62,15 +79,7 @@ export class Camera {
     const onWheel = (e: WheelEvent): void => {
       e.preventDefault();
       const rect = canvas.getBoundingClientRect();
-      const sx = e.clientX - rect.left;
-      const sy = e.clientY - rect.top;
-      const before = this.screenToWorld(sx, sy);
-      const factor = Math.exp(-e.deltaY * 0.0012);
-      this.zoom = Math.min(this.maxZoom, Math.max(this.minZoom, this.zoom * factor));
-      // 保持光标下的世界点不动
-      this.x = before.x - (sx - this.app.screen.width / 2) / this.zoom;
-      this.y = before.y - (sy - this.app.screen.height / 2) / this.zoom;
-      this.apply();
+      this.zoomAt(e.clientX - rect.left, e.clientY - rect.top, Math.exp(-e.deltaY * 0.0012));
     };
 
     canvas.addEventListener('pointerdown', onDown);
