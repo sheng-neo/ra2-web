@@ -61,7 +61,7 @@ export class WorldRenderer {
   private readonly fogGfx = new Graphics();
   private readonly vis: Uint8Array;
   private readonly fogEnabled: boolean;
-  private fogTick = -1;
+  private fogTick = -3; // 保证首帧即计算迷雾
 
   constructor(
     private readonly app: Application,
@@ -100,9 +100,9 @@ export class WorldRenderer {
     return this.vis[cy * this.world.terrain.width + cx] === 2;
   }
 
-  /** 按本地玩家单位/建筑视野重算可见格 + 重绘迷雾。 */
+  /** 按本地玩家单位/建筑视野重算可见格 + 重绘迷雾。每 3 tick 一次（5Hz 足够，省开销）。 */
   private updateFog(): void {
-    if (!this.fogEnabled || this.world.tick === this.fogTick) return;
+    if (!this.fogEnabled || this.world.tick - this.fogTick < 3) return;
     this.fogTick = this.world.tick;
     const w = this.world.terrain.width;
     const h = this.world.terrain.height;
