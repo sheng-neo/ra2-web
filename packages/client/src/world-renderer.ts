@@ -28,7 +28,10 @@ interface Particle {
   maxLife: number;
   size: number;
   color: number;
-  kind: 'spark' | 'smoke' | 'flash' | 'ring';
+  kind: 'spark' | 'smoke' | 'flash' | 'ring' | 'tracer';
+  /** tracer 的终点。 */
+  x2?: number;
+  y2?: number;
 }
 
 /**
@@ -407,7 +410,27 @@ export class WorldRenderer {
       if (e.cooldown > pc + 1 && e.targetId !== null) {
         this.particles.push({ x: sx, y: sy - 4, vx: 0, vy: 0, life: 90, maxLife: 90, size: isBuilding ? 7 : 4, color: 0xfff2a0, kind: 'flash' });
         const weapon = this.world.rules.units.get(e.typeId)?.weapon;
-        this.onEvent?.(weapon && weapon.projectileSpeed > 0 ? 'cannon' : 'fire');
+        const instant = !weapon || weapon.projectileSpeed <= 0;
+        this.onEvent?.(instant ? 'fire' : 'cannon');
+        // 瞬中武器画一条曳光线，便于看清谁在打谁
+        if (instant) {
+          const tgt = this.world.entities.get(e.targetId);
+          if (tgt) {
+            this.particles.push({
+              x: sx,
+              y: sy - 4,
+              vx: 0,
+              vy: 0,
+              life: 70,
+              maxLife: 70,
+              size: 1,
+              color: 0xfff0b0,
+              kind: 'tracer',
+              x2: leptonToScreenX(tgt.x, tgt.y),
+              y2: leptonToScreenY(tgt.x, tgt.y) - 4,
+            });
+          }
+        }
       }
       this.prevHp.set(e.id, e.hp);
       this.prevCooldown.set(e.id, e.cooldown);
@@ -444,11 +467,15 @@ export class WorldRenderer {
         this.particles.splice(i, 1);
         continue;
       }
-      p.x += (p.vx * dt) / 1000;
-      p.y += (p.vy * dt) / 1000;
-      p.vy += (dt * 60) / 1000; // 轻微重力
+      if (p.kind !== 'tracer') {
+        p.x += (p.vx * dt) / 1000;
+        p.y += (p.vy * dt) / 1000;
+        p.vy += (dt * 60) / 1000; // 轻微重力
+      }
       const a = p.life / p.maxLife;
-      if (p.kind === 'ring') {
+      if (p.kind === 'tracer') {
+        g.moveTo(p.x, p.y).lineTo(p.x2 ?? p.x, p.y2 ?? p.y).stroke({ color: p.color, width: 1.5, alpha: a * 0.9 });
+      } else if (p.kind === 'ring') {
         g.circle(p.x, p.y, p.size * (1.4 - a)).stroke({ color: p.color, width: 2, alpha: a });
       } else {
         g.circle(p.x, p.y, p.size * (p.kind === 'smoke' ? 1.4 - a : a)).fill({ color: p.color, alpha: a });
