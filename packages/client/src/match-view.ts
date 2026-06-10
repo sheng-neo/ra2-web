@@ -61,6 +61,11 @@ export const MATCH_STYLE = `
 .mv-bldbar button.on { background: #2d6fb0; color: #fff; }
 .mv-bldbar .sell { color: #e08080; }
 .mv-bldbar .hint { color: #8a97a0; font-size: 12px; }
+.mv-tip { position: fixed; left: 50%; top: 80px; transform: translateX(-50%); z-index: 25; max-width: 420px;
+  background: rgba(14,20,26,.96); border: 1px solid #2d6fb0; border-radius: 10px; padding: 16px 18px; color: #d8e0e6; }
+.mv-tip h3 { margin: 0 0 8px; font-size: 15px; color: #6db3e8; }
+.mv-tip ul { margin: 0; padding-left: 18px; line-height: 1.7; font-size: 13px; }
+.mv-tip button { margin-top: 12px; width: 100%; padding: 8px; border: none; border-radius: 6px; background: #2d6fb0; color: #fff; cursor: pointer; }
 @media (max-width: 760px) {
   .mv-side { top: auto; bottom: 0; left: 0; width: 100%; height: 132px; flex-direction: row; border-left: none; border-top: 1px solid #243039; }
   .mv-mini { display: none; }
@@ -172,6 +177,7 @@ export class MatchView {
     this.rebuildSidebar();
     this.lastStepAt = performance.now();
     loading.remove();
+    this.maybeShowTip();
 
     if (import.meta.env.DEV) {
       (window as unknown as { __ra2view?: unknown }).__ra2view = {
@@ -672,6 +678,34 @@ export class MatchView {
     }
     this.selected.clear();
     this.renderBuildingBar();
+  }
+
+  /** 首次进入对局显示一次操作提示。 */
+  private maybeShowTip(): void {
+    try {
+      if (localStorage.getItem('ra2.seenHelp')) return;
+    } catch {
+      return;
+    }
+    const touch = matchMedia('(pointer: coarse)').matches;
+    const tip = document.createElement('div');
+    tip.className = 'mv-tip';
+    tip.innerHTML =
+      `<h3>怎么玩</h3><ul>` +
+      `<li>顺序造：发电厂 → 矿石精炼厂 → 兵营 → 战车工厂</li>` +
+      `<li>采矿车自动采矿换钱；右侧栏点图标造单位/建筑</li>` +
+      `<li>${touch ? '点选单位、单指点地移动/点敌攻击、双指缩放' : '左键选/框选，右键移动或攻击，A 攻击移动'}</li>` +
+      `<li>点己方建筑可修理/出售；摧毁对方全部建筑获胜</li>` +
+      `</ul><button id="mv-tip-ok">知道了</button>`;
+    this.root.appendChild(tip);
+    tip.querySelector('#mv-tip-ok')!.addEventListener('click', () => {
+      try {
+        localStorage.setItem('ra2.seenHelp', '1');
+      } catch {
+        /* ignore */
+      }
+      tip.remove();
+    });
   }
 
   private renderBuildingBar(): void {

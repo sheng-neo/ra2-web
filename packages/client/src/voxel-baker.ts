@@ -7,9 +7,9 @@
 import type { VxlFile, Voxel } from '@ra2web/data';
 
 /** 单个体素的等距尺寸（像素）。 */
-const VS = 2.2;
+const VS = 2.7;
 /** 体素竖直高度（像素）。 */
-const VZ = 2.2;
+const VZ = 2.7;
 
 interface Projected {
   voxel: Voxel;
