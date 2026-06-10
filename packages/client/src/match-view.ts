@@ -98,9 +98,10 @@ export class MatchView {
   private over = false;
   /** 上一帧各分类队列是否就绪（用于「建造完成」提示音的边沿检测）。 */
   private prevReady: Record<string, boolean> = {};
-  private lastPointer = { x: 0, y: 0 };
+  private lastPointer = { x: -1, y: -1 };
   private dragStart: { x: number; y: number } | null = null;
   private lastStepAt = 0;
+  private readonly isTouch = matchMedia('(pointer: coarse)').matches;
   /** 网络状态行文本（联机时由 driver 写）。 */
   netStatus = '';
   /** 设置后，结束横幅显示「再来一局」。 */
@@ -269,6 +270,15 @@ export class MatchView {
       ready.style.display = 'none';
       cell.appendChild(ready);
       cell.addEventListener('click', () => this.onCameoClick(type));
+      // 右键取消该分类队首（退款）
+      cell.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        const q = this.world.queueFor(this.localPlayerId, categoryOf(type));
+        if (q && q.items.length > 0) {
+          this.emit({ kind: 'cancel', owner: this.localPlayerId, category: categoryOf(type) });
+          audioBus.play('select');
+        }
+      });
       this.buildEl.appendChild(cell);
       this.cameos.push({ el: cell, prog, ready, type });
     }
@@ -802,8 +812,26 @@ export class MatchView {
   /** rAF 渲染（插值）。返回是否已结束。 */
   render(): void {
     const alpha = Math.min(1, (performance.now() - this.lastStepAt) / (1000 / 15));
+    this.edgeScroll();
     this.renderer.render(alpha, this.selected);
     this.drawGhost();
+  }
+
+  /** 桌面：光标贴边平移相机（经典 RTS 手感；触控不启用）。 */
+  private edgeScroll(): void {
+    if (this.isTouch) return;
+    const EDGE = 22;
+    const SPD = 11;
+    const x = this.lastPointer.x;
+    const y = this.lastPointer.y;
+    const rightLimit = window.innerWidth - 168; // 让开右侧边栏
+    let dx = 0;
+    let dy = 0;
+    if (x >= 0 && x < EDGE) dx = -SPD;
+    else if (x > rightLimit - EDGE && x < rightLimit) dx = SPD;
+    if (y >= 0 && y < EDGE) dy = -SPD;
+    else if (y > window.innerHeight - EDGE && y <= window.innerHeight) dy = SPD;
+    if (dx !== 0 || dy !== 0) this.camera.panByScreen(-dx, -dy);
   }
 
   private drawGhost(): void {
