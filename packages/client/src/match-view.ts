@@ -13,6 +13,7 @@ import {
   type UnitType,
 } from '@ra2web/game';
 import { Camera } from './camera';
+import { audioBus } from './audio-bus';
 import { cornerX, cornerY, screenToLepton, TILE_H, TILE_W } from './iso';
 import { buildArt, makeCameo } from './placeholder-art';
 import { WorldRenderer } from './world-renderer';
@@ -79,6 +80,8 @@ export class MatchView {
   private cameos: CameoCell[] = [];
   private placingType: UnitType | null = null;
   private over = false;
+  /** 上一帧各分类队列是否就绪（用于「建造完成」提示音的边沿检测）。 */
+  private prevReady: Record<string, boolean> = {};
   private lastPointer = { x: 0, y: 0 };
   private dragStart: { x: number; y: number } | null = null;
   private lastStepAt = 0;
@@ -116,6 +119,7 @@ export class MatchView {
 
     const art = buildArt(this.app, this.world.rules.units.values());
     this.renderer = new WorldRenderer(this.app, this.world, art);
+    this.renderer.onEvent = (kind) => audioBus.play(kind);
     this.app.stage.addChild(this.renderer.stage);
     this.ghost = new Graphics();
     this.renderer.stage.addChild(this.ghost);
@@ -152,6 +156,7 @@ export class MatchView {
          <span>电力 <b id="mv-power" class="pwr-ok">0</b></span>
          <span class="mv-net" id="mv-net"></span>
          <span style="flex:1"></span>
+         <button id="mv-mute" style="background:none;border:none;color:#9aa7b0;cursor:pointer;font-size:15px">🔊</button>
          <a href="#">退出</a>
        </div>
        <div class="mv-side">
@@ -173,6 +178,15 @@ export class MatchView {
     this.buildEl = this.root.querySelector('#mv-build')!;
     this.miniEl = this.root.querySelector('#mv-mini')!;
     this.selBox = this.root.querySelector('#mv-selbox')!;
+
+    const muteBtn = this.root.querySelector('#mv-mute') as HTMLButtonElement;
+    muteBtn.addEventListener('click', () => {
+      muteBtn.textContent = audioBus.toggleMute() ? '🔇' : '🔊';
+    });
+    // 首次交互解锁音频（浏览器自动播放策略）
+    const unlock = (): void => audioBus.resume();
+    this.app.canvas.addEventListener('pointerdown', unlock, { once: true });
+    window.addEventListener('keydown', unlock, { once: true });
 
     for (const cat of ['building', 'infantry', 'vehicle'] as ProdCategory[]) {
       const btn = document.createElement('button');
@@ -220,11 +234,14 @@ export class MatchView {
   }
 
   private onCameoClick(type: UnitType): void {
+    audioBus.resume();
     const q = this.world.queueFor(this.localPlayerId, categoryOf(type));
     if (type.domain === 'building' && q?.readyToPlace && q.items[0] === type.id) {
       this.placingType = type;
+      audioBus.play('select');
       return;
     }
+    audioBus.play('select');
     this.emit({ kind: 'produce', owner: this.localPlayerId, typeId: type.id });
   }
 
@@ -313,6 +330,7 @@ export class MatchView {
         if (this.world.canPlace(this.localPlayerId, this.placingType, cell.x, cell.y)) {
           this.emit({ kind: 'place', owner: this.localPlayerId, typeId: this.placingType.id, cellX: cell.x, cellY: cell.y });
           this.placingType = null;
+          audioBus.play('place');
         }
         return;
       }
@@ -463,6 +481,7 @@ export class MatchView {
       if (this.world.canPlace(this.localPlayerId, this.placingType, cell.x, cell.y)) {
         this.emit({ kind: 'place', owner: this.localPlayerId, typeId: this.placingType.id, cellX: cell.x, cellY: cell.y });
         this.placingType = null;
+        audioBus.play('place');
       }
       return;
     }
@@ -481,6 +500,7 @@ export class MatchView {
     if (best) {
       this.selected.clear();
       this.selected.add(best.id);
+      audioBus.play('select');
       return;
     }
     // 否则：对已有选择下令
@@ -492,6 +512,7 @@ export class MatchView {
       else if (cell.x >= 0 && cell.y >= 0 && cell.x < this.mapW && cell.y < this.mapH) {
         this.emit({ kind: 'move', entityIds: ids, cellX: cell.x, cellY: cell.y });
       }
+      audioBus.play('select');
     }
   }
 
@@ -567,6 +588,13 @@ export class MatchView {
     if (this.world.tick % 4 === 0) {
       this.refreshSidebar();
       this.drawMinimap();
+    }
+    // 建筑建造完成（队列首项变为就绪）→ 提示音
+    for (const cat of ['building', 'infantry', 'vehicle'] as const) {
+      const q = this.world.queueFor(this.localPlayerId, cat);
+      const ready = !!q?.readyToPlace;
+      if (ready && !this.prevReady[cat]) audioBus.play('ready');
+      this.prevReady[cat] = ready;
     }
     this.checkVictory();
   }

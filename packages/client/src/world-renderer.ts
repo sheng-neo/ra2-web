@@ -51,6 +51,8 @@ export class WorldRenderer {
   private readonly prevCooldown = new Map<number, number>();
   private readonly prevProj = new Map<number, { x: number; y: number }>();
   private lastFxTime = 0;
+  /** 战斗事件回调（接音效）。kind: 开火/命中/爆炸/大爆炸。 */
+  onEvent: ((kind: 'fire' | 'cannon' | 'hit' | 'explosion' | 'bigExplosion') => void) | null = null;
 
   constructor(
     private readonly app: Application,
@@ -240,6 +242,8 @@ export class WorldRenderer {
       const pc = this.prevCooldown.get(e.id) ?? 0;
       if (e.cooldown > pc + 1 && e.targetId !== null) {
         this.particles.push({ x: sx, y: sy - 4, vx: 0, vy: 0, life: 90, maxLife: 90, size: isBuilding ? 7 : 4, color: 0xfff2a0, kind: 'flash' });
+        const weapon = this.world.rules.units.get(e.typeId)?.weapon;
+        this.onEvent?.(weapon && weapon.projectileSpeed > 0 ? 'cannon' : 'fire');
       }
       this.prevHp.set(e.id, e.hp);
       this.prevCooldown.set(e.id, e.cooldown);
@@ -249,6 +253,7 @@ export class WorldRenderer {
     for (const [id, pos] of this.prevPos) {
       if (seen.has(id)) continue;
       this.spawnExplosion(pos.x, pos.y, pos.building ? 2.2 : 1);
+      this.onEvent?.(pos.building ? 'bigExplosion' : 'explosion');
       this.prevPos.delete(id);
       this.prevHp.delete(id);
       this.prevCooldown.delete(id);
