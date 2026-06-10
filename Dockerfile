@@ -20,4 +20,5 @@ COPY --from=build /app /app
 EXPOSE 8080
 ENV PORT=8080
 ENV STATIC_DIR=/app/packages/client/dist
-CMD ["pnpm", "--filter", "@ra2web/server", "start"]
+# 直接用 tsx 启动，避免运行时 corepack 下载 pnpm 拖慢冷启动
+CMD ["node_modules/.bin/tsx", "packages/server/src/index.ts"]

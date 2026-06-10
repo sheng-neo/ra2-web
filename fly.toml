@@ -1,7 +1,7 @@
 # Fly.io 部署配置。首次：安装 flyctl → `fly launch --copy-config --no-deploy` → `fly deploy`。
 # app 名改成你自己的（全局唯一）。
-app = "ra2web"
-primary_region = "hkg"  # 香港，按你和朋友的位置改（nrt=东京 sin=新加坡 lax=洛杉矶 等）
+app = "peaceful-wave-530"
+primary_region = "sin"  # 新加坡，按你和朋友的位置改（nrt=东京 sin=新加坡 lax=洛杉矶 等）
 
 [build]
   dockerfile = "Dockerfile"
@@ -11,12 +11,12 @@ primary_region = "hkg"  # 香港，按你和朋友的位置改（nrt=东京 sin=
   force_https = true
   auto_stop_machines = "stop"
   auto_start_machines = true
-  min_machines_running = 0
+  min_machines_running = 1  # 保持常驻；想省钱可改 0（空闲自动停、有人连自动起，冷启约数秒）
 
   [[http_service.checks]]
     interval = "15s"
-    timeout = "2s"
-    grace_period = "5s"
+    timeout = "3s"
+    grace_period = "20s"
     method = "GET"
     path = "/health"
 
