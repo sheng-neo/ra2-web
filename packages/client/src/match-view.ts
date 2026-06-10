@@ -16,6 +16,7 @@ import { Camera } from './camera';
 import { audioBus } from './audio-bus';
 import { cornerX, cornerY, screenToLepton, TILE_H, TILE_W } from './iso';
 import { buildArt, makeCameo } from './placeholder-art';
+import { RealArtProvider } from './real-art';
 import { WorldRenderer } from './world-renderer';
 
 const CATEGORY_LABEL: Record<ProdCategory, string> = {
@@ -122,7 +123,17 @@ export class MatchView {
     this.root.appendChild(this.app.canvas);
 
     const art = buildArt(this.app, this.world.rules.units.values());
-    this.renderer = new WorldRenderer(this.app, this.world, art, this.localPlayerId);
+    // 真实素材（有 TS 文件则用，否则回退占位）
+    let realArt: RealArtProvider | null = new RealArtProvider(this.app);
+    if (await realArt.tryInit()) {
+      const typeIds = [...this.world.rules.units.values()].map((u) => u.id);
+      // 双方阵营美术都预载（敌方可能是另一阵营）
+      await realArt.preload('allied', typeIds);
+      await realArt.preload('soviet', typeIds);
+    } else {
+      realArt = null;
+    }
+    this.renderer = new WorldRenderer(this.app, this.world, art, this.localPlayerId, realArt);
     this.renderer.onEvent = (kind) => audioBus.play(kind);
     this.app.stage.addChild(this.renderer.stage);
     this.ghost = new Graphics();

@@ -4,9 +4,10 @@
  * 与模拟解耦 —— 只读 World，不改它。
  */
 import { Application, Container, Graphics, Sprite } from 'pixi.js';
-import type { World } from '@ra2web/game';
+import type { World, Side } from '@ra2web/game';
 import { cornerX, cornerY, leptonToScreenX, leptonToScreenY, TILE_H, TILE_W } from './iso';
 import { PLAYER_COLORS, appearanceOf, type ArtAssets } from './placeholder-art';
+import type { RealArtProvider } from './real-art';
 
 interface UnitView {
   body: Sprite;
@@ -66,6 +67,8 @@ export class WorldRenderer {
     private readonly art: ArtAssets,
     /** 本地玩家 id；>0 时启用战争迷雾。 */
     private readonly localPlayerId = 0,
+    /** 真实素材（TS）；就绪则建筑/步兵用真实贴图，否则回退占位。 */
+    private readonly realArt: RealArtProvider | null = null,
   ) {
     this.unitLayer.sortableChildren = true;
     this.buildingLayer.sortableChildren = true;
@@ -176,28 +179,43 @@ export class WorldRenderer {
     }
   }
 
+  private sideOf(owner: number): Side {
+    return this.world.players.get(owner)?.side ?? 'allied';
+  }
+
   private rebuildBuildings(): void {
     this.buildingLayer.removeChildren();
     for (const e of this.world.entities.values()) {
       const type = this.world.rules.units.get(e.typeId);
       if (!type?.building) continue;
-      const art = this.art.buildingTextures.get(e.typeId);
-      if (!art) continue;
-      const sp = new Sprite(art.tex);
-      const baseX = cornerX(e.cellX, e.cellY);
-      const baseY = cornerY(e.cellX, e.cellY);
-      sp.position.set(baseX - art.anchorX, baseY - art.anchorY);
-      sp.tint = this.playerColor(e.owner);
-      sp.zIndex = cornerY(e.cellX + type.building.footprintW, e.cellY + type.building.footprintH);
+      const fw = type.building.footprintW;
+      const fh = type.building.footprintH;
+      const real = this.realArt?.ready ? this.realArt.building(this.sideOf(e.owner), e.typeId) : null;
+      const sp = new Sprite(real ? real.tex : this.art.buildingTextures.get(e.typeId)?.tex);
+      sp.zIndex = cornerY(e.cellX + fw, e.cellY + fh);
+      if (real) {
+        // 真实贴图：底中心贴在足迹中心点，保留原色（不 tint）
+        sp.anchor.set(real.anchorX / sp.texture.width, real.anchorY / sp.texture.height);
+        const cx = (cornerX(e.cellX, e.cellY) + cornerX(e.cellX + fw, e.cellY + fh)) / 2;
+        const cy = (cornerY(e.cellX, e.cellY) + cornerY(e.cellX + fw, e.cellY + fh)) / 2;
+        sp.position.set(cx, cy + TILE_H / 2);
+      } else {
+        const art = this.art.buildingTextures.get(e.typeId);
+        if (!art) continue;
+        sp.position.set(cornerX(e.cellX, e.cellY) - art.anchorX, cornerY(e.cellX, e.cellY) - art.anchorY);
+        sp.tint = this.playerColor(e.owner);
+      }
       this.buildingLayer.addChild(sp);
 
-      // 受损血条
+      // 受损血条（置于足迹中心上方）
       if (e.hp < e.maxHp) {
         const bar = new Graphics();
-        const w = type.building.footprintW * 10;
+        const w = fw * 10;
         bar.rect(-w / 2, 0, w, 3).fill(0x000000);
         bar.rect(-w / 2, 0, (w * e.hp) / e.maxHp, 3).fill(0x40e040);
-        bar.position.set(baseX + (type.building.footprintW - type.building.footprintH) * (TILE_W / 4), baseY + 4);
+        const cx = (cornerX(e.cellX, e.cellY) + cornerX(e.cellX + fw, e.cellY + fh)) / 2;
+        const cy = (cornerY(e.cellX, e.cellY) + cornerY(e.cellX + fw, e.cellY + fh)) / 2;
+        bar.position.set(cx, cy - TILE_H);
         bar.zIndex = sp.zIndex + 1;
         this.buildingLayer.addChild(bar);
       }
@@ -231,9 +249,17 @@ export class WorldRenderer {
       seen.add(e.id);
       let v = this.views.get(e.id);
       if (!v) {
-        const body = new Sprite(type.domain === 'vehicle' ? this.art.vehicleBody : this.art.infantryBody);
-        body.anchor.set(0.5);
-        body.tint = this.playerColor(e.owner);
+        // 步兵优先用真实贴图（保留原色）；车辆暂用占位（VXL 待 M6）
+        const realInf = type.domain === 'infantry' && this.realArt?.ready ? this.realArt.infantryOf(e.typeId) : null;
+        const body = new Sprite(
+          realInf ? realInf.tex : type.domain === 'vehicle' ? this.art.vehicleBody : this.art.infantryBody,
+        );
+        if (realInf) {
+          body.anchor.set(realInf.anchorX / body.texture.width, realInf.anchorY / body.texture.height);
+        } else {
+          body.anchor.set(0.5);
+          body.tint = this.playerColor(e.owner);
+        }
         const barrel = type.weapon && type.domain === 'vehicle' ? new Sprite(this.art.vehicleBarrel) : null;
         if (barrel) {
           barrel.anchor.set(0.25, 0.5); // 炮塔中心略偏后，绕车体中心旋转

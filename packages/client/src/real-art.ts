@@ -1,0 +1,130 @@
+/**
+ * 真实素材提供器：从泰伯利亚之日（EA 免费）的 mix 加载真实 SHP，
+ * 用真实调色板解码成纹理供游戏渲染。盟军→GDI 美术、苏军→Nod 美术，
+ * 天然区分双方。无游戏文件时整体不可用，渲染回退到原创占位美术
+ * （公网部署无 game-data → 自动用占位，互不影响）。
+ *
+ * 车辆是体素(VXL)，待 M6 解析；此处只供建筑与步兵。
+ */
+import { Application, Texture } from 'pixi.js';
+import { Palette, parseShp } from '@ra2web/data';
+import type { Side } from '@ra2web/game';
+import { ResourceFS } from './vfs';
+
+/** typeId → TS 建筑 SHP 基名（NewTheater 温带：第2字符 T，扩展 .shp）。 */
+const BUILDING_ART: Record<Side, Record<string, string>> = {
+  allied: {
+    conyard: 'gtcnst.shp',
+    powerplant: 'gtpowr.shp',
+    refinery: 'ntrefn.shp',
+    barracks: 'gtpile.shp',
+    warfactory: 'gtweap.shp',
+    pillbox: 'gtctwr.shp',
+    tesla: 'gtctwr.shp',
+  },
+  soviet: {
+    conyard: 'gtcnst.shp',
+    powerplant: 'ntpowr.shp',
+    refinery: 'ntrefn.shp',
+    barracks: 'nthand.shp',
+    warfactory: 'ntweap.shp',
+    pillbox: 'ntlasr.shp',
+    tesla: 'ntobel.shp',
+  },
+};
+
+/** typeId → 步兵 SHP（两阵营共用 TS 步兵美术）。 */
+const INFANTRY_ART: Record<string, string> = {
+  gi: 'e1.shp',
+  conscript: 'e2.shp',
+  engineer: 'e3.shp',
+};
+
+export interface RealSprite {
+  tex: Texture;
+  anchorX: number;
+  anchorY: number;
+}
+
+export class RealArtProvider {
+  private readonly fs = new ResourceFS();
+  private unitPal: Palette | null = null;
+  private readonly buildings = new Map<string, RealSprite>();
+  private readonly infantry = new Map<string, RealSprite>();
+  ready = false;
+
+  constructor(private readonly app: Application) {}
+
+  /** 尝试挂载 TS mix + 调色板；成功才标记可用。 */
+  async tryInit(): Promise<boolean> {
+    try {
+      for (const m of ['Conquer.mix', 'Cache.mix', 'Temperat.mix']) {
+        await this.fs.mountUrl(`/game-data/${m}`, m);
+      }
+      this.unitPal = Palette.parse(await this.fs.readFile('unittem.pal'));
+      this.ready = true;
+      return true;
+    } catch {
+      this.ready = false;
+      return false;
+    }
+  }
+
+  /** 预解码本局用到的建筑/步兵 SHP（init 时 await，渲染期零等待）。 */
+  async preload(side: Side, typeIds: Iterable<string>): Promise<void> {
+    if (!this.ready) return;
+    for (const id of typeIds) {
+      const bName = BUILDING_ART[side][id];
+      if (bName) await this.loadInto(this.buildings, `${side}:${id}`, bName, 0, true);
+      const iName = INFANTRY_ART[id];
+      if (iName) await this.loadInto(this.infantry, id, iName, 0, false);
+    }
+  }
+
+  private async loadInto(
+    cache: Map<string, RealSprite>,
+    key: string,
+    shpName: string,
+    frame: number,
+    isBuilding: boolean,
+  ): Promise<void> {
+    if (cache.has(key) || !this.unitPal) return;
+    try {
+      const shp = parseShp(await this.fs.readFile(shpName));
+      const f = shp.frames[frame] ?? shp.frames[0];
+      if (!f || f.pixels.length === 0 || f.width <= 0 || f.height <= 0) return;
+      const canvas = document.createElement('canvas');
+      canvas.width = f.width;
+      canvas.height = f.height;
+      const ctx = canvas.getContext('2d')!;
+      const img = ctx.createImageData(f.width, f.height);
+      for (let p = 0; p < f.pixels.length; p++) {
+        const idx = f.pixels[p]!;
+        if (idx === 0) continue;
+        img.data[p * 4] = this.unitPal.rgba[idx * 4]!;
+        img.data[p * 4 + 1] = this.unitPal.rgba[idx * 4 + 1]!;
+        img.data[p * 4 + 2] = this.unitPal.rgba[idx * 4 + 2]!;
+        img.data[p * 4 + 3] = 255;
+      }
+      ctx.putImageData(img, 0, 0);
+      const tex = Texture.from(canvas);
+      // 建筑：锚点取底部中心（贴地）；步兵：底部中心
+      cache.set(key, {
+        tex,
+        anchorX: f.width / 2,
+        anchorY: isBuilding ? f.height * 0.82 : f.height * 0.85,
+      });
+      void this.app;
+    } catch {
+      /* 缺这张就回退占位 */
+    }
+  }
+
+  building(side: Side, typeId: string): RealSprite | null {
+    return this.buildings.get(`${side}:${typeId}`) ?? null;
+  }
+
+  infantryOf(typeId: string): RealSprite | null {
+    return this.infantry.get(typeId) ?? null;
+  }
+}
