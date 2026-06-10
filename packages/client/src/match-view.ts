@@ -222,6 +222,22 @@ export class MatchView {
     this.selBox = this.root.querySelector('#mv-selbox')!;
     this.bldBar = this.root.querySelector('#mv-bldbar')!;
 
+    // 点击小地图 → 相机跳转
+    this.miniEl.addEventListener('pointerdown', (e) => {
+      const rect = this.miniEl.getBoundingClientRect();
+      const sx = this.miniEl.width / (this.mapW + this.mapH);
+      const sy = this.miniEl.height / (this.mapW + this.mapH);
+      const mx = ((e.clientX - rect.left) / rect.width) * this.miniEl.width;
+      const my = ((e.clientY - rect.top) / rect.height) * this.miniEl.height;
+      const a = mx / sx - this.mapH; // cx - cy
+      const b = my / sy; // cx + cy
+      const cx = (a + b) / 2;
+      const cy = (b - a) / 2;
+      this.camera.x = cornerX(cx, cy);
+      this.camera.y = cornerY(cx, cy);
+      this.camera.apply();
+    });
+
     const muteBtn = this.root.querySelector('#mv-mute') as HTMLButtonElement;
     muteBtn.addEventListener('click', () => {
       muteBtn.textContent = audioBus.toggleMute() ? '🔇' : '🔊';
