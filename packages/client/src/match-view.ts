@@ -131,6 +131,15 @@ export class MatchView {
     this.root.className = 'mv-root';
     this.root.appendChild(this.app.canvas);
 
+    // 加载遮罩（真实素材烘焙可能耗时约 1 秒，避免黑屏）
+    const loading = document.createElement('div');
+    loading.style.cssText =
+      'position:fixed;inset:0;z-index:40;display:flex;align-items:center;justify-content:center;' +
+      'background:#06090c;color:#9aa7b0;font:16px system-ui,sans-serif';
+    loading.textContent = '加载素材中…';
+    this.root.appendChild(loading);
+    await new Promise((r) => setTimeout(r, 0)); // 让遮罩先绘制
+
     const art = buildArt(this.app, this.world.rules.units.values());
     // 真实素材（有 TS 文件则用，否则回退占位）
     let realArt: RealArtProvider | null = new RealArtProvider(this.app);
@@ -162,6 +171,7 @@ export class MatchView {
     this.bindInput();
     this.rebuildSidebar();
     this.lastStepAt = performance.now();
+    loading.remove();
 
     if (import.meta.env.DEV) {
       (window as unknown as { __ra2view?: unknown }).__ra2view = {

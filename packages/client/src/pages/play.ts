@@ -113,7 +113,13 @@ export async function renderPlay(root: HTMLElement): Promise<void> {
       if (acc > TICK_MS * 6) acc = 0;
     }, TICK_MS);
 
-    view.app.ticker.add(() => view.render());
+    view.app.ticker.add(() => {
+      try {
+        view.render();
+      } catch (e) {
+        console.error('[render]', e);
+      }
+    });
     const stop = (): void => clearInterval(clock);
     window.addEventListener('hashchange', stop, { once: true });
     // 重开时清掉旧循环

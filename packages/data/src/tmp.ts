@@ -43,6 +43,10 @@ export function parseTmp(bytes: Uint8Array): TmpFile {
   if (blocksX <= 0 || blocksY <= 0 || cx <= 0 || cy !== cx >> 1) {
     throw new Error(`不是 TMP(TS) 文件（头异常: ${blocksX}×${blocksY}, ${cx}×${cy}）`);
   }
+  // 健壮性：拒绝异常巨大的块数/尺寸
+  if (blocksX > 4096 || blocksY > 4096 || cx > 256) {
+    throw new Error(`TMP 头数值异常: ${blocksX}×${blocksY}, 块 ${cx}×${cy}`);
+  }
 
   const count = blocksX * blocksY;
   const offsets: number[] = [];

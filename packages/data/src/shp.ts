@@ -32,6 +32,10 @@ export function parseShp(bytes: Uint8Array): ShpFile {
   const width = r.u16();
   const height = r.u16();
   const count = r.u16();
+  // 健壮性：拒绝异常巨大的帧数/画布，防止坏数据导致 OOM/卡死
+  if (count > 8192 || width > 8192 || height > 8192) {
+    throw new Error(`SHP 头数值异常: ${width}x${height} ×${count}`);
+  }
 
   const frames: ShpFrame[] = [];
   for (let i = 0; i < count; i++) {

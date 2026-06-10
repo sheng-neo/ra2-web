@@ -53,6 +53,9 @@ export function parseVxl(bytes: Uint8Array): VxlFile {
   const limbCount = r.u32();
   r.u32(); // unknown
   const bodySize = r.u32();
+  if (limbCount > 512 || bodySize > bytes.length) {
+    throw new Error(`VXL 头数值异常: limbs=${limbCount} body=${bodySize}`);
+  }
 
   // 调色板（6bit→8bit）
   const palette = new Uint8Array(1024);

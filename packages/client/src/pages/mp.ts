@@ -247,7 +247,13 @@ export async function renderMp(root: HTMLElement): Promise<void> {
       else view.setNetStatus(`t${session.currentTick} 缓冲${ahead} ${world.hash().toString(16).slice(0, 6)}`);
     }, TICK_MS);
 
-    view.app.ticker.add(() => view.render());
+    view.app.ticker.add(() => {
+      try {
+        view.render();
+      } catch (e) {
+        console.error('[render]', e);
+      }
+    });
     window.addEventListener('hashchange', () => clearInterval(clock), { once: true });
   }
 }
