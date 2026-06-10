@@ -1,0 +1,15 @@
+# 依赖与构建产物
+node_modules/
+dist/
+coverage/
+.vite/
+*.tsbuildinfo
+.eslintcache
+
+# 系统文件
+.DS_Store
+*.log
+
+# 红警2 原版游戏文件 —— 版权归 EA，绝不提交到仓库
+game-data/*
+!game-data/README.md
