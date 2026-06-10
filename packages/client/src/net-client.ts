@@ -44,8 +44,14 @@ export class NetClient {
   }
 }
 
-/** 默认服务器地址：开发期服务器跑在 7301。 */
+/**
+ * 默认服务器地址：
+ * - 开发期（Vite 在 5173）：服务器单独跑在 7301
+ * - 生产期（服务器同端口托管客户端）：同源 ws/wss
+ */
 export function defaultServerUrl(): string {
   const host = location.hostname || 'localhost';
-  return `ws://${host}:7301`;
+  if (location.port === '5173') return `ws://${host}:7301`;
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  return `${proto}://${location.host}`;
 }

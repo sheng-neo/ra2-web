@@ -66,3 +66,24 @@ pnpm dev:client
 
 浏览器开两个标签 → 首页「🌐 联机对战」→ 填同一房间名 → 双方点准备 → 自动开局。
 本机/局域网即可对战；架构为确定性锁步（命令经服务器中继，各端同序执行）。
+
+## 部署上线（一个容器 + 一个 URL）
+
+生产模式下，服务器在**同一端口**托管构建好的客户端与 WebSocket（同源、无跨域），
+玩家只需访问一个网址即可联机：
+
+```bash
+# 本地按生产模式跑
+pnpm --filter @ra2web/client build
+PORT=8080 pnpm --filter @ra2web/server start   # 打开 http://localhost:8080
+
+# 或用 Docker（云平台一键部署）
+docker build -t ra2web .
+docker run -p 8080:8080 ra2web
+```
+
+部署到任意支持 Docker + WebSocket 的平台（Fly.io、Render、Railway、自有 VPS 等）即可
+公网对战。客户端在生产环境自动以同源 `ws/wss` 连接服务器，无需额外配置。
+
+> 游戏文件：联机仅同步指令、不传素材；每位玩家在自己设备本地导入红警2文件
+> （见 [game-data/README.md](game-data/README.md)）。当前占位美术版无需文件即可游玩。

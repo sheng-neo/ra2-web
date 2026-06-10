@@ -2,6 +2,7 @@ import { createServer, type Server } from 'node:http';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { decodeMessage, encodeMessage, PROTOCOL_VERSION, type ClientMessage } from '@ra2web/game';
 import { Room } from './room';
+import { serveStatic } from './static';
 
 export { PROTOCOL_VERSION };
 
@@ -11,11 +12,16 @@ export interface GameServer {
   close(): Promise<void>;
 }
 
+export interface ServerOptions {
+  /** 设置后在同端口托管该目录的静态客户端（生产模式）。 */
+  staticDir?: string;
+}
+
 /**
- * 对战服务器：HTTP /health + WebSocket 大厅/房间锁步中继。
+ * 对战服务器：HTTP /health + 可选静态客户端 + WebSocket 大厅/房间锁步中继。
  * 一条连接加入一个房间（默认 'lobby'），房间满 2 人且都 ready 即开局。
  */
-export function createGameServer(port = 0): Promise<GameServer> {
+export function createGameServer(port = 0, opts: ServerOptions = {}): Promise<GameServer> {
   const rooms = new Map<string, Room>();
 
   const http: Server = createServer((req, res) => {
@@ -24,6 +30,7 @@ export function createGameServer(port = 0): Promise<GameServer> {
       res.end(JSON.stringify({ ok: true, protocol: PROTOCOL_VERSION, rooms: rooms.size }));
       return;
     }
+    if (opts.staticDir && serveStatic(opts.staticDir, req, res)) return;
     res.statusCode = 404;
     res.end();
   });
