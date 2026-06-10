@@ -118,7 +118,7 @@ export class MatchView {
     this.root.appendChild(this.app.canvas);
 
     const art = buildArt(this.app, this.world.rules.units.values());
-    this.renderer = new WorldRenderer(this.app, this.world, art);
+    this.renderer = new WorldRenderer(this.app, this.world, art, this.localPlayerId);
     this.renderer.onEvent = (kind) => audioBus.play(kind);
     this.app.stage.addChild(this.renderer.stage);
     this.ghost = new Graphics();
@@ -650,12 +650,22 @@ export class MatchView {
     ctx.fillStyle = '#b8920f';
     for (let y = 0; y < this.mapH; y++) {
       for (let x = 0; x < this.mapW; x++) {
-        if (this.world.oreAt(x, y) > 0) ctx.fillRect((x - y + this.mapH) * sx, (x + y) * sy, 2, 2);
+        // 仅已探索区域显示矿
+        if (this.world.oreAt(x, y) > 0 && this.renderer.cellExplored(x, y)) {
+          ctx.fillRect((x - y + this.mapH) * sx, (x + y) * sy, 2, 2);
+        }
       }
     }
     for (const e of this.world.entities.values()) {
       const type = this.world.rules.units.get(e.typeId);
-      ctx.fillStyle = e.owner === this.localPlayerId ? '#4f8fdd' : '#d05050';
+      const own = e.owner === this.localPlayerId;
+      // 敌方：建筑须已探索、单位须当前可见，才在小地图显示（尊重迷雾）
+      if (!own) {
+        if (type?.building ? !this.renderer.cellExplored(e.cellX, e.cellY) : !this.renderer.isCellVisible(e.cellX, e.cellY)) {
+          continue;
+        }
+      }
+      ctx.fillStyle = own ? '#4f8fdd' : '#d05050';
       const s = type?.building ? 4 : 2;
       ctx.fillRect((e.cellX - e.cellY + this.mapH) * sx, (e.cellX + e.cellY) * sy, s, s);
     }

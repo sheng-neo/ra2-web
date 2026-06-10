@@ -54,15 +54,89 @@ export class WorldRenderer {
   /** 战斗事件回调（接音效）。kind: 开火/命中/爆炸/大爆炸。 */
   onEvent: ((kind: 'fire' | 'cannon' | 'hit' | 'explosion' | 'bigExplosion') => void) | null = null;
 
+  // 战争迷雾（纯渲染，本地玩家视角；0=未探索 1=已探索 2=可见）
+  private readonly fogGfx = new Graphics();
+  private readonly vis: Uint8Array;
+  private readonly fogEnabled: boolean;
+  private fogTick = -1;
+
   constructor(
     private readonly app: Application,
     private readonly world: World,
     private readonly art: ArtAssets,
+    /** 本地玩家 id；>0 时启用战争迷雾。 */
+    private readonly localPlayerId = 0,
   ) {
     this.unitLayer.sortableChildren = true;
     this.buildingLayer.sortableChildren = true;
-    this.stage.addChild(this.terrainGfx, this.oreGfx, this.buildingLayer, this.unitLayer, this.fxGfx, this.particleGfx);
+    this.fogEnabled = localPlayerId > 0;
+    this.vis = new Uint8Array(world.terrain.width * world.terrain.height);
+    // 迷雾盖在地形/建筑/单位之上，但在血条/特效之下
+    this.stage.addChild(this.terrainGfx, this.oreGfx, this.buildingLayer, this.unitLayer, this.fogGfx, this.fxGfx, this.particleGfx);
     this.drawTerrain();
+  }
+
+  /** 某格是否已探索过（已探索或可见）。供小地图判断是否显示。 */
+  cellExplored(cx: number, cy: number): boolean {
+    if (!this.fogEnabled) return true;
+    if (cx < 0 || cy < 0 || cx >= this.world.terrain.width || cy >= this.world.terrain.height) return false;
+    return this.vis[cy * this.world.terrain.width + cx] !== 0;
+  }
+
+  /** 某格当前是否对本地玩家可见（公开供小地图用）。 */
+  isCellVisible(cx: number, cy: number): boolean {
+    return this.cellVisible(cx, cy);
+  }
+
+  /** 某格当前是否对本地玩家可见（无迷雾时恒真）。 */
+  private cellVisible(cx: number, cy: number): boolean {
+    if (!this.fogEnabled) return true;
+    if (cx < 0 || cy < 0 || cx >= this.world.terrain.width || cy >= this.world.terrain.height) return false;
+    return this.vis[cy * this.world.terrain.width + cx] === 2;
+  }
+
+  /** 按本地玩家单位/建筑视野重算可见格 + 重绘迷雾。 */
+  private updateFog(): void {
+    if (!this.fogEnabled || this.world.tick === this.fogTick) return;
+    this.fogTick = this.world.tick;
+    const w = this.world.terrain.width;
+    const h = this.world.terrain.height;
+    // 可见(2) 退回已探索(1)
+    for (let i = 0; i < this.vis.length; i++) if (this.vis[i] === 2) this.vis[i] = 1;
+    for (const e of this.world.entities.values()) {
+      if (e.owner !== this.localPlayerId) continue;
+      const type = this.world.rules.units.get(e.typeId);
+      if (!type) continue;
+      const b = type.building;
+      const ccx = b ? e.cellX + (b.footprintW - 1) / 2 : e.cellX;
+      const ccy = b ? e.cellY + (b.footprintH - 1) / 2 : e.cellY;
+      const r = type.sight + (b ? Math.max(b.footprintW, b.footprintH) / 2 : 0);
+      const r2 = r * r;
+      const minX = Math.max(0, Math.floor(ccx - r));
+      const maxX = Math.min(w - 1, Math.ceil(ccx + r));
+      const minY = Math.max(0, Math.floor(ccy - r));
+      const maxY = Math.min(h - 1, Math.ceil(ccy + r));
+      for (let y = minY; y <= maxY; y++) {
+        for (let x = minX; x <= maxX; x++) {
+          const dx = x - ccx;
+          const dy = y - ccy;
+          if (dx * dx + dy * dy <= r2) this.vis[y * w + x] = 2;
+        }
+      }
+    }
+    // 重绘迷雾盖板：未探索全黑，已探索半暗，可见不画
+    const g = this.fogGfx;
+    g.clear();
+    for (let cy = 0; cy < h; cy++) {
+      for (let cx = 0; cx < w; cx++) {
+        const v = this.vis[cy * w + cx]!;
+        if (v === 2) continue;
+        const sx = cornerX(cx, cy);
+        const sy = cornerY(cx, cy);
+        g.poly([sx, sy, sx + TILE_W / 2, sy + TILE_H / 2, sx, sy + TILE_H, sx - TILE_W / 2, sy + TILE_H / 2]);
+        g.fill({ color: 0x000000, alpha: v === 0 ? 1 : 0.5 });
+      }
+    }
   }
 
   private playerColor(owner: number): number {
@@ -147,6 +221,8 @@ export class WorldRenderer {
       this.drawOre();
     }
 
+    this.updateFog();
+
     // 单位层
     const seen = new Set<number>();
     for (const e of this.world.entities.values()) {
@@ -175,7 +251,11 @@ export class WorldRenderer {
       v.body.position.set(sx, sy);
       v.body.zIndex = sy;
       v.body.scale.set(selected.has(e.id) ? 1.15 : 1);
+      // 敌方单位仅在可见格显示（迷雾隐藏）
+      const visible = e.owner === this.localPlayerId || this.cellVisible(e.cellX, e.cellY);
+      v.body.visible = visible;
       if (v.barrel) {
+        v.barrel.visible = visible;
         v.barrel.position.set(sx, sy);
         v.barrel.zIndex = sy + 0.1;
         const rad = (e.facing / 256) * Math.PI * 2;
@@ -200,7 +280,7 @@ export class WorldRenderer {
       const type = this.world.rules.units.get(e.typeId);
       if (!type || type.domain === 'building') continue;
       const v = this.views.get(e.id);
-      if (!v) continue;
+      if (!v || !v.body.visible) continue; // 迷雾中的敌方单位不画血条/选中环
       const sx = v.body.position.x;
       const sy = v.body.position.y;
       if (selected.has(e.id)) {
