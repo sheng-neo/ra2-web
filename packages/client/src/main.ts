@@ -3,8 +3,9 @@ import { renderBootScreen } from './pages/boot-screen';
 import { renderMapViewer } from './pages/map-viewer';
 import { renderSimSandbox } from './pages/sim-sandbox';
 import { renderPlay } from './pages/play';
+import { renderMp } from './pages/mp';
 
-/** 极简 hash 路由：# 首页 / #play 遭遇战 / #assets 资源 / #map 地图 / #sim 沙盒。 */
+/** 极简 hash 路由：# 首页 / #play 单机 / #mp 联机 / #assets / #map / #sim。 */
 async function route(): Promise<void> {
   const app = document.getElementById('app')!;
   app.innerHTML = '';
@@ -19,6 +20,8 @@ async function route(): Promise<void> {
     await renderSimSandbox(app);
   } else if (location.hash === '#play') {
     await renderPlay(app);
+  } else if (location.hash === '#mp') {
+    await renderMp(app);
   } else {
     await renderBootScreen(app);
   }

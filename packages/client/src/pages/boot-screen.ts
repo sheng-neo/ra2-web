@@ -45,7 +45,7 @@ export async function renderBootScreen(root: HTMLElement): Promise<void> {
   world.addChild(title);
 
   const playBtn = new Text({
-    text: '▶ 开始遭遇战',
+    text: '▶ 单机遭遇战',
     style: { fill: 0x6fe06f, fontSize: 22, fontWeight: '700' },
   });
   playBtn.anchor.set(0.5);
@@ -55,6 +55,18 @@ export async function renderBootScreen(root: HTMLElement): Promise<void> {
     location.hash = '#play';
   });
   world.addChild(playBtn);
+
+  const mpBtn = new Text({
+    text: '🌐 联机对战',
+    style: { fill: 0x6db3e8, fontSize: 20, fontWeight: '700' },
+  });
+  mpBtn.anchor.set(0.5);
+  mpBtn.eventMode = 'static';
+  mpBtn.cursor = 'pointer';
+  mpBtn.on('pointertap', () => {
+    location.hash = '#mp';
+  });
+  world.addChild(mpBtn);
 
   const subtitle = new Text({
     text: '资源浏览器 (#assets)　·　地图查看器 (#map)　·　模拟沙盒 (#sim)',
@@ -74,7 +86,8 @@ export async function renderBootScreen(root: HTMLElement): Promise<void> {
     world.y = app.screen.height / 2 - (GRID * CELL_H) / 4;
     title.y = (GRID * CELL_H) / 2 + 40;
     playBtn.y = title.y + 36;
-    subtitle.y = playBtn.y + 32;
+    mpBtn.y = playBtn.y + 34;
+    subtitle.y = mpBtn.y + 30;
   };
   layout();
   app.renderer.on('resize', layout);

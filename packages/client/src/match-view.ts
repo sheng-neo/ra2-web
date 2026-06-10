@@ -1,0 +1,450 @@
+/**
+ * 对局视图：渲染 + 输入 + 侧边栏 UI，与「sim 驱动方式」解耦。
+ * 单机用 LocalDriver（本地直接 step + AI），联机用锁步 driver（经服务器）。
+ * 视图只负责：把玩家操作转成 Command 暂存、被驱动方调用 stepWith 推进、插值渲染。
+ */
+import { Application, Graphics } from 'pixi.js';
+import {
+  World,
+  categoryOf,
+  leptonToCell,
+  type Command,
+  type ProdCategory,
+  type UnitType,
+} from '@ra2web/game';
+import { Camera } from './camera';
+import { cornerX, cornerY, screenToLepton, TILE_H, TILE_W } from './iso';
+import { buildArt, makeCameo } from './placeholder-art';
+import { WorldRenderer } from './world-renderer';
+
+const CATEGORY_LABEL: Record<ProdCategory, string> = {
+  building: '建筑',
+  infantry: '步兵',
+  vehicle: '车辆',
+};
+
+export const MATCH_STYLE = `
+.mv-root { position: fixed; inset: 0; overflow: hidden; background: #06090c;
+  font: 13px/1.4 system-ui, 'PingFang SC', sans-serif; color: #d8e0e6; touch-action: none; }
+.mv-top { position: fixed; top: 0; left: 0; z-index: 20; display: flex; gap: 16px; align-items: center;
+  padding: 8px 14px; background: rgba(8,12,16,.8); border-bottom-right-radius: 8px; }
+.mv-top b { color: #f0d040; font-variant-numeric: tabular-nums; }
+.mv-top .pwr-ok { color: #6fce6f; }
+.mv-top .pwr-low { color: #e05050; }
+.mv-top a { color: #6db3e8; text-decoration: none; }
+.mv-net { color: #8a97a0; font-family: ui-monospace, monospace; font-size: 12px; }
+.mv-net.stall { color: #e0b050; }
+.mv-side { position: fixed; top: 0; right: 0; bottom: 0; width: 168px; z-index: 20;
+  background: rgba(12,16,20,.92); border-left: 1px solid #243039; display: flex; flex-direction: column; }
+.mv-mini { width: 168px; height: 130px; background: #000; border-bottom: 1px solid #243039; }
+.mv-tabs { display: flex; }
+.mv-tabs button { flex: 1; padding: 6px 0; background: #161e25; color: #9aa7b0; border: none;
+  border-bottom: 2px solid transparent; cursor: pointer; font-size: 12px; }
+.mv-tabs button.on { color: #fff; border-bottom-color: #6db3e8; background: #1d2933; }
+.mv-build { flex: 1; overflow-y: auto; padding: 6px; display: grid; grid-template-columns: 1fr 1fr; gap: 6px; align-content: start; }
+.mv-cameo { position: relative; cursor: pointer; border: 1px solid #2a3a48; border-radius: 4px; overflow: hidden; user-select: none; }
+.mv-cameo.disabled { opacity: .35; cursor: not-allowed; }
+.mv-cameo canvas { display: block; width: 100%; }
+.mv-cameo .cost { position: absolute; right: 2px; bottom: 14px; font-size: 10px; color: #f0d040; text-shadow: 0 0 3px #000; }
+.mv-cameo .prog { position: absolute; inset: 0; background: rgba(0,0,0,.6); display: flex; align-items: center; justify-content: center; font-weight: 700; color: #fff; }
+.mv-cameo .ready { position: absolute; inset: 0; border: 2px solid #6fe06f; box-sizing: border-box; display: flex; align-items: flex-start; justify-content: center; color: #6fe06f; font-size: 10px; }
+.mv-hint { position: fixed; left: 50%; transform: translateX(-50%); bottom: 10px; z-index: 20; padding: 6px 14px; background: rgba(8,12,16,.8); border-radius: 16px; color: #9aa7b0; font-size: 12px; }
+.mv-banner { position: fixed; inset: 0; z-index: 30; display: flex; flex-direction: column; gap: 12px; align-items: center; justify-content: center; background: rgba(4,6,8,.7); font-size: 44px; font-weight: 800; }
+.mv-banner a { font-size: 16px; color: #6db3e8; }
+#mv-selbox { position: fixed; border: 1px solid #7fd17f; background: rgba(120,220,120,.12); pointer-events: none; display: none; z-index: 19; }
+@media (max-width: 760px) {
+  .mv-side { top: auto; bottom: 0; left: 0; width: 100%; height: 132px; flex-direction: row; border-left: none; border-top: 1px solid #243039; }
+  .mv-mini { display: none; }
+  .mv-tabs { flex-direction: column; width: 56px; }
+  .mv-build { grid-template-columns: repeat(auto-fill, 56px); }
+}
+`;
+
+interface CameoCell {
+  el: HTMLElement;
+  prog: HTMLElement;
+  ready: HTMLElement;
+  type: UnitType;
+}
+
+export class MatchView {
+  readonly app = new Application();
+  private renderer!: WorldRenderer;
+  private camera!: Camera;
+  private ghost!: Graphics;
+  private readonly selected = new Set<number>();
+  private localCommands: Command[] = [];
+  private activeTab: ProdCategory = 'building';
+  private cameos: CameoCell[] = [];
+  private placingType: UnitType | null = null;
+  private over = false;
+  private lastPointer = { x: 0, y: 0 };
+  private dragStart: { x: number; y: number } | null = null;
+  private lastStepAt = 0;
+  /** 网络状态行文本（联机时由 driver 写）。 */
+  netStatus = '';
+
+  // DOM 引用
+  private creditsEl!: HTMLElement;
+  private powerEl!: HTMLElement;
+  private netEl!: HTMLElement;
+  private tabsEl!: HTMLElement;
+  private buildEl!: HTMLElement;
+  private miniEl!: HTMLCanvasElement;
+  private selBox!: HTMLElement;
+
+  constructor(
+    private readonly root: HTMLElement,
+    readonly world: World,
+    readonly localPlayerId: number,
+    readonly mapW: number,
+    readonly mapH: number,
+  ) {}
+
+  async init(): Promise<void> {
+    await this.app.init({
+      resizeTo: window,
+      background: '#06090c',
+      antialias: true,
+      resolution: Math.min(window.devicePixelRatio || 1, 2),
+      autoDensity: true,
+    });
+    this.root.innerHTML = '';
+    this.root.className = 'mv-root';
+    this.root.appendChild(this.app.canvas);
+
+    const art = buildArt(this.app, this.world.rules.units.values());
+    this.renderer = new WorldRenderer(this.app, this.world, art);
+    this.app.stage.addChild(this.renderer.stage);
+    this.ghost = new Graphics();
+    this.renderer.stage.addChild(this.ghost);
+
+    this.camera = new Camera(this.app, this.renderer.stage);
+    this.camera.attach(this.app.canvas, [1]);
+    const spawn = [...this.world.entities.values()].find(
+      (e) => e.owner === this.localPlayerId && this.world.rules.units.get(e.typeId)?.building,
+    );
+    this.camera.x = cornerX(spawn?.cellX ?? this.mapW / 2, spawn?.cellY ?? this.mapH / 2);
+    this.camera.y = cornerY(spawn?.cellX ?? this.mapW / 2, spawn?.cellY ?? this.mapH / 2);
+    this.camera.zoom = 1;
+    this.camera.apply();
+
+    this.buildDom();
+    this.bindInput();
+    this.rebuildSidebar();
+    this.lastStepAt = performance.now();
+  }
+
+  private buildDom(): void {
+    this.root.insertAdjacentHTML(
+      'beforeend',
+      `<div class="mv-top">
+         <span>资金 <b id="mv-credits">0</b></span>
+         <span>电力 <b id="mv-power" class="pwr-ok">0</b></span>
+         <span class="mv-net" id="mv-net"></span>
+         <span style="flex:1"></span>
+         <a href="#">退出</a>
+       </div>
+       <div class="mv-side">
+         <canvas class="mv-mini" id="mv-mini" width="336" height="260"></canvas>
+         <div class="mv-tabs" id="mv-tabs"></div>
+         <div class="mv-build" id="mv-build"></div>
+       </div>
+       <div class="mv-hint">左键选/框选 · 右键移动或攻击 · 中键拖动 · 滚轮缩放</div>
+       <div id="mv-selbox"></div>`,
+    );
+    this.creditsEl = this.root.querySelector('#mv-credits')!;
+    this.powerEl = this.root.querySelector('#mv-power')!;
+    this.netEl = this.root.querySelector('#mv-net')!;
+    this.tabsEl = this.root.querySelector('#mv-tabs')!;
+    this.buildEl = this.root.querySelector('#mv-build')!;
+    this.miniEl = this.root.querySelector('#mv-mini')!;
+    this.selBox = this.root.querySelector('#mv-selbox')!;
+
+    for (const cat of ['building', 'infantry', 'vehicle'] as ProdCategory[]) {
+      const btn = document.createElement('button');
+      btn.textContent = CATEGORY_LABEL[cat];
+      btn.className = cat === this.activeTab ? 'on' : '';
+      btn.addEventListener('click', () => {
+        this.activeTab = cat;
+        for (const b of this.tabsEl.children) b.className = '';
+        btn.className = 'on';
+        this.rebuildSidebar();
+      });
+      this.tabsEl.appendChild(btn);
+    }
+  }
+
+  private rebuildSidebar(): void {
+    this.buildEl.innerHTML = '';
+    this.cameos = [];
+    const localSide = this.world.players.get(this.localPlayerId)?.side;
+    const all = [...this.world.rules.units.values()].filter(
+      (u) => categoryOf(u) === this.activeTab && (!localSide || u.side === localSide || u.id === 'harvester'),
+    );
+    for (const type of all) {
+      const cell = document.createElement('div');
+      cell.className = 'mv-cameo';
+      cell.appendChild(makeCameo(type.id, type.name));
+      const cost = document.createElement('div');
+      cost.className = 'cost';
+      cost.textContent = `$${type.cost}`;
+      cell.appendChild(cost);
+      const prog = document.createElement('div');
+      prog.className = 'prog';
+      prog.style.display = 'none';
+      cell.appendChild(prog);
+      const ready = document.createElement('div');
+      ready.className = 'ready';
+      ready.textContent = '就绪';
+      ready.style.display = 'none';
+      cell.appendChild(ready);
+      cell.addEventListener('click', () => this.onCameoClick(type));
+      this.buildEl.appendChild(cell);
+      this.cameos.push({ el: cell, prog, ready, type });
+    }
+    this.refreshSidebar();
+  }
+
+  private onCameoClick(type: UnitType): void {
+    const q = this.world.queueFor(this.localPlayerId, categoryOf(type));
+    if (type.domain === 'building' && q?.readyToPlace && q.items[0] === type.id) {
+      this.placingType = type;
+      return;
+    }
+    this.emit({ kind: 'produce', owner: this.localPlayerId, typeId: type.id });
+  }
+
+  private refreshSidebar(): void {
+    for (const c of this.cameos) {
+      c.el.classList.toggle('disabled', !this.world.canBuild(this.localPlayerId, c.type));
+      const q = this.world.queueFor(this.localPlayerId, categoryOf(c.type));
+      const isHead = q && q.items[0] === c.type.id;
+      if (isHead && q.readyToPlace) {
+        c.ready.style.display = 'flex';
+        c.prog.style.display = 'none';
+      } else if (isHead && q.items.length > 0) {
+        c.prog.style.display = 'flex';
+        c.prog.textContent = `${Math.floor((q.progress / c.type.buildTime) * 100)}%`;
+        c.ready.style.display = 'none';
+      } else {
+        const count = q ? q.items.filter((i) => i === c.type.id).length : 0;
+        c.prog.style.display = count > 0 ? 'flex' : 'none';
+        if (count > 0) c.prog.textContent = `×${count}`;
+        c.ready.style.display = 'none';
+      }
+    }
+  }
+
+  private emit(cmd: Command): void {
+    this.localCommands.push(cmd);
+  }
+
+  /** 驱动方每个本地 tick 取走本地命令（单机直接 apply / 联机送服务器）。 */
+  takeLocalCommands(): Command[] {
+    if (this.localCommands.length === 0) return [];
+    const out = this.localCommands;
+    this.localCommands = [];
+    return out;
+  }
+
+  // —— 输入 ——
+  private screenToCell(clientX: number, clientY: number): { x: number; y: number } {
+    const rect = this.app.canvas.getBoundingClientRect();
+    const w = this.camera.screenToWorld(clientX - rect.left, clientY - rect.top);
+    const lep = screenToLepton(w.x, w.y);
+    return { x: leptonToCell(lep.x), y: leptonToCell(lep.y) };
+  }
+
+  private leptonScreenX(e: { x: number; y: number }): number {
+    return ((e.x - e.y) * (TILE_W / 2)) / 256;
+  }
+  private leptonScreenY(e: { x: number; y: number }): number {
+    return ((e.x + e.y) * (TILE_H / 2)) / 256;
+  }
+
+  private entityAtCell(cx: number, cy: number, enemyOf: number): number | null {
+    for (const e of this.world.entities.values()) {
+      if (e.owner === enemyOf) continue;
+      const type = this.world.rules.units.get(e.typeId);
+      if (type?.building) {
+        if (cx >= e.cellX && cx < e.cellX + type.building.footprintW && cy >= e.cellY && cy < e.cellY + type.building.footprintH) return e.id;
+      } else if (e.cellX === cx && e.cellY === cy) {
+        return e.id;
+      }
+    }
+    return null;
+  }
+
+  private bindInput(): void {
+    const canvas = this.app.canvas;
+    canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+    canvas.addEventListener('pointermove', (e) => {
+      this.lastPointer.x = e.clientX;
+      this.lastPointer.y = e.clientY;
+      if (this.dragStart) {
+        const x0 = Math.min(this.dragStart.x, e.clientX);
+        const y0 = Math.min(this.dragStart.y, e.clientY);
+        this.selBox.style.display = 'block';
+        this.selBox.style.left = `${x0}px`;
+        this.selBox.style.top = `${y0}px`;
+        this.selBox.style.width = `${Math.abs(e.clientX - this.dragStart.x)}px`;
+        this.selBox.style.height = `${Math.abs(e.clientY - this.dragStart.y)}px`;
+      }
+    });
+    canvas.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return;
+      if (this.placingType) {
+        const cell = this.screenToCell(e.clientX, e.clientY);
+        if (this.world.canPlace(this.localPlayerId, this.placingType, cell.x, cell.y)) {
+          this.emit({ kind: 'place', owner: this.localPlayerId, typeId: this.placingType.id, cellX: cell.x, cellY: cell.y });
+          this.placingType = null;
+        }
+        return;
+      }
+      this.dragStart = { x: e.clientX, y: e.clientY };
+    });
+    canvas.addEventListener('pointerup', (e) => {
+      if (e.button === 0 && this.dragStart) {
+        this.finishSelection(e);
+      }
+      if (e.button === 2) {
+        this.placingType = null;
+        this.issueOrder(e);
+      }
+    });
+  }
+
+  private finishSelection(e: PointerEvent): void {
+    const rect = this.app.canvas.getBoundingClientRect();
+    const w = Math.abs(e.clientX - this.dragStart!.x);
+    const h = Math.abs(e.clientY - this.dragStart!.y);
+    this.selected.clear();
+    const screenOf = (ent: { x: number; y: number }): { x: number; y: number } => ({
+      x: this.camera.zoom * this.leptonScreenX(ent) + this.renderer.stage.position.x,
+      y: this.camera.zoom * this.leptonScreenY(ent) + this.renderer.stage.position.y,
+    });
+    if (w < 6 && h < 6) {
+      let best: { id: number; d: number } | null = null;
+      for (const ent of this.world.entities.values()) {
+        if (ent.owner !== this.localPlayerId) continue;
+        const type = this.world.rules.units.get(ent.typeId);
+        if (!type || type.domain === 'building') continue;
+        const s = screenOf(ent);
+        const d = Math.hypot(s.x - (e.clientX - rect.left), s.y - (e.clientY - rect.top));
+        if (d < 26 && (!best || d < best.d)) best = { id: ent.id, d };
+      }
+      if (best) this.selected.add(best.id);
+    } else {
+      const x0 = Math.min(this.dragStart!.x, e.clientX) - rect.left;
+      const y0 = Math.min(this.dragStart!.y, e.clientY) - rect.top;
+      for (const ent of this.world.entities.values()) {
+        if (ent.owner !== this.localPlayerId) continue;
+        const type = this.world.rules.units.get(ent.typeId);
+        if (!type || type.domain === 'building') continue;
+        const s = screenOf(ent);
+        if (s.x >= x0 && s.x <= x0 + w && s.y >= y0 && s.y <= y0 + h) this.selected.add(ent.id);
+      }
+    }
+    this.dragStart = null;
+    this.selBox.style.display = 'none';
+  }
+
+  private issueOrder(e: PointerEvent): void {
+    if (this.selected.size === 0) return;
+    const cell = this.screenToCell(e.clientX, e.clientY);
+    const enemy = this.entityAtCell(cell.x, cell.y, this.localPlayerId);
+    const ids = [...this.selected].sort((a, b) => a - b);
+    if (enemy !== null) {
+      this.emit({ kind: 'attack', entityIds: ids, targetId: enemy });
+    } else if (cell.x >= 0 && cell.y >= 0 && cell.x < this.mapW && cell.y < this.mapH) {
+      this.emit({ kind: 'move', entityIds: ids, cellX: cell.x, cellY: cell.y });
+    }
+  }
+
+  // —— 推进 & 渲染 ——
+  /** 由驱动方调用：应用本 tick 合并命令并推进一个 sim tick。 */
+  stepWith(cmds: Command[]): void {
+    if (this.over) return;
+    this.renderer.commitInterpolation();
+    if (cmds.length > 0) this.world.applyCommands(cmds);
+    this.world.step();
+    this.lastStepAt = performance.now();
+    this.onAfterStep();
+  }
+
+  private onAfterStep(): void {
+    const p = this.world.players.get(this.localPlayerId)!;
+    this.creditsEl.textContent = String(p.credits);
+    const net = p.powerProduced - p.powerDrained;
+    this.powerEl.textContent = `${p.powerProduced}/${p.powerDrained}`;
+    this.powerEl.className = net >= 0 ? 'pwr-ok' : 'pwr-low';
+    if (this.world.tick % 4 === 0) {
+      this.refreshSidebar();
+      this.drawMinimap();
+    }
+    this.checkVictory();
+  }
+
+  private checkVictory(): void {
+    if (this.over) return;
+    const me = this.world.players.get(this.localPlayerId)!;
+    const others = [...this.world.players.values()].filter((p) => p.id !== this.localPlayerId);
+    const win = others.length > 0 && others.every((p) => p.defeated);
+    if (me.defeated || win) {
+      this.over = true;
+      const banner = document.createElement('div');
+      banner.className = 'mv-banner';
+      banner.style.color = me.defeated && !win ? '#e05050' : '#6fe06f';
+      banner.innerHTML = `<div>${me.defeated && !win ? '战败' : '胜利！'}</div><a href="#">返回首页</a>`;
+      this.root.appendChild(banner);
+    }
+  }
+
+  setNetStatus(text: string, stall = false): void {
+    this.netStatus = text;
+    this.netEl.textContent = text;
+    this.netEl.classList.toggle('stall', stall);
+  }
+
+  /** rAF 渲染（插值）。返回是否已结束。 */
+  render(): void {
+    const alpha = Math.min(1, (performance.now() - this.lastStepAt) / (1000 / 15));
+    this.renderer.render(alpha, this.selected);
+    this.drawGhost();
+  }
+
+  private drawGhost(): void {
+    this.ghost.clear();
+    if (!this.placingType?.building) return;
+    const cell = this.screenToCell(this.lastPointer.x, this.lastPointer.y);
+    const ok = this.world.canPlace(this.localPlayerId, this.placingType, cell.x, cell.y);
+    const b = this.placingType.building;
+    const T = this.renderer.cellTopScreen(cell.x, cell.y);
+    const R = this.renderer.cellTopScreen(cell.x + b.footprintW, cell.y);
+    const B = this.renderer.cellTopScreen(cell.x + b.footprintW, cell.y + b.footprintH);
+    const L = this.renderer.cellTopScreen(cell.x, cell.y + b.footprintH);
+    this.ghost.poly([T.x, T.y, R.x, R.y, B.x, B.y, L.x, L.y]).fill({ color: ok ? 0x40e040 : 0xe04040, alpha: 0.35 });
+    this.ghost.zIndex = 99999;
+  }
+
+  private drawMinimap(): void {
+    const ctx = this.miniEl.getContext('2d')!;
+    const sx = this.miniEl.width / (this.mapW + this.mapH);
+    const sy = this.miniEl.height / (this.mapW + this.mapH);
+    ctx.fillStyle = '#0a0d10';
+    ctx.fillRect(0, 0, this.miniEl.width, this.miniEl.height);
+    ctx.fillStyle = '#b8920f';
+    for (let y = 0; y < this.mapH; y++) {
+      for (let x = 0; x < this.mapW; x++) {
+        if (this.world.oreAt(x, y) > 0) ctx.fillRect((x - y + this.mapH) * sx, (x + y) * sy, 2, 2);
+      }
+    }
+    for (const e of this.world.entities.values()) {
+      const type = this.world.rules.units.get(e.typeId);
+      ctx.fillStyle = e.owner === this.localPlayerId ? '#4f8fdd' : '#d05050';
+      const s = type?.building ? 4 : 2;
+      ctx.fillRect((e.cellX - e.cellY + this.mapH) * sx, (e.cellX + e.cellY) * sy, s, s);
+    }
+  }
+}

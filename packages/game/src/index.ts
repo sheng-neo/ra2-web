@@ -32,3 +32,18 @@ export {
   type BuildingTraits,
 } from './content';
 export { runScript, gridTerrain, type ScriptedCommand, type ReplayResult } from './replay';
+export {
+  LockstepSession,
+  type OutgoingPacket,
+  type IncomingPacket,
+} from './lockstep';
+export {
+  PROTOCOL_VERSION,
+  encodeMessage,
+  decodeMessage,
+  type ClientMessage,
+  type ServerMessage,
+  type LobbyPlayer,
+  type MatchConfig,
+} from './protocol';
+export { createWorldFromConfig } from './match';
