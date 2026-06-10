@@ -37,7 +37,27 @@ export function createGameServer(port = 0, opts: ServerOptions = {}): Promise<Ga
 
   const wss = new WebSocketServer({ server: http });
 
+  // 心跳保活：云平台/反代会掐断空闲 WS，定期 ping 并清理无响应连接
+  const HEARTBEAT_MS = 25000;
+  const heartbeat = setInterval(() => {
+    for (const ws of wss.clients) {
+      const s = ws as WebSocket & { isAlive?: boolean };
+      if (s.isAlive === false) {
+        ws.terminate();
+        continue;
+      }
+      s.isAlive = false;
+      ws.ping();
+    }
+  }, HEARTBEAT_MS);
+  wss.on('close', () => clearInterval(heartbeat));
+
   wss.on('connection', (socket: WebSocket) => {
+    const s = socket as WebSocket & { isAlive?: boolean };
+    s.isAlive = true;
+    socket.on('pong', () => {
+      s.isAlive = true;
+    });
     let room: Room | null = null;
     let playerId = 0;
 

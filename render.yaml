@@ -1,0 +1,11 @@
+# Render.com 部署蓝图。在 Render 控制台 New → Blueprint，连本仓库即可。
+services:
+  - type: web
+    name: ra2web
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
+    plan: free
+    envVars:
+      - key: STATIC_DIR
+        value: /app/packages/client/dist

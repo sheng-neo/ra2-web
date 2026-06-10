@@ -2,12 +2,12 @@
 FROM node:22-slim AS build
 WORKDIR /app
 RUN corepack enable
-COPY pnpm-workspace.yaml package.json tsconfig.base.json ./
+COPY pnpm-workspace.yaml package.json pnpm-lock.yaml tsconfig.base.json ./
 COPY packages/data/package.json packages/data/
 COPY packages/game/package.json packages/game/
 COPY packages/client/package.json packages/client/
 COPY packages/server/package.json packages/server/
-RUN pnpm install --frozen-lockfile=false
+RUN pnpm install --frozen-lockfile
 COPY . .
 RUN pnpm --filter @ra2web/client build
 
