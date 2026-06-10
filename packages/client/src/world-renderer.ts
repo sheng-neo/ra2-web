@@ -15,6 +15,8 @@ interface UnitView {
   prevX: number;
   prevY: number;
   prevFacing: number;
+  /** 体素载具：每帧按朝向换贴图。 */
+  voxel: { side: Side; typeId: string } | null;
 }
 
 interface Particle {
@@ -249,26 +251,48 @@ export class WorldRenderer {
       seen.add(e.id);
       let v = this.views.get(e.id);
       if (!v) {
-        // 步兵优先用真实贴图（保留原色）；车辆暂用占位（VXL 待 M6）
-        const realInf = type.domain === 'infantry' && this.realArt?.ready ? this.realArt.infantryOf(e.typeId) : null;
+        const side = this.sideOf(e.owner);
+        // 载具优先用真实体素（按朝向），步兵用真实 SHP，否则占位
+        const realVeh =
+          type.domain === 'vehicle' && this.realArt?.ready ? this.realArt.vehicleOf(side, e.typeId, e.facing) : null;
+        const realInf =
+          type.domain === 'infantry' && this.realArt?.ready ? this.realArt.infantryOf(e.typeId) : null;
+        const real = realVeh ?? realInf;
         const body = new Sprite(
-          realInf ? realInf.tex : type.domain === 'vehicle' ? this.art.vehicleBody : this.art.infantryBody,
+          real ? real.tex : type.domain === 'vehicle' ? this.art.vehicleBody : this.art.infantryBody,
         );
-        if (realInf) {
-          body.anchor.set(realInf.anchorX / body.texture.width, realInf.anchorY / body.texture.height);
+        if (real) {
+          body.anchor.set(real.anchorX / body.texture.width, real.anchorY / body.texture.height);
         } else {
           body.anchor.set(0.5);
           body.tint = this.playerColor(e.owner);
         }
-        const barrel = type.weapon && type.domain === 'vehicle' ? new Sprite(this.art.vehicleBarrel) : null;
+        // 真实体素载具自带炮塔，无需占位炮管
+        const barrel =
+          !realVeh && type.weapon && type.domain === 'vehicle' ? new Sprite(this.art.vehicleBarrel) : null;
         if (barrel) {
-          barrel.anchor.set(0.25, 0.5); // 炮塔中心略偏后，绕车体中心旋转
-          barrel.tint = 0x3a4048; // 枪铁色
+          barrel.anchor.set(0.25, 0.5);
+          barrel.tint = 0x3a4048;
         }
         this.unitLayer.addChild(body);
         if (barrel) this.unitLayer.addChild(barrel);
-        v = { body, barrel, prevX: e.x, prevY: e.y, prevFacing: e.facing };
+        v = {
+          body,
+          barrel,
+          prevX: e.x,
+          prevY: e.y,
+          prevFacing: e.facing,
+          voxel: realVeh ? { side, typeId: e.typeId } : null,
+        };
         this.views.set(e.id, v);
+      }
+      // 体素载具：按当前朝向换贴图与锚点
+      if (v.voxel && this.realArt) {
+        const vs = this.realArt.vehicleOf(v.voxel.side, v.voxel.typeId, e.facing);
+        if (vs) {
+          v.body.texture = vs.tex;
+          v.body.anchor.set(vs.anchorX / vs.tex.width, vs.anchorY / vs.tex.height);
+        }
       }
       const ix = v.prevX + (e.x - v.prevX) * alpha;
       const iy = v.prevY + (e.y - v.prevY) * alpha;

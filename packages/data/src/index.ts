@@ -20,6 +20,7 @@ export { MixFile, type MixEntry } from './mix';
 export { IniFile, IniSection } from './ini';
 export { Palette, REMAP_START, REMAP_END } from './pal';
 export { parseShp, type ShpFile, type ShpFrame } from './shp';
+export { parseVxl, type VxlFile, type VxlSection, type Voxel } from './vxl';
 export { parseCsf, type CsfFile } from './csf';
 export { lzo1xDecompress, lzo1xCompressLiteral } from './lzo';
 export { format80Decompress, format80CompressLiteral } from './format80';

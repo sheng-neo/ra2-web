@@ -3,9 +3,10 @@
  * 挂载 game-data 下的 mix（含嵌套子 mix），列出条目并预览
  * PAL 色板 / SHP 帧 / INI 文本 / CSF 字符串 / 其他十六进制头部。
  */
-import { IniFile, Palette, mixIdRA2, parseCsf, parseShp } from '@ra2web/data';
+import { IniFile, Palette, mixIdRA2, parseCsf, parseShp, parseVxl } from '@ra2web/data';
 import { ResourceFS, type MountedMix } from '../vfs';
 import { KNOWN_CHILD_MIXES, KNOWN_LOOSE_NAMES, deriveNamesFromRules } from '../known-names';
+import { bakeVoxelFacing } from '../voxel-baker';
 
 const ROOT_MIXES = [
   // 红警2（玩家自备）
@@ -15,8 +16,9 @@ const ROOT_MIXES = [
 ];
 
 /** 内容嗅探：未知名条目按字节判断类型（TS 文件名与 RA2 不同）。 */
-function sniffKind(bytes: Uint8Array): 'pal' | 'shp' | 'unknown' {
+function sniffKind(bytes: Uint8Array): 'pal' | 'shp' | 'vxl' | 'unknown' {
   if (bytes.length === 768) return 'pal';
+  if (bytes.length > 16 && new TextDecoder('ascii').decode(bytes.subarray(0, 14)) === 'Voxel Animatio') return 'vxl';
   // SHP(TS)：首 u16 = 0，随后 cx,cy,帧数 合理
   if (bytes.length >= 8) {
     const dv = new DataView(bytes.buffer, bytes.byteOffset, 8);
@@ -207,6 +209,8 @@ export async function renderAssetBrowser(root: HTMLElement): Promise<void> {
         renderPal(bytes);
       } else if (name.endsWith('.shp') || sniff === 'shp') {
         renderShp(bytes, name || `#${item.id.toString(16)}`);
+      } else if (name.endsWith('.vxl') || sniff === 'vxl') {
+        renderVxl(bytes, name || `#${item.id.toString(16)}`);
       } else if (name.endsWith('.ini')) {
         previewEl.innerHTML = '';
         const pre = document.createElement('pre');
@@ -236,6 +240,20 @@ export async function renderAssetBrowser(root: HTMLElement): Promise<void> {
       if (i % 16 === 15) wrap.appendChild(document.createElement('br'));
     }
     previewEl.appendChild(wrap);
+  }
+
+  function renderVxl(bytes: Uint8Array, name: string): void {
+    const vxl = parseVxl(bytes);
+    const total = vxl.sections.reduce((n, s) => n + s.voxels.length, 0);
+    previewEl.innerHTML = `<h3>${name} — ${vxl.sections.length} 节，${total} 体素（体素→等距精灵烘焙）</h3>`;
+    // 烘焙 8 个朝向展示
+    for (let i = 0; i < 8; i++) {
+      const bangle = (i * 256) / 8;
+      const { canvas } = bakeVoxelFacing(vxl, bangle);
+      canvas.style.width = `${canvas.width * 2}px`;
+      canvas.title = `朝向 ${i}`;
+      previewEl.appendChild(canvas);
+    }
   }
 
   function renderShp(bytes: Uint8Array, name: string): void {

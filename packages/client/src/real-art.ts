@@ -7,9 +7,11 @@
  * 车辆是体素(VXL)，待 M6 解析；此处只供建筑与步兵。
  */
 import { Application, Texture } from 'pixi.js';
-import { Palette, parseShp } from '@ra2web/data';
+import { Palette, parseShp, parseVxl } from '@ra2web/data';
 import type { Side } from '@ra2web/game';
 import { ResourceFS } from './vfs';
+import { bakeVoxelFacing } from './voxel-baker';
+import { PLAYER_COLORS } from './placeholder-art';
 
 /** typeId → TS 建筑 SHP 基名（NewTheater 温带：第2字符 T，扩展 .shp）。 */
 const BUILDING_ART: Record<Side, Record<string, string>> = {
@@ -40,6 +42,19 @@ const INFANTRY_ART: Record<string, string> = {
   engineer: 'e3.shp',
 };
 
+/** typeId → 载具 VXL（TS 体素）。 */
+const VEHICLE_ART: Record<string, string> = {
+  harvester: 'harv.vxl',
+  grizzly: 'ttnk.vxl',
+  rhino: '4tnk.vxl',
+  flaktrak: 'hvr.vxl',
+};
+
+/** 载具烘焙朝向数（与 RA2 一致）。 */
+const VEHICLE_FACINGS = 32;
+/** 阵营代表色（用于体素变色）。 */
+const SIDE_COLOR: Record<Side, number> = { allied: PLAYER_COLORS[1]!, soviet: PLAYER_COLORS[3]! };
+
 export interface RealSprite {
   tex: Texture;
   anchorX: number;
@@ -51,6 +66,8 @@ export class RealArtProvider {
   private unitPal: Palette | null = null;
   private readonly buildings = new Map<string, RealSprite>();
   private readonly infantry = new Map<string, RealSprite>();
+  /** key `${side}:${typeId}` → 各朝向精灵。 */
+  private readonly vehicles = new Map<string, RealSprite[]>();
   ready = false;
 
   constructor(private readonly app: Application) {}
@@ -70,7 +87,7 @@ export class RealArtProvider {
     }
   }
 
-  /** 预解码本局用到的建筑/步兵 SHP（init 时 await，渲染期零等待）。 */
+  /** 预解码本局用到的建筑/步兵 SHP + 载具 VXL（init 时 await，渲染期零等待）。 */
   async preload(side: Side, typeIds: Iterable<string>): Promise<void> {
     if (!this.ready) return;
     for (const id of typeIds) {
@@ -78,6 +95,27 @@ export class RealArtProvider {
       if (bName) await this.loadInto(this.buildings, `${side}:${id}`, bName, 0, true);
       const iName = INFANTRY_ART[id];
       if (iName) await this.loadInto(this.infantry, id, iName, 0, false);
+      const vName = VEHICLE_ART[id];
+      if (vName) await this.bakeVehicle(side, id, vName);
+    }
+  }
+
+  private async bakeVehicle(side: Side, typeId: string, vxlName: string): Promise<void> {
+    const key = `${side}:${typeId}`;
+    if (this.vehicles.has(key)) return;
+    try {
+      const vxl = parseVxl(await this.fs.readFile(vxlName));
+      const c = SIDE_COLOR[side];
+      const remap: [number, number, number] = [(c >> 16) & 0xff, (c >> 8) & 0xff, c & 0xff];
+      const facings: RealSprite[] = [];
+      for (let i = 0; i < VEHICLE_FACINGS; i++) {
+        const bangle = Math.round((i * 256) / VEHICLE_FACINGS);
+        const { canvas, anchorX, anchorY } = bakeVoxelFacing(vxl, bangle, remap);
+        facings.push({ tex: Texture.from(canvas), anchorX, anchorY });
+      }
+      this.vehicles.set(key, facings);
+    } catch {
+      /* 缺这辆就回退占位 */
     }
   }
 
@@ -126,5 +164,13 @@ export class RealArtProvider {
 
   infantryOf(typeId: string): RealSprite | null {
     return this.infantry.get(typeId) ?? null;
+  }
+
+  /** 按朝向取载具精灵。bangle 0–255。 */
+  vehicleOf(side: Side, typeId: string, bangle: number): RealSprite | null {
+    const facings = this.vehicles.get(`${side}:${typeId}`);
+    if (!facings) return null;
+    const idx = (Math.round((bangle / 256) * VEHICLE_FACINGS) % VEHICLE_FACINGS + VEHICLE_FACINGS) % VEHICLE_FACINGS;
+    return facings[idx] ?? null;
   }
 }
