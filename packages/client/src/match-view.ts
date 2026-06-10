@@ -73,6 +73,7 @@ export class MatchView {
   private camera!: Camera;
   private ghost!: Graphics;
   private readonly selected = new Set<number>();
+  private readonly controlGroups = new Map<number, number[]>();
   private localCommands: Command[] = [];
   private activeTab: ProdCategory = 'building';
   private cameos: CameoCell[] = [];
@@ -328,6 +329,32 @@ export class MatchView {
       }
     });
     this.bindTouch();
+    this.bindKeyboard();
+  }
+
+  /** 编队（Ctrl+数字 设组，数字 选组）+ A 攻击移动 + Esc 取消放置。 */
+  private bindKeyboard(): void {
+    window.addEventListener('keydown', (e) => {
+      if (e.target instanceof HTMLInputElement) return;
+      if (e.key === 'Escape') {
+        this.placingType = null;
+        this.selected.clear();
+        return;
+      }
+      if (e.key >= '1' && e.key <= '9') {
+        const g = Number(e.key);
+        if (e.ctrlKey || e.metaKey) {
+          this.controlGroups.set(g, [...this.selected]);
+        } else {
+          const ids = this.controlGroups.get(g);
+          if (ids) {
+            this.selected.clear();
+            for (const id of ids) if (this.world.entities.has(id)) this.selected.add(id);
+          }
+        }
+        e.preventDefault();
+      }
+    });
   }
 
   /**

@@ -16,6 +16,22 @@ interface UnitView {
   prevFacing: number;
 }
 
+interface Particle {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  life: number;
+  maxLife: number;
+  size: number;
+  color: number;
+  kind: 'spark' | 'smoke' | 'flash' | 'ring';
+}
+
+/**
+ * 战斗特效（纯表现，不参与 sim/哈希）：渲染端逐帧比对 World 状态变化
+ * 推导事件 —— 掉血溅火星、单位消失爆炸、弹丸命中烟尘、开火枪口闪光。
+ */
 export class WorldRenderer {
   readonly stage = new Container();
   private readonly terrainGfx = new Graphics();
@@ -23,9 +39,18 @@ export class WorldRenderer {
   private readonly buildingLayer = new Container();
   private readonly unitLayer = new Container();
   private readonly fxGfx = new Graphics();
+  private readonly particleGfx = new Graphics();
   private readonly views = new Map<number, UnitView>();
   private buildingKey = '';
   private oreTick = -1;
+
+  // 特效推导用的上一帧快照
+  private readonly particles: Particle[] = [];
+  private readonly prevHp = new Map<number, number>();
+  private readonly prevPos = new Map<number, { x: number; y: number; max: number; building: boolean }>();
+  private readonly prevCooldown = new Map<number, number>();
+  private readonly prevProj = new Map<number, { x: number; y: number }>();
+  private lastFxTime = 0;
 
   constructor(
     private readonly app: Application,
@@ -34,7 +59,7 @@ export class WorldRenderer {
   ) {
     this.unitLayer.sortableChildren = true;
     this.buildingLayer.sortableChildren = true;
-    this.stage.addChild(this.terrainGfx, this.oreGfx, this.buildingLayer, this.unitLayer, this.fxGfx);
+    this.stage.addChild(this.terrainGfx, this.oreGfx, this.buildingLayer, this.unitLayer, this.fxGfx, this.particleGfx);
     this.drawTerrain();
   }
 
@@ -188,6 +213,92 @@ export class WorldRenderer {
       const sx = leptonToScreenX(p.x, p.y);
       const sy = leptonToScreenY(p.x, p.y);
       fx.circle(sx, sy, 2.5).fill(0xffe060);
+    }
+
+    this.updateEffects();
+  }
+
+  /** 推导战斗事件 + 推进/绘制粒子（纯表现）。 */
+  private updateEffects(): void {
+    const now = performance.now();
+    const dt = this.lastFxTime === 0 ? 16 : Math.min(64, now - this.lastFxTime);
+    this.lastFxTime = now;
+
+    const seen = new Set<number>();
+    for (const e of this.world.entities.values()) {
+      seen.add(e.id);
+      const sx = leptonToScreenX(e.x, e.y);
+      const sy = leptonToScreenY(e.x, e.y);
+      const isBuilding = !!this.world.rules.units.get(e.typeId)?.building;
+      // 掉血 → 火星
+      const ph = this.prevHp.get(e.id);
+      if (ph !== undefined && e.hp < ph) {
+        const n = isBuilding ? 4 : 2;
+        for (let i = 0; i < n; i++) this.spawnSpark(sx, sy - 4);
+      }
+      // 开火（冷却被重置抬升）→ 枪口闪光
+      const pc = this.prevCooldown.get(e.id) ?? 0;
+      if (e.cooldown > pc + 1 && e.targetId !== null) {
+        this.particles.push({ x: sx, y: sy - 4, vx: 0, vy: 0, life: 90, maxLife: 90, size: isBuilding ? 7 : 4, color: 0xfff2a0, kind: 'flash' });
+      }
+      this.prevHp.set(e.id, e.hp);
+      this.prevCooldown.set(e.id, e.cooldown);
+      this.prevPos.set(e.id, { x: sx, y: sy, max: e.maxHp, building: isBuilding });
+    }
+    // 单位消失 → 爆炸
+    for (const [id, pos] of this.prevPos) {
+      if (seen.has(id)) continue;
+      this.spawnExplosion(pos.x, pos.y, pos.building ? 2.2 : 1);
+      this.prevPos.delete(id);
+      this.prevHp.delete(id);
+      this.prevCooldown.delete(id);
+    }
+    // 弹丸命中（消失）→ 烟尘
+    const projSeen = new Set<number>();
+    for (const p of this.world.projectiles) {
+      projSeen.add(p.id);
+      this.prevProj.set(p.id, { x: leptonToScreenX(p.x, p.y), y: leptonToScreenY(p.x, p.y) });
+    }
+    for (const [id, pos] of this.prevProj) {
+      if (projSeen.has(id)) continue;
+      this.spawnExplosion(pos.x, pos.y, 0.7);
+      this.prevProj.delete(id);
+    }
+
+    // 推进 + 绘制
+    const g = this.particleGfx;
+    g.clear();
+    for (let i = this.particles.length - 1; i >= 0; i--) {
+      const p = this.particles[i]!;
+      p.life -= dt;
+      if (p.life <= 0) {
+        this.particles.splice(i, 1);
+        continue;
+      }
+      p.x += (p.vx * dt) / 1000;
+      p.y += (p.vy * dt) / 1000;
+      p.vy += (dt * 60) / 1000; // 轻微重力
+      const a = p.life / p.maxLife;
+      if (p.kind === 'ring') {
+        g.circle(p.x, p.y, p.size * (1.4 - a)).stroke({ color: p.color, width: 2, alpha: a });
+      } else {
+        g.circle(p.x, p.y, p.size * (p.kind === 'smoke' ? 1.4 - a : a)).fill({ color: p.color, alpha: a });
+      }
+    }
+  }
+
+  private spawnSpark(x: number, y: number): void {
+    const ang = (this.particles.length * 2.4) % (Math.PI * 2);
+    this.particles.push({ x, y, vx: Math.cos(ang) * 40, vy: -20 - (this.particles.length % 30), life: 280, maxLife: 280, size: 2, color: 0xffd060, kind: 'spark' });
+  }
+
+  private spawnExplosion(x: number, y: number, scale: number): void {
+    this.particles.push({ x, y, vx: 0, vy: 0, life: 320, maxLife: 320, size: 10 * scale, color: 0xffa030, kind: 'ring' });
+    const n = Math.round(6 * scale);
+    for (let i = 0; i < n; i++) {
+      const ang = (i / n) * Math.PI * 2;
+      const spd = 30 + (i % 3) * 18;
+      this.particles.push({ x, y, vx: Math.cos(ang) * spd, vy: Math.sin(ang) * spd - 15, life: 360, maxLife: 360, size: 3 + (i % 2) + scale, color: i % 2 ? 0xff8020 : 0x555555, kind: 'smoke' });
     }
   }
 

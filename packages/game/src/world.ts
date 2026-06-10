@@ -109,6 +109,8 @@ const CATEGORY_PRODUCER: Record<ProdCategory, string> = {
 const HARVEST_RATE = 30;
 const HARVEST_CAPACITY = 700;
 const HARVEST_TICKS = 2;
+/** 建造半径（格）：新建筑须距己方某建筑足迹不超过此距离。 */
+const BUILD_RADIUS = 6;
 
 export function categoryOf(u: UnitType): ProdCategory {
   return u.domain === 'building' ? 'building' : u.domain;
@@ -369,7 +371,31 @@ export class World {
         if (this.occupied.has(cy * this.terrain.width + cx)) return false;
       }
     }
+    // 建造半径：须毗邻己方已有建筑（首座除外，避免开局无处可放）
+    if (this.ownsAnyBuilding(owner) && !this.withinBuildRadius(owner, cellX, cellY, b.footprintW, b.footprintH)) {
+      return false;
+    }
     return true;
+  }
+
+  private ownsAnyBuilding(owner: number): boolean {
+    for (const e of this.entities.values()) {
+      if (e.owner === owner && this.rules.units.get(e.typeId)?.building) return true;
+    }
+    return false;
+  }
+
+  private withinBuildRadius(owner: number, cellX: number, cellY: number, w: number, h: number): boolean {
+    for (const e of this.entities.values()) {
+      if (e.owner !== owner) continue;
+      const eb = this.rules.units.get(e.typeId)?.building;
+      if (!eb) continue;
+      // 两个矩形足迹间的切比雪夫间隙
+      const gapX = Math.max(0, e.cellX - (cellX + w), cellX - (e.cellX + eb.footprintW));
+      const gapY = Math.max(0, e.cellY - (cellY + h), cellY - (e.cellY + eb.footprintH));
+      if (Math.max(gapX, gapY) <= BUILD_RADIUS) return true;
+    }
+    return false;
   }
 
   placeBuilding(owner: number, typeId: string, cellX: number, cellY: number): Entity | null {

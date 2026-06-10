@@ -139,6 +139,14 @@ describe('放置校验', () => {
     expect(w.canPlace(1, type, 6, 6)).toBe(false);
     expect(w.canPlace(1, type, 10, 10)).toBe(true);
   });
+
+  it('建造半径：远离基地不能建，毗邻可以', () => {
+    const w = baseWorld();
+    w.spawnUnit(1, 'conyard', 5, 5);
+    const type = w.rules.units.get('powerplant')!;
+    expect(w.canPlace(1, type, 9, 9)).toBe(true); // 距基地很近
+    expect(w.canPlace(1, type, 30, 30)).toBe(false); // 太远
+  });
 });
 
 describe('胜负判定', () => {
