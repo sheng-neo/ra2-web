@@ -236,8 +236,8 @@ export class WorldRenderer {
         body.tint = this.playerColor(e.owner);
         const barrel = type.weapon && type.domain === 'vehicle' ? new Sprite(this.art.vehicleBarrel) : null;
         if (barrel) {
-          barrel.anchor.set(0, 0.5);
-          barrel.tint = 0x202020;
+          barrel.anchor.set(0.25, 0.5); // 炮塔中心略偏后，绕车体中心旋转
+          barrel.tint = 0x3a4048; // 枪铁色
         }
         this.unitLayer.addChild(body);
         if (barrel) this.unitLayer.addChild(barrel);
