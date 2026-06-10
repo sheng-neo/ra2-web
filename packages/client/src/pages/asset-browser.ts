@@ -7,7 +7,28 @@ import { IniFile, Palette, mixIdRA2, parseCsf, parseShp } from '@ra2web/data';
 import { ResourceFS, type MountedMix } from '../vfs';
 import { KNOWN_CHILD_MIXES, KNOWN_LOOSE_NAMES, deriveNamesFromRules } from '../known-names';
 
-const ROOT_MIXES = ['ra2.mix', 'language.mix', 'multi.mix', 'theme.mix'];
+const ROOT_MIXES = [
+  // 红警2（玩家自备）
+  'ra2.mix', 'language.mix', 'multi.mix', 'theme.mix',
+  // 泰伯利亚之日（EA 免费，用于验证真实渲染管线）
+  'Conquer.mix', 'Cache.mix', 'Temperat.mix', 'IsoTemp.mix', 'Local.mix',
+];
+
+/** 内容嗅探：未知名条目按字节判断类型（TS 文件名与 RA2 不同）。 */
+function sniffKind(bytes: Uint8Array): 'pal' | 'shp' | 'unknown' {
+  if (bytes.length === 768) return 'pal';
+  // SHP(TS)：首 u16 = 0，随后 cx,cy,帧数 合理
+  if (bytes.length >= 8) {
+    const dv = new DataView(bytes.buffer, bytes.byteOffset, 8);
+    if (dv.getUint16(0, true) === 0) {
+      const cx = dv.getUint16(2, true);
+      const cy = dv.getUint16(4, true);
+      const n = dv.getUint16(6, true);
+      if (cx > 0 && cx < 2048 && cy > 0 && cy < 2048 && n > 0 && n < 4096) return 'shp';
+    }
+  }
+  return 'unknown';
+}
 
 const RULES_TYPE_SECTIONS = ['BuildingTypes', 'InfantryTypes', 'VehicleTypes', 'AircraftTypes'];
 
@@ -181,10 +202,11 @@ export async function renderAssetBrowser(root: HTMLElement): Promise<void> {
     try {
       const bytes = await item.mount.mix.readFile(item.id);
       const name = item.name ?? '';
-      if (name.endsWith('.pal') || (bytes.length === 768 && !name)) {
+      const sniff = name === '' ? sniffKind(bytes) : 'unknown';
+      if (name.endsWith('.pal') || sniff === 'pal') {
         renderPal(bytes);
-      } else if (name.endsWith('.shp')) {
-        renderShp(bytes, name);
+      } else if (name.endsWith('.shp') || sniff === 'shp') {
+        renderShp(bytes, name || `#${item.id.toString(16)}`);
       } else if (name.endsWith('.ini')) {
         previewEl.innerHTML = '';
         const pre = document.createElement('pre');
