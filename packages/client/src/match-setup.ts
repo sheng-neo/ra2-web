@@ -6,9 +6,12 @@ import { createWorldFromConfig, type MatchConfig } from '@ra2web/game';
 
 export { createWorldFromConfig as createMatchWorld };
 
-export function localSkirmishConfig(startingCredits = 5000): MatchConfig {
-  const w = 44;
-  const h = 44;
+export type MapSize = 'small' | 'medium' | 'large';
+const MAP_DIMS: Record<MapSize, number> = { small: 36, medium: 44, large: 56 };
+
+export function localSkirmishConfig(startingCredits = 5000, size: MapSize = 'medium'): MatchConfig {
+  const w = MAP_DIMS[size];
+  const h = w;
   return {
     seed: 20260610,
     mapWidth: w,
@@ -21,6 +24,8 @@ export function localSkirmishConfig(startingCredits = 5000): MatchConfig {
       { cellX: 12, cellY: 14 },
       { cellX: w - 14, cellY: h - 16 },
       { cellX: Math.floor(w / 2), cellY: Math.floor(h / 2) },
+      { cellX: 12, cellY: h - 14 },
+      { cellX: w - 14, cellY: 14 },
     ],
     inputDelay: 0,
     startingCredits,

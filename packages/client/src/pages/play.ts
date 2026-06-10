@@ -3,7 +3,7 @@
  */
 import { SIM_TICKS_PER_SECOND } from '@ra2web/game';
 import { SimpleAI, type Difficulty } from '../ai';
-import { createMatchWorld, localSkirmishConfig } from '../match-setup';
+import { createMatchWorld, localSkirmishConfig, type MapSize } from '../match-setup';
 import { MATCH_STYLE, MatchView } from '../match-view';
 
 const TICK_MS = 1000 / SIM_TICKS_PER_SECOND;
@@ -34,6 +34,7 @@ export async function renderPlay(root: HTMLElement): Promise<void> {
   // 记住上次选择
   let difficulty = (localStorage.getItem('ra2.diff') as Difficulty) || 'normal';
   let credits = Number(localStorage.getItem('ra2.cash') ?? 5000);
+  let mapSize = (localStorage.getItem('ra2.map') as MapSize) || 'medium';
 
   function renderSetup(): void {
     root.innerHTML = `
@@ -51,6 +52,12 @@ export async function renderPlay(root: HTMLElement): Promise<void> {
           <button data-v="5000">5000</button>
           <button data-v="10000">10000</button>
         </div>
+        <div class="label">地图大小</div>
+        <div class="opts" id="pl-map">
+          <button data-v="small">小</button>
+          <button data-v="medium">中</button>
+          <button data-v="large">大</button>
+        </div>
         <button class="start" id="pl-start">▶ 开始</button>
         <a class="back" href="#">← 返回首页</a>
       </div></div>`;
@@ -60,6 +67,9 @@ export async function renderPlay(root: HTMLElement): Promise<void> {
       }
       for (const b of root.querySelectorAll('#pl-cash button')) {
         b.classList.toggle('on', Number((b as HTMLElement).dataset.v) === credits);
+      }
+      for (const b of root.querySelectorAll('#pl-map button')) {
+        b.classList.toggle('on', (b as HTMLElement).dataset.v === mapSize);
       }
     };
     root.querySelector('#pl-diff')!.addEventListener('click', (e) => {
@@ -76,16 +86,24 @@ export async function renderPlay(root: HTMLElement): Promise<void> {
         sync();
       }
     });
+    root.querySelector('#pl-map')!.addEventListener('click', (e) => {
+      const v = (e.target as HTMLElement).dataset.v as MapSize;
+      if (v) {
+        mapSize = v;
+        sync();
+      }
+    });
     root.querySelector('#pl-start')!.addEventListener('click', () => {
       localStorage.setItem('ra2.diff', difficulty);
       localStorage.setItem('ra2.cash', String(credits));
+      localStorage.setItem('ra2.map', mapSize);
       void startMatch();
     });
     sync();
   }
 
   async function startMatch(): Promise<void> {
-    const config = localSkirmishConfig(credits);
+    const config = localSkirmishConfig(credits, mapSize);
     const world = createMatchWorld(config);
     const view = new MatchView(root, world, HUMAN, config.mapWidth, config.mapHeight);
     await view.init();
