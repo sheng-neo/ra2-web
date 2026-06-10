@@ -186,4 +186,34 @@ describe('战斗（M5 雏形）', () => {
     runScript(w, [], 30);
     expect(inf.hp).toBeLessThan(infStart); // 步兵掉血明显
   });
+
+  it('攻击移动：沿途歼敌后继续奔向目的地', () => {
+    const w = new World(gridTerrain(40, 40), 9);
+    w.addPlayer(1, 'allied', 0);
+    w.addPlayer(2, 'soviet', 0);
+    const tank = w.spawnUnit(1, 'grizzly', 2, 2)!;
+    const enemy = w.spawnUnit(2, 'conscript', 12, 2)!; // 行军路上的敌人
+    // 攻击移动到远处目的地
+    w.applyCommands([{ kind: 'attackMove', entityIds: [tank.id], cellX: 36, cellY: 2 }]);
+    expect(tank.attackMove).toBe(true);
+    runScript(w, [], 800);
+    // 路上的动员兵被消灭
+    expect(w.entities.has(enemy.id)).toBe(false);
+    // 坦克最终抵达目的地附近（攻击移动结束、标志复位）
+    expect(tank.cellX).toBeGreaterThan(30);
+    expect(tank.attackMove).toBe(false);
+  });
+
+  it('普通移动：行军途中不主动接敌', () => {
+    const w = new World(gridTerrain(40, 40), 9);
+    w.addPlayer(1, 'allied', 0);
+    w.addPlayer(2, 'soviet', 0);
+    const tank = w.spawnUnit(1, 'grizzly', 2, 2)!;
+    const enemy = w.spawnUnit(2, 'conscript', 12, 2)!;
+    w.applyCommands([{ kind: 'move', entityIds: [tank.id], cellX: 36, cellY: 2 }]);
+    runScript(w, [], 400);
+    // 普通移动不停下交战，敌人存活、坦克已远离
+    expect(w.entities.has(enemy.id)).toBe(true);
+    expect(tank.cellX).toBeGreaterThan(30);
+  });
 });

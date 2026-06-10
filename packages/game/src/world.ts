@@ -76,6 +76,8 @@ export interface Entity {
   // 战斗
   targetId: number | null;
   cooldown: number;
+  /** 攻击移动：朝目标格行军，沿途自动交战。 */
+  attackMove: boolean;
   // 采矿
   harvester: HarvesterState | null;
 }
@@ -98,6 +100,7 @@ export type Command =
   | { kind: 'cancel'; owner: number; category: ProdCategory }
   | { kind: 'place'; owner: number; typeId: string; cellX: number; cellY: number }
   | { kind: 'move'; entityIds: number[]; cellX: number; cellY: number }
+  | { kind: 'attackMove'; entityIds: number[]; cellX: number; cellY: number }
   | { kind: 'attack'; entityIds: number[]; targetId: number };
 
 const CATEGORY_PRODUCER: Record<ProdCategory, string> = {
@@ -186,6 +189,17 @@ export class World {
             if (e) {
               this.orderMove(e, cmd.cellX, cmd.cellY);
               e.targetId = null;
+              e.attackMove = false;
+            }
+          }
+          break;
+        case 'attackMove':
+          for (const eid of [...cmd.entityIds].sort((a, b) => a - b)) {
+            const e = this.entities.get(eid);
+            if (e) {
+              this.orderMove(e, cmd.cellX, cmd.cellY);
+              e.targetId = null;
+              e.attackMove = true;
             }
           }
           break;
@@ -217,6 +231,7 @@ export class World {
       goal: null,
       targetId: null,
       cooldown: 0,
+      attackMove: false,
       harvester: type.id === 'harvester' ? { mode: 'seek', load: 0, timer: 0 } : null,
     };
     this.entities.set(id, e);
@@ -511,6 +526,7 @@ export class World {
       const next = e.path.pop();
       if (!next) {
         e.goal = null;
+        e.attackMove = false; // 抵达目的地，攻击移动结束
         return;
       }
       e.waypoint = { x: cellToLepton(next.x), y: cellToLepton(next.y) };
@@ -641,13 +657,15 @@ export class World {
 
   // ───────────────────────── 战斗 ─────────────────────────
 
-  private stepCombat(e: Entity, type: UnitType): void {
-    if (!type.weapon) return;
+  /** 返回 true 表示正在交火（本 tick 应暂停移动）。 */
+  private stepCombat(e: Entity, type: UnitType): boolean {
+    if (!type.weapon) return false;
     if (e.cooldown > 0) e.cooldown--;
 
-    // 空闲单位自动索敌（有移动令时不抢夺）
+    // 空闲或攻击移动时自动索敌（普通 move 行军途中不索敌）
     let target = e.targetId !== null ? this.entities.get(e.targetId) : undefined;
-    if ((!target || target.owner === e.owner) && !e.goal) {
+    const canAcquire = !e.goal || e.attackMove;
+    if ((!target || target.owner === e.owner) && canAcquire) {
       const enemy = this.findNearest(e.x, e.y, (o) => {
         if (o.owner === e.owner || this.players.get(o.owner)?.defeated) return false;
         return dist(o.x - e.x, o.y - e.y) <= type.weapon!.range;
@@ -657,33 +675,39 @@ export class World {
     }
     if (!target || target.owner === e.owner) {
       e.targetId = null;
-      return;
+      return false;
     }
 
     const dx = target.x - e.x;
     const dy = target.y - e.y;
     const d = dist(dx, dy);
     if (d > type.weapon.range) {
-      // 移动单位追击（走向目标最近的可达格，建筑占格本身不可达）；建筑放弃
-      if (type.domain !== 'building' && !e.goal) {
+      if (e.attackMove) {
+        // 行军中目标脱离射程：放弃它，继续奔向目的地
+        e.targetId = null;
+      } else if (type.domain !== 'building' && !e.goal) {
+        // 显式攻击：追击到目标最近可达格
         const near = this.passableNear(target.cellX, target.cellY);
         if (near) this.orderMove(e, near.x, near.y);
       }
-      return;
+      return false;
     }
-    // 进入射程：停下、转向、开火
-    e.path = [];
-    e.waypoint = null;
-    e.goal = null;
+    // 进入射程：转向、开火。普通攻击就地停住；攻击移动保留目的地（交火完继续走）
+    if (!e.attackMove) {
+      e.path = [];
+      e.waypoint = null;
+      e.goal = null;
+    }
     const aim = dirToBangle(dx, dy);
     if (type.rot > 0) {
       e.facing = turnToward(e.facing, aim, type.rot);
-      if ((((aim - e.facing + 128) & 0xff) - 128) > 8) return;
+      if ((((aim - e.facing + 128) & 0xff) - 128) > 8) return true;
     }
     if (e.cooldown <= 0) {
       this.fire(e, target, type.weapon);
       e.cooldown = type.weapon.cooldown;
     }
+    return true;
   }
 
   private fire(shooter: Entity, target: Entity, weapon: NonNullable<UnitType['weapon']>): void {
@@ -783,8 +807,8 @@ export class World {
       const type = this.rules.units.get(e.typeId);
       if (!type) continue;
       if (e.harvester) this.stepHarvester(e, type);
-      this.stepCombat(e, type);
-      this.stepMovement(e, type);
+      const engaging = this.stepCombat(e, type);
+      if (!engaging) this.stepMovement(e, type);
     }
     this.stepProjectiles();
     this.reapDead();

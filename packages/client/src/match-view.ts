@@ -79,6 +79,8 @@ export class MatchView {
   private activeTab: ProdCategory = 'building';
   private cameos: CameoCell[] = [];
   private placingType: UnitType | null = null;
+  /** 已按 A：下一次点击为攻击移动。 */
+  private attackMoveArmed = false;
   private over = false;
   /** 上一帧各分类队列是否就绪（用于「建造完成」提示音的边沿检测）。 */
   private prevReady: Record<string, boolean> = {};
@@ -167,7 +169,7 @@ export class MatchView {
        <div class="mv-hint">${
          matchMedia('(pointer: coarse)').matches
            ? '点选单位 · 拖动框选 · 单指点地移动/攻击 · 双指平移缩放'
-           : '左键选/框选 · 右键移动或攻击 · 中键拖动 · 滚轮缩放'
+           : '左键选/框选 · 右键移动或攻击 · A 攻击移动 · Ctrl+数字编队 · 中键拖动 · 滚轮缩放'
        }</div>
        <div id="mv-selbox"></div>`,
     );
@@ -334,6 +336,15 @@ export class MatchView {
         }
         return;
       }
+      if (this.attackMoveArmed && this.selected.size > 0) {
+        const cell = this.screenToCell(e.clientX, e.clientY);
+        if (cell.x >= 0 && cell.y >= 0 && cell.x < this.mapW && cell.y < this.mapH) {
+          this.emit({ kind: 'attackMove', entityIds: [...this.selected].sort((a, b) => a - b), cellX: cell.x, cellY: cell.y });
+          audioBus.play('select');
+        }
+        this.attackMoveArmed = false;
+        return;
+      }
       this.dragStart = { x: e.clientX, y: e.clientY };
     });
     canvas.addEventListener('pointerup', (e) => {
@@ -356,7 +367,13 @@ export class MatchView {
       if (e.target instanceof HTMLInputElement) return;
       if (e.key === 'Escape') {
         this.placingType = null;
+        this.attackMoveArmed = false;
         this.selected.clear();
+        return;
+      }
+      if ((e.key === 'a' || e.key === 'A') && this.selected.size > 0) {
+        this.attackMoveArmed = true; // 下次左键点地 = 攻击移动
+        this.setNetStatus('攻击移动：点击目标地点');
         return;
       }
       if (e.key >= '1' && e.key <= '9') {
