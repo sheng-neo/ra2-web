@@ -211,7 +211,7 @@ export class MatchView {
        <div class="mv-hint">${
          matchMedia('(pointer: coarse)').matches
            ? '点选单位/建筑 · 拖动框选 · 单指点地移动/攻击 · 双指平移缩放'
-           : '左键选/框选 · 右键移动或攻击 · A 攻击移动 · Ctrl+数字编队 · 中键拖动 · 滚轮缩放'
+           : '左键选/框选 · 双击选同类 · 右键移动或攻击 · A 攻击移动 · S 停止 · Ctrl+数字编队 · 中键拖动 · 滚轮缩放'
        }</div>
        <div class="mv-bldbar" id="mv-bldbar"></div>
        <div id="mv-selbox"></div>`,
@@ -426,6 +426,19 @@ export class MatchView {
         this.issueOrder(e);
       }
     });
+    // 双击：选中屏内同类型己方单位
+    canvas.addEventListener('dblclick', (e) => {
+      const id = this.unitAtScreen(e.clientX, e.clientY);
+      if (id === null) return;
+      const type = this.world.entities.get(id)?.typeId;
+      if (!type) return;
+      this.selected.clear();
+      this.selectBuilding(null);
+      for (const ent of this.world.entities.values()) {
+        if (ent.owner === this.localPlayerId && ent.typeId === type && this.onScreen(ent)) this.selected.add(ent.id);
+      }
+      audioBus.play('select');
+    });
     this.bindTouch();
     this.bindKeyboard();
   }
@@ -444,6 +457,10 @@ export class MatchView {
       if ((e.key === 'a' || e.key === 'A') && this.selected.size > 0) {
         this.attackMoveArmed = true; // 下次左键点地 = 攻击移动
         this.setNetStatus('攻击移动：点击目标地点');
+        return;
+      }
+      if ((e.key === 's' || e.key === 'S') && this.selected.size > 0) {
+        this.emit({ kind: 'stop', entityIds: [...this.selected].sort((a, b) => a - b) });
         return;
       }
       if (e.key >= '1' && e.key <= '9') {
@@ -683,6 +700,29 @@ export class MatchView {
     } else if (cell.x >= 0 && cell.y >= 0 && cell.x < this.mapW && cell.y < this.mapH) {
       this.emit({ kind: 'move', entityIds: ids, cellX: cell.x, cellY: cell.y });
     }
+  }
+
+  /** 屏幕坐标 → 命中的己方可移动单位 id（最近，阈值内）。 */
+  private unitAtScreen(clientX: number, clientY: number): number | null {
+    const rect = this.app.canvas.getBoundingClientRect();
+    let best: { id: number; d: number } | null = null;
+    for (const ent of this.world.entities.values()) {
+      if (ent.owner !== this.localPlayerId) continue;
+      const type = this.world.rules.units.get(ent.typeId);
+      if (!type || type.domain === 'building') continue;
+      const sx = this.camera.zoom * this.leptonScreenX(ent) + this.renderer.stage.position.x;
+      const sy = this.camera.zoom * this.leptonScreenY(ent) + this.renderer.stage.position.y;
+      const d = Math.hypot(sx - (clientX - rect.left), sy - (clientY - rect.top));
+      if (d < 28 && (!best || d < best.d)) best = { id: ent.id, d };
+    }
+    return best ? best.id : null;
+  }
+
+  /** 单位是否在当前可视区域内（用于双击选同类）。 */
+  private onScreen(ent: { x: number; y: number }): boolean {
+    const sx = this.camera.zoom * this.leptonScreenX(ent) + this.renderer.stage.position.x;
+    const sy = this.camera.zoom * this.leptonScreenY(ent) + this.renderer.stage.position.y;
+    return sx >= 0 && sx <= window.innerWidth && sy >= 0 && sy <= window.innerHeight;
   }
 
   /** 返回该格上己方建筑 id，否则 null。 */

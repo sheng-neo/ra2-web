@@ -244,6 +244,20 @@ describe('战斗（M5 雏形）', () => {
     expect(tank!.goal !== null || tank!.path.length > 0 || tank!.cellX > 12).toBe(true);
   });
 
+  it('停止命令：清空移动与攻击意图', () => {
+    const w = new World(gridTerrain(30, 30), 9);
+    w.addPlayer(1, 'allied', 0);
+    const tank = w.spawnUnit(1, 'grizzly', 2, 2)!;
+    w.applyCommands([{ kind: 'attackMove', entityIds: [tank.id], cellX: 25, cellY: 25 }]);
+    expect(tank.goal !== null || tank.path.length > 0 || tank.attackMove).toBe(true);
+    w.step();
+    w.applyCommands([{ kind: 'stop', entityIds: [tank.id] }]);
+    expect(tank.goal).toBeNull();
+    expect(tank.path.length).toBe(0);
+    expect(tank.attackMove).toBe(false);
+    expect(tank.targetId).toBeNull();
+  });
+
   it('普通移动：行军途中不主动接敌', () => {
     const w = new World(gridTerrain(40, 40), 9);
     w.addPlayer(1, 'allied', 0);

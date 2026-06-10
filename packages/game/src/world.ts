@@ -108,7 +108,8 @@ export type Command =
   | { kind: 'attack'; entityIds: number[]; targetId: number }
   | { kind: 'setRally'; owner: number; buildingId: number; cellX: number; cellY: number }
   | { kind: 'sell'; owner: number; entityId: number }
-  | { kind: 'repair'; owner: number; entityId: number };
+  | { kind: 'repair'; owner: number; entityId: number }
+  | { kind: 'stop'; entityIds: number[] };
 
 const CATEGORY_PRODUCER: Record<ProdCategory, string> = {
   building: 'conyard',
@@ -238,6 +239,18 @@ export class World {
           }
           break;
         }
+        case 'stop':
+          for (const eid of [...cmd.entityIds].sort((a, b) => a - b)) {
+            const e = this.entities.get(eid);
+            if (e) {
+              e.path = [];
+              e.waypoint = null;
+              e.goal = null;
+              e.targetId = null;
+              e.attackMove = false;
+            }
+          }
+          break;
       }
     }
   }
