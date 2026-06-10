@@ -45,26 +45,27 @@ export class SimpleAI {
       const typeId = queue.items[0]!;
       const spot = this.findBuildSpot(world, typeId);
       if (spot) cmds.push({ kind: 'place', owner: this.playerId, typeId, cellX: spot.x, cellY: spot.y });
-    } else {
-      // 按科技链补建：跳过已拥有的、以及已在队列里的（避免在建未落成时重复排）
-      const bq = world.queueFor(this.playerId, 'building');
-      const inQueue = (id: string): boolean => !!bq?.items.includes(id);
-      for (const id of BUILD_ORDER) {
-        if (this.builtOrQueued(world, id, inQueue)) continue;
-        if (world.queueProduction(this.playerId, id)) break;
-      }
+    } else if (!queue || queue.items.length === 0) {
+      const next = this.nextBuilding(world, player);
+      if (next) world.queueProduction(this.playerId, next);
     }
 
-    // 有战车工厂就持续造坦克（直接走 produce 命令，由 sim 出厂）
+    // 经济：矿车不足则补（保证采矿）
+    const side = player.side;
     if (world.hasBuilding(this.playerId, 'warfactory')) {
+      const harvesters = this.countUnits(world, 'harvester');
       const vq = world.queueFor(this.playerId, 'vehicle');
-      if (!vq || vq.items.length === 0) {
-        cmds.push({ kind: 'produce', owner: this.playerId, typeId: 'rhino' });
+      if ((!vq || vq.items.length === 0)) {
+        if (harvesters < 2) {
+          cmds.push({ kind: 'produce', owner: this.playerId, typeId: 'harvester' });
+        } else {
+          cmds.push({ kind: 'produce', owner: this.playerId, typeId: side === 'soviet' ? 'rhino' : 'grizzly' });
+        }
       }
     } else if (world.hasBuilding(this.playerId, 'barracks')) {
       const iq = world.queueFor(this.playerId, 'infantry');
       if (!iq || iq.items.length === 0) {
-        cmds.push({ kind: 'produce', owner: this.playerId, typeId: 'conscript' });
+        cmds.push({ kind: 'produce', owner: this.playerId, typeId: side === 'soviet' ? 'conscript' : 'gi' });
       }
     }
 
@@ -88,8 +89,39 @@ export class SimpleAI {
     return cmds;
   }
 
-  private builtOrQueued(world: World, id: string, inQueue: (id: string) => boolean): boolean {
-    return world.hasBuilding(this.playerId, id) || inQueue(id);
+  private countUnits(world: World, typeId: string): number {
+    let n = 0;
+    for (const e of world.entities.values()) if (e.owner === this.playerId && e.typeId === typeId) n++;
+    return n;
+  }
+
+  /** 决定下一个该建的建筑：保电 → 科技链 → 扩经济 → 防御。 */
+  private nextBuilding(world: World, player: { powerProduced: number; powerDrained: number }): string | null {
+    const has = (id: string): boolean => world.hasBuilding(this.playerId, id);
+    // 电力告急优先补电厂
+    if (player.powerDrained > player.powerProduced - 20 && has('powerplant')) return 'powerplant';
+    // 科技链
+    for (const id of BUILD_ORDER) {
+      if (id === 'tesla') continue; // 防御单独处理
+      if (!has(id)) return id;
+    }
+    // 第二座精炼厂扩经济（用现有建筑数粗略判断只建一次额外的）
+    if (this.countBuildings(world, 'refinery') < 2) return 'refinery';
+    // 防御：最多 2 座
+    if (this.countBuildings(world, 'tesla') + this.countBuildings(world, 'pillbox') < 2) {
+      return player.powerProduced > player.powerDrained + 150 ? 'tesla' : 'pillbox';
+    }
+    // 多电厂托底
+    if (player.powerDrained > player.powerProduced - 50) return 'powerplant';
+    return null;
+  }
+
+  private countBuildings(world: World, typeId: string): number {
+    let n = 0;
+    for (const e of world.entities.values()) {
+      if (e.owner === this.playerId && e.typeId === typeId && world.rules.units.get(e.typeId)?.domain === 'building') n++;
+    }
+    return n;
   }
 
   private nearestEnemyBuilding(world: World): number | null {
