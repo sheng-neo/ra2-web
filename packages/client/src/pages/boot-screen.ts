@@ -45,14 +45,15 @@ export async function renderBootScreen(root: HTMLElement): Promise<void> {
   world.addChild(title);
 
   const subtitle = new Text({
-    text: 'M1 资源解析层 — 点击进入资源浏览器',
+    text: '资源浏览器 (#assets)　·　地图查看器 (#map)',
     style: { fill: 0x6db3e8, fontSize: 14 },
   });
   subtitle.anchor.set(0.5);
   subtitle.eventMode = 'static';
   subtitle.cursor = 'pointer';
-  subtitle.on('pointertap', () => {
-    location.hash = '#assets';
+  subtitle.on('pointertap', (e) => {
+    const local = subtitle.toLocal(e.global);
+    location.hash = local.x < 0 ? '#assets' : '#map';
   });
   world.addChild(subtitle);
 

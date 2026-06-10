@@ -21,3 +21,23 @@ export { IniFile, IniSection } from './ini';
 export { Palette, REMAP_START, REMAP_END } from './pal';
 export { parseShp, type ShpFile, type ShpFrame } from './shp';
 export { parseCsf, type CsfFile } from './csf';
+export { lzo1xDecompress, lzo1xCompressLiteral } from './lzo';
+export { format80Decompress, format80CompressLiteral } from './format80';
+export { parseTmp, type TmpFile, type TmpBlock } from './tmp';
+export {
+  THEATERS,
+  theaterByName,
+  TheaterTileTable,
+  type TheaterInfo,
+  type TileSetEntry,
+  type ResolvedTile,
+} from './theater';
+export {
+  parseMap,
+  readPackSection,
+  decompressChunked,
+  OVERLAY_NONE,
+  OVERLAY_GRID,
+  type RA2Map,
+  type MapTileRecord,
+} from './map';
