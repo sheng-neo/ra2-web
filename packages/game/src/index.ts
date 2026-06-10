@@ -7,5 +7,28 @@ export { FP_ONE, fpSin, fpCos, isqrt, dist, dirToBangle, turnToward, velocity } 
 export { Prng } from './prng';
 export { StateHash } from './hash';
 export { findPath, type PathGrid } from './pathfind';
-export { World, type Entity, type Command, type TerrainInfo, type UnitSpec } from './world';
+export {
+  World,
+  categoryOf,
+  producibleBy,
+  type Entity,
+  type Command,
+  type Player,
+  type Projectile,
+  type ProdCategory,
+  type ProductionQueue,
+  type TerrainInfo,
+} from './world';
+export {
+  DEFAULT_RULES,
+  buildRules,
+  type RulesData,
+  type UnitType,
+  type Side,
+  type Domain,
+  type ArmorType,
+  type ArmorVerses,
+  type WeaponSpec,
+  type BuildingTraits,
+} from './content';
 export { runScript, gridTerrain, type ScriptedCommand, type ReplayResult } from './replay';

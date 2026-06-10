@@ -11,13 +11,13 @@ import {
   leptonToCell,
   type Command,
   type Entity,
-  type UnitSpec,
 } from '@ra2web/game';
 import { Camera } from '../camera';
 import { TILE_H, TILE_W } from '../tile-art';
 
-const TANK: UnitSpec = { speed: 56, rot: 6 };
-const DOG: UnitSpec = { speed: 130, rot: 30 };
+// 纯移动/确定性演示：单一阵营、无战斗，便于直观看出寻路与哈希一致。
+const TANK = 'grizzly';
+const DOG = 'gi';
 const TICK_MS = 1000 / SIM_TICKS_PER_SECOND;
 const GRID_W = 28;
 const GRID_H = 28;
@@ -105,16 +105,17 @@ export async function renderSimSandbox(root: HTMLElement): Promise<void> {
   const fxLayer = new Graphics();
   stage.addChild(fxLayer);
 
-  // —— 初始部队 ——
+  // —— 初始部队（全部同一阵营，避免自动交火干扰移动演示） ——
+  world.addPlayer(1, 'allied', 0);
   const initial: Command[] = [];
   for (let i = 0; i < 6; i++) {
-    initial.push({ kind: 'spawn', owner: 1, cellX: 3 + (i % 3), cellY: 4 + Math.floor(i / 3) * 2, spec: TANK });
+    initial.push({ kind: 'spawn', owner: 1, cellX: 3 + (i % 3), cellY: 4 + Math.floor(i / 3) * 2, typeId: TANK });
   }
   for (let i = 0; i < 3; i++) {
-    initial.push({ kind: 'spawn', owner: 1, cellX: 2, cellY: 10 + i, spec: DOG });
+    initial.push({ kind: 'spawn', owner: 1, cellX: 2, cellY: 10 + i, typeId: DOG });
   }
   for (let i = 0; i < 4; i++) {
-    initial.push({ kind: 'spawn', owner: 2, cellX: 23 + (i % 2), cellY: 8 + Math.floor(i / 2), spec: TANK });
+    initial.push({ kind: 'spawn', owner: 1, cellX: 23 + (i % 2), cellY: 8 + Math.floor(i / 2), typeId: TANK });
   }
   world.applyCommands(initial);
 

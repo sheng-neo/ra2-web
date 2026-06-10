@@ -44,16 +44,28 @@ export async function renderBootScreen(root: HTMLElement): Promise<void> {
   title.anchor.set(0.5);
   world.addChild(title);
 
+  const playBtn = new Text({
+    text: '▶ 开始遭遇战',
+    style: { fill: 0x6fe06f, fontSize: 22, fontWeight: '700' },
+  });
+  playBtn.anchor.set(0.5);
+  playBtn.eventMode = 'static';
+  playBtn.cursor = 'pointer';
+  playBtn.on('pointertap', () => {
+    location.hash = '#play';
+  });
+  world.addChild(playBtn);
+
   const subtitle = new Text({
-    text: '资源浏览器 (#assets)　·　地图查看器 (#map)',
-    style: { fill: 0x6db3e8, fontSize: 14 },
+    text: '资源浏览器 (#assets)　·　地图查看器 (#map)　·　模拟沙盒 (#sim)',
+    style: { fill: 0x6db3e8, fontSize: 13 },
   });
   subtitle.anchor.set(0.5);
   subtitle.eventMode = 'static';
   subtitle.cursor = 'pointer';
   subtitle.on('pointertap', (e) => {
     const local = subtitle.toLocal(e.global);
-    location.hash = local.x < 0 ? '#assets' : '#map';
+    location.hash = local.x < -90 ? '#assets' : local.x > 90 ? '#sim' : '#map';
   });
   world.addChild(subtitle);
 
@@ -61,7 +73,8 @@ export async function renderBootScreen(root: HTMLElement): Promise<void> {
     world.x = app.screen.width / 2;
     world.y = app.screen.height / 2 - (GRID * CELL_H) / 4;
     title.y = (GRID * CELL_H) / 2 + 40;
-    subtitle.y = title.y + 30;
+    playBtn.y = title.y + 36;
+    subtitle.y = playBtn.y + 32;
   };
   layout();
   app.renderer.on('resize', layout);
