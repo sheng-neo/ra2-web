@@ -22,11 +22,19 @@
 
 EA 从未免费开放红警2（免费的只有初代 C&C、红警1、泰伯利亚之日）。合法途径：
 
-1. **Steam**：搜索《Command & Conquer The Ultimate Collection》（命令与征服终极合集，含红警2+尤里的复仇），经常打折。
-2. **EA App** 同样有售。
-3. 你过去购买的原版光盘/数字版也可以，安装后拷文件即可。
+1. **Steam**（推荐，单卖）：[Command & Conquer Red Alert 2 and Yuri's Revenge](https://store.steampowered.com/app/2229850/)，经常打折；或买《The Ultimate Collection》合集。
+2. **EA App**（仅 Windows）同样有售。
+3. 你过去购买的原版光盘/数字版也可以，从旧电脑拷出上述文件即可。
 
-安装后在游戏目录（如 `.../Command & Conquer Red Alert II/`）找到上述文件。
+### Mac 用户：不需要 Windows，两步搞定
+
+红警2 在 Steam 上是 Windows 游戏，但**本项目只需要它的数据文件，不需要运行游戏**：
+
+1. 在 Mac 浏览器里打开上面的 Steam 链接，登录购买（网页即可完成）；
+2. 在仓库根目录运行 `bash tools/fetch-game-files.sh` —— 脚本会用 Valve 官方的
+   steamcmd 下载你已购的游戏文件，并自动把所需的 6 个文件提取到本目录。
+
+（Windows 电脑用户：安装游戏后从安装目录手动拷贝上述文件即可。）
 
 ## 法律说明
 
