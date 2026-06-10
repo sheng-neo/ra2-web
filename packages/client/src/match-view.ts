@@ -71,6 +71,9 @@ export const MATCH_STYLE = `
   .mv-mini { display: none; }
   .mv-tabs { flex-direction: column; width: 56px; }
   .mv-build { grid-template-columns: repeat(auto-fill, 56px); }
+  /* 底部抽屉占 132px，把建筑操作条与提示上移避免遮挡 */
+  .mv-bldbar { bottom: 142px; }
+  .mv-hint { display: none; }
 }
 `;
 
