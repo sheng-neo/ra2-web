@@ -7,11 +7,14 @@
  * 车辆是体素(VXL)，待 M6 解析；此处只供建筑与步兵。
  */
 import { Application, Texture } from 'pixi.js';
-import { Palette, parseShp, parseVxl } from '@ra2web/data';
+import { Palette, parseShp, parseTmp, parseVxl } from '@ra2web/data';
 import type { Side } from '@ra2web/game';
 import { ResourceFS } from './vfs';
 import { bakeVoxelFacing } from './voxel-baker';
 import { PLAYER_COLORS } from './placeholder-art';
+
+/** 用作铺地的 TS 温带清地块（草地），多个变体增加变化。 */
+const TERRAIN_TILES = ['clear01.tem', 'clat01.tem', 'clat02.tem', 'clat03.tem', 'clat04.tem'];
 
 /** typeId → TS 建筑 SHP 基名（NewTheater 温带：第2字符 T，扩展 .shp）。 */
 const BUILDING_ART: Record<Side, Record<string, string>> = {
@@ -68,6 +71,8 @@ export class RealArtProvider {
   private readonly infantry = new Map<string, RealSprite>();
   /** key `${side}:${typeId}` → 各朝向精灵。 */
   private readonly vehicles = new Map<string, RealSprite[]>();
+  /** 草地地块纹理（多变体）。 */
+  readonly terrainTiles: Texture[] = [];
   ready = false;
 
   constructor(private readonly app: Application) {}
@@ -75,15 +80,52 @@ export class RealArtProvider {
   /** 尝试挂载 TS mix + 调色板；成功才标记可用。 */
   async tryInit(): Promise<boolean> {
     try {
-      for (const m of ['Conquer.mix', 'Cache.mix', 'Temperat.mix']) {
+      for (const m of ['Conquer.mix', 'Cache.mix', 'Temperat.mix', 'IsoTemp.mix']) {
         await this.fs.mountUrl(`/game-data/${m}`, m);
       }
       this.unitPal = Palette.parse(await this.fs.readFile('unittem.pal'));
+      await this.loadTerrain();
       this.ready = true;
       return true;
     } catch {
       this.ready = false;
       return false;
+    }
+  }
+
+  /** 解码草地块 → 纹理（用等距地形调色板 isotem.pal）。 */
+  private async loadTerrain(): Promise<void> {
+    let isoPal: Palette;
+    try {
+      isoPal = Palette.parse(await this.fs.readFile('isotem.pal'));
+    } catch {
+      return;
+    }
+    for (const name of TERRAIN_TILES) {
+      try {
+        const tmp = parseTmp(await this.fs.readFile(name));
+        const block = tmp.blocks.find((b) => b);
+        if (!block || block.pixels.length === 0) continue;
+        const w = tmp.blockWidth;
+        const h = tmp.blockHeight;
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d')!;
+        const img = ctx.createImageData(w, h);
+        for (let p = 0; p < block.pixels.length; p++) {
+          const idx = block.pixels[p]!;
+          if (idx === 0) continue;
+          img.data[p * 4] = isoPal.rgba[idx * 4]!;
+          img.data[p * 4 + 1] = isoPal.rgba[idx * 4 + 1]!;
+          img.data[p * 4 + 2] = isoPal.rgba[idx * 4 + 2]!;
+          img.data[p * 4 + 3] = 255;
+        }
+        ctx.putImageData(img, 0, 0);
+        this.terrainTiles.push(Texture.from(canvas));
+      } catch {
+        /* 跳过缺失变体 */
+      }
     }
   }
 

@@ -3,7 +3,7 @@
  * 地形/矿石静态层 + 建筑层（变更时重建）+ 单位层（每帧插值）+ 特效层。
  * 与模拟解耦 —— 只读 World，不改它。
  */
-import { Application, Container, Graphics, Sprite } from 'pixi.js';
+import { Application, Container, Graphics, Sprite, type Texture } from 'pixi.js';
 import type { World, Side } from '@ra2web/game';
 import { cornerX, cornerY, leptonToScreenX, leptonToScreenY, TILE_H, TILE_W } from './iso';
 import { PLAYER_COLORS, appearanceOf, type ArtAssets } from './placeholder-art';
@@ -149,6 +149,11 @@ export class WorldRenderer {
   }
 
   private drawTerrain(): void {
+    const tiles = this.realArt?.ready ? this.realArt.terrainTiles : [];
+    if (tiles.length > 0) {
+      this.drawRealTerrain(tiles);
+      return;
+    }
     const g = this.terrainGfx;
     const { width, height } = this.world.terrain;
     for (let cy = 0; cy < height; cy++) {
@@ -162,6 +167,35 @@ export class WorldRenderer {
         g.stroke({ color: 0x000000, alpha: 0.12, width: 1 });
       }
     }
+  }
+
+  /** 用真实 TS 草地块铺地（缩放到 60×30 格）。每格一精灵，按格哈希选变体。 */
+  private drawRealTerrain(tiles: Texture[]): void {
+    const { width, height } = this.world.terrain;
+    const layer = new Container();
+    for (let cy = 0; cy < height; cy++) {
+      for (let cx = 0; cx < width; cx++) {
+        const h = ((cx * 73856093) ^ (cy * 19349663)) >>> 0;
+        const tex = tiles[h % tiles.length]!;
+        const sp = new Sprite(tex);
+        sp.width = TILE_W;
+        sp.height = TILE_H;
+        sp.position.set(cornerX(cx, cy) - TILE_W / 2, cornerY(cx, cy));
+        layer.addChild(sp);
+      }
+    }
+    // 不可通行格压暗
+    const g = this.terrainGfx;
+    for (let cy = 0; cy < height; cy++) {
+      for (let cx = 0; cx < width; cx++) {
+        if (this.world.terrain.passable(cx, cy)) continue;
+        const x = cornerX(cx, cy);
+        const y = cornerY(cx, cy);
+        g.poly([x, y, x + TILE_W / 2, y + TILE_H / 2, x, y + TILE_H, x - TILE_W / 2, y + TILE_H / 2]);
+        g.fill({ color: 0x000000, alpha: 0.35 });
+      }
+    }
+    this.stage.addChildAt(layer, 0);
   }
 
   private drawOre(): void {
