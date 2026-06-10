@@ -7,7 +7,7 @@ export class BinaryReader {
   private pos = 0;
 
   constructor(
-    readonly buffer: ArrayBuffer,
+    readonly buffer: ArrayBufferLike,
     byteOffset = 0,
     byteLength?: number,
   ) {
