@@ -56,10 +56,15 @@ export class SimpleAI {
       const harvesters = this.countUnits(world, 'harvester');
       const vq = world.queueFor(this.playerId, 'vehicle');
       if ((!vq || vq.items.length === 0)) {
+        const tank = side === 'soviet' ? 'rhino' : 'grizzly';
+        const siege = side === 'soviet' ? 'v3' : 'arty';
+        const tankCount = this.countUnits(world, tank);
         if (harvesters < 2) {
           cmds.push({ kind: 'produce', owner: this.playerId, typeId: 'harvester' });
+        } else if (tankCount >= 4 && this.countUnits(world, siege) < 2) {
+          cmds.push({ kind: 'produce', owner: this.playerId, typeId: siege }); // 攒够坦克后补攻城车
         } else {
-          cmds.push({ kind: 'produce', owner: this.playerId, typeId: side === 'soviet' ? 'rhino' : 'grizzly' });
+          cmds.push({ kind: 'produce', owner: this.playerId, typeId: tank });
         }
       }
     } else if (world.hasBuilding(this.playerId, 'barracks')) {

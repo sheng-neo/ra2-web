@@ -51,6 +51,8 @@ const VEHICLE_ART: Record<string, string> = {
   grizzly: 'ttnk.vxl',
   rhino: '4tnk.vxl',
   flaktrak: 'hvr.vxl',
+  arty: 'art2.vxl',
+  v3: 'art2.vxl',
 };
 
 /** 载具烘焙朝向数（与 RA2 一致）。 */
