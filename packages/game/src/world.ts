@@ -80,6 +80,10 @@ export interface Entity {
   attackMove: boolean;
   // 采矿
   harvester: HarvesterState | null;
+  // 建筑：集结点（格，-1=无）+ 是否在修理
+  rallyX: number;
+  rallyY: number;
+  repairing: boolean;
 }
 
 export interface Projectile {
@@ -101,7 +105,10 @@ export type Command =
   | { kind: 'place'; owner: number; typeId: string; cellX: number; cellY: number }
   | { kind: 'move'; entityIds: number[]; cellX: number; cellY: number }
   | { kind: 'attackMove'; entityIds: number[]; cellX: number; cellY: number }
-  | { kind: 'attack'; entityIds: number[]; targetId: number };
+  | { kind: 'attack'; entityIds: number[]; targetId: number }
+  | { kind: 'setRally'; owner: number; buildingId: number; cellX: number; cellY: number }
+  | { kind: 'sell'; owner: number; entityId: number }
+  | { kind: 'repair'; owner: number; entityId: number };
 
 const CATEGORY_PRODUCER: Record<ProdCategory, string> = {
   building: 'conyard',
@@ -114,6 +121,10 @@ const HARVEST_CAPACITY = 700;
 const HARVEST_TICKS = 2;
 /** 建造半径（格）：新建筑须距己方某建筑足迹不超过此距离。 */
 const BUILD_RADIUS = 6;
+/** 修理：每隔多少 tick 回一次血。 */
+const REPAIR_INTERVAL = 5;
+/** 修理花费相对造价比例（修满约花造价的此比例）。 */
+const REPAIR_COST_RATIO = 0.5;
 
 export function categoryOf(u: UnitType): ProdCategory {
   return u.domain === 'building' ? 'building' : u.domain;
@@ -209,8 +220,36 @@ export class World {
             if (e) e.targetId = cmd.targetId;
           }
           break;
+        case 'setRally': {
+          const b = this.entities.get(cmd.buildingId);
+          if (b && b.owner === cmd.owner && this.rules.units.get(b.typeId)?.building) {
+            b.rallyX = cmd.cellX;
+            b.rallyY = cmd.cellY;
+          }
+          break;
+        }
+        case 'sell':
+          this.sellBuilding(cmd.owner, cmd.entityId);
+          break;
+        case 'repair': {
+          const b = this.entities.get(cmd.entityId);
+          if (b && b.owner === cmd.owner && this.rules.units.get(b.typeId)?.building) {
+            b.repairing = !b.repairing; // 切换
+          }
+          break;
+        }
       }
     }
+  }
+
+  private sellBuilding(owner: number, entityId: number): void {
+    const e = this.entities.get(entityId);
+    const type = e && this.rules.units.get(e.typeId);
+    if (!e || e.owner !== owner || !type?.building) return;
+    const player = this.players.get(owner);
+    if (player) player.credits += Math.floor((type.cost * e.hp) / e.maxHp / 2); // 按现血量半价回款
+    this.removeBuildingOccupancy(e);
+    this.entities.delete(entityId);
   }
 
   private makeEntity(owner: number, type: UnitType, x: number, y: number): Entity {
@@ -232,6 +271,9 @@ export class World {
       targetId: null,
       cooldown: 0,
       attackMove: false,
+      rallyX: -1,
+      rallyY: -1,
+      repairing: false,
       harvester: type.id === 'harvester' ? { mode: 'seek', load: 0, timer: 0 } : null,
     };
     this.entities.set(id, e);
@@ -359,17 +401,47 @@ export class World {
     const producerId = CATEGORY_PRODUCER[categoryOf(type)];
     // 找该玩家的生产建筑，单位在其下方空格出现
     let exit: { x: number; y: number } | null = null;
+    let rally: { x: number; y: number } | null = null;
     for (const e of this.entities.values()) {
       if (e.owner === owner && e.typeId === producerId) {
         const traits = this.rules.units.get(e.typeId)!.building!;
         const ex = e.cellX + Math.floor(traits.footprintW / 2);
         const ey = e.cellY + traits.footprintH;
-        exit = { x: Math.min(ey < this.terrain.height ? ex : ex, this.terrain.width - 1), y: Math.min(ey, this.terrain.height - 1) };
+        exit = { x: Math.min(ex, this.terrain.width - 1), y: Math.min(ey, this.terrain.height - 1) };
+        if (e.rallyX >= 0 && e.rallyY >= 0) rally = { x: e.rallyX, y: e.rallyY };
         break;
       }
     }
     if (!exit) return;
-    this.makeEntity(owner, type, cellToLepton(exit.x), cellToLepton(exit.y));
+    const unit = this.makeEntity(owner, type, cellToLepton(exit.x), cellToLepton(exit.y));
+    // 有集结点则前往
+    if (rally) this.orderMove(unit, rally.x, rally.y);
+  }
+
+  /** 修理：开启修理的建筑每隔若干 tick 扣钱回血。 */
+  private stepRepair(): void {
+    if (this.tick % REPAIR_INTERVAL !== 0) return;
+    for (const e of this.entities.values()) {
+      if (!e.repairing) continue;
+      const type = this.rules.units.get(e.typeId);
+      if (!type?.building) {
+        e.repairing = false;
+        continue;
+      }
+      if (e.hp >= e.maxHp) {
+        e.repairing = false;
+        continue;
+      }
+      const player = this.players.get(e.owner);
+      // 每次回血 maxHp/40，花费按造价等比例
+      const heal = Math.max(1, Math.ceil(e.maxHp / 40));
+      const cost = Math.ceil((heal / e.maxHp) * type.cost * REPAIR_COST_RATIO);
+      if (player && player.credits >= cost) {
+        player.credits -= cost;
+        e.hp = Math.min(e.maxHp, e.hp + heal);
+        if (e.hp >= e.maxHp) e.repairing = false; // 修满即停
+      }
+    }
   }
 
   // ───────────────────────── 建筑放置 ─────────────────────────
@@ -803,6 +875,7 @@ export class World {
   step(): void {
     this.stepPower();
     this.stepProduction();
+    this.stepRepair();
     for (const e of this.entities.values()) {
       const type = this.rules.units.get(e.typeId);
       if (!type) continue;
@@ -828,6 +901,7 @@ export class World {
     for (const e of this.entities.values()) {
       h.addInt(e.id).addInt(e.owner).addInt(e.x).addInt(e.y).addInt(e.facing).addInt(e.hp);
       h.addInt(e.harvester ? e.harvester.load : -1);
+      h.addInt(e.repairing ? 1 : 0).addInt(e.rallyX).addInt(e.rallyY);
     }
     h.addInt(this.projectiles.length);
     for (const p of this.projectiles) h.addInt(p.id).addInt(p.x).addInt(p.y);

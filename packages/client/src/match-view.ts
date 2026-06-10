@@ -54,6 +54,13 @@ export const MATCH_STYLE = `
 .mv-banner { position: fixed; inset: 0; z-index: 30; display: flex; flex-direction: column; gap: 12px; align-items: center; justify-content: center; background: rgba(4,6,8,.7); font-size: 44px; font-weight: 800; }
 .mv-banner a { font-size: 16px; color: #6db3e8; }
 #mv-selbox { position: fixed; border: 1px solid #7fd17f; background: rgba(120,220,120,.12); pointer-events: none; display: none; z-index: 19; }
+.mv-bldbar { position: fixed; left: 50%; transform: translateX(-50%); bottom: 44px; z-index: 21; display: none;
+  align-items: center; gap: 8px; padding: 6px 10px; background: rgba(12,16,20,.95); border: 1px solid #2a3a48; border-radius: 8px; }
+.mv-bldbar b { color: #e8eef2; }
+.mv-bldbar button { padding: 5px 12px; border: 1px solid #2a3a48; border-radius: 5px; background: #1d2730; color: #c8d2da; cursor: pointer; font-size: 13px; }
+.mv-bldbar button.on { background: #2d6fb0; color: #fff; }
+.mv-bldbar .sell { color: #e08080; }
+.mv-bldbar .hint { color: #8a97a0; font-size: 12px; }
 @media (max-width: 760px) {
   .mv-side { top: auto; bottom: 0; left: 0; width: 100%; height: 132px; flex-direction: row; border-left: none; border-top: 1px solid #243039; }
   .mv-mini { display: none; }
@@ -75,6 +82,7 @@ export class MatchView {
   private camera!: Camera;
   private ghost!: Graphics;
   private readonly selected = new Set<number>();
+  private selectedBuilding: number | null = null;
   private readonly controlGroups = new Map<number, number[]>();
   private localCommands: Command[] = [];
   private activeTab: ProdCategory = 'building';
@@ -101,6 +109,7 @@ export class MatchView {
   private buildEl!: HTMLElement;
   private miniEl!: HTMLCanvasElement;
   private selBox!: HTMLElement;
+  private bldBar!: HTMLElement;
 
   constructor(
     private readonly root: HTMLElement,
@@ -181,9 +190,10 @@ export class MatchView {
        </div>
        <div class="mv-hint">${
          matchMedia('(pointer: coarse)').matches
-           ? '点选单位 · 拖动框选 · 单指点地移动/攻击 · 双指平移缩放'
+           ? '点选单位/建筑 · 拖动框选 · 单指点地移动/攻击 · 双指平移缩放'
            : '左键选/框选 · 右键移动或攻击 · A 攻击移动 · Ctrl+数字编队 · 中键拖动 · 滚轮缩放'
        }</div>
+       <div class="mv-bldbar" id="mv-bldbar"></div>
        <div id="mv-selbox"></div>`,
     );
     this.creditsEl = this.root.querySelector('#mv-credits')!;
@@ -193,6 +203,7 @@ export class MatchView {
     this.buildEl = this.root.querySelector('#mv-build')!;
     this.miniEl = this.root.querySelector('#mv-mini')!;
     this.selBox = this.root.querySelector('#mv-selbox')!;
+    this.bldBar = this.root.querySelector('#mv-bldbar')!;
 
     const muteBtn = this.root.querySelector('#mv-mute') as HTMLButtonElement;
     muteBtn.addEventListener('click', () => {
@@ -382,6 +393,7 @@ export class MatchView {
         this.placingType = null;
         this.attackMoveArmed = false;
         this.selected.clear();
+        this.selectBuilding(null);
         return;
       }
       if ((e.key === 'a' || e.key === 'A') && this.selected.size > 0) {
@@ -530,6 +542,15 @@ export class MatchView {
     if (best) {
       this.selected.clear();
       this.selected.add(best.id);
+      this.selectBuilding(null);
+      audioBus.play('select');
+      return;
+    }
+    // 点中己方建筑 → 选中建筑（出修理/出售条）
+    const cellB = this.screenToCell(clientX, clientY);
+    const bld = this.ownBuildingAtCell(cellB.x, cellB.y);
+    if (bld !== null && this.selected.size === 0) {
+      this.selectBuilding(bld);
       audioBus.play('select');
       return;
     }
@@ -571,7 +592,15 @@ export class MatchView {
         const d = Math.hypot(s.x - (endX - rect.left), s.y - (endY - rect.top));
         if (d < 26 && (!best || d < best.d)) best = { id: ent.id, d };
       }
-      if (best) this.selected.add(best.id);
+      if (best) {
+        this.selected.add(best.id);
+        this.selectBuilding(null);
+      } else {
+        // 没点中单位 → 试点中己方建筑
+        const cell = this.screenToCell(endX, endY);
+        const b = this.ownBuildingAtCell(cell.x, cell.y);
+        this.selectBuilding(b);
+      }
     } else {
       const x0 = Math.min(startX, endX) - rect.left;
       const y0 = Math.min(startY, endY) - rect.top;
@@ -582,13 +611,26 @@ export class MatchView {
         const s = screenOf(ent);
         if (s.x >= x0 && s.x <= x0 + w && s.y >= y0 && s.y <= y0 + h) this.selected.add(ent.id);
       }
+      if (this.selected.size > 0) this.selectBuilding(null);
     }
     this.selBox.style.display = 'none';
   }
 
   private issueOrder(e: PointerEvent): void {
-    if (this.selected.size === 0) return;
     const cell = this.screenToCell(e.clientX, e.clientY);
+    // 选中了生产建筑 → 右键设集结点
+    if (this.selectedBuilding !== null && this.selected.size === 0) {
+      const b = this.world.entities.get(this.selectedBuilding);
+      const provides = b && this.world.rules.units.get(b.typeId)?.building?.provides;
+      if (b && (provides === 'barracks' || provides === 'warfactory' || provides === 'conyard')) {
+        if (cell.x >= 0 && cell.y >= 0 && cell.x < this.mapW && cell.y < this.mapH) {
+          this.emit({ kind: 'setRally', owner: this.localPlayerId, buildingId: b.id, cellX: cell.x, cellY: cell.y });
+          audioBus.play('select');
+        }
+        return;
+      }
+    }
+    if (this.selected.size === 0) return;
     const enemy = this.entityAtCell(cell.x, cell.y, this.localPlayerId);
     const ids = [...this.selected].sort((a, b) => a - b);
     if (enemy !== null) {
@@ -596,6 +638,57 @@ export class MatchView {
     } else if (cell.x >= 0 && cell.y >= 0 && cell.x < this.mapW && cell.y < this.mapH) {
       this.emit({ kind: 'move', entityIds: ids, cellX: cell.x, cellY: cell.y });
     }
+  }
+
+  /** 返回该格上己方建筑 id，否则 null。 */
+  private ownBuildingAtCell(cx: number, cy: number): number | null {
+    for (const e of this.world.entities.values()) {
+      if (e.owner !== this.localPlayerId) continue;
+      const type = this.world.rules.units.get(e.typeId);
+      if (!type?.building) continue;
+      if (cx >= e.cellX && cx < e.cellX + type.building.footprintW && cy >= e.cellY && cy < e.cellY + type.building.footprintH) {
+        return e.id;
+      }
+    }
+    return null;
+  }
+
+  /** 选中建筑并刷新操作条（修理/出售/集结点）。 */
+  private selectBuilding(id: number | null): void {
+    this.selectedBuilding = id;
+    if (id === null) {
+      this.bldBar.style.display = 'none';
+      return;
+    }
+    this.selected.clear();
+    this.renderBuildingBar();
+  }
+
+  private renderBuildingBar(): void {
+    const b = this.selectedBuilding !== null ? this.world.entities.get(this.selectedBuilding) : null;
+    const type = b && this.world.rules.units.get(b.typeId);
+    if (!b || !type?.building) {
+      this.bldBar.style.display = 'none';
+      this.selectedBuilding = null;
+      return;
+    }
+    const provides = type.building.provides;
+    const canRally = provides === 'barracks' || provides === 'warfactory' || provides === 'conyard';
+    this.bldBar.style.display = 'flex';
+    this.bldBar.innerHTML =
+      `<b>${type.name}</b>` +
+      `<button id="mv-repair" class="${b.repairing ? 'on' : ''}">${b.repairing ? '修理中' : '修理'}</button>` +
+      `<button class="sell" id="mv-sell">出售</button>` +
+      (canRally ? `<span class="hint">右键设集结点</span>` : '');
+    this.bldBar.querySelector('#mv-repair')!.addEventListener('click', () => {
+      this.emit({ kind: 'repair', owner: this.localPlayerId, entityId: b.id });
+      audioBus.play('select');
+    });
+    this.bldBar.querySelector('#mv-sell')!.addEventListener('click', () => {
+      this.emit({ kind: 'sell', owner: this.localPlayerId, entityId: b.id });
+      audioBus.play('place');
+      this.selectBuilding(null);
+    });
   }
 
   // —— 推进 & 渲染 ——
@@ -618,6 +711,10 @@ export class MatchView {
     if (this.world.tick % 4 === 0) {
       this.refreshSidebar();
       this.drawMinimap();
+      if (this.selectedBuilding !== null) {
+        if (this.world.entities.has(this.selectedBuilding)) this.renderBuildingBar();
+        else this.selectBuilding(null);
+      }
     }
     // 建筑建造完成（队列首项变为就绪）→ 提示音
     for (const cat of ['building', 'infantry', 'vehicle'] as const) {

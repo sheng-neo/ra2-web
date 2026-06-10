@@ -204,6 +204,46 @@ describe('战斗（M5 雏形）', () => {
     expect(tank.attackMove).toBe(false);
   });
 
+  it('出售建筑：回款并移除', () => {
+    const w = baseWorld();
+    const cy = w.spawnUnit(1, 'conyard', 5, 5)!;
+    w.spawnUnit(1, 'powerplant', 9, 5); // 第二座建筑，避免卖完即判负
+    const before = w.players.get(1)!.credits;
+    w.applyCommands([{ kind: 'sell', owner: 1, entityId: cy.id }]);
+    expect(w.entities.has(cy.id)).toBe(false);
+    expect(w.players.get(1)!.credits).toBeGreaterThan(before); // 有回款
+    // 占地已释放，可在原处重建
+    expect(w.canPlace(1, w.rules.units.get('powerplant')!, 5, 5)).toBe(true);
+  });
+
+  it('修理建筑：扣钱回血至满停止', () => {
+    const w = baseWorld();
+    const pp = w.spawnUnit(1, 'powerplant', 5, 5)!;
+    pp.hp = 100;
+    const before = w.players.get(1)!.credits;
+    w.applyCommands([{ kind: 'repair', owner: 1, entityId: pp.id }]);
+    for (let i = 0; i < 400 && pp.hp < pp.maxHp; i++) w.step();
+    expect(pp.hp).toBe(pp.maxHp); // 修满
+    expect(w.players.get(1)!.credits).toBeLessThan(before); // 花了钱
+    expect(pp.repairing).toBe(false); // 修满自动停
+  });
+
+  it('集结点：出厂单位自动前往', () => {
+    const w = baseWorld();
+    w.spawnUnit(1, 'conyard', 5, 5);
+    w.spawnUnit(1, 'powerplant', 9, 5);
+    w.spawnUnit(1, 'refinery', 5, 9);
+    const wf = w.spawnUnit(1, 'warfactory', 9, 9)!;
+    w.applyCommands([{ kind: 'setRally', owner: 1, buildingId: wf.id, cellX: 20, cellY: 20 }]);
+    const before = new Set([...w.entities.keys()]);
+    w.queueProduction(1, 'grizzly');
+    for (let i = 0; i < 200; i++) w.step();
+    const tank = [...w.entities.values()].find((e) => e.typeId === 'grizzly' && !before.has(e.id));
+    expect(tank).toBeDefined();
+    // 新坦克领到了去集结点的路（goal 或已在路上）
+    expect(tank!.goal !== null || tank!.path.length > 0 || tank!.cellX > 12).toBe(true);
+  });
+
   it('普通移动：行军途中不主动接敌', () => {
     const w = new World(gridTerrain(40, 40), 9);
     w.addPlayer(1, 'allied', 0);
