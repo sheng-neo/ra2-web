@@ -30,13 +30,18 @@ export class Camera {
     };
   }
 
-  /** 绑定鼠标交互；返回解绑函数。 */
-  attach(canvas: HTMLCanvasElement): () => void {
+  /**
+   * 绑定鼠标交互；返回解绑函数。
+   * panButtons：允许平移的鼠标键（0 左 / 1 中 / 2 右）。
+   * 有框选交互的页面应只给中键，把左键留给选择。
+   */
+  attach(canvas: HTMLCanvasElement, panButtons: readonly number[] = [0]): () => void {
     let dragging = false;
     let lastX = 0;
     let lastY = 0;
 
     const onDown = (e: PointerEvent): void => {
+      if (!panButtons.includes(e.button)) return;
       dragging = true;
       lastX = e.clientX;
       lastY = e.clientY;
