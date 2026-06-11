@@ -267,7 +267,7 @@ export class MatchView {
        <div class="mv-hint">${
          matchMedia('(pointer: coarse)').matches
            ? '点选单位/建筑 · 拖动框选 · 单指点地移动/攻击 · 双指平移缩放'
-           : '左键选/框选 · 双击选同类 · 右键移动或攻击 · A 攻击移动 · S 停止 · Ctrl+数字编队 · 中键/方向键平移 · 滚轮缩放'
+           : '左键选/框选 · 双击选同类 · 右键移动/攻击 · A 攻击移动 · P 巡逻 · G 姿态 · E 找空闲 · S 停止 · Ctrl+数字编队 · 滚轮缩放'
        }</div>
        <div class="mv-bldbar" id="mv-bldbar"></div>
        <div class="mv-unitbar" id="mv-unitbar">
@@ -1111,9 +1111,14 @@ export class MatchView {
     tip.innerHTML =
       `<h3>怎么玩</h3><ul>` +
       `<li>顺序造：发电厂 → 矿石精炼厂 → 兵营 → 战车工厂</li>` +
-      `<li>采矿车自动采矿换钱；右侧栏点图标造单位/建筑</li>` +
-      `<li>${touch ? '点选单位、单指点地移动/点敌攻击、双指缩放' : '左键选/框选，右键移动或攻击，A 攻击移动'}</li>` +
-      `<li>点己方建筑可修理/出售；摧毁对方全部建筑获胜</li>` +
+      `<li>采矿车自动采矿换钱；右侧栏点图标造单位/建筑（连点排队，左上角×N，点✕取消）</li>` +
+      `<li>${
+        touch
+          ? '点选/双击选同类；下方操作条：攻=攻击移动(沿途逐个交战)·巡=巡逻·姿态(警戒/进攻/坚守/不还火)·采=采矿；点敌攻击、点地移动'
+          : '左键选/双击选同类；A 攻击移动(沿途交战)·P 巡逻·G 切姿态·E 找空闲兵·S 停止'
+      }</li>` +
+      `<li>克制：反坦克兵(火箭兵)打坦克、攻城车溅射轰步兵/建筑、坦克碾步兵——用对兵种</li>` +
+      `<li>点己方建筑可修理/出售/设集结点；摧毁对方全部建筑获胜</li>` +
       `</ul><button id="mv-tip-ok">知道了</button>`;
     this.root.appendChild(tip);
     tip.querySelector('#mv-tip-ok')!.addEventListener('click', () => {
