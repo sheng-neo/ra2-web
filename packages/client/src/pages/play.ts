@@ -124,7 +124,8 @@ export async function renderPlay(root: HTMLElement): Promise<void> {
     await view.init();
     view.onRestart = () => void renderPlay(root);
 
-    const ai = new SimpleAI(AI_ID, difficulty);
+    // 每局给 AI 一个不同的种子 → 随机抽一套打法人格（同图每局不一样）
+    const ai = new SimpleAI(AI_ID, difficulty, (Date.now() ^ (AI_ID * 2654435761)) >>> 0);
     let aiTimer = 0;
     let acc = 0;
     let prev = performance.now();

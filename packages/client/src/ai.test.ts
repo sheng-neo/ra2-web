@@ -34,6 +34,13 @@ describe('AI 对战全流程', () => {
     expect(world.players.get(2)!.everBuilt).toBe(true);
   });
 
+  it('打法人格由种子决定：同种子复现、不同种子可抽到不同人格', () => {
+    const persona = (seed: number): string => new SimpleAI(2, 'normal', seed).personality;
+    expect(persona(7)).toBe(persona(7)); // 同种子 → 同人格（可复现）
+    const set = new Set([persona(0), persona(1), persona(2), persona(3)]);
+    expect(set.size).toBeGreaterThan(1); // 不同种子 → 能抽到不同打法
+  });
+
   it('两次同种子运行结果一致（AI 决策确定性）', () => {
     const run = (): number => {
       const world = createWorldFromConfig(localSkirmishConfig(5000));
