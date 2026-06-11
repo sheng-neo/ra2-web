@@ -20,6 +20,10 @@ primary_region = "sin"  # 新加坡，按你和朋友的位置改（nrt=东京 s
     method = "GET"
     path = "/health"
 
+[[mounts]]
+  source = "ra2_data"
+  destination = "/data"  # 见证者计数持久化（/data/witness.json，跨部署不丢）
+
 [[vm]]
   size = "shared-cpu-1x"
   memory = "256mb"
