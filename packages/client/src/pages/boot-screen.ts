@@ -44,6 +44,13 @@ export async function renderBootScreen(root: HTMLElement): Promise<void> {
   title.anchor.set(0.5);
   world.addChild(title);
 
+  const credit = new Text({
+    text: '傅盛 通过 Fable 5 制作',
+    style: { fill: 0xb8a86a, fontSize: 13, fontWeight: '600' },
+  });
+  credit.anchor.set(0.5);
+  world.addChild(credit);
+
   const playBtn = new Text({
     text: '▶ 单机遭遇战',
     style: { fill: 0x6fe06f, fontSize: 22, fontWeight: '700' },
@@ -84,8 +91,9 @@ export async function renderBootScreen(root: HTMLElement): Promise<void> {
   const layout = (): void => {
     world.x = app.screen.width / 2;
     world.y = app.screen.height / 2 - (GRID * CELL_H) / 4;
-    title.y = (GRID * CELL_H) / 2 + 40;
-    playBtn.y = title.y + 36;
+    title.y = (GRID * CELL_H) / 2 + 36;
+    credit.y = title.y + 24;
+    playBtn.y = credit.y + 32;
     mpBtn.y = playBtn.y + 34;
     subtitle.y = mpBtn.y + 30;
   };
@@ -133,7 +141,10 @@ export async function renderBootScreen(root: HTMLElement): Promise<void> {
     try {
       await downloadFreeArt((p) => {
         const mb = (n: number): string => (n / 1024 / 1024).toFixed(1);
-        prog.textContent = `下载素材 ${p.index + 1}/${p.total}：${p.name} ${mb(p.loaded)}/${p.size ? mb(p.size) : '?'} MB`;
+        // CDN 经常压缩传输，content-length 不可靠（可能小于已读字节），
+        // 仅当合理时才显示总量，否则只报已下载量。
+        const amt = p.size >= p.loaded && p.size > 1 ? `${mb(p.loaded)}/${mb(p.size)} MB` : `${mb(p.loaded)} MB`;
+        prog.textContent = `下载素材 ${p.index + 1}/${p.total}（源：${p.source}）：${p.name} ${amt}`;
       });
       prog.innerHTML = '<span style="color:#6fce6f">✓ 完成！</span> 即将刷新进入真实美术…';
       setTimeout(() => location.reload(), 900);

@@ -12,8 +12,7 @@ const STORE = 'gamefiles';
  *  载具体素（harv/ttnk/4tnk/hvr/art2…）在 Local.mix——少了它车辆全无美术。 */
 export const REQUIRED_MIXES = ['conquer.mix', 'cache.mix', 'temperat.mix', 'isotemp.mix', 'local.mix'];
 
-/** CnCNet 官方 TS 客户端包（EA 免费素材的公开托管）。 */
-const CNCNET_BASE = 'https://raw.githubusercontent.com/CnCNet/cncnet-ts-client-package/master/MIX';
+/** CnCNet 官方 TS 客户端包（EA 免费素材的公开托管）的文件名（区分大小写）。 */
 const CNCNET_NAME: Record<string, string> = {
   'conquer.mix': 'Conquer.mix',
   'cache.mix': 'Cache.mix',
@@ -21,6 +20,20 @@ const CNCNET_NAME: Record<string, string> = {
   'isotemp.mix': 'IsoTemp.mix',
   'local.mix': 'Local.mix',
 };
+
+/** 下载镜像源（按序尝试，先出数据者胜）。国内优先 jsDelivr——它镜像同一
+ *  公开 GitHub 仓库、有中国 CDN 节点、且带 CORS；连不上再退 GitHub raw。
+ *  文件全程经浏览器直连这些公开 CDN，不经过本项目服务器（不分发）。 */
+interface Mirror {
+  name: string;
+  url: (file: string) => string;
+}
+const MIRRORS: Mirror[] = [
+  { name: 'jsDelivr', url: (f) => `https://cdn.jsdelivr.net/gh/CnCNet/cncnet-ts-client-package@master/MIX/${f}` },
+  { name: 'jsDelivr·Fastly', url: (f) => `https://fastly.jsdelivr.net/gh/CnCNet/cncnet-ts-client-package@master/MIX/${f}` },
+  { name: 'jsDelivr·Gcore', url: (f) => `https://gcore.jsdelivr.net/gh/CnCNet/cncnet-ts-client-package@master/MIX/${f}` },
+  { name: 'GitHub', url: (f) => `https://raw.githubusercontent.com/CnCNet/cncnet-ts-client-package/master/MIX/${f}` },
+];
 
 function openDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -79,37 +92,76 @@ export interface DownloadProgress {
   total: number;
   loaded: number;
   size: number;
+  /** 当前命中的镜像名（如 jsDelivr / GitHub / 本机）。 */
+  source: string;
 }
 
-/** 从 CnCNet 下载免费 TS 素材到本机 IndexedDB。 */
+/** 取单个文件：按镜像顺序尝试，10s 内无响应即换下一个；一旦出数据即认定
+ *  该镜像可用，之后慢也不切换（避免误杀慢但能下完的连接）。返回完整字节。 */
+async function fetchMixWithFallback(
+  fileName: string,
+  onChunk: (source: string, loaded: number, size: number) => void,
+): Promise<Uint8Array> {
+  let lastErr: unknown = null;
+  for (const m of MIRRORS) {
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), 10_000);
+    try {
+      const res = await fetch(m.url(fileName), { signal: ctl.signal });
+      if (!res.ok || !res.body) {
+        clearTimeout(timer);
+        lastErr = new Error(`${m.name} HTTP ${res.status}`);
+        continue;
+      }
+      if ((res.headers.get('content-type') ?? '').includes('text/html')) {
+        clearTimeout(timer);
+        lastErr = new Error(`${m.name} 返回 HTML（非素材）`);
+        continue;
+      }
+      const size = Number(res.headers.get('content-length') ?? 0);
+      const reader = res.body.getReader();
+      const chunks: Uint8Array[] = [];
+      let loaded = 0;
+      let gotFirst = false;
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (!gotFirst) {
+          gotFirst = true;
+          clearTimeout(timer); // 已出数据：该镜像可用，慢也不切
+        }
+        chunks.push(value);
+        loaded += value.length;
+        onChunk(m.name, loaded, size);
+      }
+      clearTimeout(timer);
+      const merged = new Uint8Array(loaded);
+      let o = 0;
+      for (const c of chunks) {
+        merged.set(c, o);
+        o += c.length;
+      }
+      return merged;
+    } catch (e) {
+      clearTimeout(timer);
+      lastErr = e; // 换下一个镜像
+    }
+  }
+  throw lastErr ?? new Error('所有镜像均不可用');
+}
+
+/** 从公开镜像下载免费 TS 素材到本机 IndexedDB（国内优先 jsDelivr，失败退 GitHub）。 */
 export async function downloadFreeArt(onProgress?: (p: DownloadProgress) => void): Promise<void> {
   const total = REQUIRED_MIXES.length;
   for (let i = 0; i < REQUIRED_MIXES.length; i++) {
     const key = REQUIRED_MIXES[i]!;
     if (await idbGetFile(key)) {
-      onProgress?.({ name: key, index: i, total, loaded: 1, size: 1 });
+      onProgress?.({ name: key, index: i, total, loaded: 1, size: 1, source: '本机' });
       continue;
     }
-    const url = `${CNCNET_BASE}/${CNCNET_NAME[key]}`;
-    const res = await fetch(url);
-    if (!res.ok || !res.body) throw new Error(`下载 ${key} 失败: HTTP ${res.status}`);
-    const size = Number(res.headers.get('content-length') ?? 0);
-    const reader = res.body.getReader();
-    const chunks: Uint8Array[] = [];
-    let loaded = 0;
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      chunks.push(value);
-      loaded += value.length;
-      onProgress?.({ name: key, index: i, total, loaded, size });
-    }
-    const merged = new Uint8Array(loaded);
-    let o = 0;
-    for (const c of chunks) {
-      merged.set(c, o);
-      o += c.length;
-    }
+    const merged = await fetchMixWithFallback(CNCNET_NAME[key]!, (source, loaded, size) =>
+      onProgress?.({ name: key, index: i, total, loaded, size, source }),
+    );
     await idbPutFile(key, merged);
   }
 }
