@@ -59,6 +59,7 @@ export const MATCH_STYLE = `
 .mv-cameo .prog { position: absolute; inset: 0; background: rgba(0,0,0,.6); display: flex; align-items: center; justify-content: center; font-weight: 700; color: #fff; }
 .mv-cameo .ready { position: absolute; inset: 0; border: 2px solid #6fe06f; box-sizing: border-box; display: flex; align-items: flex-start; justify-content: center; color: #6fe06f; font-size: 10px; }
 .mv-cameo .cancel { position: absolute; top: 2px; right: 2px; width: 22px; height: 22px; border-radius: 50%; background: rgba(180,40,40,.92); color: #fff; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; line-height: 1; box-shadow: 0 0 0 1px #000; }
+.mv-cameo .qcount { position: absolute; top: 2px; left: 2px; min-width: 16px; height: 16px; padding: 0 3px; border-radius: 8px; background: rgba(8,12,16,.85); color: #f0d040; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; line-height: 1; box-shadow: 0 0 0 1px #000; }
 .mv-hint { position: fixed; left: 50%; transform: translateX(-50%); bottom: 10px; z-index: 20; padding: 6px 14px; background: rgba(8,12,16,.8); border-radius: 16px; color: #9aa7b0; font-size: 12px; }
 .mv-banner { position: fixed; inset: 0; z-index: 30; display: flex; flex-direction: column; gap: 12px; align-items: center; justify-content: center; background: rgba(4,6,8,.7); font-size: 44px; font-weight: 800; }
 .mv-banner a { font-size: 16px; color: #6db3e8; }
@@ -99,6 +100,7 @@ interface CameoCell {
   prog: HTMLElement;
   ready: HTMLElement;
   cancel: HTMLElement;
+  count: HTMLElement;
   type: UnitType;
 }
 
@@ -367,6 +369,11 @@ export class MatchView {
         e.stopPropagation();
         cancelHead();
       });
+      // 队列数量角标（×N）：本类型排了几个就显示几个，多点几下一目了然
+      const count = document.createElement('div');
+      count.className = 'qcount';
+      count.style.display = 'none';
+      cell.appendChild(count);
       cell.addEventListener('click', () => this.onCameoClick(type));
       // 右键取消该分类队首（退款）
       cell.addEventListener('contextmenu', (e) => {
@@ -374,7 +381,7 @@ export class MatchView {
         cancelHead();
       });
       this.buildEl.appendChild(cell);
-      this.cameos.push({ el: cell, prog, ready, cancel, type });
+      this.cameos.push({ el: cell, prog, ready, cancel, count, type });
     }
     this.refreshSidebar();
   }
@@ -404,6 +411,10 @@ export class MatchView {
       const isHead = q && q.items[0] === c.type.id;
       // 触控取消角标：本分类有在造/排队/就绪项时显示（手机靠它取消，避免卡死）
       c.cancel.style.display = this.isTouch && q && q.items.length > 0 ? 'flex' : 'none';
+      // 队列数量：本类型一共排了几个（含在造的那个）。≥2 才显示，让"多点几下"看得见排队
+      const queued = q ? q.items.filter((i) => i === c.type.id).length : 0;
+      c.count.style.display = queued >= 2 ? 'flex' : 'none';
+      if (queued >= 2) c.count.textContent = `×${queued}`;
       if (isHead && q.readyToPlace) {
         c.ready.style.display = 'flex';
         c.prog.style.display = 'none';
@@ -412,9 +423,8 @@ export class MatchView {
         c.prog.textContent = `${Math.floor((q.progress / c.type.buildTime) * 100)}%`;
         c.ready.style.display = 'none';
       } else {
-        const count = q ? q.items.filter((i) => i === c.type.id).length : 0;
-        c.prog.style.display = count > 0 ? 'flex' : 'none';
-        if (count > 0) c.prog.textContent = `×${count}`;
+        c.prog.style.display = queued > 0 ? 'flex' : 'none';
+        if (queued > 0) c.prog.textContent = `×${queued}`;
         c.ready.style.display = 'none';
       }
     }

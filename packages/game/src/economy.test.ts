@@ -285,6 +285,33 @@ describe('个体 AI 与采矿指令（本批改进）', () => {
     void gi;
   });
 
+  it('目标优先级：先打有武器的威胁，无视更近的矿车', () => {
+    const w = new World(gridTerrain(30, 30), 41);
+    w.addPlayer(1, 'allied', 0);
+    w.addPlayer(2, 'soviet', 0);
+    const gi = w.spawnUnit(1, 'gi', 5, 5)!;
+    const harv = w.spawnUnit(2, 'harvester', 6, 5)!; // 更近，但无武器
+    const con = w.spawnUnit(2, 'conscript', 6, 6)!; // 稍远，有武器=威胁
+    w.step();
+    expect(gi.targetId).toBe(con.id); // 锁定威胁而非最近的矿车
+    void harv;
+  });
+
+  it('集火：多个兵自发先补残血的那个', () => {
+    const w = new World(gridTerrain(30, 30), 43);
+    w.addPlayer(1, 'allied', 0);
+    w.addPlayer(2, 'soviet', 0);
+    const g1 = w.spawnUnit(1, 'gi', 5, 5)!;
+    const g2 = w.spawnUnit(1, 'gi', 5, 6)!;
+    const a = w.spawnUnit(2, 'conscript', 8, 5)!;
+    const b = w.spawnUnit(2, 'conscript', 8, 7)!;
+    a.hp = 10; // 残血
+    w.step();
+    expect(g1.targetId).toBe(a.id); // 两个兵都集火残血的 a，而非各打各的
+    expect(g2.targetId).toBe(a.id);
+    void b;
+  });
+
   it('采矿指令：把误走的矿车重新派去指定矿点采矿', () => {
     const w = new World(gridTerrain(30, 30), 19);
     w.addPlayer(1, 'allied', 0);

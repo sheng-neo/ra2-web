@@ -800,18 +800,40 @@ export class World {
   // ───────────────────────── 战斗 ─────────────────────────
 
   /** 返回 true 表示正在交火（本 tick 应暂停移动）。 */
-  /** 索敌：返回射程/警戒半径内最近的敌人（非建筑单位用警戒半径主动迎击，
-   *  即便超出武器射程也会上前；敌"建筑"仅在「非攻击移动」时受武器射程约束——
-   *  不自发跑去拆远处建筑，攻击移动/巡逻则一并清理）。 */
+  /** 索敌（带目标优先级，让单位"不傻"）：在射程/警戒半径内按优先级挑目标——
+   *  先打能威胁我的武装单位 > 其它单位 > 建筑；同档优先残血者（自发集火补刀）；
+   *  再近者，再 id 小（确定性）。非建筑单位用警戒半径主动迎击（超射程也上前，
+   *  靠追击带进射程）；敌"建筑"仅在非攻击移动时受武器射程约束——空闲单位不会
+   *  自发跑去拆远处建筑，攻击移动/巡逻则一并清理。 */
   private acquireEnemy(e: Entity, type: UnitType): Entity | null {
     const aggressive = e.attackMove;
     const acquireRange = type.domain === 'building' ? type.weapon!.range : Math.max(type.weapon!.range, GUARD_RANGE);
-    return this.findNearest(e.x, e.y, (o) => {
-      if (o.owner === e.owner || this.players.get(o.owner)?.defeated) return false;
-      const isBuilding = this.rules.units.get(o.typeId)?.domain === 'building';
+    let best: Entity | null = null;
+    let bestRank = 0;
+    let bestHp = 0;
+    let bestD = 0;
+    for (const o of this.entities.values()) {
+      if (o.owner === e.owner || this.players.get(o.owner)?.defeated) continue;
+      const ot = this.rules.units.get(o.typeId);
+      if (!ot) continue;
+      const isBuilding = ot.domain === 'building';
       const range = isBuilding && !aggressive ? type.weapon!.range : acquireRange;
-      return dist(o.x - e.x, o.y - e.y) <= range;
-    });
+      const d = dist(o.x - e.x, o.y - e.y);
+      if (d > range) continue;
+      const rank = isBuilding ? 1 : ot.weapon ? 3 : 2; // 武装单位 > 无武装单位 > 建筑
+      // 同档：残血优先（集火），再近，再 id 小
+      const better =
+        best === null ||
+        rank > bestRank ||
+        (rank === bestRank && (o.hp < bestHp || (o.hp === bestHp && (d < bestD || (d === bestD && o.id < best.id)))));
+      if (better) {
+        best = o;
+        bestRank = rank;
+        bestHp = o.hp;
+        bestD = d;
+      }
+    }
+    return best;
   }
 
   private stepCombat(e: Entity, type: UnitType): boolean {
