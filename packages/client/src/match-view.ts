@@ -151,6 +151,10 @@ export class MatchView {
   private prevKills = new Map<number, number>();
   /** 本局最大兵力（结算展示）。 */
   private peakArmy = 0;
+  /** 战损统计：存活单位 id→owner，每周期对比统计阵亡。 */
+  private aliveUnits = new Map<number, number>();
+  private ownLost = 0;
+  private enemyKilled = 0;
   private lastPointer = { x: -1, y: -1 };
   private overCanvas = false;
   private midDrag: { x: number; y: number } | null = null;
@@ -1278,12 +1282,21 @@ export class MatchView {
         this.prevKills.set(e.id, e.kills);
       }
       if (promoted) audioBus.play('ready');
-      // 记录本局最大兵力（结算展示）
+      // 一次扫描：最大兵力 + 战损（对比上周期存活单位集，消失即阵亡）
+      const cur = new Map<number, number>();
       let army = 0;
       for (const e of this.world.entities.values()) {
-        if (e.owner === this.localPlayerId && this.world.rules.units.get(e.typeId)?.domain !== 'building') army++;
+        if (this.world.rules.units.get(e.typeId)?.domain === 'building') continue;
+        cur.set(e.id, e.owner);
+        if (e.owner === this.localPlayerId) army++;
       }
       if (army > this.peakArmy) this.peakArmy = army;
+      for (const [id, owner] of this.aliveUnits) {
+        if (cur.has(id)) continue;
+        if (owner === this.localPlayerId) this.ownLost++;
+        else this.enemyKilled++;
+      }
+      this.aliveUnits = cur;
     }
     // 建筑建造完成（队列首项变为就绪）→ 提示音
     for (const cat of ['building', 'infantry', 'vehicle'] as const) {
@@ -1309,7 +1322,7 @@ export class MatchView {
       const mmss = `${Math.floor(dur / 60)}:${String(dur % 60).padStart(2, '0')}`;
       banner.innerHTML =
         `<div>${me.defeated && !win ? '战败' : '胜利！'}</div>` +
-        `<div style="font-size:15px;font-weight:400;color:#9aa7b0">用时 ${mmss} · 最大兵力 ${this.peakArmy}</div>` +
+        `<div style="font-size:15px;font-weight:400;color:#9aa7b0">用时 ${mmss} · 最大兵力 ${this.peakArmy} · 歼敌 ${this.enemyKilled} · 损失 ${this.ownLost}</div>` +
         (this.onRestart ? `<a href="#" id="mv-restart">再来一局</a>` : '') +
         `<a href="#">返回首页</a>`;
       this.root.appendChild(banner);
