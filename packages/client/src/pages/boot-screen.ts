@@ -367,16 +367,15 @@ async function showWitness(el: HTMLElement): Promise<void> {
   }
 }
 
-/** 背景音乐：优先用户自备 /bgm.mp3，无该文件则回退程序合成 BGM（始终有乐）。
- *  浏览器禁止自动播放，须首次手势后启动；带 🎵/🔇 开关、记忆静音；离开首页即停。 */
+/** 背景音乐：用户自备 /bgm.mp3；浏览器禁止自动播放，首次手势后启动；带 🎵/🔇 开关、
+ *  记忆静音。无该文件则静默隐藏开关（不放任何音乐）。 */
 function setupBgm(root: HTMLElement): void {
   const bgm = document.createElement('audio');
   bgm.src = '/bgm.mp3';
   bgm.loop = true;
   bgm.volume = 0.5;
+  let ok = true;
   let on = localStorage.getItem('ra2.bgm') !== 'off';
-  let synth = false; // 无 mp3 → 回退程序合成
-  bgm.addEventListener('error', () => (synth = true));
   const toggle = document.createElement('div');
   toggle.title = '背景音乐';
   toggle.style.cssText = 'position:fixed;right:58px;top:13px;z-index:45;cursor:pointer;font-size:18px;user-select:none';
@@ -384,39 +383,25 @@ function setupBgm(root: HTMLElement): void {
     toggle.textContent = on ? '🎵' : '🔇';
     toggle.style.opacity = on ? '0.95' : '0.4';
   };
-  const playOn = (): void => {
-    audioBus.resume();
-    if (synth) {
-      audioBus.startMusic();
-      return;
-    }
-    void bgm.play().catch(() => {
-      synth = true;
-      audioBus.startMusic();
-    });
-  };
-  const playOff = (): void => {
-    bgm.pause();
-    audioBus.stopMusic();
-  };
+  bgm.addEventListener('error', () => {
+    ok = false;
+    toggle.style.display = 'none'; // 没有 bgm.mp3 → 不显示开关、不放音乐
+  });
   toggle.addEventListener('click', () => {
     on = !on;
     localStorage.setItem('ra2.bgm', on ? 'on' : 'off');
     sync();
-    if (on) playOn();
-    else playOff();
+    if (on && ok) void bgm.play().catch(() => undefined);
+    else bgm.pause();
   });
   root.appendChild(bgm);
   root.appendChild(toggle);
   sync();
-  // 首次手势后启动（绕过自动播放限制）
   const start = (): void => {
-    if (on) playOn();
+    if (on && ok) void bgm.play().catch(() => undefined);
     window.removeEventListener('pointerdown', start);
     window.removeEventListener('keydown', start);
   };
   window.addEventListener('pointerdown', start);
   window.addEventListener('keydown', start);
-  // 离开首页即停（mp3 随 DOM 移除自停，程序合成需显式停）
-  window.addEventListener('hashchange', () => audioBus.stopMusic(), { once: true });
 }

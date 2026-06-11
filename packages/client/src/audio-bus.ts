@@ -62,9 +62,6 @@ export class AudioBus {
   private readonly bufCache = new Map<string, AudioBuffer>();
   private realLoaded = false;
   private lastVoiceAt = -1e9;
-  private musicVoices: OscillatorNode[] | null = null;
-  private musicGain: GainNode | null = null;
-  private musicTimer: number | null = null;
 
   /** 载入本机 Sounds.mix 并解码常用音效为真实采样（有则替换合成音）。
    *  无文件/解码失败则静默保持合成音。可在任意时刻调用（不需 ctx）。 */
@@ -271,59 +268,6 @@ export class AudioBus {
     osc.connect(og).connect(this.master);
     osc.start(t0);
     this.track(osc, 0.03);
-  }
-
-  /** 程序合成背景音乐（无 /bgm.mp3 时的兜底）：低沉小调和弦垫，每 5s 换一次。须 ctx 已解锁。 */
-  startMusic(): void {
-    if (!this.ctx || !this.master || this.musicVoices) return;
-    const ctx = this.ctx;
-    const bus = ctx.createGain();
-    bus.gain.value = 0.0001;
-    const lp = ctx.createBiquadFilter();
-    lp.type = 'lowpass';
-    lp.frequency.value = 1100;
-    bus.connect(this.master);
-    lp.connect(bus);
-    const voices: OscillatorNode[] = [];
-    for (let i = 0; i < 3; i++) {
-      const o = ctx.createOscillator();
-      o.type = i === 0 ? 'sine' : 'triangle';
-      o.connect(lp);
-      o.start();
-      voices.push(o);
-    }
-    bus.gain.exponentialRampToValueAtTime(0.42, ctx.currentTime + 2.5);
-    const chords = [
-      [110, 164.81, 220],
-      [98, 146.83, 196],
-      [130.81, 196, 261.63],
-      [87.31, 130.81, 174.61],
-    ];
-    let ci = 0;
-    const apply = (): void => {
-      const c = chords[ci % chords.length]!;
-      voices.forEach((o, i) => o.frequency.setTargetAtTime(c[i % c.length]!, ctx.currentTime, 0.8));
-      ci++;
-    };
-    apply();
-    this.musicTimer = window.setInterval(apply, 5000);
-    this.musicVoices = voices;
-    this.musicGain = bus;
-  }
-
-  /** 停止程序合成 BGM。 */
-  stopMusic(): void {
-    if (this.musicTimer !== null) {
-      clearInterval(this.musicTimer);
-      this.musicTimer = null;
-    }
-    if (this.musicVoices && this.musicGain && this.ctx) {
-      this.musicGain.gain.setTargetAtTime(0.0001, this.ctx.currentTime, 0.4);
-      const v = this.musicVoices;
-      window.setTimeout(() => v.forEach((o) => o.stop()), 1200);
-    }
-    this.musicVoices = null;
-    this.musicGain = null;
   }
 
   /** 由 16bit PCM 建并缓存 AudioBuffer 后播放（按 key 缓存）。 */
