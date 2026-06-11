@@ -6,10 +6,12 @@
  */
 import type { VxlFile, Voxel } from '@ra2web/data';
 
-/** 单个体素的等距尺寸（像素）。 */
-const VS = 2.7;
-/** 体素竖直高度（像素）。 */
-const VZ = 2.7;
+/** 单个体素的等距尺寸（像素）。载具约 30–50 体素长，取 0.85 使其落在
+ *  ~1 格(60px)量级——与真实 SHP 建筑成正确比例（坦克约为基地的 1/3 宽）。
+ *  相邻体素屏幕间距=VS、立方体宽=2·VS，恒 50% 交叠，缩小不留缝。 */
+const VS = 0.85;
+/** 体素竖直高度（像素），与 VS 等比保持模型本身比例。 */
+const VZ = 0.85;
 
 interface Projected {
   voxel: Voxel;
