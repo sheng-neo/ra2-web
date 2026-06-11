@@ -5,8 +5,7 @@
 
 🎮 **在线试玩 → https://peaceful-wave-530.fly.dev**
 
-![license](https://img.shields.io/badge/license-MIT-blue) ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6) ![PWA](https://img.shields.io/badge/PWA-ready-5a0fc8)
-<!-- CI 徽章：建好仓库后替换为 https://github.com/<账号>/<仓库>/actions/workflows/ci.yml/badge.svg -->
+[![CI](https://github.com/sheng-neo/ra2-web/actions/workflows/ci.yml/badge.svg)](https://github.com/sheng-neo/ra2-web/actions/workflows/ci.yml) ![license](https://img.shields.io/badge/license-MIT-blue) ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6) ![PWA](https://img.shields.io/badge/PWA-ready-5a0fc8)
 
 一个**从零手写**的网页 RTS 引擎：自带 C&C 文件格式解析器（MIX/SHP/VXL/TMP/PAL/CSF…）、
 确定性锁步联机内核、PixiJS 等距渲染。
