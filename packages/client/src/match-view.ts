@@ -147,6 +147,8 @@ export class MatchView {
   private lastAttackAlert = 0;
   /** 最近被攻击建筑的位置（小地图红点闪烁定位）。 */
   private attackPing: { x: number; y: number; at: number } | null = null;
+  /** 己方单位老兵等级跟踪（升级时响一声）。 */
+  private prevKills = new Map<number, number>();
   private lastPointer = { x: -1, y: -1 };
   private overCanvas = false;
   private midDrag: { x: number; y: number } | null = null;
@@ -1235,6 +1237,16 @@ export class MatchView {
         audioBus.alarm();
         this.setNetStatus('⚠ 基地受到攻击！', true);
       }
+      // 老兵升级提示音：己方作战单位跨过 2/5 杀阈值（rank 提升）响一声
+      const rankOf = (k: number): number => (k >= 5 ? 2 : k >= 2 ? 1 : 0);
+      let promoted = false;
+      for (const e of this.world.entities.values()) {
+        if (e.owner !== this.localPlayerId || e.kills === 0) continue;
+        const pk = this.prevKills.get(e.id) ?? 0;
+        if (rankOf(e.kills) > rankOf(pk)) promoted = true;
+        this.prevKills.set(e.id, e.kills);
+      }
+      if (promoted) audioBus.play('ready');
     }
     // 建筑建造完成（队列首项变为就绪）→ 提示音
     for (const cat of ['building', 'infantry', 'vehicle'] as const) {
