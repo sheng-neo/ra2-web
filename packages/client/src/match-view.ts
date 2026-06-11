@@ -39,6 +39,32 @@ const STANCE_ORDER: Stance[] = ['guard', 'aggressive', 'holdground', 'holdfire']
 const STANCE_GLYPH: Record<Stance, string> = { guard: '戒', aggressive: '猛', holdground: '守', holdfire: '禁' };
 const STANCE_NAME: Record<Stance, string> = { guard: '警戒', aggressive: '进攻', holdground: '坚守', holdfire: '不还火' };
 
+/** 建造图标悬停提示：单位/建筑的简短角色说明（提升较丰富兵种的可读性）。 */
+const UNIT_HINT: Record<string, string> = {
+  powerplant: '供电',
+  refinery: '采矿经济（含矿车）',
+  barracks: '出步兵',
+  warfactory: '出载具',
+  battlelab: '解锁高级单位',
+  pillbox: '防御·对步兵',
+  tesla: '防御·强力',
+  gi: '步兵·通用',
+  conscript: '步兵·廉价',
+  engineer: '占领/维修',
+  rocketsoldier: '反装甲步兵·克坦克惧步兵',
+  tankbuster: '反装甲步兵·克坦克惧步兵',
+  k9: '军犬·秒步兵、对载具无效',
+  dog: '军犬·秒步兵、对载具无效',
+  harvester: '采矿车·自动采矿',
+  grizzly: '主战坦克·通用',
+  rhino: '主战坦克·通用',
+  flaktrak: '防空履带车',
+  arty: '攻城车·远程溅射、脆',
+  v3: '攻城车·远程溅射、脆',
+  prism: '光棱坦克·远程强拆/克步兵',
+  apocalypse: '天启坦克·重甲猛兽',
+};
+
 export const MATCH_STYLE = `
 .mv-root { position: fixed; inset: 0; overflow: hidden; background: #06090c;
   font: 13px/1.4 system-ui, 'PingFang SC', sans-serif; color: #d8e0e6; touch-action: none; }
@@ -388,6 +414,7 @@ export class MatchView {
     for (const type of all) {
       const cell = document.createElement('div');
       cell.className = 'mv-cameo';
+      cell.title = `${type.name} · $${type.cost}${UNIT_HINT[type.id] ? ' · ' + UNIT_HINT[type.id] : ''}`; // 悬停看角色
       cell.appendChild(makeCameo(type.id, type.name));
       const cost = document.createElement('div');
       cost.className = 'cost';
