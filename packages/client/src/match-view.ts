@@ -25,6 +25,13 @@ const CATEGORY_LABEL: Record<ProdCategory, string> = {
   vehicle: '车辆',
 };
 
+/** 单位语音应答池（事件→泰伯利亚之日步兵语音文件，详见 audio-bus VOICE_FILES）。 */
+const VOICE_POOL: Record<'select' | 'move' | 'attack', string[]> = {
+  select: ['15-i012', '15-i006', '15-i042', '15-i000', '15-i002'],
+  move: ['15-i018', '15-i022', '15-i024', '15-i016'],
+  attack: ['15-i046', '15-i022'],
+};
+
 export const MATCH_STYLE = `
 .mv-root { position: fixed; inset: 0; overflow: hidden; background: #06090c;
   font: 13px/1.4 system-ui, 'PingFang SC', sans-serif; color: #d8e0e6; touch-action: none; }
@@ -104,6 +111,7 @@ export class MatchView {
   private lastPointer = { x: -1, y: -1 };
   private dragStart: { x: number; y: number } | null = null;
   private lastStepAt = 0;
+  private voiceSeq = 0;
   private readonly isTouch = matchMedia('(pointer: coarse)').matches;
   /** 网络状态行文本（联机时由 driver 写）。 */
   netStatus = '';
@@ -591,23 +599,13 @@ export class MatchView {
       }
       return;
     }
-    const rect = this.app.canvas.getBoundingClientRect();
-    // 先看是否点中己方可移动单位 → 选中
-    let best: { id: number; d: number } | null = null;
-    for (const ent of this.world.entities.values()) {
-      if (ent.owner !== this.localPlayerId) continue;
-      const type = this.world.rules.units.get(ent.typeId);
-      if (!type || type.domain === 'building') continue;
-      const sx = this.camera.zoom * this.leptonScreenX(ent) + this.renderer.stage.position.x;
-      const sy = this.camera.zoom * this.leptonScreenY(ent) + this.renderer.stage.position.y;
-      const d = Math.hypot(sx - (clientX - rect.left), sy - (clientY - rect.top));
-      if (d < 30 && (!best || d < best.d)) best = { id: ent.id, d };
-    }
-    if (best) {
+    // 先看是否点中己方可移动单位 → 选中（精灵框，单位优先于身后建筑）
+    const hitUnit = this.unitAtScreen(clientX, clientY);
+    if (hitUnit !== null) {
       this.selected.clear();
-      this.selected.add(best.id);
+      this.selected.add(hitUnit);
       this.selectBuilding(null);
-      audioBus.play('select');
+      this.playUnitVoice('select', hitUnit);
       return;
     }
     // 点中己方建筑 → 选中建筑（出修理/出售条）
@@ -618,16 +616,20 @@ export class MatchView {
       audioBus.play('select');
       return;
     }
-    // 否则：对已有选择下令
+    // 否则：对已有选择下令（敌方单位优先于其身后建筑）
     if (this.selected.size > 0) {
-      const cell = this.screenToCell(clientX, clientY);
-      const enemy = this.entityAtCell(cell.x, cell.y, this.localPlayerId);
       const ids = [...this.selected].sort((a, b) => a - b);
-      if (enemy !== null) this.emit({ kind: 'attack', entityIds: ids, targetId: enemy });
-      else if (cell.x >= 0 && cell.y >= 0 && cell.x < this.mapW && cell.y < this.mapH) {
-        this.emit({ kind: 'move', entityIds: ids, cellX: cell.x, cellY: cell.y });
+      const target = this.targetAt(clientX, clientY);
+      if (target !== null) {
+        this.emit({ kind: 'attack', entityIds: ids, targetId: target });
+        this.playUnitVoice('attack', ids[0]!);
+      } else {
+        const cell = this.screenToCell(clientX, clientY);
+        if (cell.x >= 0 && cell.y >= 0 && cell.x < this.mapW && cell.y < this.mapH) {
+          this.emit({ kind: 'move', entityIds: ids, cellX: cell.x, cellY: cell.y });
+          this.playUnitVoice('move', ids[0]!);
+        }
       }
-      audioBus.play('select');
     }
   }
 
@@ -647,18 +649,11 @@ export class MatchView {
       y: this.camera.zoom * this.leptonScreenY(ent) + this.renderer.stage.position.y,
     });
     if (w < 6 && h < 6) {
-      let best: { id: number; d: number } | null = null;
-      for (const ent of this.world.entities.values()) {
-        if (ent.owner !== this.localPlayerId) continue;
-        const type = this.world.rules.units.get(ent.typeId);
-        if (!type || type.domain === 'building') continue;
-        const s = screenOf(ent);
-        const d = Math.hypot(s.x - (endX - rect.left), s.y - (endY - rect.top));
-        if (d < 26 && (!best || d < best.d)) best = { id: ent.id, d };
-      }
-      if (best) {
-        this.selected.add(best.id);
+      const hit = this.unitAtScreen(endX, endY);
+      if (hit !== null) {
+        this.selected.add(hit);
         this.selectBuilding(null);
+        this.playUnitVoice('select', hit);
       } else {
         // 没点中单位 → 试点中己方建筑
         const cell = this.screenToCell(endX, endY);
@@ -695,29 +690,59 @@ export class MatchView {
       }
     }
     if (this.selected.size === 0) return;
-    const enemy = this.entityAtCell(cell.x, cell.y, this.localPlayerId);
     const ids = [...this.selected].sort((a, b) => a - b);
-    if (enemy !== null) {
-      this.emit({ kind: 'attack', entityIds: ids, targetId: enemy });
+    const target = this.targetAt(e.clientX, e.clientY);
+    if (target !== null) {
+      this.emit({ kind: 'attack', entityIds: ids, targetId: target });
+      this.playUnitVoice('attack', ids[0]!);
     } else if (cell.x >= 0 && cell.y >= 0 && cell.x < this.mapW && cell.y < this.mapH) {
       this.emit({ kind: 'move', entityIds: ids, cellX: cell.x, cellY: cell.y });
+      this.playUnitVoice('move', ids[0]!);
     }
   }
 
-  /** 屏幕坐标 → 命中的己方可移动单位 id（最近，阈值内）。 */
-  private unitAtScreen(clientX: number, clientY: number): number | null {
+  /** 屏幕坐标 → 命中的可移动单位 id。enemy=false 取己方、true 取敌方
+   *  （敌方须在可见格内，受迷雾约束）。用精灵框而非脚底半径——单位精灵
+   *  高、以脚底为锚，只按脚底半径会点不中本体（尤其被建筑遮挡时）；命中
+   *  多个取最前者（屏幕最下方），使单位优先于其身后/上方的目标。 */
+  private unitAtScreen(clientX: number, clientY: number, enemy = false): number | null {
     const rect = this.app.canvas.getBoundingClientRect();
-    let best: { id: number; d: number } | null = null;
+    const px = clientX - rect.left;
+    const py = clientY - rect.top;
+    const z = this.camera.zoom;
+    let best: { id: number; sy: number } | null = null;
     for (const ent of this.world.entities.values()) {
-      if (ent.owner !== this.localPlayerId) continue;
+      if (enemy !== (ent.owner !== this.localPlayerId)) continue;
       const type = this.world.rules.units.get(ent.typeId);
       if (!type || type.domain === 'building') continue;
-      const sx = this.camera.zoom * this.leptonScreenX(ent) + this.renderer.stage.position.x;
-      const sy = this.camera.zoom * this.leptonScreenY(ent) + this.renderer.stage.position.y;
-      const d = Math.hypot(sx - (clientX - rect.left), sy - (clientY - rect.top));
-      if (d < 28 && (!best || d < best.d)) best = { id: ent.id, d };
+      if (enemy && !this.renderer.isCellVisible(ent.cellX, ent.cellY)) continue;
+      const sx = z * this.leptonScreenX(ent) + this.renderer.stage.position.x;
+      const sy = z * this.leptonScreenY(ent) + this.renderer.stage.position.y;
+      const dx = px - sx;
+      const dy = py - sy;
+      // 脚底为原点：本体向上 ~46px、向下 ~12px、左右 ~24px（随缩放）
+      if (dx >= -24 * z && dx <= 24 * z && dy >= -46 * z && dy <= 12 * z && (!best || sy > best.sy)) {
+        best = { id: ent.id, sy };
+      }
     }
     return best ? best.id : null;
+  }
+
+  /** 屏幕坐标命中的攻击目标 id：敌方单位优先（精灵框，受迷雾约束），
+   *  否则敌方建筑（足迹）。修复"单位被建筑遮挡点不中/打不到"。 */
+  private targetAt(clientX: number, clientY: number): number | null {
+    const u = this.unitAtScreen(clientX, clientY, true);
+    if (u !== null) return u;
+    const cell = this.screenToCell(clientX, clientY);
+    return this.entityAtCell(cell.x, cell.y, this.localPlayerId);
+  }
+
+  /** 选中本方单位 / 下令时播放语音应答（真实 TS 步兵语音；无素材回退合成提示音）。
+   *  轮换取用增加变化（音频纯表现层，不入模拟，无需确定性）。 */
+  private playUnitVoice(kind: 'select' | 'move' | 'attack', _unitId: number): void {
+    const pool = VOICE_POOL[kind];
+    const name = pool[this.voiceSeq++ % pool.length]!;
+    if (!audioBus.playVoice(name) && kind === 'select') audioBus.play('select');
   }
 
   /** 单位是否在当前可视区域内（用于双击选同类）。 */

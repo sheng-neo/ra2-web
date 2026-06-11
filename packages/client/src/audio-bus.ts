@@ -21,6 +21,21 @@ const REAL_SFX: Partial<Record<Sfx, string>> = {
   place: 'place2.aud', // 建筑落地
   select: 'clicky1.aud', // 选择点击
 };
+/** 单位语音应答文件（泰伯利亚之日 GDI 步兵语音，名取自 Sound01.ini 注释）。
+ *  15-i012「是，长官」/ i006「长官？」/ i042「请下令？」/ i018「出发」… */
+export const VOICE_FILES = [
+  '15-i000', // Infantry reporting
+  '15-i002', // Unit ready!
+  '15-i006', // Sir?
+  '15-i012', // Yes sir
+  '15-i016', // Orders received
+  '15-i018', // Moving out
+  '15-i022', // On my way
+  '15-i024', // You got it
+  '15-i042', // Orders?
+  '15-i046', // I'm on it
+];
+
 /** 各真实音效的播放增益（样本响度不一，逐类平衡）。 */
 const REAL_GAIN: Partial<Record<Sfx, number>> = {
   fire: 0.5,
@@ -43,8 +58,10 @@ export class AudioBus {
   private activeVoices = 0;
   /** 已解码的真实音效 PCM（无 ctx 也可存）。 */
   private readonly realPcm = new Map<Sfx, { rate: number; samples: Int16Array }>();
-  private readonly bufCache = new Map<Sfx, AudioBuffer>();
+  private readonly voices = new Map<string, { rate: number; samples: Int16Array }>();
+  private readonly bufCache = new Map<string, AudioBuffer>();
   private realLoaded = false;
+  private lastVoiceAt = -1e9;
 
   /** 载入本机 Sounds.mix 并解码常用音效为真实采样（有则替换合成音）。
    *  无文件/解码失败则静默保持合成音。可在任意时刻调用（不需 ctx）。 */
@@ -66,6 +83,16 @@ export class AudioBus {
         if (a.samples.length > 0) this.realPcm.set(sfx, { rate: a.sampleRate, samples: a.samples });
       } catch {
         /* 跳过坏样本，该类回退合成音 */
+      }
+    }
+    for (const name of VOICE_FILES) {
+      try {
+        const file = `${name}.aud`;
+        if (!mix.hasFile(file)) continue;
+        const a = parseAud(await mix.readFile(file));
+        if (a.samples.length > 0) this.voices.set(name, { rate: a.sampleRate, samples: a.samples });
+      } catch {
+        /* 跳过坏样本 */
       }
     }
   }
@@ -158,21 +185,39 @@ export class AudioBus {
     }
   }
 
-  /** 播放真实音效采样（按需建并缓存 AudioBuffer）。 */
+  /** 播放真实音效采样。 */
   private playSample(sfx: Sfx): void {
+    this.playPcmBuffer(`sfx:${sfx}`, this.realPcm.get(sfx)!, REAL_GAIN[sfx] ?? 0.8);
+  }
+
+  /** 选中/下令时播放单位语音应答。无真实语音能力返回 false（调用方回退合成
+   *  提示音）；有能力但静音/节流则视为已处理返回 true。语音不叠音。 */
+  playVoice(name: string): boolean {
+    if (this.voices.size === 0) return false;
+    if (!this.ctx || !this.master || this.muted) return true;
+    const pcm = this.voices.get(name);
+    if (!pcm) return true;
+    const now = performance.now();
+    if (now - this.lastVoiceAt < 650) return true;
+    this.lastVoiceAt = now;
+    this.playPcmBuffer(`voice:${name}`, pcm, 0.95);
+    return true;
+  }
+
+  /** 由 16bit PCM 建并缓存 AudioBuffer 后播放（按 key 缓存）。 */
+  private playPcmBuffer(key: string, pcm: { rate: number; samples: Int16Array }, gain: number): void {
     const ctx = this.ctx!;
-    const pcm = this.realPcm.get(sfx)!;
-    let buf = this.bufCache.get(sfx);
+    let buf = this.bufCache.get(key);
     if (!buf) {
       buf = ctx.createBuffer(1, pcm.samples.length, pcm.rate);
       const ch = buf.getChannelData(0);
       for (let i = 0; i < pcm.samples.length; i++) ch[i] = pcm.samples[i]! / 32768;
-      this.bufCache.set(sfx, buf);
+      this.bufCache.set(key, buf);
     }
     const src = ctx.createBufferSource();
     src.buffer = buf;
     const g = ctx.createGain();
-    g.gain.value = REAL_GAIN[sfx] ?? 0.8;
+    g.gain.value = gain;
     src.connect(g).connect(this.master!);
     src.start();
     this.track(src, buf.duration);

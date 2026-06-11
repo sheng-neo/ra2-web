@@ -122,7 +122,7 @@ export class RealArtProvider {
     return null;
   }
 
-  /** 解码草地块 → 纹理（用等距地形调色板 isotem.pal）。 */
+  /** 解码草地块 + 金矿覆盖物 → 纹理（用等距地形调色板 isotem.pal）。 */
   private async loadTerrain(): Promise<void> {
     let isoPal: Palette;
     try {
@@ -131,30 +131,36 @@ export class RealArtProvider {
       return;
     }
     for (const name of TERRAIN_TILES) {
-      try {
-        const tmp = parseTmp(await this.fs.readFile(name));
-        const block = tmp.blocks.find((b) => b);
-        if (!block || block.pixels.length === 0) continue;
-        const w = tmp.blockWidth;
-        const h = tmp.blockHeight;
-        const canvas = document.createElement('canvas');
-        canvas.width = w;
-        canvas.height = h;
-        const ctx = canvas.getContext('2d')!;
-        const img = ctx.createImageData(w, h);
-        for (let p = 0; p < block.pixels.length; p++) {
-          const idx = block.pixels[p]!;
-          if (idx === 0) continue;
-          img.data[p * 4] = isoPal.rgba[idx * 4]!;
-          img.data[p * 4 + 1] = isoPal.rgba[idx * 4 + 1]!;
-          img.data[p * 4 + 2] = isoPal.rgba[idx * 4 + 2]!;
-          img.data[p * 4 + 3] = 255;
-        }
-        ctx.putImageData(img, 0, 0);
-        this.terrainTiles.push(Texture.from(canvas));
-      } catch {
-        /* 跳过缺失变体 */
+      const tex = await this.decodeIsoTile(name, isoPal);
+      if (tex) this.terrainTiles.push(tex);
+    }
+  }
+
+  /** 解码一个 TMP 等距块（首个非空块）→ 纹理；缺失/空返回 null。 */
+  private async decodeIsoTile(name: string, isoPal: Palette): Promise<Texture | null> {
+    try {
+      const tmp = parseTmp(await this.fs.readFile(name));
+      const block = tmp.blocks.find((b) => b);
+      if (!block || block.pixels.length === 0) return null;
+      const w = tmp.blockWidth;
+      const h = tmp.blockHeight;
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d')!;
+      const img = ctx.createImageData(w, h);
+      for (let p = 0; p < block.pixels.length; p++) {
+        const idx = block.pixels[p]!;
+        if (idx === 0) continue;
+        img.data[p * 4] = isoPal.rgba[idx * 4]!;
+        img.data[p * 4 + 1] = isoPal.rgba[idx * 4 + 1]!;
+        img.data[p * 4 + 2] = isoPal.rgba[idx * 4 + 2]!;
+        img.data[p * 4 + 3] = 255;
       }
+      ctx.putImageData(img, 0, 0);
+      return Texture.from(canvas);
+    } catch {
+      return null;
     }
   }
 

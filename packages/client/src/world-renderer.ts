@@ -209,13 +209,34 @@ export class WorldRenderer {
       for (let cx = 0; cx < width; cx++) {
         const ore = this.world.oreAt(cx, cy);
         if (ore <= 0) continue;
-        const x = cornerX(cx, cy);
-        const y = cornerY(cx, cy);
+        const cxp = cornerX(cx, cy);
+        const cyp = cornerY(cx, cy) + TILE_H / 2; // 格中心
         const intensity = Math.min(1, ore / 500);
-        g.poly([x, y + 3, x + TILE_W / 2 - 3, y + TILE_H / 2, x, y + TILE_H - 3, x - TILE_W / 2 + 3, y + TILE_H / 2]);
-        g.fill({ color: 0xf0c020, alpha: 0.25 + intensity * 0.5 });
+        const count = 3 + Math.round(intensity * 5); // 3..8 颗晶体（矿越多越密）
+        // 以格坐标做确定性散布（每次重绘位置稳定，不闪烁）
+        let s = ((cx * 73856093) ^ (cy * 19349663) ^ 0x9e3779b9) >>> 0;
+        const rnd = (): number => {
+          s = (s * 1103515245 + 12345) & 0x7fffffff;
+          return s / 0x80000000;
+        };
+        for (let i = 0; i < count; i++) {
+          const ox = (rnd() - 0.5) * (TILE_W - 14);
+          const oy = (rnd() - 0.5) * (TILE_H - 8);
+          const r = 2.4 + rnd() * 2.2 + intensity * 1.4;
+          this.drawCrystal(g, cxp + ox, cyp + oy, r);
+        }
       }
     }
+  }
+
+  /** 画一颗金矿晶体：上亮下暗的小菱形 + 高光点（程序绘制，非素材）。 */
+  private drawCrystal(g: Graphics, x: number, y: number, r: number): void {
+    g.poly([x, y - r, x + r * 0.7, y, x, y + r, x - r * 0.7, y]);
+    g.fill({ color: 0x9a6c12 }); // 整体暗金（下半基色）
+    g.poly([x, y - r, x + r * 0.7, y, x - r * 0.7, y]);
+    g.fill({ color: 0xf2cc44 }); // 上半亮金面
+    g.circle(x - r * 0.18, y - r * 0.36, Math.max(0.6, r * 0.2));
+    g.fill({ color: 0xfff1a6 }); // 高光
   }
 
   private sideOf(owner: number): Side {
