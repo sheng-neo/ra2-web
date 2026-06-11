@@ -8,9 +8,9 @@
 const DB_NAME = 'ra2web';
 const STORE = 'gamefiles';
 
-/** 真实美术所需的 TS mix（含 SHP 建筑步兵 / VXL 体素 / TMP 地形 / 调色板）。
- *  载具体素（harv/ttnk/4tnk/hvr/art2…）在 Local.mix——少了它车辆全无美术。 */
-export const REQUIRED_MIXES = ['conquer.mix', 'cache.mix', 'temperat.mix', 'isotemp.mix', 'local.mix'];
+/** 真实素材所需的 TS mix：美术（SHP 建筑步兵 / VXL 体素 / TMP 地形 / 调色板，
+ *  载具体素在 Local.mix）+ 音效（Sounds.mix 的真实 AUD 音效）。 */
+export const REQUIRED_MIXES = ['conquer.mix', 'cache.mix', 'temperat.mix', 'isotemp.mix', 'local.mix', 'sounds.mix'];
 
 /** CnCNet 官方 TS 客户端包（EA 免费素材的公开托管）的文件名（区分大小写）。 */
 const CNCNET_NAME: Record<string, string> = {
@@ -19,6 +19,7 @@ const CNCNET_NAME: Record<string, string> = {
   'temperat.mix': 'Temperat.mix',
   'isotemp.mix': 'IsoTemp.mix',
   'local.mix': 'Local.mix',
+  'sounds.mix': 'Sounds.mix',
 };
 
 /** 下载镜像源（按序尝试，先出数据者胜）。国内优先 jsDelivr——它镜像同一
@@ -71,6 +72,21 @@ export async function idbPutFile(name: string, bytes: Uint8Array): Promise<void>
   // 存 ArrayBuffer 副本（避免存到 view 的底层超大 buffer）
   const copy = bytes.slice().buffer;
   await tx('readwrite', (s) => s.put(copy, name.toLowerCase()));
+}
+
+/** 取游戏 mix 字节：先本机 IndexedDB（下载/导入），后开发期 /game-data；
+ *  公网无 game-data 时 SPA 兜底会返回 index.html（text/html），须排除。 */
+export async function loadGameMix(casedName: string): Promise<Uint8Array | null> {
+  const local = await idbGetFile(casedName);
+  if (local) return local;
+  try {
+    const res = await fetch(`/game-data/${casedName}`);
+    if (!res.ok) return null;
+    if ((res.headers.get('content-type') ?? '').includes('text/html')) return null;
+    return new Uint8Array(await res.arrayBuffer());
+  } catch {
+    return null;
+  }
 }
 
 /** 已导入的素材是否齐全（可渲染真实美术）。 */

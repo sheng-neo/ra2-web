@@ -119,9 +119,9 @@ export async function renderBootScreen(root: HTMLElement): Promise<void> {
   const renderPanel = async (): Promise<void> => {
     const ready = await hasRealArtFiles();
     panel.innerHTML = ready
-      ? '<div><span style="color:#6fce6f">✓ 真实美术已就绪</span> — 进入对战即为真实坦克/建筑/地形（素材存于本机，未上传）</div>' +
+      ? '<div><span style="color:#6fce6f">✓ 真实素材已就绪</span> — 进入对战即为真实坦克/建筑/地形 + 真实音效（素材存于本机，未上传）</div>' +
         '<button id="art-clear" style="margin-top:8px;background:none;border:1px solid #2a3a48;color:#8a97a0;border-radius:5px;padding:4px 10px;cursor:pointer">清除本机素材</button>'
-      : '<div>当前为<b>占位美术</b>。想看真实红警/泰伯利亚之日画面？下载 EA 免费素材（约 20MB，存于本机、不上传）：</div>' +
+      : '<div>当前为<b>占位素材</b>。想要真实红警/泰伯利亚之日的画面与音效？下载 EA 免费素材（约 30MB，存于本机、不上传）：</div>' +
         '<div style="margin-top:8px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap">' +
         '<button id="art-dl" style="background:#2d6fb0;border:none;color:#fff;border-radius:6px;padding:8px 14px;cursor:pointer;font-size:14px">⬇ 下载免费美术素材</button>' +
         '<button id="art-imp" style="background:#1d2730;border:1px solid #2a3a48;color:#c8d2da;border-radius:6px;padding:8px 14px;cursor:pointer">📁 导入本地 .mix</button>' +

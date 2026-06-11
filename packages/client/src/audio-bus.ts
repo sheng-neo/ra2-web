@@ -1,9 +1,38 @@
 /**
- * 程序合成音效（Web Audio）—— 无需游戏文件即可有声音反馈。
- * 真实 audio.bag / EVA 语音就绪后可替换为采样播放，触发接口不变。
- * 自动节流（每类最小间隔 + 全局并发上限），避免大规模交火时爆音。
+ * 音效总线（Web Audio）。默认程序合成（无文件也有声音反馈）；本机有
+ * 泰伯利亚之日免费 Sounds.mix 时，解码其真实 AUD 音效采样替换合成音
+ * （真实 C&C 战斗/建造音），触发接口不变。自动节流（每类最小间隔 +
+ * 全局并发上限），避免大规模交火爆音。
  */
+import { BufferSource, MixFile, parseAud } from '@ra2web/data';
+import { loadGameMix } from './game-files';
+
 export type Sfx = 'fire' | 'cannon' | 'hit' | 'explosion' | 'bigExplosion' | 'build' | 'ready' | 'place' | 'select';
+
+/** 事件 → 泰伯利亚之日 Sounds.mix 真实音效文件（名取自 Sound01.ini）。 */
+const REAL_SFX: Partial<Record<Sfx, string>> = {
+  fire: 'infgun3.aud', // 步兵/轻武器开火
+  cannon: 'bigggun1.aud', // 重型火炮
+  hit: 'expnew14.aud', // 小型爆炸（命中）
+  explosion: 'expnew06.aud', // 中型爆炸
+  bigExplosion: 'expnew01.aud', // 大型建筑爆炸
+  build: 'facbld1.aud', // 建造完成/工厂上线
+  ready: 'notify.aud', // 提示音
+  place: 'place2.aud', // 建筑落地
+  select: 'clicky1.aud', // 选择点击
+};
+/** 各真实音效的播放增益（样本响度不一，逐类平衡）。 */
+const REAL_GAIN: Partial<Record<Sfx, number>> = {
+  fire: 0.5,
+  cannon: 0.7,
+  hit: 0.5,
+  explosion: 0.9,
+  bigExplosion: 1,
+  build: 0.85,
+  ready: 0.9,
+  place: 0.8,
+  select: 0.5,
+};
 
 export class AudioBus {
   private ctx: AudioContext | null = null;
@@ -12,6 +41,34 @@ export class AudioBus {
   private muted = false;
   private readonly lastPlayed = new Map<Sfx, number>();
   private activeVoices = 0;
+  /** 已解码的真实音效 PCM（无 ctx 也可存）。 */
+  private readonly realPcm = new Map<Sfx, { rate: number; samples: Int16Array }>();
+  private readonly bufCache = new Map<Sfx, AudioBuffer>();
+  private realLoaded = false;
+
+  /** 载入本机 Sounds.mix 并解码常用音效为真实采样（有则替换合成音）。
+   *  无文件/解码失败则静默保持合成音。可在任意时刻调用（不需 ctx）。 */
+  async loadRealSounds(): Promise<void> {
+    if (this.realLoaded) return;
+    this.realLoaded = true;
+    const bytes = await loadGameMix('Sounds.mix');
+    if (!bytes) return;
+    let mix: MixFile;
+    try {
+      mix = await MixFile.open(new BufferSource(bytes));
+    } catch {
+      return;
+    }
+    for (const [sfx, file] of Object.entries(REAL_SFX) as [Sfx, string][]) {
+      try {
+        if (!mix.hasFile(file)) continue;
+        const a = parseAud(await mix.readFile(file));
+        if (a.samples.length > 0) this.realPcm.set(sfx, { rate: a.sampleRate, samples: a.samples });
+      } catch {
+        /* 跳过坏样本，该类回退合成音 */
+      }
+    }
+  }
 
   /** 每类最小触发间隔（ms），抑制密集重复。 */
   private static readonly MIN_GAP: Record<Sfx, number> = {
@@ -64,6 +121,10 @@ export class AudioBus {
     if (now - last < gap) return;
     if (this.activeVoices > 24) return;
     this.lastPlayed.set(sfx, now);
+    if (this.realPcm.has(sfx)) {
+      this.playSample(sfx);
+      return;
+    }
     switch (sfx) {
       case 'fire':
         this.blip(720, 0.05, 'square', 0.18);
@@ -95,6 +156,26 @@ export class AudioBus {
         this.blip(900, 0.03, 'triangle', 0.1);
         break;
     }
+  }
+
+  /** 播放真实音效采样（按需建并缓存 AudioBuffer）。 */
+  private playSample(sfx: Sfx): void {
+    const ctx = this.ctx!;
+    const pcm = this.realPcm.get(sfx)!;
+    let buf = this.bufCache.get(sfx);
+    if (!buf) {
+      buf = ctx.createBuffer(1, pcm.samples.length, pcm.rate);
+      const ch = buf.getChannelData(0);
+      for (let i = 0; i < pcm.samples.length; i++) ch[i] = pcm.samples[i]! / 32768;
+      this.bufCache.set(sfx, buf);
+    }
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    const g = ctx.createGain();
+    g.gain.value = REAL_GAIN[sfx] ?? 0.8;
+    src.connect(g).connect(this.master!);
+    src.start();
+    this.track(src, buf.duration);
   }
 
   private t(): number {

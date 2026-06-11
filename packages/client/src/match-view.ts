@@ -162,6 +162,7 @@ export class MatchView {
     }
     this.renderer = new WorldRenderer(this.app, this.world, art, this.localPlayerId, realArt);
     this.renderer.onEvent = (kind) => audioBus.play(kind);
+    void audioBus.loadRealSounds(); // 本机有 Sounds.mix 则用真实 TS 音效（无则合成音）
     this.app.stage.addChild(this.renderer.stage);
     this.ghost = new Graphics();
     this.renderer.stage.addChild(this.ghost);
@@ -188,6 +189,7 @@ export class MatchView {
         view: this,
         selected: this.selected,
         camera: this.camera,
+        audio: audioBus,
       };
     }
   }
