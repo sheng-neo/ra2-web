@@ -80,6 +80,8 @@ export interface Entity {
   // 战斗
   targetId: number | null;
   cooldown: number;
+  /** 累计击杀（老兵等级：≥2 老兵、≥5 精英，伤害递增）。 */
+  kills: number;
   /** 攻击移动：朝目标格行军，沿途逐个停下歼敌再续行。 */
   attackMove: boolean;
   /** 攻击移动/巡逻的最终行军终点（格）。途中迎敌时被临时绕开，敌灭后据此续行/折返。null=无。 */
@@ -359,6 +361,7 @@ export class World {
       goal: null,
       targetId: null,
       cooldown: 0,
+      kills: 0,
       attackMove: false,
       attackDest: null,
       patrol: null,
@@ -970,9 +973,15 @@ export class World {
     }
   }
 
+  /** 老兵伤害倍率（百分比，整数）：新兵 100、老兵(≥2 杀) 125、精英(≥5 杀) 150。 */
+  private vetMul(e: Entity): number {
+    return e.kills >= 5 ? 150 : e.kills >= 2 ? 125 : 100;
+  }
+
   private fire(shooter: Entity, target: Entity, weapon: NonNullable<UnitType['weapon']>): void {
+    const dmg = Math.floor((weapon.damage * this.vetMul(shooter)) / 100); // 老兵加成
     if (weapon.projectileSpeed <= 0) {
-      this.applyDamage(target, weapon.damage, weapon.warhead, weapon.splash, shooter.owner, shooter.id);
+      this.applyDamage(target, dmg, weapon.warhead, weapon.splash, shooter.owner, shooter.id);
     } else {
       this.projectiles.push({
         id: this.nextProjectileId++,
@@ -980,7 +989,7 @@ export class World {
         y: shooter.y,
         targetId: target.id,
         speed: weapon.projectileSpeed,
-        damage: weapon.damage,
+        damage: dmg,
         warheadId: JSON.stringify(weapon.warhead),
         splash: weapon.splash,
         owner: shooter.owner,
@@ -1006,7 +1015,13 @@ export class World {
       const pct = verses[this.armorOf(e)];
       e.hp -= Math.max(1, Math.floor((base * pct) / 100));
     };
+    const before = target.hp;
     deal(target, damage);
+    // 击杀归属：致命一击让攻击者涨经验（升老兵/精英）；溅射误伤不计
+    if (before > 0 && target.hp <= 0 && attackerId >= 0) {
+      const killer = this.entities.get(attackerId);
+      if (killer && killer.owner !== target.owner) killer.kills++;
+    }
     // 反击：空闲的武装单位被打 → 自动还击攻击者（即便对方在远处/警戒范围外）；
     // 不还火姿态不还击
     if (attackerId >= 0 && target.stance !== 'holdfire' && target.targetId === null && !target.goal && !target.attackMove) {

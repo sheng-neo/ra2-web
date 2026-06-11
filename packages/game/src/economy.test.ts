@@ -312,6 +312,35 @@ describe('个体 AI 与采矿指令（本批改进）', () => {
     void b;
   });
 
+  it('老兵：击杀让攻击者涨经验（kills+1）', () => {
+    const w = new World(gridTerrain(40, 40), 71);
+    w.addPlayer(1, 'allied', 0);
+    w.addPlayer(2, 'soviet', 0);
+    const g = w.spawnUnit(1, 'grizzly', 5, 5)!;
+    const c = w.spawnUnit(2, 'conscript', 6, 5)!;
+    for (let i = 0; i < 500 && w.entities.has(c.id); i++) w.step();
+    expect(w.entities.has(c.id)).toBe(false);
+    expect(g.kills).toBe(1);
+  });
+
+  it('老兵：精英(≥5杀)伤害高于新兵', () => {
+    const damageOver = (kills: number): number => {
+      const w = new World(gridTerrain(40, 40), 73);
+      w.addPlayer(1, 'allied', 0);
+      w.addPlayer(2, 'soviet', 0);
+      const s = w.spawnUnit(1, 'grizzly', 5, 5)!;
+      s.kills = kills;
+      s.hp = 100000;
+      s.maxHp = 100000; // 不死，打满窗口
+      const t = w.spawnUnit(2, 'rhino', 6, 5)!;
+      t.hp = 100000;
+      t.maxHp = 100000; // 不死，纯量伤害
+      for (let i = 0; i < 120; i++) w.step();
+      return 100000 - t.hp;
+    };
+    expect(damageOver(5)).toBeGreaterThan(damageOver(0)); // 精英造成更多伤害
+  });
+
   it('编队移动：多个单位散开到不同格，不挤成一坨', () => {
     const w = new World(gridTerrain(40, 40), 61);
     w.addPlayer(1, 'allied', 0);

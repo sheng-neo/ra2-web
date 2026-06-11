@@ -398,6 +398,13 @@ export class WorldRenderer {
         fx.rect(sx - 12, sy - 16, 24, 3).fill(0x000000);
         fx.rect(sx - 12, sy - 16, (24 * e.hp) / e.maxHp, 3).fill(0x40e040);
       }
+      // 老兵等级山形标记：老兵 1 个、精英 2 个（与 world.ts vetMul 阈值一致）
+      const rank = e.kills >= 5 ? 2 : e.kills >= 2 ? 1 : 0;
+      for (let k = 0; k < rank; k++) {
+        const cxr = sx - (rank - 1) * 4 + k * 8;
+        const cyr = sy - 20;
+        fx.poly([cxr - 3, cyr + 3, cxr, cyr, cxr + 3, cyr + 3]).stroke({ color: 0xf0d040, width: 1.5 });
+      }
     }
     for (const p of this.world.projectiles) {
       const sx = leptonToScreenX(p.x, p.y);
