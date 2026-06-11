@@ -85,11 +85,16 @@ export class RealArtProvider {
    *  回退开发期 /game-data。 */
   async tryInit(): Promise<boolean> {
     try {
+      // 核心 4 包（建筑/步兵/地形/调色板）缺一不可。
       for (const m of ['Conquer.mix', 'Cache.mix', 'Temperat.mix', 'IsoTemp.mix']) {
         const bytes = await this.loadMix(m);
         if (!bytes) return ((this.ready = false), false);
         await this.fs.mountBytes(bytes, m);
       }
+      // Local.mix 含全部载具体素（harv/ttnk/4tnk/hvr/art2…）：有则挂，
+      // 无则建筑/地形照常真实、仅车辆回退占位（优雅降级，不拖垮整体）。
+      const localMix = await this.loadMix('Local.mix');
+      if (localMix) await this.fs.mountBytes(localMix, 'Local.mix');
       this.unitPal = Palette.parse(await this.fs.readFile('unittem.pal'));
       await this.loadTerrain();
       this.ready = true;
@@ -176,7 +181,7 @@ export class RealArtProvider {
       const facings: RealSprite[] = [];
       for (let i = 0; i < VEHICLE_FACINGS; i++) {
         const bangle = Math.round((i * 256) / VEHICLE_FACINGS);
-        const { canvas, anchorX, anchorY } = bakeVoxelFacing(vxl, bangle, remap);
+        const { canvas, anchorX, anchorY } = bakeVoxelFacing(vxl, bangle, remap, this.unitPal?.rgba);
         facings.push({ tex: Texture.from(canvas), anchorX, anchorY });
       }
       this.vehicles.set(key, facings);

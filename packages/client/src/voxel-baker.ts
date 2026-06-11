@@ -25,12 +25,16 @@ const REMAP_HI = 31;
 /**
  * 烘焙一个朝向。bangle 为 0–255 二进制角（0=朝右/东，逆时针）。
  * remapRgb 给定时，把调色板 16–31（玩家变色区）替换为该色的明暗梯度。
+ * unitPal（RGBA stride-4 的战区单位调色板，如 unittem.pal）给定时用它取色，
+ * 否则回退 VXL 内嵌调色板——TS/RA2 实际用战区调色板渲染体素，内嵌的常是
+ * 非标准副本（如 harv.vxl 把车体索引指到亮绿），不覆盖就会五颜六色。
  * 返回 canvas，及锚点（单位中心在 canvas 内的像素坐标）。
  */
 export function bakeVoxelFacing(
   vxl: VxlFile,
   bangle: number,
   remapRgb?: readonly [number, number, number],
+  unitPal?: Uint8Array,
 ): { canvas: HTMLCanvasElement; anchorX: number; anchorY: number } {
   const rad = (bangle / 256) * Math.PI * 2;
   const cos = Math.cos(rad);
@@ -77,7 +81,7 @@ export function bakeVoxelFacing(
   // 远→近
   projected.sort((a, b) => a.depth - b.depth);
 
-  const pal = vxl.palette;
+  const pal = unitPal ?? vxl.palette;
   for (const p of projected) {
     const c = p.voxel.color;
     let r: number;

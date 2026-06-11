@@ -8,8 +8,9 @@
 const DB_NAME = 'ra2web';
 const STORE = 'gamefiles';
 
-/** 真实美术所需的 TS mix（含 SHP 建筑步兵 / VXL 体素 / TMP 地形 / 调色板）。 */
-export const REQUIRED_MIXES = ['conquer.mix', 'cache.mix', 'temperat.mix', 'isotemp.mix'];
+/** 真实美术所需的 TS mix（含 SHP 建筑步兵 / VXL 体素 / TMP 地形 / 调色板）。
+ *  载具体素（harv/ttnk/4tnk/hvr/art2…）在 Local.mix——少了它车辆全无美术。 */
+export const REQUIRED_MIXES = ['conquer.mix', 'cache.mix', 'temperat.mix', 'isotemp.mix', 'local.mix'];
 
 /** CnCNet 官方 TS 客户端包（EA 免费素材的公开托管）。 */
 const CNCNET_BASE = 'https://raw.githubusercontent.com/CnCNet/cncnet-ts-client-package/master/MIX';
@@ -18,6 +19,7 @@ const CNCNET_NAME: Record<string, string> = {
   'cache.mix': 'Cache.mix',
   'temperat.mix': 'Temperat.mix',
   'isotemp.mix': 'IsoTemp.mix',
+  'local.mix': 'Local.mix',
 };
 
 function openDb(): Promise<IDBDatabase> {
