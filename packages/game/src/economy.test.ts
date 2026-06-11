@@ -312,6 +312,18 @@ describe('个体 AI 与采矿指令（本批改进）', () => {
     void b;
   });
 
+  it('科技：作战实验室解锁高级单位（光棱坦克）', () => {
+    const w = baseWorld();
+    withConyard(w);
+    w.spawnUnit(1, 'powerplant', 10, 10);
+    w.spawnUnit(1, 'barracks', 14, 10);
+    w.spawnUnit(1, 'refinery', 18, 10);
+    w.spawnUnit(1, 'warfactory', 22, 10);
+    expect(w.buildOptions(1).map((u) => u.id)).not.toContain('prism'); // 无实验室不可造
+    w.spawnUnit(1, 'battlelab', 26, 10);
+    expect(w.buildOptions(1).map((u) => u.id)).toContain('prism'); // 有实验室解锁
+  });
+
   it('军犬：撕咬秒步兵、对坦克几乎无效', () => {
     // vs 步兵：很快咬死
     const w1 = new World(gridTerrain(20, 20), 91);

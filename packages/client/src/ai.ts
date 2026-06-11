@@ -250,6 +250,8 @@ export class SimpleAI {
     if (player.powerDrained > player.powerProduced - 20 && has('powerplant')) return 'powerplant';
     for (const id of BUILD_ORDER) if (!has(id)) return id;
     if (this.countBuildings(world, 'refinery') < this.p.refineries) return 'refinery';
+    // 注：AI 暂不自建作战实验室/高级单位——实测会拖慢节奏致某些人格对阵僵持；
+    // 高级单位作为玩家科技奖励先开放，AI 用法待平衡调好再开（见 prism/apocalypse）。
     if (this.countBuildings(world, 'tesla') + this.countBuildings(world, 'pillbox') < this.defenses) {
       return player.powerProduced > player.powerDrained + 150 ? 'tesla' : 'pillbox';
     }
