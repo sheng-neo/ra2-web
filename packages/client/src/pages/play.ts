@@ -126,6 +126,9 @@ export async function renderPlay(root: HTMLElement): Promise<void> {
 
     // 每局给 AI 一个不同的种子 → 随机抽一套打法人格（同图每局不一样）
     const ai = new SimpleAI(AI_ID, difficulty, (Date.now() ^ (AI_ID * 2654435761)) >>> 0);
+    // 敌情简报：开局揭示对手打法人格 + 难度（让 AI 显得有性格）
+    const diffName = { easy: '简单', normal: '普通', hard: '困难' }[difficulty];
+    view.flashIntel(`⚠ 敌军指挥官：${ai.personaName} · ${diffName}`);
     let aiTimer = 0;
     let acc = 0;
     let prev = performance.now();

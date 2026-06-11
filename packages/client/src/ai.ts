@@ -78,9 +78,14 @@ export class SimpleAI {
     this.baseWave = Math.max(2, this.p.waveSize + this.d.waveBias);
   }
 
-  /** 调试/展示用：当前人格。 */
+  /** 调试/展示用：当前人格（英文键）。 */
   get personality(): string {
     return this.persona;
+  }
+
+  /** 敌情简报用：人格中文名。 */
+  get personaName(): string {
+    return { tank: '重装集群', rusher: '速攻流', turtle: '龟缩反推', economy: '暴矿滚雪球' }[this.persona];
   }
 
   /** 每 15 tick（≈1s）调用一次，返回要应用的命令。 */

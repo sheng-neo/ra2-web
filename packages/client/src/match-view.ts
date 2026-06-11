@@ -91,6 +91,10 @@ export const MATCH_STYLE = `
 .mv-tip h3 { margin: 0 0 8px; font-size: 15px; color: #6db3e8; }
 .mv-tip ul { margin: 0; padding-left: 18px; line-height: 1.7; font-size: 13px; }
 .mv-tip button { margin-top: 12px; width: 100%; padding: 8px; border: none; border-radius: 6px; background: #2d6fb0; color: #fff; cursor: pointer; }
+.mv-intel { position: fixed; left: 50%; top: 68px; transform: translateX(-50%); z-index: 26; padding: 8px 18px;
+  background: rgba(14,20,26,.95); border: 1px solid #b04848; border-radius: 8px; color: #e8c4c4; font-size: 14px;
+  pointer-events: none; opacity: 0; transition: opacity .4s; white-space: nowrap; }
+.mv-intel.show { opacity: 1; }
 @media (max-width: 760px) {
   .mv-side { top: auto; bottom: 0; left: 0; width: 100%; height: 132px; flex-direction: row; border-left: none; border-top: 1px solid #243039; }
   .mv-mini { display: none; }
@@ -1134,6 +1138,19 @@ export class MatchView {
       }
       tip.remove();
     });
+  }
+
+  /** 顶部短暂展示一条「敌情简报」横幅（4.5s 后淡出）。供 play.ts 揭示 AI 打法人格。 */
+  flashIntel(text: string): void {
+    const el = document.createElement('div');
+    el.className = 'mv-intel';
+    el.textContent = text;
+    this.root.appendChild(el);
+    requestAnimationFrame(() => el.classList.add('show'));
+    setTimeout(() => {
+      el.classList.remove('show');
+      setTimeout(() => el.remove(), 500);
+    }, 4500);
   }
 
   private renderBuildingBar(): void {
