@@ -324,6 +324,38 @@ describe('个体 AI 与采矿指令（本批改进）', () => {
     expect(w.buildOptions(1).map((u) => u.id)).toContain('prism'); // 有实验室解锁
   });
 
+  it('高级单位角色守护：光棱强拆建筑、天启耐揍', () => {
+    // 光棱坦克 vs 建筑(concrete)：伤害高于灰熊（concrete 120 vs 50）
+    const dmgVsBuilding = (vehId: string): number => {
+      const w = new World(gridTerrain(24, 24), 101);
+      w.addPlayer(1, 'allied', 0);
+      w.addPlayer(2, 'soviet', 0);
+      const v = w.spawnUnit(1, vehId, 5, 5)!;
+      v.hp = 100000;
+      v.maxHp = 100000;
+      const b = w.spawnUnit(2, 'warfactory', 8, 5)!; // concrete 装甲建筑
+      b.hp = 100000;
+      b.maxHp = 100000;
+      for (let i = 0; i < 150; i++) w.step();
+      return 100000 - b.hp;
+    };
+    expect(dmgVsBuilding('prism')).toBeGreaterThan(dmgVsBuilding('grizzly'));
+
+    // 天启坦克 vs 同等火力：比灰熊存活血量更高（800 vs 300）
+    const hpUnderFire = (vehId: string): number => {
+      const w = new World(gridTerrain(20, 20), 103);
+      w.addPlayer(1, 'allied', 0);
+      w.addPlayer(2, 'soviet', 0);
+      const target = w.spawnUnit(1, vehId, 5, 5)!;
+      const shooter = w.spawnUnit(2, 'rhino', 6, 5)!;
+      shooter.hp = 100000;
+      shooter.maxHp = 100000;
+      for (let i = 0; i < 60; i++) w.step();
+      return target.hp;
+    };
+    expect(hpUnderFire('apocalypse')).toBeGreaterThan(hpUnderFire('grizzly'));
+  });
+
   it('军犬：撕咬秒步兵、对坦克几乎无效', () => {
     // vs 步兵：很快咬死
     const w1 = new World(gridTerrain(20, 20), 91);
