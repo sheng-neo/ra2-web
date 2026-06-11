@@ -1427,5 +1427,24 @@ export class MatchView {
         this.attackPing = null;
       }
     }
+    // 当前视野框：屏幕四角投影到小地图，画出可视区域轮廓（导航参考）
+    const rect = this.app.canvas.getBoundingClientRect();
+    const corners = [
+      this.screenToCell(rect.left, rect.top),
+      this.screenToCell(rect.right, rect.top),
+      this.screenToCell(rect.right, rect.bottom),
+      this.screenToCell(rect.left, rect.bottom),
+    ];
+    ctx.strokeStyle = 'rgba(220,230,240,.5)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    corners.forEach((c, i) => {
+      const mx = (c.x - c.y + this.mapH) * sx;
+      const my = (c.x + c.y) * sy;
+      if (i === 0) ctx.moveTo(mx, my);
+      else ctx.lineTo(mx, my);
+    });
+    ctx.closePath();
+    ctx.stroke();
   }
 }
