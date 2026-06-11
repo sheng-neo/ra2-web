@@ -34,6 +34,27 @@ describe('AI 对战全流程', () => {
     expect(world.players.get(2)!.everBuilt).toBe(true);
   });
 
+  it('各打法人格都能在预算内分出胜负（无僵局）', () => {
+    // 不同种子 → player1 抽到不同人格，逐一对阵，验证都能收敛（防某人格组合拉锯）
+    for (const s of [0, 1, 2, 3]) {
+      const world = createWorldFromConfig(localSkirmishConfig(5000));
+      const a = new SimpleAI(1, 'hard', s);
+      const b = new SimpleAI(2, 'hard', 0);
+      let winner = 0;
+      for (let t = 0; t < 24000 && winner === 0; t++) {
+        if (t % 15 === 0) {
+          world.applyCommands(a.emit(world));
+          world.applyCommands(b.emit(world));
+        }
+        world.step();
+        const p1 = world.players.get(1)!;
+        const p2 = world.players.get(2)!;
+        if (p1.defeated || p2.defeated) winner = p1.defeated ? 2 : 1;
+      }
+      expect(winner, `人格 ${a.personality} vs ${b.personality}(seed=${s}) 应分胜负`).toBeGreaterThan(0);
+    }
+  });
+
   it('打法人格由种子决定：同种子复现、不同种子可抽到不同人格', () => {
     const persona = (seed: number): string => new SimpleAI(2, 'normal', seed).personality;
     expect(persona(7)).toBe(persona(7)); // 同种子 → 同人格（可复现）
