@@ -136,6 +136,9 @@ export class MatchView {
   private over = false;
   /** 上一帧各分类队列是否就绪（用于「建造完成」提示音的边沿检测）。 */
   private prevReady: Record<string, boolean> = {};
+  /** 「基地受攻击」告警：记录己方建筑血量，掉血即报警（节流）。 */
+  private bldHp = new Map<number, number>();
+  private lastAttackAlert = 0;
   private lastPointer = { x: -1, y: -1 };
   private overCanvas = false;
   private midDrag: { x: number; y: number } | null = null;
@@ -1137,6 +1140,20 @@ export class MatchView {
       if (this.selectedBuilding !== null) {
         if (this.world.entities.has(this.selectedBuilding)) this.renderBuildingBar();
         else this.selectBuilding(null);
+      }
+      // 「基地受攻击」告警：己方建筑掉血即报警（6s 节流，避免连环刷屏）
+      let attacked = false;
+      for (const e of this.world.entities.values()) {
+        if (e.owner !== this.localPlayerId || !this.world.rules.units.get(e.typeId)?.building) continue;
+        const prev = this.bldHp.get(e.id);
+        if (prev !== undefined && e.hp < prev) attacked = true;
+        this.bldHp.set(e.id, e.hp);
+      }
+      const now = performance.now();
+      if (attacked && now - this.lastAttackAlert > 6000) {
+        this.lastAttackAlert = now;
+        audioBus.alarm();
+        this.setNetStatus('⚠ 基地受到攻击！', true);
       }
     }
     // 建筑建造完成（队列首项变为就绪）→ 提示音
