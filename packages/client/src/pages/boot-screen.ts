@@ -164,7 +164,7 @@ export async function renderBootScreen(root: HTMLElement): Promise<void> {
           <div class="cmd mp" data-go="#mp"><span class="ic">🌐</span><span>联机对战</span></div>
         </div>
         <div class="links">
-          <a data-go="#assets">资源浏览器</a> · <a data-go="#map">地图查看器</a> · <a data-go="#sim">模拟沙盒</a>
+          <a id="replay" style="color:#ffd98a">↻ 重看开场</a> · <a data-go="#assets">资源浏览器</a> · <a data-go="#map">地图查看器</a> · <a data-go="#sim">模拟沙盒</a>
         </div>
         <div class="witness" id="witness"></div>
         <div id="art-panel"></div>
@@ -244,36 +244,56 @@ export async function renderBootScreen(root: HTMLElement): Promise<void> {
 
   await renderPanel();
 
-  // —— 开机序列编排（首访放全程，回访快进）——
-  const timers: number[] = [];
+  // —— 开机序列编排（首访放全程；回访直达菜单；可随时"重看开场"）——
+  const term = boot.querySelector<HTMLElement>('#term')!;
+  const saga = boot.querySelector<HTMLElement>('#saga')!;
+  const alertEl = boot.querySelector<HTMLElement>('#alert')!;
+  let timers: number[] = [];
+  const clearTimers = (): void => {
+    timers.forEach(clearTimeout);
+    timers = [];
+  };
   const at = (ms: number, fn: () => void): void => void timers.push(window.setTimeout(fn, ms));
   let done = false;
-  const alertEl = boot.querySelector<HTMLElement>('#alert')!;
   const reveal = (): void => {
     if (done) return;
     done = true;
-    timers.forEach(clearTimeout);
+    clearTimers();
     ceremony.style.display = 'none';
     alertEl.classList.remove('show');
-    setTimeout(() => (alertEl.style.display = 'none'), 460);
+    at(460, () => (alertEl.style.display = 'none'));
     skip.style.display = 'none';
     menu.classList.add('in');
   };
+  /** 从头播一遍开场（首访自动、或点"重看开场"）。 */
+  const startIntro = (): void => {
+    clearTimers();
+    done = false;
+    term.innerHTML = '';
+    saga.innerHTML = '';
+    menu.classList.remove('in');
+    ceremony.style.display = '';
+    alertEl.style.display = '';
+    alertEl.classList.remove('show');
+    skip.style.display = '';
+    runIntro(boot, at, reveal);
+  };
   skip.addEventListener('click', reveal);
   const onKey = (e: KeyboardEvent): void => {
-    if (e.key === 'Enter' || e.key === 'Escape' || e.key === ' ') reveal();
+    if (!done && (e.key === 'Enter' || e.key === 'Escape' || e.key === ' ')) reveal();
   };
   window.addEventListener('keydown', onKey);
+  boot.querySelector('#replay')?.addEventListener('click', startIntro);
 
-  const seen = localStorage.getItem('ra2.witnessed') === '1';
-  if (seen) {
-    // 回访：直接进菜单（仍保留一次极短揭幕）
+  if (localStorage.getItem('ra2.witnessed') === '1') {
+    // 回访：直达菜单（顶部"重看开场"可重播）
     ceremony.style.display = 'none';
-    at(120, () => menu.classList.add('in'));
+    alertEl.style.display = 'none';
     skip.style.display = 'none';
+    menu.classList.add('in');
   } else {
     localStorage.setItem('ra2.witnessed', '1');
-    runIntro(boot, at, reveal);
+    startIntro();
   }
 }
 
