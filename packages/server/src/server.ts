@@ -3,6 +3,7 @@ import { WebSocketServer, type WebSocket } from 'ws';
 import { decodeMessage, encodeMessage, PROTOCOL_VERSION, type ClientMessage } from '@ra2web/game';
 import { Room } from './room';
 import { serveStatic } from './static';
+import { claimWitness, totalWitnesses } from './witness';
 
 export { PROTOCOL_VERSION };
 
@@ -28,6 +29,13 @@ export function createGameServer(port = 0, opts: ServerOptions = {}): Promise<Ga
     if (req.url === '/health') {
       res.setHeader('Content-Type', 'application/json');
       res.end(JSON.stringify({ ok: true, protocol: PROTOCOL_VERSION, rooms: rooms.size }));
+      return;
+    }
+    if (req.url === '/api/witness') {
+      res.setHeader('Content-Type', 'application/json');
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      const n = req.method === 'POST' ? claimWitness() : totalWitnesses();
+      res.end(JSON.stringify({ n, total: totalWitnesses() }));
       return;
     }
     if (opts.staticDir && serveStatic(opts.staticDir, req, res)) return;

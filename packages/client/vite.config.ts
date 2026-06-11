@@ -55,8 +55,23 @@ function gameDataPlugin(): Plugin {
   };
 }
 
+/** 开发期模拟 /api/witness（见证者计数），内存计数，便于本地验证 UI。 */
+function witnessMockPlugin(): Plugin {
+  let count = 0;
+  return {
+    name: 'ra2web:witness-mock',
+    configureServer(server) {
+      server.middlewares.use('/api/witness', (req, res) => {
+        if (req.method === 'POST') count += 1;
+        res.setHeader('Content-Type', 'application/json');
+        res.end(JSON.stringify({ n: count, total: count }));
+      });
+    },
+  };
+}
+
 export default defineConfig({
-  plugins: [gameDataPlugin()],
+  plugins: [gameDataPlugin(), witnessMockPlugin()],
   build: {
     target: 'es2022',
   },
