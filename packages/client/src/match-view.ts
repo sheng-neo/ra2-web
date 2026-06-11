@@ -116,6 +116,9 @@ export class MatchView {
   private renderer!: WorldRenderer;
   private camera!: Camera;
   private ghost!: Graphics;
+  private pingG!: Graphics;
+  /** 指令反馈光标（纯客户端表现，不入模拟）：下令时在目标格闪一下收缩环。 */
+  private pings: { x: number; y: number; kind: 'move' | 'attack'; born: number }[] = [];
   private readonly selected = new Set<number>();
   private selectedBuilding: number | null = null;
   private readonly controlGroups = new Map<number, number[]>();
@@ -206,6 +209,8 @@ export class MatchView {
     this.app.stage.addChild(this.renderer.stage);
     this.ghost = new Graphics();
     this.renderer.stage.addChild(this.ghost);
+    this.pingG = new Graphics();
+    this.renderer.stage.addChild(this.pingG);
 
     this.camera = new Camera(this.app, this.renderer.stage);
     this.camera.attach(this.app.canvas, [1]);
@@ -443,6 +448,45 @@ export class MatchView {
 
   private emit(cmd: Command): void {
     this.localCommands.push(cmd);
+    // 指令反馈光标（纯客户端表现）：所有下令都经此函数，集中在此打一个目标格闪标
+    if (cmd.kind === 'move' || cmd.kind === 'harvest') this.addPing(cmd.cellX, cmd.cellY, 'move');
+    else if (cmd.kind === 'attackMove' || cmd.kind === 'patrol') this.addPing(cmd.cellX, cmd.cellY, 'attack');
+    else if (cmd.kind === 'setRally') this.addPing(cmd.cellX, cmd.cellY, 'move');
+    else if (cmd.kind === 'attack') {
+      const t = this.world.entities.get(cmd.targetId);
+      if (t) this.addPing(t.cellX, t.cellY, 'attack');
+    }
+  }
+
+  /** 在目标格记录一次指令反馈闪标（越界忽略；限量防溢出）。 */
+  private addPing(cellX: number, cellY: number, kind: 'move' | 'attack'): void {
+    if (cellX < 0 || cellY < 0 || cellX >= this.mapW || cellY >= this.mapH) return;
+    this.pings.push({ x: cellX, y: cellY, kind, born: performance.now() });
+    if (this.pings.length > 24) this.pings.shift();
+  }
+
+  /** 画指令反馈：目标格上一个 ~500ms 收缩淡出的环（移动绿/攻击红）。纯表现，不入模拟。 */
+  private drawPings(): void {
+    this.pingG.clear();
+    if (this.pings.length === 0) return;
+    const now = performance.now();
+    const LIFE = 520;
+    for (let i = this.pings.length - 1; i >= 0; i--) {
+      const p = this.pings[i]!;
+      const age = now - p.born;
+      if (age >= LIFE) {
+        this.pings.splice(i, 1);
+        continue;
+      }
+      const t = age / LIFE; // 0→1
+      const c = this.renderer.cellTopScreen(p.x, p.y);
+      const cy = c.y + TILE_H / 2; // 落到格中心
+      const radius = 26 - 18 * t; // 收缩
+      const alpha = 0.9 * (1 - t);
+      const color = p.kind === 'attack' ? 0xe05454 : 0x54e066;
+      this.pingG.circle(c.x, cy, radius).stroke({ color, width: 2, alpha });
+    }
+    this.pingG.zIndex = 99998;
   }
 
   /** 驱动方每个本地 tick 取走本地命令（单机直接 apply / 联机送服务器）。 */
@@ -1122,6 +1166,7 @@ export class MatchView {
     this.updateUnitBar();
     this.renderer.render(alpha, this.selected);
     this.drawGhost();
+    this.drawPings();
   }
 
   /** 触控：选中己方单位时显示下方操作条（移/攻/进/采/停），高亮待执行命令；
