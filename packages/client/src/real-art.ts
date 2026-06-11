@@ -12,6 +12,7 @@ import type { Side } from '@ra2web/game';
 import { ResourceFS } from './vfs';
 import { bakeVoxelFacing } from './voxel-baker';
 import { PLAYER_COLORS } from './placeholder-art';
+import { idbGetFile } from './game-files';
 
 /** 用作铺地的 TS 温带清地块（草地），多个变体增加变化。 */
 const TERRAIN_TILES = ['clear01.tem', 'clat01.tem', 'clat02.tem', 'clat03.tem', 'clat04.tem'];
@@ -79,11 +80,15 @@ export class RealArtProvider {
 
   constructor(private readonly app: Application) {}
 
-  /** 尝试挂载 TS mix + 调色板；成功才标记可用。 */
+  /** 尝试挂载 TS mix + 调色板；成功才标记可用。
+   *  优先本机 IndexedDB（下载/导入的素材，手机/公网通用），
+   *  回退开发期 /game-data。 */
   async tryInit(): Promise<boolean> {
     try {
       for (const m of ['Conquer.mix', 'Cache.mix', 'Temperat.mix', 'IsoTemp.mix']) {
-        await this.fs.mountUrl(`/game-data/${m}`, m);
+        const bytes = await this.loadMix(m);
+        if (!bytes) return ((this.ready = false), false);
+        await this.fs.mountBytes(bytes, m);
       }
       this.unitPal = Palette.parse(await this.fs.readFile('unittem.pal'));
       await this.loadTerrain();
@@ -93,6 +98,19 @@ export class RealArtProvider {
       this.ready = false;
       return false;
     }
+  }
+
+  /** 取 mix 字节：先本机 IndexedDB，后开发期 /game-data。 */
+  private async loadMix(name: string): Promise<Uint8Array | null> {
+    const local = await idbGetFile(name);
+    if (local) return local;
+    try {
+      const res = await fetch(`/game-data/${name}`);
+      if (res.ok) return new Uint8Array(await res.arrayBuffer());
+    } catch {
+      /* 公网无 game-data，属正常 */
+    }
+    return null;
   }
 
   /** 解码草地块 → 纹理（用等距地形调色板 isotem.pal）。 */

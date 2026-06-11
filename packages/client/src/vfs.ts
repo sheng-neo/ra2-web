@@ -2,7 +2,7 @@
  * 资源虚拟文件系统：按挂载顺序在多个 MIX 中级联查找（仿原版搜索顺序，
  * 先挂载者优先，便于补丁/扩展 mix 覆盖）。
  */
-import { MixFile, UrlSource, mixIdRA2, type MixEntry } from '@ra2web/data';
+import { BufferSource, MixFile, UrlSource, mixIdRA2, type MixEntry } from '@ra2web/data';
 
 export interface MountedMix {
   /** 展示用路径，如 "ra2.mix/local.mix"。 */
@@ -15,6 +15,13 @@ export class ResourceFS {
 
   async mountUrl(url: string, path: string): Promise<MixFile> {
     const mix = await MixFile.open(await UrlSource.open(url));
+    this.mounts.push({ path, mix });
+    return mix;
+  }
+
+  /** 从内存字节挂载（本机导入/下载的 mix）。 */
+  async mountBytes(bytes: Uint8Array, path: string): Promise<MixFile> {
+    const mix = await MixFile.open(new BufferSource(bytes));
     this.mounts.push({ path, mix });
     return mix;
   }

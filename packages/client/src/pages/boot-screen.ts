@@ -1,7 +1,7 @@
 import { Application, Container, Graphics, Text } from 'pixi.js';
-import { SIM_TICKS_PER_SECOND } from '@ra2web/game';
+import { clearGameFiles, downloadFreeArt, hasRealArtFiles, importMixFiles } from '../game-files';
 
-/** 启动画面：验证渲染管线 + 引导到资源浏览器。 */
+/** 启动画面：模式入口 + 真实美术素材的下载/导入。 */
 export async function renderBootScreen(root: HTMLElement): Promise<void> {
   document.title = '网页版红色警戒2';
   const statusBar = document.getElementById('status-bar')!;
@@ -92,16 +92,65 @@ export async function renderBootScreen(root: HTMLElement): Promise<void> {
   layout();
   app.renderer.on('resize', layout);
 
-  try {
-    const res = await fetch('/game-data/ra2.mix', { method: 'HEAD' });
-    if (res.ok) {
-      const size = Number(res.headers.get('content-length') ?? 0);
-      statusBar.innerHTML = `<span class="ok">✓ 游戏文件已就绪</span>（ra2.mix ${(size / 1024 / 1024).toFixed(1)} MB）· 模拟频率 ${SIM_TICKS_PER_SECOND} Hz · <a href="#assets" style="color:#6db3e8">打开资源浏览器</a>`;
-    } else {
-      statusBar.innerHTML =
-        '<span class="warn">⚠ 未找到游戏文件</span> · 请按 game-data/README.md 准备红警2文件后运行 pnpm check-assets';
+  // —— 真实美术素材面板（下载免费素材 / 导入本地 .mix） ——
+  const panel = document.createElement('div');
+  panel.id = 'art-panel';
+  panel.style.cssText =
+    'position:fixed;left:50%;bottom:46px;transform:translateX(-50%);z-index:20;width:min(520px,92vw);' +
+    'background:rgba(14,20,26,.92);border:1px solid #243039;border-radius:10px;padding:12px 14px;' +
+    "color:#c8d2da;font:13px/1.5 system-ui,'PingFang SC',sans-serif;text-align:center";
+  root.appendChild(panel);
+
+  const fileInput = document.createElement('input');
+  fileInput.type = 'file';
+  fileInput.accept = '.mix';
+  fileInput.multiple = true;
+  fileInput.style.display = 'none';
+  panel.appendChild(fileInput);
+
+  const renderPanel = async (): Promise<void> => {
+    const ready = await hasRealArtFiles();
+    panel.innerHTML = ready
+      ? '<div><span style="color:#6fce6f">✓ 真实美术已就绪</span> — 进入对战即为真实坦克/建筑/地形（素材存于本机，未上传）</div>' +
+        '<button id="art-clear" style="margin-top:8px;background:none;border:1px solid #2a3a48;color:#8a97a0;border-radius:5px;padding:4px 10px;cursor:pointer">清除本机素材</button>'
+      : '<div>当前为<b>占位美术</b>。想看真实红警/泰伯利亚之日画面？下载 EA 免费素材（约 20MB，存于本机、不上传）：</div>' +
+        '<div style="margin-top:8px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap">' +
+        '<button id="art-dl" style="background:#2d6fb0;border:none;color:#fff;border-radius:6px;padding:8px 14px;cursor:pointer;font-size:14px">⬇ 下载免费美术素材</button>' +
+        '<button id="art-imp" style="background:#1d2730;border:1px solid #2a3a48;color:#c8d2da;border-radius:6px;padding:8px 14px;cursor:pointer">📁 导入本地 .mix</button>' +
+        '</div>';
+    panel.appendChild(fileInput);
+    panel.querySelector('#art-dl')?.addEventListener('click', () => void doDownload());
+    panel.querySelector('#art-imp')?.addEventListener('click', () => fileInput.click());
+    panel.querySelector('#art-clear')?.addEventListener('click', async () => {
+      await clearGameFiles();
+      await renderPanel();
+    });
+  };
+
+  const doDownload = async (): Promise<void> => {
+    panel.innerHTML = '<div id="art-prog">准备下载…</div>';
+    const prog = panel.querySelector('#art-prog') as HTMLElement;
+    try {
+      await downloadFreeArt((p) => {
+        const mb = (n: number): string => (n / 1024 / 1024).toFixed(1);
+        prog.textContent = `下载素材 ${p.index + 1}/${p.total}：${p.name} ${mb(p.loaded)}/${p.size ? mb(p.size) : '?'} MB`;
+      });
+      prog.innerHTML = '<span style="color:#6fce6f">✓ 完成！</span> 即将刷新进入真实美术…';
+      setTimeout(() => location.reload(), 900);
+    } catch (e) {
+      prog.innerHTML = `<span style="color:#e05050">下载失败：${String(e)}</span>`;
+      setTimeout(() => void renderPanel(), 2500);
     }
-  } catch {
-    statusBar.innerHTML = '<span class="warn">⚠ 无法访问 /game-data</span>（生产模式下属正常）';
-  }
+  };
+
+  fileInput.addEventListener('change', async () => {
+    if (!fileInput.files?.length) return;
+    panel.innerHTML = '<div>导入中…</div>';
+    const n = await importMixFiles(fileInput.files);
+    panel.innerHTML = `<div><span style="color:#6fce6f">✓ 已导入 ${n} 个文件</span>，刷新中…</div>`;
+    setTimeout(() => location.reload(), 800);
+  });
+
+  await renderPanel();
+  statusBar.style.display = 'none';
 }
