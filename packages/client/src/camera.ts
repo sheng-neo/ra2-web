@@ -11,6 +11,8 @@ export class Camera {
   zoom = 1;
   minZoom = 0.2;
   maxZoom = 3;
+  /** 爆炸震屏幅度（像素，纯表现，会逐帧衰减）。 */
+  private shakeAmp = 0;
 
   constructor(
     private readonly app: Application,
@@ -20,7 +22,22 @@ export class Camera {
   apply(): void {
     const { width, height } = this.app.screen;
     this.world.scale.set(this.zoom);
-    this.world.position.set(width / 2 - this.x * this.zoom, height / 2 - this.y * this.zoom);
+    // 震屏抖动（仅在 position 上叠加，不改 x/y，故不累积漂移）
+    const jx = this.shakeAmp > 0 ? (Math.random() * 2 - 1) * this.shakeAmp : 0;
+    const jy = this.shakeAmp > 0 ? (Math.random() * 2 - 1) * this.shakeAmp : 0;
+    this.world.position.set(width / 2 - this.x * this.zoom + jx, height / 2 - this.y * this.zoom + jy);
+  }
+
+  /** 触发震屏（爆炸时调用）；幅度有上限，避免大乱战里抖到反胃。 */
+  addShake(amp: number): void {
+    this.shakeAmp = Math.min(12, this.shakeAmp + amp);
+  }
+
+  /** 每帧衰减震屏；返回 true 表示本帧仍需 apply（抖动或归零落定）。 */
+  tickShake(): boolean {
+    if (this.shakeAmp <= 0) return false;
+    this.shakeAmp = Math.max(0, this.shakeAmp - 0.8);
+    return true;
   }
 
   screenToWorld(sx: number, sy: number): { x: number; y: number } {

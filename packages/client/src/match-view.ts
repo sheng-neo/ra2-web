@@ -212,7 +212,12 @@ export class MatchView {
       realArt = null;
     }
     this.renderer = new WorldRenderer(this.app, this.world, art, this.localPlayerId, realArt);
-    this.renderer.onEvent = (kind) => audioBus.play(kind);
+    this.renderer.onEvent = (kind) => {
+      audioBus.play(kind);
+      // 爆炸震屏（战斗感）：大爆炸更猛，幅度有上限+逐帧衰减（见 Camera）
+      if (kind === 'bigExplosion') this.camera.addShake(6);
+      else if (kind === 'explosion') this.camera.addShake(1.5);
+    };
     void audioBus.loadRealSounds(); // 本机有 Sounds.mix 则用真实 TS 音效（无则合成音）
     this.app.stage.addChild(this.renderer.stage);
     this.ghost = new Graphics();
@@ -1249,6 +1254,7 @@ export class MatchView {
   render(): void {
     const alpha = Math.min(1, (performance.now() - this.lastStepAt) / (1000 / 15));
     this.edgeScroll();
+    if (this.camera.tickShake()) this.camera.apply(); // 震屏衰减（爆炸战斗感）
     this.updateUnitBar();
     this.renderer.render(alpha, this.selected);
     this.drawGhost();
