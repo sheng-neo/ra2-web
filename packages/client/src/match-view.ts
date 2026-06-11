@@ -109,6 +109,9 @@ export class MatchView {
   /** 上一帧各分类队列是否就绪（用于「建造完成」提示音的边沿检测）。 */
   private prevReady: Record<string, boolean> = {};
   private lastPointer = { x: -1, y: -1 };
+  private overCanvas = false;
+  private midDrag: { x: number; y: number } | null = null;
+  private readonly panKeys = new Set<string>();
   private dragStart: { x: number; y: number } | null = null;
   private lastStepAt = 0;
   private voiceSeq = 0;
@@ -221,7 +224,7 @@ export class MatchView {
        <div class="mv-hint">${
          matchMedia('(pointer: coarse)').matches
            ? '点选单位/建筑 · 拖动框选 · 单指点地移动/攻击 · 双指平移缩放'
-           : '左键选/框选 · 双击选同类 · 右键移动或攻击 · A 攻击移动 · S 停止 · Ctrl+数字编队 · 中键拖动 · 滚轮缩放'
+           : '左键选/框选 · 双击选同类 · 右键移动或攻击 · A 攻击移动 · S 停止 · Ctrl+数字编队 · 中键/方向键平移 · 滚轮缩放'
        }</div>
        <div class="mv-bldbar" id="mv-bldbar"></div>
        <div id="mv-selbox"></div>`,
@@ -390,10 +393,20 @@ export class MatchView {
   private bindInput(): void {
     const canvas = this.app.canvas;
     canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+    canvas.addEventListener('pointerleave', () => {
+      this.overCanvas = false; // 光标离开画布（移到侧栏/HUD/窗外）即停边缘滚屏
+      this.midDrag = null;
+    });
     canvas.addEventListener('pointermove', (e) => {
       if (e.pointerType === 'touch') return;
       this.lastPointer.x = e.clientX;
       this.lastPointer.y = e.clientY;
+      this.overCanvas = true;
+      if (this.midDrag) {
+        // 中键拖动平移地图
+        this.camera.panByScreen(e.clientX - this.midDrag.x, e.clientY - this.midDrag.y);
+        this.midDrag = { x: e.clientX, y: e.clientY };
+      }
       if (this.dragStart) {
         const x0 = Math.min(this.dragStart.x, e.clientX);
         const y0 = Math.min(this.dragStart.y, e.clientY);
@@ -405,7 +418,13 @@ export class MatchView {
       }
     });
     canvas.addEventListener('pointerdown', (e) => {
-      if (e.pointerType === 'touch' || e.button !== 0) return;
+      if (e.pointerType === 'touch') return;
+      if (e.button === 1) {
+        e.preventDefault();
+        this.midDrag = { x: e.clientX, y: e.clientY };
+        return;
+      }
+      if (e.button !== 0) return;
       if (this.placingType) {
         const cell = this.screenToCell(e.clientX, e.clientY);
         if (this.world.canPlace(this.localPlayerId, this.placingType, cell.x, cell.y)) {
@@ -428,6 +447,10 @@ export class MatchView {
     });
     canvas.addEventListener('pointerup', (e) => {
       if (e.pointerType === 'touch') return;
+      if (e.button === 1) {
+        this.midDrag = null;
+        return;
+      }
       if (e.button === 0 && this.dragStart) {
         this.finishSelection(e);
       }
@@ -457,6 +480,11 @@ export class MatchView {
   private bindKeyboard(): void {
     window.addEventListener('keydown', (e) => {
       if (e.target instanceof HTMLInputElement) return;
+      if (e.key.startsWith('Arrow')) {
+        this.panKeys.add(e.key);
+        e.preventDefault();
+        return;
+      }
       if (e.key === 'Escape') {
         this.placingType = null;
         this.attackMoveArmed = false;
@@ -487,6 +515,8 @@ export class MatchView {
         e.preventDefault();
       }
     });
+    window.addEventListener('keyup', (e) => this.panKeys.delete(e.key));
+    window.addEventListener('blur', () => this.panKeys.clear());
   }
 
   /**
@@ -903,21 +933,42 @@ export class MatchView {
     this.drawGhost();
   }
 
-  /** 桌面：光标贴边平移相机（经典 RTS 手感；触控不启用）。 */
+  /** 桌面平移：方向键 + 光标贴边滚屏（仅画布内、非放置/拖动态；右缘留给侧栏）。 */
   private edgeScroll(): void {
-    if (this.isTouch) return;
-    const EDGE = 22;
-    const SPD = 11;
-    const x = this.lastPointer.x;
-    const y = this.lastPointer.y;
-    const rightLimit = window.innerWidth - 168; // 让开右侧边栏
-    let dx = 0;
-    let dy = 0;
-    if (x >= 0 && x < EDGE) dx = -SPD;
-    else if (x > rightLimit - EDGE && x < rightLimit) dx = SPD;
-    if (y >= 0 && y < EDGE) dy = -SPD;
-    else if (y > window.innerHeight - EDGE && y <= window.innerHeight) dy = SPD;
-    if (dx !== 0 || dy !== 0) this.camera.panByScreen(-dx, -dy);
+    // 方向键平移（随时可用）
+    const K = 13;
+    let kx = 0;
+    let ky = 0;
+    if (this.panKeys.has('ArrowLeft')) kx += K;
+    if (this.panKeys.has('ArrowRight')) kx -= K;
+    if (this.panKeys.has('ArrowUp')) ky += K;
+    if (this.panKeys.has('ArrowDown')) ky -= K;
+    if (kx || ky) this.camera.panByScreen(kx, ky);
+
+    // 贴边滚屏：仅光标在画布内、未放置建筑、未中键拖动时（避免移向侧栏/建造时乱跑）
+    if (!this.isTouch && this.overCanvas && !this.placingType && !this.midDrag) {
+      const EDGE = 14;
+      const SPD = 7;
+      const x = this.lastPointer.x;
+      const y = this.lastPointer.y;
+      let dx = 0;
+      let dy = 0;
+      if (x >= 0 && x < EDGE) dx = -SPD; // 左缘
+      if (y >= 0 && y < EDGE) dy = -SPD; // 上缘
+      else if (y > window.innerHeight - EDGE && y <= window.innerHeight) dy = SPD; // 下缘
+      // 右缘是建造栏，不滚屏
+      if (dx || dy) this.camera.panByScreen(-dx, -dy);
+    }
+    this.clampCamera();
+  }
+
+  /** 把相机中心限制在地图范围内（留余量），避免移出地图找不到基地。 */
+  private clampCamera(): void {
+    const halfW = TILE_W / 2;
+    const halfH = TILE_H / 2;
+    const m = 80;
+    this.camera.x = Math.max(-this.mapH * halfW - m, Math.min(this.mapW * halfW + m, this.camera.x));
+    this.camera.y = Math.max(-m, Math.min((this.mapW + this.mapH) * halfH + m, this.camera.y));
   }
 
   private drawGhost(): void {
