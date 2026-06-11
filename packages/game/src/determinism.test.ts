@@ -38,6 +38,28 @@ describe('确定性（锁步命脉）', () => {
     expect(a.samples.length).toBe(60);
   });
 
+  it('新命令(攻击移动/巡逻/姿态/采矿)两次运行哈希一致（锁步/回放安全）', () => {
+    const build = (): World => {
+      const w = newWorld();
+      for (let y = 10; y < 13; y++) for (let x = 10; x < 13; x++) w.setOre(x, y, 500);
+      return w;
+    };
+    const script: ScriptedCommand[] = [
+      { tick: 0, command: { kind: 'spawn', owner: 1, typeId: 'grizzly', cellX: 2, cellY: 2 } },
+      { tick: 0, command: { kind: 'spawn', owner: 1, typeId: 'harvester', cellX: 4, cellY: 2 } },
+      { tick: 0, command: { kind: 'spawn', owner: 2, typeId: 'conscript', cellX: 14, cellY: 14 } },
+      { tick: 2, command: { kind: 'stance', entityIds: [1], stance: 'aggressive' } },
+      { tick: 4, command: { kind: 'attackMove', entityIds: [1], cellX: 20, cellY: 20 } },
+      { tick: 6, command: { kind: 'harvest', entityIds: [2], cellX: 11, cellY: 11 } },
+      { tick: 60, command: { kind: 'patrol', entityIds: [1], cellX: 4, cellY: 22 } },
+      { tick: 120, command: { kind: 'stance', entityIds: [1], stance: 'holdground' } },
+    ];
+    const a = runScript(build(), script, 400, 10);
+    const b = runScript(build(), script, 400, 10);
+    expect(a.finalHash).toBe(b.finalHash);
+    expect(a.samples).toEqual(b.samples);
+  });
+
   it('不同种子 → 哈希不同', () => {
     const wa = new World(gridTerrain(28, 28), 1);
     wa.addPlayer(1, 'allied', 5000);
