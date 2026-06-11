@@ -14,6 +14,7 @@ import {
 } from '@ra2web/game';
 import { Camera } from './camera';
 import { audioBus } from './audio-bus';
+import { bgm } from './bgm';
 import { cornerX, cornerY, screenToLepton, TILE_H, TILE_W } from './iso';
 import { buildArt, makeCameo } from './placeholder-art';
 import { RealArtProvider } from './real-art';
@@ -149,6 +150,7 @@ export class MatchView {
   ) {}
 
   async init(): Promise<void> {
+    bgm.stop(); // 正式对战开始：停掉首页/设置阶段的背景音乐
     await this.app.init({
       resizeTo: window,
       background: '#06090c',

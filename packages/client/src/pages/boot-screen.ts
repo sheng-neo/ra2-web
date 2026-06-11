@@ -1,6 +1,7 @@
 import { Application, Container, Graphics } from 'pixi.js';
 import { clearGameFiles, downloadFreeArt, hasRealArtFiles, importMixFiles } from '../game-files';
 import { audioBus } from '../audio-bus';
+import { bgm } from '../bgm';
 
 /**
  * 启动画面 —— 仪式感版。
@@ -367,38 +368,26 @@ async function showWitness(el: HTMLElement): Promise<void> {
   }
 }
 
-/** 背景音乐：用户自备 /bgm.mp3；浏览器禁止自动播放，首次手势后启动；带 🎵/🔇 开关、
- *  记忆静音。无该文件则静默隐藏开关（不放任何音乐）。 */
+/** 首页背景音乐开关：用全局 bgm 单例（跨页面存活，一路放到正式对战才停）。
+ *  浏览器禁自动播放，首次手势后启动；无 /bgm.mp3 则隐藏开关。 */
 function setupBgm(root: HTMLElement): void {
-  const bgm = document.createElement('audio');
-  bgm.src = '/bgm.mp3';
-  bgm.loop = true;
-  bgm.volume = 0.5;
-  let ok = true;
-  let on = localStorage.getItem('ra2.bgm') !== 'off';
   const toggle = document.createElement('div');
   toggle.title = '背景音乐';
   toggle.style.cssText = 'position:fixed;right:58px;top:13px;z-index:45;cursor:pointer;font-size:18px;user-select:none';
   const sync = (): void => {
-    toggle.textContent = on ? '🎵' : '🔇';
-    toggle.style.opacity = on ? '0.95' : '0.4';
+    toggle.textContent = bgm.isOn ? '🎵' : '🔇';
+    toggle.style.opacity = bgm.isOn ? '0.95' : '0.4';
   };
-  bgm.addEventListener('error', () => {
-    ok = false;
-    toggle.style.display = 'none'; // 没有 bgm.mp3 → 不显示开关、不放音乐
-  });
+  bgm.onUnavailable(() => (toggle.style.display = 'none'));
   toggle.addEventListener('click', () => {
-    on = !on;
-    localStorage.setItem('ra2.bgm', on ? 'on' : 'off');
+    audioBus.resume();
+    bgm.setOn(!bgm.isOn);
     sync();
-    if (on && ok) void bgm.play().catch(() => undefined);
-    else bgm.pause();
   });
-  root.appendChild(bgm);
   root.appendChild(toggle);
   sync();
   const start = (): void => {
-    if (on && ok) void bgm.play().catch(() => undefined);
+    bgm.play();
     window.removeEventListener('pointerdown', start);
     window.removeEventListener('keydown', start);
   };
