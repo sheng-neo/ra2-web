@@ -17,6 +17,10 @@ const MIME: Record<string, string> = {
   '.jpg': 'image/jpeg',
   '.wasm': 'application/wasm',
   '.woff2': 'font/woff2',
+  '.mp3': 'audio/mpeg',
+  '.ogg': 'audio/ogg',
+  '.wav': 'audio/wav',
+  '.m4a': 'audio/mp4',
 };
 
 /**
