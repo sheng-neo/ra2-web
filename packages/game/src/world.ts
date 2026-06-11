@@ -78,6 +78,8 @@ export interface Entity {
   cooldown: number;
   /** 攻击移动：朝目标格行军，沿途自动交战。 */
   attackMove: boolean;
+  /** 巡逻：到达当前目的地后折返的另一端点（格），null=不巡逻。沿途自动交战。 */
+  patrol: { x: number; y: number } | null;
   // 采矿
   harvester: HarvesterState | null;
   // 建筑：集结点（格，-1=无）+ 是否在修理
@@ -96,6 +98,7 @@ export interface Projectile {
   warheadId: string;
   splash: number;
   owner: number;
+  shooterId: number;
 }
 
 export type Command =
@@ -105,7 +108,9 @@ export type Command =
   | { kind: 'place'; owner: number; typeId: string; cellX: number; cellY: number }
   | { kind: 'move'; entityIds: number[]; cellX: number; cellY: number }
   | { kind: 'attackMove'; entityIds: number[]; cellX: number; cellY: number }
+  | { kind: 'patrol'; entityIds: number[]; cellX: number; cellY: number }
   | { kind: 'attack'; entityIds: number[]; targetId: number }
+  | { kind: 'harvest'; entityIds: number[]; cellX: number; cellY: number }
   | { kind: 'setRally'; owner: number; buildingId: number; cellX: number; cellY: number }
   | { kind: 'sell'; owner: number; entityId: number }
   | { kind: 'repair'; owner: number; entityId: number }
@@ -122,6 +127,8 @@ const HARVEST_CAPACITY = 700;
 const HARVEST_TICKS = 2;
 /** 建造半径（格）：新建筑须距己方某建筑足迹不超过此距离。 */
 const BUILD_RADIUS = 6;
+/** 单位「警戒」半径（lepton）：空闲单位会主动迎击此范围内的敌人（即便超出武器射程也会上前）。 */
+const GUARD_RANGE = 6 * 256;
 /** 修理：每隔多少 tick 回一次血。 */
 const REPAIR_INTERVAL = 5;
 /** 修理花费相对造价比例（修满约花造价的此比例）。 */
@@ -202,6 +209,9 @@ export class World {
               this.orderMove(e, cmd.cellX, cmd.cellY);
               e.targetId = null;
               e.attackMove = false;
+              e.patrol = null;
+              // 矿车手动移动后回到自动采矿状态：先去目的地，到了再自找最近矿（见 stepHarvester seek）
+              if (e.harvester) e.harvester.mode = 'seek';
             }
           }
           break;
@@ -212,13 +222,46 @@ export class World {
               this.orderMove(e, cmd.cellX, cmd.cellY);
               e.targetId = null;
               e.attackMove = true;
+              e.patrol = null;
             }
+          }
+          break;
+        case 'patrol':
+          for (const eid of [...cmd.entityIds].sort((a, b) => a - b)) {
+            const e = this.entities.get(eid);
+            // 巡逻：以当前格为一端、目标格为另一端往返；途中按攻击移动逻辑自动交战。
+            // 无武器单位（如矿车）不巡逻。
+            if (!e || !this.rules.units.get(e.typeId)?.weapon) continue;
+            e.patrol = { x: e.cellX, y: e.cellY };
+            this.orderMove(e, cmd.cellX, cmd.cellY);
+            e.targetId = null;
+            e.attackMove = true;
           }
           break;
         case 'attack':
           for (const eid of [...cmd.entityIds].sort((a, b) => a - b)) {
             const e = this.entities.get(eid);
-            if (e) e.targetId = cmd.targetId;
+            if (e) {
+              e.targetId = cmd.targetId;
+              e.patrol = null;
+            }
+          }
+          break;
+        case 'harvest':
+          for (const eid of [...cmd.entityIds].sort((a, b) => a - b)) {
+            const e = this.entities.get(eid);
+            if (!e || !e.harvester) continue;
+            e.targetId = null;
+            e.attackMove = false;
+            if (this.oreAt(cmd.cellX, cmd.cellY) > 0) {
+              this.orderMove(e, cmd.cellX, cmd.cellY); // 去指定矿点开采
+              e.harvester.mode = 'toOre';
+            } else {
+              e.path = [];
+              e.waypoint = null;
+              e.goal = null;
+              e.harvester.mode = 'seek'; // 恢复自动采矿：自找最近矿田
+            }
           }
           break;
         case 'setRally': {
@@ -248,6 +291,7 @@ export class World {
               e.goal = null;
               e.targetId = null;
               e.attackMove = false;
+              e.patrol = null;
             }
           }
           break;
@@ -284,6 +328,7 @@ export class World {
       targetId: null,
       cooldown: 0,
       attackMove: false,
+      patrol: null,
       rallyX: -1,
       rallyY: -1,
       repairing: false,
@@ -610,6 +655,14 @@ export class World {
     if (!e.waypoint) {
       const next = e.path.pop();
       if (!next) {
+        if (e.patrol) {
+          // 巡逻到达一端：折返另一端（刚到的点成为新的折返点），保持攻击移动
+          const back = e.patrol;
+          e.patrol = { x: e.cellX, y: e.cellY };
+          this.orderMove(e, back.x, back.y);
+          e.attackMove = true;
+          return;
+        }
         e.goal = null;
         e.attackMove = false; // 抵达目的地，攻击移动结束
         return;
@@ -681,6 +734,7 @@ export class World {
     const h = e.harvester!;
     switch (h.mode) {
       case 'seek': {
+        if (e.goal || e.waypoint) break; // 有手动目的地：先去，到了（goal 清空）再自找最近矿
         const ore = this.findNearestOreCell(e.x, e.y);
         if (ore) {
           this.orderMove(e, ore.x, ore.y);
@@ -747,13 +801,20 @@ export class World {
     if (!type.weapon) return false;
     if (e.cooldown > 0) e.cooldown--;
 
-    // 空闲或攻击移动时自动索敌（普通 move 行军途中不索敌）
+    // 空闲或攻击移动时自动索敌（普通 move 行军途中不索敌）。
+    // 非建筑单位用「警戒半径」索敌——附近有敌就主动上前（即便超出武器射程，
+    // 由下方追击逻辑把它带进射程）；建筑只在武器射程内索敌（不能移动）。
     let target = e.targetId !== null ? this.entities.get(e.targetId) : undefined;
     const canAcquire = !e.goal || e.attackMove;
     if ((!target || target.owner === e.owner) && canAcquire) {
+      const acquireRange = type.domain === 'building' ? type.weapon.range : Math.max(type.weapon.range, GUARD_RANGE);
       const enemy = this.findNearest(e.x, e.y, (o) => {
         if (o.owner === e.owner || this.players.get(o.owner)?.defeated) return false;
-        return dist(o.x - e.x, o.y - e.y) <= type.weapon!.range;
+        // 空闲单位主动迎击警戒范围内的敌"单位"；敌"建筑"只在武器射程内才打
+        // （不自发跑去拆远处建筑，攻击移动除外）
+        const isBuilding = this.rules.units.get(o.typeId)?.domain === 'building';
+        const range = isBuilding && !e.attackMove ? type.weapon!.range : acquireRange;
+        return dist(o.x - e.x, o.y - e.y) <= range;
       });
       target = enemy ?? undefined;
       e.targetId = enemy ? enemy.id : null;
@@ -797,7 +858,7 @@ export class World {
 
   private fire(shooter: Entity, target: Entity, weapon: NonNullable<UnitType['weapon']>): void {
     if (weapon.projectileSpeed <= 0) {
-      this.applyDamage(target, weapon.damage, weapon.warhead, weapon.splash, shooter.owner);
+      this.applyDamage(target, weapon.damage, weapon.warhead, weapon.splash, shooter.owner, shooter.id);
     } else {
       this.projectiles.push({
         id: this.nextProjectileId++,
@@ -809,6 +870,7 @@ export class World {
         warheadId: JSON.stringify(weapon.warhead),
         splash: weapon.splash,
         owner: shooter.owner,
+        shooterId: shooter.id,
       });
     }
   }
@@ -823,6 +885,7 @@ export class World {
     warhead: NonNullable<UnitType['weapon']>['warhead'],
     splash: number,
     owner: number,
+    attackerId = -1,
   ): void {
     const verses = this.rules.resolveVerses(warhead);
     const deal = (e: Entity, base: number): void => {
@@ -830,6 +893,11 @@ export class World {
       e.hp -= Math.max(1, Math.floor((base * pct) / 100));
     };
     deal(target, damage);
+    // 反击：空闲的武装单位被打 → 自动还击攻击者（即便对方在远处/警戒范围外）
+    if (attackerId >= 0 && target.targetId === null && !target.goal && !target.attackMove) {
+      const tt = this.rules.units.get(target.typeId);
+      if (tt?.weapon && tt.domain !== 'building' && this.entities.has(attackerId)) target.targetId = attackerId;
+    }
     if (splash > 0) {
       for (const e of this.entities.values()) {
         if (e.id === target.id || e.owner === owner) continue;
@@ -851,7 +919,7 @@ export class World {
       const dy = target.y - p.y;
       const d = dist(dx, dy);
       if (d <= p.speed) {
-        this.applyDamage(target, p.damage, JSON.parse(p.warheadId), p.splash, p.owner);
+        this.applyDamage(target, p.damage, JSON.parse(p.warheadId), p.splash, p.owner, p.shooterId);
         this.projectiles.splice(i, 1);
       } else {
         const ang = dirToBangle(dx, dy);

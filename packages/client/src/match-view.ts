@@ -58,6 +58,7 @@ export const MATCH_STYLE = `
 .mv-cameo .cost { position: absolute; right: 2px; bottom: 14px; font-size: 10px; color: #f0d040; text-shadow: 0 0 3px #000; }
 .mv-cameo .prog { position: absolute; inset: 0; background: rgba(0,0,0,.6); display: flex; align-items: center; justify-content: center; font-weight: 700; color: #fff; }
 .mv-cameo .ready { position: absolute; inset: 0; border: 2px solid #6fe06f; box-sizing: border-box; display: flex; align-items: flex-start; justify-content: center; color: #6fe06f; font-size: 10px; }
+.mv-cameo .cancel { position: absolute; top: 2px; right: 2px; width: 22px; height: 22px; border-radius: 50%; background: rgba(180,40,40,.92); color: #fff; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; line-height: 1; box-shadow: 0 0 0 1px #000; }
 .mv-hint { position: fixed; left: 50%; transform: translateX(-50%); bottom: 10px; z-index: 20; padding: 6px 14px; background: rgba(8,12,16,.8); border-radius: 16px; color: #9aa7b0; font-size: 12px; }
 .mv-banner { position: fixed; inset: 0; z-index: 30; display: flex; flex-direction: column; gap: 12px; align-items: center; justify-content: center; background: rgba(4,6,8,.7); font-size: 44px; font-weight: 800; }
 .mv-banner a { font-size: 16px; color: #6db3e8; }
@@ -72,9 +73,11 @@ export const MATCH_STYLE = `
 .mv-unitbar { position: fixed; left: 50%; transform: translateX(-50%); bottom: 44px; z-index: 21; display: none;
   gap: 8px; padding: 6px; background: rgba(12,16,20,.95); border: 1px solid #2a3a48; border-radius: 9px; }
 .mv-unitbar.show { display: flex; }
-.mv-unitbar button { padding: 9px 15px; border: 1px solid #2a3a48; border-radius: 6px; background: #1d2730; color: #d6e2ea; cursor: pointer; font-size: 14px; }
+.mv-unitbar button { min-width: 46px; min-height: 46px; padding: 6px; border: 1px solid #2a3a48; border-radius: 8px; background: #1d2730; color: #d6e2ea; cursor: pointer; font-size: 20px; font-weight: 600; }
 .mv-unitbar button.on { background: #2d6fb0; color: #fff; border-color: #3d8fd0; }
 .mv-unitbar button.stop { color: #e0a860; }
+.mv-unitbar button.harv { color: #f0d040; }
+.mv-unitbar button[hidden] { display: none; }
 .mv-tip { position: fixed; left: 50%; top: 80px; transform: translateX(-50%); z-index: 25; max-width: 420px;
   background: rgba(14,20,26,.96); border: 1px solid #2d6fb0; border-radius: 10px; padding: 16px 18px; color: #d8e0e6; }
 .mv-tip h3 { margin: 0 0 8px; font-size: 15px; color: #6db3e8; }
@@ -95,6 +98,7 @@ interface CameoCell {
   el: HTMLElement;
   prog: HTMLElement;
   ready: HTMLElement;
+  cancel: HTMLElement;
   type: UnitType;
 }
 
@@ -112,6 +116,8 @@ export class MatchView {
   private placingType: UnitType | null = null;
   /** 已按 A：下一次点击为攻击移动。 */
   private attackMoveArmed = false;
+  /** 已按 P：下一次点击为巡逻终点。 */
+  private patrolArmed = false;
   private over = false;
   /** 上一帧各分类队列是否就绪（用于「建造完成」提示音的边沿检测）。 */
   private prevReady: Record<string, boolean> = {};
@@ -139,7 +145,9 @@ export class MatchView {
   private bldBar!: HTMLElement;
   private unitBar!: HTMLElement;
   /** 触控：选中单位后下方操作条选定的待执行命令（下次点地/点目标执行）。 */
-  private pendingAction: 'move' | 'attack' | 'attackMove' | null = null;
+  private pendingAction: 'move' | 'attack' | 'attackMove' | 'patrol' | null = null;
+  /** 触控：点了「集结点」按钮后待设集结点的生产建筑 id（下次点地执行）。 */
+  private pendingRally: number | null = null;
 
   constructor(
     private readonly root: HTMLElement,
@@ -239,10 +247,12 @@ export class MatchView {
        }</div>
        <div class="mv-bldbar" id="mv-bldbar"></div>
        <div class="mv-unitbar" id="mv-unitbar">
-         <button data-act="move">移动</button>
-         <button data-act="attack">攻击</button>
-         <button data-act="attackMove">攻击移动</button>
-         <button class="stop" data-act="stop">停止</button>
+         <button data-act="move" title="移动">移</button>
+         <button data-act="attack" title="攻击目标">攻</button>
+         <button data-act="attackMove" title="攻击移动（边走边打）">进</button>
+         <button data-act="patrol" title="巡逻（两点间往返警戒）">巡</button>
+         <button class="harv" data-act="harvest" title="采矿 / 恢复采矿">采</button>
+         <button class="stop" data-act="stop" title="停止">停</button>
        </div>
        <div id="mv-selbox"></div>`,
     );
@@ -261,8 +271,16 @@ export class MatchView {
         if (act === 'stop') {
           if (this.selected.size > 0) this.emit({ kind: 'stop', entityIds: [...this.selected].sort((a, c) => a - c) });
           this.pendingAction = null;
+        } else if (act === 'harvest') {
+          // 采矿车「采」：立即恢复自动采矿（自找最近矿田）。要指定矿点直接点矿即可。
+          const hv = this.selectedHarvesterIds();
+          if (hv.length > 0) {
+            this.emit({ kind: 'harvest', entityIds: hv, cellX: -1, cellY: -1 });
+            this.playUnitVoice('move', hv[0]!);
+          }
+          this.pendingAction = null;
         } else {
-          this.pendingAction = this.pendingAction === act ? null : (act as 'move' | 'attack' | 'attackMove');
+          this.pendingAction = this.pendingAction === act ? null : (act as 'move' | 'attack' | 'attackMove' | 'patrol');
         }
         audioBus.play('select');
         this.updateUnitBar();
@@ -332,24 +350,43 @@ export class MatchView {
       ready.textContent = '就绪';
       ready.style.display = 'none';
       cell.appendChild(ready);
-      cell.addEventListener('click', () => this.onCameoClick(type));
-      // 右键取消该分类队首（退款）
-      cell.addEventListener('contextmenu', (e) => {
-        e.preventDefault();
+      // 触控取消角标（手机没有右键）：有队列时显示，点它退掉该分类队首
+      const cancel = document.createElement('div');
+      cancel.className = 'cancel';
+      cancel.textContent = '✕';
+      cancel.style.display = 'none';
+      cell.appendChild(cancel);
+      const cancelHead = (): void => {
         const q = this.world.queueFor(this.localPlayerId, categoryOf(type));
         if (q && q.items.length > 0) {
           this.emit({ kind: 'cancel', owner: this.localPlayerId, category: categoryOf(type) });
           audioBus.play('select');
         }
+      };
+      cancel.addEventListener('click', (e) => {
+        e.stopPropagation();
+        cancelHead();
+      });
+      cell.addEventListener('click', () => this.onCameoClick(type));
+      // 右键取消该分类队首（退款）
+      cell.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        cancelHead();
       });
       this.buildEl.appendChild(cell);
-      this.cameos.push({ el: cell, prog, ready, type });
+      this.cameos.push({ el: cell, prog, ready, cancel, type });
     }
     this.refreshSidebar();
   }
 
   private onCameoClick(type: UnitType): void {
     audioBus.resume();
+    // 再点一次正在放置的建筑 → 取消放置（手机没有右键/Esc，避免卡在放置态）
+    if (this.placingType === type) {
+      this.placingType = null;
+      audioBus.play('select');
+      return;
+    }
     const q = this.world.queueFor(this.localPlayerId, categoryOf(type));
     if (type.domain === 'building' && q?.readyToPlace && q.items[0] === type.id) {
       this.placingType = type;
@@ -365,6 +402,8 @@ export class MatchView {
       c.el.classList.toggle('disabled', !this.world.canBuild(this.localPlayerId, c.type));
       const q = this.world.queueFor(this.localPlayerId, categoryOf(c.type));
       const isHead = q && q.items[0] === c.type.id;
+      // 触控取消角标：本分类有在造/排队/就绪项时显示（手机靠它取消，避免卡死）
+      c.cancel.style.display = this.isTouch && q && q.items.length > 0 ? 'flex' : 'none';
       if (isHead && q.readyToPlace) {
         c.ready.style.display = 'flex';
         c.prog.style.display = 'none';
@@ -465,13 +504,15 @@ export class MatchView {
         }
         return;
       }
-      if (this.attackMoveArmed && this.selected.size > 0) {
+      if ((this.attackMoveArmed || this.patrolArmed) && this.selected.size > 0) {
         const cell = this.screenToCell(e.clientX, e.clientY);
         if (cell.x >= 0 && cell.y >= 0 && cell.x < this.mapW && cell.y < this.mapH) {
-          this.emit({ kind: 'attackMove', entityIds: [...this.selected].sort((a, b) => a - b), cellX: cell.x, cellY: cell.y });
+          const ids = [...this.selected].sort((a, b) => a - b);
+          this.emit({ kind: this.patrolArmed ? 'patrol' : 'attackMove', entityIds: ids, cellX: cell.x, cellY: cell.y });
           audioBus.play('select');
         }
         this.attackMoveArmed = false;
+        this.patrolArmed = false;
         return;
       }
       this.dragStart = { x: e.clientX, y: e.clientY };
@@ -519,13 +560,21 @@ export class MatchView {
       if (e.key === 'Escape') {
         this.placingType = null;
         this.attackMoveArmed = false;
+        this.patrolArmed = false;
         this.selected.clear();
         this.selectBuilding(null);
         return;
       }
       if ((e.key === 'a' || e.key === 'A') && this.selected.size > 0) {
         this.attackMoveArmed = true; // 下次左键点地 = 攻击移动
+        this.patrolArmed = false;
         this.setNetStatus('攻击移动：点击目标地点');
+        return;
+      }
+      if ((e.key === 'p' || e.key === 'P') && this.selected.size > 0) {
+        this.patrolArmed = true; // 下次左键点地 = 巡逻终点
+        this.attackMoveArmed = false;
+        this.setNetStatus('巡逻：点击折返终点');
         return;
       }
       if ((e.key === 's' || e.key === 'S') && this.selected.size > 0) {
@@ -660,6 +709,17 @@ export class MatchView {
       }
       return;
     }
+    // 触控：已选「集结点」→ 本次点地设为该生产建筑的集结点
+    if (this.pendingRally !== null) {
+      const cell = this.screenToCell(clientX, clientY);
+      if (cell.x >= 0 && cell.y >= 0 && cell.x < this.mapW && cell.y < this.mapH) {
+        this.emit({ kind: 'setRally', owner: this.localPlayerId, buildingId: this.pendingRally, cellX: cell.x, cellY: cell.y });
+        audioBus.play('select');
+      }
+      this.pendingRally = null;
+      this.renderBuildingBar();
+      return;
+    }
     // 触控操作条选了命令：本次点击执行该命令（取代右键），随后归位
     if (this.pendingAction && this.selected.size > 0) {
       const ids = [...this.selected].sort((a, b) => a - b);
@@ -668,6 +728,11 @@ export class MatchView {
       if (this.pendingAction === 'attackMove') {
         if (inBounds) {
           this.emit({ kind: 'attackMove', entityIds: ids, cellX: cell.x, cellY: cell.y });
+          this.playUnitVoice('attack', ids[0]!);
+        }
+      } else if (this.pendingAction === 'patrol') {
+        if (inBounds) {
+          this.emit({ kind: 'patrol', entityIds: ids, cellX: cell.x, cellY: cell.y });
           this.playUnitVoice('attack', ids[0]!);
         }
       } else if (this.pendingAction === 'attack') {
@@ -704,20 +769,9 @@ export class MatchView {
       audioBus.play('select');
       return;
     }
-    // 否则：对已有选择下令（敌方单位优先于其身后建筑）
+    // 否则：对已有选择下令（敌方单位优先于其身后建筑；点矿田则采矿车去采）
     if (this.selected.size > 0) {
-      const ids = [...this.selected].sort((a, b) => a - b);
-      const target = this.targetAt(clientX, clientY);
-      if (target !== null) {
-        this.emit({ kind: 'attack', entityIds: ids, targetId: target });
-        this.playUnitVoice('attack', ids[0]!);
-      } else {
-        const cell = this.screenToCell(clientX, clientY);
-        if (cell.x >= 0 && cell.y >= 0 && cell.x < this.mapW && cell.y < this.mapH) {
-          this.emit({ kind: 'move', entityIds: ids, cellX: cell.x, cellY: cell.y });
-          this.playUnitVoice('move', ids[0]!);
-        }
-      }
+      this.orderTo(clientX, clientY, [...this.selected].sort((a, b) => a - b));
     }
   }
 
@@ -778,15 +832,7 @@ export class MatchView {
       }
     }
     if (this.selected.size === 0) return;
-    const ids = [...this.selected].sort((a, b) => a - b);
-    const target = this.targetAt(e.clientX, e.clientY);
-    if (target !== null) {
-      this.emit({ kind: 'attack', entityIds: ids, targetId: target });
-      this.playUnitVoice('attack', ids[0]!);
-    } else if (cell.x >= 0 && cell.y >= 0 && cell.x < this.mapW && cell.y < this.mapH) {
-      this.emit({ kind: 'move', entityIds: ids, cellX: cell.x, cellY: cell.y });
-      this.playUnitVoice('move', ids[0]!);
-    }
+    this.orderTo(e.clientX, e.clientY, [...this.selected].sort((a, b) => a - b));
   }
 
   /** 屏幕坐标 → 命中的可移动单位 id。enemy=false 取己方、true 取敌方
@@ -825,6 +871,39 @@ export class MatchView {
     return this.entityAtCell(cell.x, cell.y, this.localPlayerId);
   }
 
+  /** 当前选中里的采矿车 id（升序）。 */
+  private selectedHarvesterIds(): number[] {
+    const out: number[] = [];
+    for (const id of this.selected) {
+      const e = this.world.entities.get(id);
+      if (e && this.world.rules.units.get(e.typeId)?.id === 'harvester') out.push(id);
+    }
+    return out.sort((a, b) => a - b);
+  }
+
+  /** 对一组单位向屏幕点下令：命中敌方→攻击；点到矿田且选中含采矿车→采矿车去采、
+   *  其余移动；否则全体移动。统一供触控轻点与桌面右键调用。 */
+  private orderTo(clientX: number, clientY: number, ids: number[]): void {
+    const target = this.targetAt(clientX, clientY);
+    if (target !== null) {
+      this.emit({ kind: 'attack', entityIds: ids, targetId: target });
+      this.playUnitVoice('attack', ids[0]!);
+      return;
+    }
+    const cell = this.screenToCell(clientX, clientY);
+    if (cell.x < 0 || cell.y < 0 || cell.x >= this.mapW || cell.y >= this.mapH) return;
+    const harv = ids.filter((id) => this.world.rules.units.get(this.world.entities.get(id)?.typeId ?? '')?.id === 'harvester');
+    if (harv.length > 0 && this.world.oreAt(cell.x, cell.y) > 0) {
+      this.emit({ kind: 'harvest', entityIds: harv, cellX: cell.x, cellY: cell.y });
+      const others = ids.filter((id) => !harv.includes(id));
+      if (others.length > 0) this.emit({ kind: 'move', entityIds: others, cellX: cell.x, cellY: cell.y });
+      this.playUnitVoice('move', ids[0]!);
+      return;
+    }
+    this.emit({ kind: 'move', entityIds: ids, cellX: cell.x, cellY: cell.y });
+    this.playUnitVoice('move', ids[0]!);
+  }
+
   /** 选中本方单位 / 下令时播放语音应答（真实 TS 步兵语音；无素材回退合成提示音）。
    *  轮换取用增加变化（音频纯表现层，不入模拟，无需确定性）。 */
   private playUnitVoice(kind: 'select' | 'move' | 'attack', _unitId: number): void {
@@ -855,6 +934,7 @@ export class MatchView {
 
   /** 选中建筑并刷新操作条（修理/出售/集结点）。 */
   private selectBuilding(id: number | null): void {
+    if (id !== this.selectedBuilding) this.pendingRally = null;
     this.selectedBuilding = id;
     if (id === null) {
       this.bldBar.style.display = 'none';
@@ -907,7 +987,11 @@ export class MatchView {
       `<b>${type.name}</b>` +
       `<button id="mv-repair" class="${b.repairing ? 'on' : ''}">${b.repairing ? '修理中' : '修理'}</button>` +
       `<button class="sell" id="mv-sell">出售</button>` +
-      (canRally ? `<span class="hint">右键设集结点</span>` : '');
+      (canRally
+        ? this.isTouch
+          ? `<button id="mv-rally" class="${this.pendingRally === b.id ? 'on' : ''}">${this.pendingRally === b.id ? '点地图…' : '集结点'}</button>`
+          : `<span class="hint">右键设集结点</span>`
+        : '');
     this.bldBar.querySelector('#mv-repair')!.addEventListener('click', () => {
       this.emit({ kind: 'repair', owner: this.localPlayerId, entityId: b.id });
       audioBus.play('select');
@@ -916,6 +1000,11 @@ export class MatchView {
       this.emit({ kind: 'sell', owner: this.localPlayerId, entityId: b.id });
       audioBus.play('place');
       this.selectBuilding(null);
+    });
+    this.bldBar.querySelector('#mv-rally')?.addEventListener('click', () => {
+      this.pendingRally = this.pendingRally === b.id ? null : b.id;
+      audioBus.play('select');
+      this.renderBuildingBar();
     });
   }
 
@@ -992,21 +1081,28 @@ export class MatchView {
     this.drawGhost();
   }
 
-  /** 触控：选中己方单位时显示下方操作条（移动/攻击/攻击移动/停止），高亮待执行命令。 */
+  /** 触控：选中己方单位时显示下方操作条（移/攻/进/采/停），高亮待执行命令；
+   *  「采」仅在选中采矿车时出现。 */
   private updateUnitBar(): void {
     if (!this.isTouch) return;
     let hasUnit = false;
+    let hasCombat = false; // 选中里是否有带武器的单位（决定显示 攻/进/巡）
     for (const id of this.selected) {
       const e = this.world.entities.get(id);
-      if (e && this.world.rules.units.get(e.typeId)?.domain !== 'building') {
-        hasUnit = true;
-        break;
-      }
+      const t = e && this.world.rules.units.get(e.typeId);
+      if (!t || t.domain === 'building') continue;
+      hasUnit = true;
+      if (t.weapon) hasCombat = true;
     }
     if (!hasUnit) this.pendingAction = null;
     this.unitBar.classList.toggle('show', hasUnit);
+    const hasHarv = this.selectedHarvesterIds().length > 0;
     this.unitBar.querySelectorAll('button').forEach((b) => {
-      b.classList.toggle('on', (b as HTMLElement).dataset.act === this.pendingAction);
+      const el = b as HTMLButtonElement;
+      const act = el.dataset.act;
+      if (act === 'harvest') el.hidden = !hasHarv;
+      else if (act === 'attack' || act === 'attackMove' || act === 'patrol') el.hidden = !hasCombat;
+      el.classList.toggle('on', act === this.pendingAction);
     });
   }
 

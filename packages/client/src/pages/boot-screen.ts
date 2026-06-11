@@ -292,16 +292,8 @@ export async function renderBootScreen(root: HTMLElement): Promise<void> {
   window.addEventListener('keydown', onKey);
   boot.querySelector('#replay')?.addEventListener('click', startIntro);
 
-  if (localStorage.getItem('ra2.witnessed') === '1') {
-    // 回访：直达菜单（顶部"重看开场"可重播）
-    ceremony.style.display = 'none';
-    alertEl.style.display = 'none';
-    skip.style.display = 'none';
-    menu.classList.add('in');
-  } else {
-    localStorage.setItem('ra2.witnessed', '1');
-    startIntro();
-  }
+  // 每次进首页都播放开场动画（看过想再看可点"重看开场"）
+  startIntro();
 }
 
 /** 打字机开机 + 叙事淡入，结束揭幕菜单。 */

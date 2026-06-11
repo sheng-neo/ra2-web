@@ -271,3 +271,77 @@ describe('战斗（M5 雏形）', () => {
     expect(tank.cellX).toBeGreaterThan(30);
   });
 });
+
+describe('个体 AI 与采矿指令（本批改进）', () => {
+  it('空闲单位主动迎击警戒范围内的敌人（不再站着挨打）', () => {
+    const w = new World(gridTerrain(40, 40), 13);
+    w.addPlayer(1, 'allied', 0);
+    w.addPlayer(2, 'soviet', 0);
+    const gi = w.spawnUnit(1, 'gi', 10, 10)!; // 全程没有任何命令——完全空闲
+    const enemy = w.spawnUnit(2, 'conscript', 14, 10)!; // 4 格外，在警戒半径(6格)内
+    const start = enemy.hp;
+    runScript(w, [], 400);
+    expect(enemy.hp).toBeLessThan(start); // 空闲士兵自发接敌并造成伤害
+    void gi;
+  });
+
+  it('采矿指令：把误走的矿车重新派去指定矿点采矿', () => {
+    const w = new World(gridTerrain(30, 30), 19);
+    w.addPlayer(1, 'allied', 0);
+    const h = w.spawnUnit(1, 'harvester', 5, 5)!;
+    for (let y = 18; y < 22; y++) for (let x = 18; x < 22; x++) w.setOre(x, y, 500);
+    // 误点：把矿车支到无矿的角落
+    w.applyCommands([{ kind: 'move', entityIds: [h.id], cellX: 2, cellY: 28 }]);
+    expect(h.harvester!.mode).toBe('seek'); // 仍处采矿态（抵达后会自找矿）
+    expect(h.goal !== null || h.path.length > 0).toBe(true);
+    // 重新指定矿点
+    w.applyCommands([{ kind: 'harvest', entityIds: [h.id], cellX: 19, cellY: 19 }]);
+    expect(h.harvester!.mode).toBe('toOre');
+    runScript(w, [], 1500);
+    expect(w.oreAt(19, 19)).toBeLessThan(500); // 这片矿被采走了一部分
+  });
+
+  it('「采」按钮(harvest 到无矿格)：恢复自动采矿', () => {
+    const w = new World(gridTerrain(30, 30), 23);
+    w.addPlayer(1, 'allied', 0);
+    const h = w.spawnUnit(1, 'harvester', 5, 5)!;
+    w.applyCommands([{ kind: 'move', entityIds: [h.id], cellX: 25, cellY: 25 }]);
+    expect(h.goal !== null || h.path.length > 0).toBe(true);
+    // 「采」发出的 harvest(-1,-1)：清掉去向并恢复 seek（自找最近矿田）
+    w.applyCommands([{ kind: 'harvest', entityIds: [h.id], cellX: -1, cellY: -1 }]);
+    expect(h.harvester!.mode).toBe('seek');
+    expect(h.goal).toBeNull();
+    expect(h.path.length).toBe(0);
+  });
+
+  it('巡逻：在两点间持续往返', () => {
+    const w = new World(gridTerrain(40, 40), 29);
+    w.addPlayer(1, 'allied', 0);
+    const tank = w.spawnUnit(1, 'grizzly', 5, 5)!;
+    w.applyCommands([{ kind: 'patrol', entityIds: [tank.id], cellX: 30, cellY: 5 }]);
+    expect(tank.patrol).not.toBeNull();
+    expect(tank.attackMove).toBe(true); // 巡逻沿途自动交战
+    let reachedFar = false;
+    let minXAfterFar = 99;
+    for (let i = 0; i < 3000; i++) {
+      w.step();
+      if (tank.cellX >= 28) reachedFar = true;
+      if (reachedFar) minXAfterFar = Math.min(minXAfterFar, tank.cellX);
+    }
+    expect(reachedFar).toBe(true); // 到过远端
+    expect(minXAfterFar).toBeLessThan(10); // 之后折返回起点端
+    expect(tank.patrol).not.toBeNull(); // 巡逻持续，不会自己停下
+  });
+
+  it('巡逻可被停止命令取消', () => {
+    const w = new World(gridTerrain(40, 40), 31);
+    w.addPlayer(1, 'allied', 0);
+    const tank = w.spawnUnit(1, 'grizzly', 5, 5)!;
+    w.applyCommands([{ kind: 'patrol', entityIds: [tank.id], cellX: 30, cellY: 5 }]);
+    w.step();
+    w.applyCommands([{ kind: 'stop', entityIds: [tank.id] }]);
+    expect(tank.patrol).toBeNull();
+    expect(tank.attackMove).toBe(false);
+    expect(tank.goal).toBeNull();
+  });
+});
