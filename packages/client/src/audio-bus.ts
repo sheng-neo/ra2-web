@@ -204,6 +204,32 @@ export class AudioBus {
     return true;
   }
 
+  /** 「红色警戒」警报警笛（程序合成，开场红场转场用）。须音频已解锁(用户手势后)。 */
+  alarm(): void {
+    if (!this.ctx || !this.master || this.muted) return;
+    const ctx = this.ctx;
+    const t0 = ctx.currentTime;
+    const dur = 4.4;
+    const cycles = 5;
+    const osc = ctx.createOscillator();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(420, t0);
+    for (let i = 1; i <= cycles; i++) {
+      osc.frequency.linearRampToValueAtTime(i % 2 === 1 ? 760 : 420, t0 + (dur * i) / cycles);
+    }
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.value = 1700;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(0.16, t0 + 0.25);
+    g.gain.setValueAtTime(0.16, t0 + dur - 0.6);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    osc.connect(lp).connect(g).connect(this.master);
+    osc.start(t0);
+    this.track(osc, dur + 0.1);
+  }
+
   /** 由 16bit PCM 建并缓存 AudioBuffer 后播放（按 key 缓存）。 */
   private playPcmBuffer(key: string, pcm: { rate: number; samples: Int16Array }, gain: number): void {
     const ctx = this.ctx!;

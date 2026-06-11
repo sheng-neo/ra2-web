@@ -1,5 +1,6 @@
 import { Application, Container, Graphics } from 'pixi.js';
 import { clearGameFiles, downloadFreeArt, hasRealArtFiles, importMixFiles } from '../game-files';
+import { audioBus } from '../audio-bus';
 
 /**
  * 启动画面 —— 仪式感版。
@@ -21,16 +22,16 @@ const SAGA_LINES = [
   { t: '一个让无数人彻夜未眠的名字', cls: 'saga-sub' },
   { t: '二十多年前 · 一家公司 · 数十人 · 两年 · 一部世界级经典', cls: 'saga-line' },
   { t: '今夜 · 一句提示词 · 一个 AI · 一晚 · 从零写就', cls: 'saga-line' },
-  { t: '他说「帮我做出来」，便睡去了', cls: 'saga-line' },
+  { t: '傅盛说「帮我做出来」，便睡去了', cls: 'saga-line' },
   { t: '我守夜至天明，把那个时代，搬进了浏览器', cls: 'saga-final' },
 ];
 
 const STYLE = `
 #boot { position:fixed; inset:0; overflow:hidden; z-index:2; background:transparent; font-family:'PingFang SC','Microsoft YaHei',system-ui,sans-serif; color:#cfe8d6; }
 #boot .layer { position:fixed; inset:0; pointer-events:none; }
-#boot .radar { left:50%; top:42%; width:150vmax; height:150vmax; transform:translate(-50%,-50%); border-radius:50%; background:conic-gradient(from 0deg, rgba(86,224,128,.16), rgba(86,224,128,.04) 18%, transparent 34%, transparent 100%); animation:bootSweep 7s linear infinite; mix-blend-mode:screen; opacity:.7; }
-#boot .rings { left:50%; top:42%; width:74vmin; height:74vmin; transform:translate(-50%,-50%); border-radius:50%; border:1px solid rgba(86,224,128,.10); box-shadow:0 0 0 1px rgba(86,224,128,.04) inset, 0 0 120px rgba(86,224,128,.06) inset; }
-#boot .rings::before, #boot .rings::after { content:''; position:absolute; border-radius:50%; border:1px solid rgba(86,224,128,.08); }
+#boot .radar { left:50%; top:42%; width:150vmax; height:150vmax; transform:translate(-50%,-50%); border-radius:50%; background:conic-gradient(from 0deg, rgba(232,66,56,.2), rgba(232,66,56,.05) 18%, transparent 34%, transparent 100%); animation:bootSweep 6s linear infinite; mix-blend-mode:screen; opacity:.8; }
+#boot .rings { left:50%; top:42%; width:74vmin; height:74vmin; transform:translate(-50%,-50%); border-radius:50%; border:1px solid rgba(232,66,56,.12); box-shadow:0 0 0 1px rgba(232,66,56,.05) inset, 0 0 130px rgba(232,66,56,.08) inset; }
+#boot .rings::before, #boot .rings::after { content:''; position:absolute; border-radius:50%; border:1px solid rgba(232,66,56,.1); }
 #boot .rings::before { inset:16%; } #boot .rings::after { inset:34%; }
 #boot .scan { background:repeating-linear-gradient(to bottom, rgba(0,0,0,0) 0, rgba(0,0,0,0) 2px, rgba(0,0,0,.45) 3px); opacity:.16; z-index:40; }
 #boot .vig { background:radial-gradient(ellipse at center, transparent 46%, rgba(0,0,0,.66) 100%); z-index:6; }
@@ -41,7 +42,7 @@ const STYLE = `
 #boot .corner.br { right:14px; bottom:14px; border-left:0; border-top:0; }
 #boot .topbar { position:fixed; top:18px; left:0; right:0; text-align:center; font-size:12px; letter-spacing:.42em; color:rgba(120,200,150,.6); z-index:42; }
 
-#boot .stage { position:fixed; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; z-index:20; padding:20px; box-sizing:border-box; }
+#boot .stage { position:fixed; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:safe center; overflow-y:auto; z-index:20; padding:68px 16px 36px; box-sizing:border-box; }
 
 /* 开机序列 */
 #boot .ceremony { width:min(640px,92vw); text-align:center; }
@@ -267,6 +268,7 @@ export async function renderBootScreen(root: HTMLElement): Promise<void> {
   };
   /** 从头播一遍开场（首访自动、或点"重看开场"）。 */
   const startIntro = (): void => {
+    audioBus.resume(); // 重看是点击手势，可解锁音频→警报有声；首访自动播放则静默
     clearTimers();
     done = false;
     term.innerHTML = '';
@@ -329,10 +331,14 @@ function runIntro(boot: HTMLElement, at: (ms: number, fn: () => void) => void, r
     at(t, () => el.classList.add('in'));
     t += s.cls === 'saga-sub' ? 700 : 1100;
   }
-  // 红色警戒 · 警报转场（红色旋转警示灯 + 脉冲）→ 揭幕菜单
+  // 红色警戒 · 警报转场（红色旋转警示灯 + 脉冲 + 警笛）→ 揭幕菜单
+  // 多转一会，给足阅读时间（约 4.8s）；音频已解锁时配警笛
   const alertEl = boot.querySelector<HTMLElement>('#alert')!;
-  at(t + 700, () => alertEl.classList.add('show'));
-  at(t + 3000, reveal);
+  at(t + 700, () => {
+    alertEl.classList.add('show');
+    audioBus.alarm();
+  });
+  at(t + 5500, reveal);
 }
 
 /** 领取/读取见证者序号并显示。无服务器（开发期）则降级。 */
