@@ -312,6 +312,28 @@ describe('个体 AI 与采矿指令（本批改进）', () => {
     void b;
   });
 
+  it('军犬：撕咬秒步兵、对坦克几乎无效', () => {
+    // vs 步兵：很快咬死
+    const w1 = new World(gridTerrain(20, 20), 91);
+    w1.addPlayer(1, 'soviet', 0);
+    w1.addPlayer(2, 'allied', 0);
+    w1.spawnUnit(1, 'dog', 5, 5);
+    const inf = w1.spawnUnit(2, 'gi', 6, 5)!;
+    for (let i = 0; i < 200 && w1.entities.has(inf.id); i++) w1.step();
+    expect(w1.entities.has(inf.id)).toBe(false);
+    // vs 坦克：啃不动（不死的狗，量它对重甲的微弱伤害）
+    const w2 = new World(gridTerrain(20, 20), 93);
+    w2.addPlayer(1, 'soviet', 0);
+    w2.addPlayer(2, 'allied', 0);
+    const d = w2.spawnUnit(1, 'dog', 5, 5)!;
+    d.hp = 100000;
+    d.maxHp = 100000;
+    const tank = w2.spawnUnit(2, 'grizzly', 6, 5)!;
+    const t0 = tank.hp;
+    for (let i = 0; i < 200; i++) w2.step();
+    expect(t0 - tank.hp).toBeLessThan(t0 * 0.15); // 对坦克伤害微乎其微
+  });
+
   it('反装甲步兵：克制坦克（对重甲伤害远高于普通步兵）', () => {
     const dmgToTank = (infId: string): number => {
       const w = new World(gridTerrain(30, 30), 81);
