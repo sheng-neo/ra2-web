@@ -100,13 +100,17 @@ export class RealArtProvider {
     }
   }
 
-  /** 取 mix 字节：先本机 IndexedDB，后开发期 /game-data。 */
+  /** 取 mix 字节：先本机 IndexedDB，后开发期 /game-data。
+   *  公网无 game-data 时 SPA 兜底会返回 index.html（200/text/html），
+   *  须排除，否则把 HTML 当 mix 解析徒增报错。 */
   private async loadMix(name: string): Promise<Uint8Array | null> {
     const local = await idbGetFile(name);
     if (local) return local;
     try {
       const res = await fetch(`/game-data/${name}`);
-      if (res.ok) return new Uint8Array(await res.arrayBuffer());
+      if (!res.ok) return null;
+      if ((res.headers.get('content-type') ?? '').includes('text/html')) return null;
+      return new Uint8Array(await res.arrayBuffer());
     } catch {
       /* 公网无 game-data，属正常 */
     }
