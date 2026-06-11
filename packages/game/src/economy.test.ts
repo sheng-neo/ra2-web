@@ -312,6 +312,17 @@ describe('个体 AI 与采矿指令（本批改进）', () => {
     void b;
   });
 
+  it('编队移动：多个单位散开到不同格，不挤成一坨', () => {
+    const w = new World(gridTerrain(40, 40), 61);
+    w.addPlayer(1, 'allied', 0);
+    const ids: number[] = [];
+    for (let i = 0; i < 5; i++) ids.push(w.spawnUnit(1, 'grizzly', 3 + i, 3)!.id);
+    w.applyCommands([{ kind: 'move', entityIds: ids, cellX: 30, cellY: 30 }]);
+    runScript(w, [], 700);
+    const cells = new Set(ids.map((id) => { const e = w.entities.get(id)!; return e.cellX * 1000 + e.cellY; }));
+    expect(cells.size).toBeGreaterThanOrEqual(4); // 散开占不同格（不散开会全挤到同一格）
+  });
+
   it('姿态·不还火：不自动索敌也不还击', () => {
     const w = new World(gridTerrain(20, 20), 51);
     w.addPlayer(1, 'allied', 0);

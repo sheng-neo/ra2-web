@@ -211,32 +211,39 @@ export class World {
         case 'place':
           this.placeBuilding(cmd.owner, cmd.typeId, cmd.cellX, cmd.cellY);
           break;
-        case 'move':
-          for (const eid of [...cmd.entityIds].sort((a, b) => a - b)) {
+        case 'move': {
+          // 多个单位：散开到目标周围不同格（队形展开），避免挤成一坨/互相挡路
+          const ids = [...cmd.entityIds].sort((a, b) => a - b);
+          const slots = ids.length > 1 ? this.spreadDestinations(cmd.cellX, cmd.cellY, ids.length) : [{ x: cmd.cellX, y: cmd.cellY }];
+          ids.forEach((eid, i) => {
             const e = this.entities.get(eid);
-            if (e) {
-              this.orderMove(e, cmd.cellX, cmd.cellY);
-              e.targetId = null;
-              e.attackMove = false;
-              e.attackDest = null;
-              e.patrol = null;
-              // 矿车手动移动后回到自动采矿状态：先去目的地，到了再自找最近矿（见 stepHarvester seek）
-              if (e.harvester) e.harvester.mode = 'seek';
-            }
-          }
+            if (!e) return;
+            const s = slots[i] ?? slots[0]!;
+            this.orderMove(e, s.x, s.y);
+            e.targetId = null;
+            e.attackMove = false;
+            e.attackDest = null;
+            e.patrol = null;
+            // 矿车手动移动后回到自动采矿状态：先去目的地，到了再自找最近矿（见 stepHarvester seek）
+            if (e.harvester) e.harvester.mode = 'seek';
+          });
           break;
-        case 'attackMove':
-          for (const eid of [...cmd.entityIds].sort((a, b) => a - b)) {
+        }
+        case 'attackMove': {
+          const ids = [...cmd.entityIds].sort((a, b) => a - b);
+          const slots = ids.length > 1 ? this.spreadDestinations(cmd.cellX, cmd.cellY, ids.length) : [{ x: cmd.cellX, y: cmd.cellY }];
+          ids.forEach((eid, i) => {
             const e = this.entities.get(eid);
-            if (e) {
-              this.orderMove(e, cmd.cellX, cmd.cellY);
-              e.targetId = null;
-              e.attackMove = true;
-              e.attackDest = { x: cmd.cellX, y: cmd.cellY };
-              e.patrol = null;
-            }
-          }
+            if (!e) return;
+            const s = slots[i] ?? slots[0]!;
+            this.orderMove(e, s.x, s.y);
+            e.targetId = null;
+            e.attackMove = true;
+            e.attackDest = { x: s.x, y: s.y };
+            e.patrol = null;
+          });
           break;
+        }
         case 'patrol':
           for (const eid of [...cmd.entityIds].sort((a, b) => a - b)) {
             const e = this.entities.get(eid);
@@ -663,6 +670,33 @@ export class World {
       }
     }
     return null;
+  }
+
+  /** 为 n 个单位在 (cx,cy) 周围取 n 个互不相同的可通行格（队形展开，避免挤成一坨、
+   *  互相挡路）。中心优先、按环形从内向外扩展；空间不足时用中心兜底。确定性遍历。 */
+  private spreadDestinations(cx: number, cy: number, n: number): { x: number; y: number }[] {
+    const out: { x: number; y: number }[] = [];
+    const seen = new Set<number>();
+    const tryAdd = (x: number, y: number): void => {
+      if (x < 0 || y < 0 || x >= this.terrain.width || y >= this.terrain.height) return;
+      if (this.isCellBlocked(x, y)) return;
+      const key = y * this.terrain.width + x;
+      if (seen.has(key)) return;
+      seen.add(key);
+      out.push({ x, y });
+    };
+    tryAdd(cx, cy);
+    for (let r = 1; out.length < n && r <= 12; r++) {
+      for (let dy = -r; dy <= r && out.length < n; dy++) {
+        for (let dx = -r; dx <= r && out.length < n; dx++) {
+          if (Math.abs(dx) !== r && Math.abs(dy) !== r) continue;
+          tryAdd(cx + dx, cy + dy);
+        }
+      }
+    }
+    const fallback = out[0] ?? { x: cx, y: cy };
+    while (out.length < n) out.push(fallback);
+    return out;
   }
 
   private orderMove(e: Entity, cellX: number, cellY: number): void {
