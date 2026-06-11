@@ -312,6 +312,57 @@ describe('个体 AI 与采矿指令（本批改进）', () => {
     void b;
   });
 
+  it('姿态·不还火：不自动索敌也不还击', () => {
+    const w = new World(gridTerrain(20, 20), 51);
+    w.addPlayer(1, 'allied', 0);
+    w.addPlayer(2, 'soviet', 0);
+    const gi = w.spawnUnit(1, 'gi', 5, 5)!;
+    w.applyCommands([{ kind: 'stance', entityIds: [gi.id], stance: 'holdfire' }]);
+    const enemy = w.spawnUnit(2, 'conscript', 6, 5)!; // 紧贴在射程内
+    const start = enemy.hp;
+    runScript(w, [], 80);
+    expect(gi.targetId).toBeNull(); // 不索敌
+    expect(enemy.hp).toBe(start); // 被打也不还火，敌人毫发无伤
+  });
+
+  it('姿态·坚守：原地开火但绝不移动追击', () => {
+    const w = new World(gridTerrain(40, 40), 53);
+    w.addPlayer(1, 'allied', 0);
+    w.addPlayer(2, 'soviet', 0);
+    const tank = w.spawnUnit(1, 'grizzly', 5, 5)!;
+    w.applyCommands([{ kind: 'stance', entityIds: [tank.id], stance: 'holdground' }]);
+    const sx = tank.cellX;
+    const sy = tank.cellY;
+    w.spawnUnit(2, 'conscript', 11, 5)!; // 警戒半径内、武器射程外
+    runScript(w, [], 200);
+    expect(tank.cellX).toBe(sx); // 坚守：寸步不移
+    expect(tank.cellY).toBe(sy);
+  });
+
+  it('姿态·进攻 vs 警戒：进攻半径更大，主动出击远敌', () => {
+    // 进攻姿态：9 格外的敌人也会主动上前歼灭
+    const wa = new World(gridTerrain(40, 40), 55);
+    wa.addPlayer(1, 'allied', 0);
+    wa.addPlayer(2, 'soviet', 0);
+    const atk = wa.spawnUnit(1, 'grizzly', 5, 5)!;
+    wa.applyCommands([{ kind: 'stance', entityIds: [atk.id], stance: 'aggressive' }]);
+    const farA = wa.spawnUnit(2, 'conscript', 14, 5)!; // ~9 格，超警戒(6)、在进攻半径(12)内
+    const aStart = farA.hp;
+    runScript(wa, [], 600);
+    expect(farA.hp).toBeLessThan(aStart); // 进攻姿态主动出击
+
+    // 对照：默认警戒姿态对 9 格外的敌人不理会
+    const wg = new World(gridTerrain(40, 40), 55);
+    wg.addPlayer(1, 'allied', 0);
+    wg.addPlayer(2, 'soviet', 0);
+    const grd = wg.spawnUnit(1, 'grizzly', 5, 5)!;
+    const farG = wg.spawnUnit(2, 'conscript', 14, 5)!;
+    const gStart = farG.hp;
+    runScript(wg, [], 600);
+    expect(farG.hp).toBe(gStart); // 警戒不会跑那么远
+    expect(grd.cellX).toBe(5); // 原地不动
+  });
+
   it('采矿指令：把误走的矿车重新派去指定矿点采矿', () => {
     const w = new World(gridTerrain(30, 30), 19);
     w.addPlayer(1, 'allied', 0);

@@ -10,6 +10,7 @@ import {
   leptonToCell,
   type Command,
   type ProdCategory,
+  type Stance,
   type UnitType,
 } from '@ra2web/game';
 import { Camera } from './camera';
@@ -32,6 +33,11 @@ const VOICE_POOL: Record<'select' | 'move' | 'attack', string[]> = {
   move: ['15-i018', '15-i022', '15-i024', '15-i016'],
   attack: ['15-i046', '15-i022'],
 };
+
+/** 作战姿态循环顺序与中文/单字显示（点击循环切换）。 */
+const STANCE_ORDER: Stance[] = ['guard', 'aggressive', 'holdground', 'holdfire'];
+const STANCE_GLYPH: Record<Stance, string> = { guard: '戒', aggressive: '猛', holdground: '守', holdfire: '禁' };
+const STANCE_NAME: Record<Stance, string> = { guard: '警戒', aggressive: '进攻', holdground: '坚守', holdfire: '不还火' };
 
 export const MATCH_STYLE = `
 .mv-root { position: fixed; inset: 0; overflow: hidden; background: #06090c;
@@ -78,6 +84,7 @@ export const MATCH_STYLE = `
 .mv-unitbar button.on { background: #2d6fb0; color: #fff; border-color: #3d8fd0; }
 .mv-unitbar button.stop { color: #e0a860; }
 .mv-unitbar button.harv { color: #f0d040; }
+.mv-unitbar button.stance { color: #9ad0e0; }
 .mv-unitbar button[hidden] { display: none; }
 .mv-tip { position: fixed; left: 50%; top: 80px; transform: translateX(-50%); z-index: 25; max-width: 420px;
   background: rgba(14,20,26,.96); border: 1px solid #2d6fb0; border-radius: 10px; padding: 16px 18px; color: #d8e0e6; }
@@ -253,6 +260,7 @@ export class MatchView {
          <button data-act="move" title="移动（无视沿途敌人直达）">移</button>
          <button data-act="attack" title="攻击：点敌锁定歼灭，点空地=攻击移动（沿途逐个交战）">攻</button>
          <button data-act="patrol" title="巡逻（两点间往返警戒）">巡</button>
+         <button class="stance" data-act="stance" title="作战姿态（点击循环：警戒→进攻→坚守→不还火）">戒</button>
          <button class="harv" data-act="harvest" title="采矿 / 恢复采矿">采</button>
          <button class="stop" data-act="stop" title="停止">停</button>
        </div>
@@ -280,6 +288,9 @@ export class MatchView {
             this.emit({ kind: 'harvest', entityIds: hv, cellX: -1, cellY: -1 });
             this.playUnitVoice('move', hv[0]!);
           }
+          this.pendingAction = null;
+        } else if (act === 'stance') {
+          this.cycleStance(); // 立即循环切换作战姿态
           this.pendingAction = null;
         } else {
           this.pendingAction = this.pendingAction === act ? null : (act as 'move' | 'attack' | 'patrol');
@@ -591,6 +602,10 @@ export class MatchView {
         this.emit({ kind: 'stop', entityIds: [...this.selected].sort((a, b) => a - b) });
         return;
       }
+      if ((e.key === 'g' || e.key === 'G') && this.selected.size > 0) {
+        this.cycleStance(); // G：循环切换作战姿态（警戒/进攻/坚守/不还火）
+        return;
+      }
       if (e.key >= '1' && e.key <= '9') {
         const g = Number(e.key);
         if (e.ctrlKey || e.metaKey) {
@@ -888,6 +903,27 @@ export class MatchView {
     return out.sort((a, b) => a - b);
   }
 
+  /** 当前选中里的武装单位 id（有武器、非建筑；升序）。 */
+  private selectedCombatIds(): number[] {
+    const out: number[] = [];
+    for (const id of this.selected) {
+      const e = this.world.entities.get(id);
+      const t = e && this.world.rules.units.get(e.typeId);
+      if (t && t.domain !== 'building' && t.weapon) out.push(id);
+    }
+    return out.sort((a, b) => a - b);
+  }
+
+  /** 循环切换选中武装单位的作战姿态（以首个单位的当前姿态为基准 +1）。 */
+  private cycleStance(): void {
+    const ids = this.selectedCombatIds();
+    if (ids.length === 0) return;
+    const cur = this.world.entities.get(ids[0]!)?.stance ?? 'guard';
+    const next = STANCE_ORDER[(STANCE_ORDER.indexOf(cur) + 1) % STANCE_ORDER.length]!;
+    this.emit({ kind: 'stance', entityIds: ids, stance: next });
+    this.setNetStatus(`姿态：${STANCE_NAME[next]}`);
+  }
+
   /** 对一组单位向屏幕点下令：命中敌方→攻击；点到矿田且选中含采矿车→采矿车去采、
    *  其余移动；否则全体移动。统一供触控轻点与桌面右键调用。 */
   private orderTo(clientX: number, clientY: number, ids: number[]): void {
@@ -1104,11 +1140,17 @@ export class MatchView {
     if (!hasUnit) this.pendingAction = null;
     this.unitBar.classList.toggle('show', hasUnit);
     const hasHarv = this.selectedHarvesterIds().length > 0;
+    const combat = this.selectedCombatIds();
+    const stance = combat.length > 0 ? (this.world.entities.get(combat[0]!)?.stance ?? 'guard') : 'guard';
     this.unitBar.querySelectorAll('button').forEach((b) => {
       const el = b as HTMLButtonElement;
       const act = el.dataset.act;
       if (act === 'harvest') el.hidden = !hasHarv;
       else if (act === 'attack' || act === 'patrol') el.hidden = !hasCombat;
+      else if (act === 'stance') {
+        el.hidden = combat.length === 0;
+        el.textContent = STANCE_GLYPH[stance]; // 显示当前姿态单字
+      }
       el.classList.toggle('on', act === this.pendingAction);
     });
   }

@@ -57,6 +57,10 @@ export interface HarvesterState {
   timer: number;
 }
 
+/** 作战姿态：进攻=更大半径主动出击；警戒=默认，警戒半径内迎击；
+ *  坚守=只打武器射程内、绝不移动追击；不还火=不自动索敌也不还击（仅听显式命令）。 */
+export type Stance = 'aggressive' | 'guard' | 'holdground' | 'holdfire';
+
 export interface Entity {
   id: number;
   owner: number;
@@ -82,6 +86,8 @@ export interface Entity {
   attackDest: { x: number; y: number } | null;
   /** 巡逻：到达当前目的地后折返的另一端点（格），null=不巡逻。沿途自动交战。 */
   patrol: { x: number; y: number } | null;
+  /** 作战姿态（默认 guard 警戒）。 */
+  stance: Stance;
   // 采矿
   harvester: HarvesterState | null;
   // 建筑：集结点（格，-1=无）+ 是否在修理
@@ -116,6 +122,7 @@ export type Command =
   | { kind: 'setRally'; owner: number; buildingId: number; cellX: number; cellY: number }
   | { kind: 'sell'; owner: number; entityId: number }
   | { kind: 'repair'; owner: number; entityId: number }
+  | { kind: 'stance'; entityIds: number[]; stance: Stance }
   | { kind: 'stop'; entityIds: number[] };
 
 const CATEGORY_PRODUCER: Record<ProdCategory, string> = {
@@ -289,6 +296,16 @@ export class World {
           }
           break;
         }
+        case 'stance':
+          for (const eid of [...cmd.entityIds].sort((a, b) => a - b)) {
+            const e = this.entities.get(eid);
+            if (e) {
+              e.stance = cmd.stance;
+              // 切到不还火：放下当前自动锁定的目标（显式攻击命令仍可下达）
+              if (cmd.stance === 'holdfire' && !e.attackMove) e.targetId = null;
+            }
+          }
+          break;
         case 'stop':
           for (const eid of [...cmd.entityIds].sort((a, b) => a - b)) {
             const e = this.entities.get(eid);
@@ -338,6 +355,7 @@ export class World {
       attackMove: false,
       attackDest: null,
       patrol: null,
+      stance: 'guard',
       rallyX: -1,
       rallyY: -1,
       repairing: false,
@@ -806,8 +824,14 @@ export class World {
    *  靠追击带进射程）；敌"建筑"仅在非攻击移动时受武器射程约束——空闲单位不会
    *  自发跑去拆远处建筑，攻击移动/巡逻则一并清理。 */
   private acquireEnemy(e: Entity, type: UnitType): Entity | null {
-    const aggressive = e.attackMove;
-    const acquireRange = type.domain === 'building' ? type.weapon!.range : Math.max(type.weapon!.range, GUARD_RANGE);
+    const onMission = e.attackMove; // 攻击移动/巡逻：无视姿态，强制按警戒半径交战
+    if (!onMission && e.stance === 'holdfire') return null; // 不还火：不自动索敌
+    // 姿态决定索敌半径：坚守=仅武器射程；进攻=更大半径主动出击；其余=警戒半径
+    let acquireRange: number;
+    if (type.domain === 'building') acquireRange = type.weapon!.range;
+    else if (!onMission && e.stance === 'holdground') acquireRange = type.weapon!.range;
+    else if (!onMission && e.stance === 'aggressive') acquireRange = Math.max(type.weapon!.range, 2 * GUARD_RANGE);
+    else acquireRange = Math.max(type.weapon!.range, GUARD_RANGE);
     let best: Entity | null = null;
     let bestRank = 0;
     let bestHp = 0;
@@ -817,7 +841,7 @@ export class World {
       const ot = this.rules.units.get(o.typeId);
       if (!ot) continue;
       const isBuilding = ot.domain === 'building';
-      const range = isBuilding && !aggressive ? type.weapon!.range : acquireRange;
+      const range = isBuilding && !onMission ? type.weapon!.range : acquireRange;
       const d = dist(o.x - e.x, o.y - e.y);
       if (d > range) continue;
       const rank = isBuilding ? 1 : ot.weapon ? 3 : 2; // 武装单位 > 无武装单位 > 建筑
@@ -864,6 +888,11 @@ export class World {
     const dy = target.y - e.y;
     const d = dist(dx, dy);
     if (d > type.weapon.range) {
+      // 坚守：绝不移动追击，够不着就放下目标原地待机
+      if (!e.attackMove && e.stance === 'holdground') {
+        e.targetId = null;
+        return false;
+      }
       // 够不着：上前进入射程。攻击移动暂离行军路线迎敌（attackDest 留待事后续行）；
       // 显式攻击同样追击；建筑不能动。
       if (e.attackMove ? e.path.length === 0 && !e.waypoint : type.domain !== 'building' && !e.goal) {
@@ -944,8 +973,9 @@ export class World {
       e.hp -= Math.max(1, Math.floor((base * pct) / 100));
     };
     deal(target, damage);
-    // 反击：空闲的武装单位被打 → 自动还击攻击者（即便对方在远处/警戒范围外）
-    if (attackerId >= 0 && target.targetId === null && !target.goal && !target.attackMove) {
+    // 反击：空闲的武装单位被打 → 自动还击攻击者（即便对方在远处/警戒范围外）；
+    // 不还火姿态不还击
+    if (attackerId >= 0 && target.stance !== 'holdfire' && target.targetId === null && !target.goal && !target.attackMove) {
       const tt = this.rules.units.get(target.typeId);
       if (tt?.weapon && tt.domain !== 'building' && this.entities.has(attackerId)) target.targetId = attackerId;
     }

@@ -13,6 +13,7 @@ export {
   producibleBy,
   type Entity,
   type Command,
+  type Stance,
   type Player,
   type Projectile,
   type ProdCategory,
