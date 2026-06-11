@@ -478,7 +478,7 @@ export class MatchView {
   /** 画指令反馈：目标格上一个 ~500ms 收缩淡出的环（移动绿/攻击红）。纯表现，不入模拟。 */
   private drawPings(): void {
     this.pingG.clear();
-    if (this.pings.length === 0) return;
+    this.pingG.zIndex = 99998;
     const now = performance.now();
     const LIFE = 520;
     for (let i = this.pings.length - 1; i >= 0; i--) {
@@ -496,7 +496,18 @@ export class MatchView {
       const color = p.kind === 'attack' ? 0xe05454 : 0x54e066;
       this.pingG.circle(c.x, cy, radius).stroke({ color, width: 2, alpha });
     }
-    this.pingG.zIndex = 99998;
+    // 集结线：选中带集结点的生产建筑 → 画一条到集结点的线 + 终点标记
+    if (this.selectedBuilding !== null) {
+      const b = this.world.entities.get(this.selectedBuilding);
+      if (b && b.rallyX >= 0 && b.rallyY >= 0) {
+        const from = this.renderer.cellTopScreen(b.cellX, b.cellY);
+        const to = this.renderer.cellTopScreen(b.rallyX, b.rallyY);
+        const fy = from.y + TILE_H / 2;
+        const ty = to.y + TILE_H / 2;
+        this.pingG.moveTo(from.x, fy).lineTo(to.x, ty).stroke({ color: 0x6fe0a0, width: 2, alpha: 0.6 });
+        this.pingG.circle(to.x, ty, 6).stroke({ color: 0x6fe0a0, width: 2, alpha: 0.85 });
+      }
+    }
   }
 
   /** 驱动方每个本地 tick 取走本地命令（单机直接 apply / 联机送服务器）。 */
