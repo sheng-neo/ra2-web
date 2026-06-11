@@ -1,0 +1,21 @@
+NOTICE
+======
+
+This project (the source code in this repository) is licensed under the MIT
+License — see LICENSE.
+
+The MIT license covers ONLY the original source code here. It does NOT grant any
+rights to third-party intellectual property:
+
+- "Command & Conquer", "Red Alert", "Tiberian Sun" and related names, logos and
+  game assets are trademarks and copyrighted works of Electronic Arts Inc. (EA).
+- This is an unofficial, fan-made / educational work. It is NOT affiliated with,
+  authorized, sponsored, or endorsed by EA.
+- NO copyrighted game assets (art, audio, maps, fonts, etc.) are included in or
+  distributed by this repository. To see original artwork, a player must supply
+  their own legally-obtained game files locally, or use assets EA has released
+  for free (e.g. Tiberian Sun) which are fetched to the player's own device and
+  never redistributed by this project. Without any files, the game runs on
+  original placeholder art.
+
+If you are a rights holder and have any concern, please open an issue.
