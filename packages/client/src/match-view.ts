@@ -125,6 +125,8 @@ export class MatchView {
   /** 触控双击检测（选同类）。 */
   private lastTapAt = 0;
   private lastTapPos = { x: 0, y: 0 };
+  /** 「找空闲部队」循环游标。 */
+  private idleScan = 0;
   private localCommands: Command[] = [];
   private activeTab: ProdCategory = 'building';
   private cameos: CameoCell[] = [];
@@ -253,6 +255,7 @@ export class MatchView {
          <span>电力 <b id="mv-power" class="pwr-ok">0</b></span>
          <span class="mv-net" id="mv-net"></span>
          <span style="flex:1"></span>
+         <button id="mv-idle" style="background:none;border:1px solid #2a3a48;border-radius:5px;color:#9aa7b0;cursor:pointer;font-size:12px;padding:2px 8px">空闲</button>
          <button id="mv-mute" style="background:none;border:none;color:#9aa7b0;cursor:pointer;font-size:15px">🔊</button>
          <a href="#">退出</a>
        </div>
@@ -331,6 +334,7 @@ export class MatchView {
     muteBtn.addEventListener('click', () => {
       muteBtn.textContent = audioBus.toggleMute() ? '🔇' : '🔊';
     });
+    this.root.querySelector('#mv-idle')!.addEventListener('click', () => this.jumpToIdle());
     // 首次交互解锁音频（浏览器自动播放策略）
     const unlock = (): void => audioBus.resume();
     this.app.canvas.addEventListener('pointerdown', unlock, { once: true });
@@ -645,6 +649,10 @@ export class MatchView {
       }
       if ((e.key === 'g' || e.key === 'G') && this.selected.size > 0) {
         this.cycleStance(); // G：循环切换作战姿态（警戒/进攻/坚守/不还火）
+        return;
+      }
+      if (e.key === 'e' || e.key === 'E') {
+        this.jumpToIdle(); // E：定位下一个空闲作战单位
         return;
       }
       if (e.key >= '1' && e.key <= '9') {
@@ -1013,6 +1021,32 @@ export class MatchView {
     const sx = this.camera.zoom * this.leptonScreenX(ent) + this.renderer.stage.position.x;
     const sy = this.camera.zoom * this.leptonScreenY(ent) + this.renderer.stage.position.y;
     return sx >= 0 && sx <= window.innerWidth && sy >= 0 && sy <= window.innerHeight;
+  }
+
+  /** 找空闲部队：循环选中下一个无任何指令的己方作战单位并把镜头移过去。 */
+  private jumpToIdle(): void {
+    const idle: number[] = [];
+    for (const e of this.world.entities.values()) {
+      if (e.owner !== this.localPlayerId) continue;
+      const t = this.world.rules.units.get(e.typeId);
+      if (!t || t.domain === 'building' || !t.weapon) continue;
+      if (!e.goal && !e.waypoint && e.targetId === null && !e.attackMove && !e.patrol) idle.push(e.id);
+    }
+    if (idle.length === 0) {
+      this.setNetStatus('无空闲部队');
+      return;
+    }
+    idle.sort((a, b) => a - b);
+    const id = idle[this.idleScan % idle.length]!;
+    this.idleScan++;
+    const e = this.world.entities.get(id)!;
+    this.selected.clear();
+    this.selectBuilding(null);
+    this.selected.add(id);
+    this.camera.x = cornerX(e.cellX, e.cellY);
+    this.camera.y = cornerY(e.cellX, e.cellY);
+    this.camera.apply();
+    audioBus.play('select');
   }
 
   /** 选中屏内所有同类型己方单位（桌面双击 / 手机双击共用）。 */
