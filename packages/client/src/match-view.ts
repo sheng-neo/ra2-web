@@ -122,6 +122,9 @@ export class MatchView {
   private readonly selected = new Set<number>();
   private selectedBuilding: number | null = null;
   private readonly controlGroups = new Map<number, number[]>();
+  /** 触控双击检测（选同类）。 */
+  private lastTapAt = 0;
+  private lastTapPos = { x: 0, y: 0 };
   private localCommands: Command[] = [];
   private activeTab: ProdCategory = 'building';
   private cameos: CameoCell[] = [];
@@ -598,16 +601,7 @@ export class MatchView {
     });
     // 双击：选中屏内同类型己方单位
     canvas.addEventListener('dblclick', (e) => {
-      const id = this.unitAtScreen(e.clientX, e.clientY);
-      if (id === null) return;
-      const type = this.world.entities.get(id)?.typeId;
-      if (!type) return;
-      this.selected.clear();
-      this.selectBuilding(null);
-      for (const ent of this.world.entities.values()) {
-        if (ent.owner === this.localPlayerId && ent.typeId === type && this.onScreen(ent)) this.selected.add(ent.id);
-      }
-      audioBus.play('select');
+      this.selectSameTypeOnScreen(this.unitAtScreen(e.clientX, e.clientY));
     });
     this.bindTouch();
     this.bindKeyboard();
@@ -760,7 +754,19 @@ export class MatchView {
       // 轻点
       const moved = Math.hypot(p.x - p.sx, p.y - p.sy);
       const quick = performance.now() - p.t < TAP_MS;
-      if (moved <= TAP_MOVE && quick) this.handleTap(p.x, p.y);
+      if (moved <= TAP_MOVE && quick) {
+        const now = performance.now();
+        const dbl = now - this.lastTapAt < 320 && Math.hypot(p.x - this.lastTapPos.x, p.y - this.lastTapPos.y) < 28;
+        const hit = this.unitAtScreen(p.x, p.y);
+        if (dbl && hit !== null) {
+          this.selectSameTypeOnScreen(hit); // 双击：选屏内所有同类型单位
+          this.lastTapAt = 0;
+        } else {
+          this.handleTap(p.x, p.y);
+          this.lastTapAt = now;
+          this.lastTapPos = { x: p.x, y: p.y };
+        }
+      }
       mode = 'idle';
     };
     canvas.addEventListener('pointerup', onUp);
@@ -1004,6 +1010,19 @@ export class MatchView {
     const sx = this.camera.zoom * this.leptonScreenX(ent) + this.renderer.stage.position.x;
     const sy = this.camera.zoom * this.leptonScreenY(ent) + this.renderer.stage.position.y;
     return sx >= 0 && sx <= window.innerWidth && sy >= 0 && sy <= window.innerHeight;
+  }
+
+  /** 选中屏内所有同类型己方单位（桌面双击 / 手机双击共用）。 */
+  private selectSameTypeOnScreen(id: number | null): void {
+    if (id === null) return;
+    const type = this.world.entities.get(id)?.typeId;
+    if (!type) return;
+    this.selected.clear();
+    this.selectBuilding(null);
+    for (const ent of this.world.entities.values()) {
+      if (ent.owner === this.localPlayerId && ent.typeId === type && this.onScreen(ent)) this.selected.add(ent.id);
+    }
+    audioBus.play('select');
   }
 
   /** 返回该格上己方建筑 id，否则 null。 */
