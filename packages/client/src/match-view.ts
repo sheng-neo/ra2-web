@@ -145,6 +145,8 @@ export class MatchView {
   /** 「基地受攻击」告警：记录己方建筑血量，掉血即报警（节流）。 */
   private bldHp = new Map<number, number>();
   private lastAttackAlert = 0;
+  /** 最近被攻击建筑的位置（小地图红点闪烁定位）。 */
+  private attackPing: { x: number; y: number; at: number } | null = null;
   private lastPointer = { x: -1, y: -1 };
   private overCanvas = false;
   private midDrag: { x: number; y: number } | null = null;
@@ -1215,13 +1217,16 @@ export class MatchView {
       }
       // 「基地受攻击」告警：己方建筑掉血即报警（6s 节流，避免连环刷屏）
       let attacked = false;
+      const now = performance.now();
       for (const e of this.world.entities.values()) {
         if (e.owner !== this.localPlayerId || !this.world.rules.units.get(e.typeId)?.building) continue;
         const prev = this.bldHp.get(e.id);
-        if (prev !== undefined && e.hp < prev) attacked = true;
+        if (prev !== undefined && e.hp < prev) {
+          attacked = true;
+          this.attackPing = { x: e.cellX, y: e.cellY, at: now }; // 记录位置供小地图闪烁
+        }
         this.bldHp.set(e.id, e.hp);
       }
-      const now = performance.now();
       if (attacked && now - this.lastAttackAlert > 6000) {
         this.lastAttackAlert = now;
         audioBus.alarm();
@@ -1388,6 +1393,23 @@ export class MatchView {
       ctx.fillStyle = own ? '#4f8fdd' : '#d05050';
       const s = type?.building ? 4 : 2;
       ctx.fillRect((e.cellX - e.cellY + this.mapH) * sx, (e.cellX + e.cellY) * sy, s, s);
+    }
+    // 受攻击位置：小地图红圈闪烁定位（~5s）
+    if (this.attackPing) {
+      const age = performance.now() - this.attackPing.at;
+      if (age < 5000) {
+        const mx = (this.attackPing.x - this.attackPing.y + this.mapH) * sx;
+        const my = (this.attackPing.x + this.attackPing.y) * sy;
+        ctx.strokeStyle = '#ff4040';
+        ctx.lineWidth = 2;
+        ctx.globalAlpha = 1 - age / 5000;
+        ctx.beginPath();
+        ctx.arc(mx, my, 4 + 4 * Math.abs(Math.sin(age / 160)), 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+      } else {
+        this.attackPing = null;
+      }
     }
   }
 }
