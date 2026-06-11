@@ -45,7 +45,7 @@ const STYLE = `
 #boot .stage { position:fixed; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:safe center; overflow-y:auto; z-index:20; padding:68px 16px 36px; box-sizing:border-box; }
 
 /* 开机序列 */
-#boot .ceremony { width:min(640px,92vw); text-align:center; }
+#boot .ceremony { width:min(640px,92vw); text-align:center; transition:opacity .4s ease; }
 #boot .term { font-family:'SFMono-Regular',Menlo,Consolas,monospace; color:#74e69a; text-shadow:0 0 8px rgba(86,224,128,.5); font-size:14px; line-height:2; text-align:left; min-height:84px; }
 #boot .term .cur { display:inline-block; width:9px; background:#74e69a; animation:bootBlink 1s steps(1) infinite; }
 #boot .saga { margin-top:18px; }
@@ -278,6 +278,7 @@ export async function renderBootScreen(root: HTMLElement): Promise<void> {
     saga.innerHTML = '';
     menu.classList.remove('in');
     ceremony.style.display = '';
+    ceremony.style.opacity = '';
     alertEl.style.display = '';
     alertEl.classList.remove('show');
     skip.style.display = '';
@@ -336,13 +337,15 @@ function runIntro(boot: HTMLElement, at: (ms: number, fn: () => void) => void, r
     t += s.cls === 'saga-sub' ? 700 : 1100;
   }
   // 红色警戒 · 警报转场（红色旋转警示灯 + 脉冲 + 警笛）→ 揭幕菜单
-  // 多转一会，给足阅读时间（约 4.8s）；音频已解锁时配警笛
+  // 先把叙事文字淡出，红场才干净不与文字重叠；再亮红场（约 4.8s，给足阅读）配警笛
   const alertEl = boot.querySelector<HTMLElement>('#alert')!;
-  at(t + 700, () => {
+  const ceremonyEl = boot.querySelector<HTMLElement>('.ceremony')!;
+  at(t + 450, () => (ceremonyEl.style.opacity = '0'));
+  at(t + 850, () => {
     alertEl.classList.add('show');
     audioBus.alarm();
   });
-  at(t + 5500, reveal);
+  at(t + 5600, reveal);
 }
 
 /** 领取/读取见证者序号并显示。无服务器（开发期）则降级。 */
@@ -364,15 +367,16 @@ async function showWitness(el: HTMLElement): Promise<void> {
   }
 }
 
-/** 背景音乐：用户自备 /bgm.mp3；浏览器禁止自动播放，首次手势后启动；带静音开关。
- *  无该文件则静默隐藏开关（不报错）。 */
+/** 背景音乐：优先用户自备 /bgm.mp3，无该文件则回退程序合成 BGM（始终有乐）。
+ *  浏览器禁止自动播放，须首次手势后启动；带 🎵/🔇 开关、记忆静音；离开首页即停。 */
 function setupBgm(root: HTMLElement): void {
   const bgm = document.createElement('audio');
   bgm.src = '/bgm.mp3';
   bgm.loop = true;
-  bgm.volume = 0.4;
-  let ok = true;
+  bgm.volume = 0.5;
   let on = localStorage.getItem('ra2.bgm') !== 'off';
+  let synth = false; // 无 mp3 → 回退程序合成
+  bgm.addEventListener('error', () => (synth = true));
   const toggle = document.createElement('div');
   toggle.title = '背景音乐';
   toggle.style.cssText = 'position:fixed;right:58px;top:13px;z-index:45;cursor:pointer;font-size:18px;user-select:none';
@@ -380,25 +384,39 @@ function setupBgm(root: HTMLElement): void {
     toggle.textContent = on ? '🎵' : '🔇';
     toggle.style.opacity = on ? '0.95' : '0.4';
   };
-  bgm.addEventListener('error', () => {
-    ok = false;
-    toggle.style.display = 'none';
-  });
+  const playOn = (): void => {
+    audioBus.resume();
+    if (synth) {
+      audioBus.startMusic();
+      return;
+    }
+    void bgm.play().catch(() => {
+      synth = true;
+      audioBus.startMusic();
+    });
+  };
+  const playOff = (): void => {
+    bgm.pause();
+    audioBus.stopMusic();
+  };
   toggle.addEventListener('click', () => {
     on = !on;
     localStorage.setItem('ra2.bgm', on ? 'on' : 'off');
     sync();
-    if (on && ok) void bgm.play().catch(() => undefined);
-    else bgm.pause();
+    if (on) playOn();
+    else playOff();
   });
   root.appendChild(bgm);
   root.appendChild(toggle);
   sync();
+  // 首次手势后启动（绕过自动播放限制）
   const start = (): void => {
-    if (on && ok) void bgm.play().catch(() => undefined);
+    if (on) playOn();
     window.removeEventListener('pointerdown', start);
     window.removeEventListener('keydown', start);
   };
   window.addEventListener('pointerdown', start);
   window.addEventListener('keydown', start);
+  // 离开首页即停（mp3 随 DOM 移除自停，程序合成需显式停）
+  window.addEventListener('hashchange', () => audioBus.stopMusic(), { once: true });
 }
