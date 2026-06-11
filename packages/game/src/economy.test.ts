@@ -314,6 +314,21 @@ describe('个体 AI 与采矿指令（本批改进）', () => {
     expect(h.path.length).toBe(0);
   });
 
+  it('攻击移动：沿途逐个停下歼敌、清完再续行到终点（经典 A-move）', () => {
+    const w = new World(gridTerrain(40, 40), 33);
+    w.addPlayer(1, 'allied', 0);
+    w.addPlayer(2, 'soviet', 0);
+    const tank = w.spawnUnit(1, 'grizzly', 2, 2)!;
+    const e1 = w.spawnUnit(2, 'conscript', 12, 2)!; // 路上第一个
+    const e2 = w.spawnUnit(2, 'conscript', 22, 2)!; // 路上第二个
+    w.applyCommands([{ kind: 'attackMove', entityIds: [tank.id], cellX: 36, cellY: 2 }]);
+    runScript(w, [], 1500);
+    expect(w.entities.has(e1.id)).toBe(false); // 逐个清掉，不再"擦肩而过"
+    expect(w.entities.has(e2.id)).toBe(false);
+    expect(tank.cellX).toBeGreaterThan(30); // 清完继续抵达终点
+    expect(tank.attackMove).toBe(false); // 到点结束攻击移动
+  });
+
   it('巡逻：在两点间持续往返', () => {
     const w = new World(gridTerrain(40, 40), 29);
     w.addPlayer(1, 'allied', 0);

@@ -144,8 +144,9 @@ export class MatchView {
   private selBox!: HTMLElement;
   private bldBar!: HTMLElement;
   private unitBar!: HTMLElement;
-  /** 触控：选中单位后下方操作条选定的待执行命令（下次点地/点目标执行）。 */
-  private pendingAction: 'move' | 'attack' | 'attackMove' | 'patrol' | null = null;
+  /** 触控：选中单位后下方操作条选定的待执行命令（下次点地/点目标执行）。
+   *  攻=点敌锁定/点地攻击移动；巡=巡逻；移=普通移动。 */
+  private pendingAction: 'move' | 'attack' | 'patrol' | null = null;
   /** 触控：点了「集结点」按钮后待设集结点的生产建筑 id（下次点地执行）。 */
   private pendingRally: number | null = null;
 
@@ -247,9 +248,8 @@ export class MatchView {
        }</div>
        <div class="mv-bldbar" id="mv-bldbar"></div>
        <div class="mv-unitbar" id="mv-unitbar">
-         <button data-act="move" title="移动">移</button>
-         <button data-act="attack" title="攻击目标">攻</button>
-         <button data-act="attackMove" title="攻击移动（边走边打）">进</button>
+         <button data-act="move" title="移动（无视沿途敌人直达）">移</button>
+         <button data-act="attack" title="攻击：点敌锁定歼灭，点空地=攻击移动（沿途逐个交战）">攻</button>
          <button data-act="patrol" title="巡逻（两点间往返警戒）">巡</button>
          <button class="harv" data-act="harvest" title="采矿 / 恢复采矿">采</button>
          <button class="stop" data-act="stop" title="停止">停</button>
@@ -280,7 +280,7 @@ export class MatchView {
           }
           this.pendingAction = null;
         } else {
-          this.pendingAction = this.pendingAction === act ? null : (act as 'move' | 'attack' | 'attackMove' | 'patrol');
+          this.pendingAction = this.pendingAction === act ? null : (act as 'move' | 'attack' | 'patrol');
         }
         audioBus.play('select');
         this.updateUnitBar();
@@ -725,26 +725,23 @@ export class MatchView {
       const ids = [...this.selected].sort((a, b) => a - b);
       const cell = this.screenToCell(clientX, clientY);
       const inBounds = cell.x >= 0 && cell.y >= 0 && cell.x < this.mapW && cell.y < this.mapH;
-      if (this.pendingAction === 'attackMove') {
-        if (inBounds) {
-          this.emit({ kind: 'attackMove', entityIds: ids, cellX: cell.x, cellY: cell.y });
-          this.playUnitVoice('attack', ids[0]!);
-        }
-      } else if (this.pendingAction === 'patrol') {
+      if (this.pendingAction === 'patrol') {
         if (inBounds) {
           this.emit({ kind: 'patrol', entityIds: ids, cellX: cell.x, cellY: cell.y });
           this.playUnitVoice('attack', ids[0]!);
         }
       } else if (this.pendingAction === 'attack') {
+        // 攻：点中敌人=锁定歼灭该目标；点空地=攻击移动（沿途逐个停下交战），不再是普通移动
         const target = this.targetAt(clientX, clientY);
         if (target !== null) {
           this.emit({ kind: 'attack', entityIds: ids, targetId: target });
           this.playUnitVoice('attack', ids[0]!);
         } else if (inBounds) {
-          this.emit({ kind: 'move', entityIds: ids, cellX: cell.x, cellY: cell.y });
-          this.playUnitVoice('move', ids[0]!);
+          this.emit({ kind: 'attackMove', entityIds: ids, cellX: cell.x, cellY: cell.y });
+          this.playUnitVoice('attack', ids[0]!);
         }
       } else if (inBounds) {
+        // 移：普通移动，无视沿途敌人直达
         this.emit({ kind: 'move', entityIds: ids, cellX: cell.x, cellY: cell.y });
         this.playUnitVoice('move', ids[0]!);
       }
@@ -1101,7 +1098,7 @@ export class MatchView {
       const el = b as HTMLButtonElement;
       const act = el.dataset.act;
       if (act === 'harvest') el.hidden = !hasHarv;
-      else if (act === 'attack' || act === 'attackMove' || act === 'patrol') el.hidden = !hasCombat;
+      else if (act === 'attack' || act === 'patrol') el.hidden = !hasCombat;
       el.classList.toggle('on', act === this.pendingAction);
     });
   }

@@ -76,8 +76,10 @@ export interface Entity {
   // 战斗
   targetId: number | null;
   cooldown: number;
-  /** 攻击移动：朝目标格行军，沿途自动交战。 */
+  /** 攻击移动：朝目标格行军，沿途逐个停下歼敌再续行。 */
   attackMove: boolean;
+  /** 攻击移动/巡逻的最终行军终点（格）。途中迎敌时被临时绕开，敌灭后据此续行/折返。null=无。 */
+  attackDest: { x: number; y: number } | null;
   /** 巡逻：到达当前目的地后折返的另一端点（格），null=不巡逻。沿途自动交战。 */
   patrol: { x: number; y: number } | null;
   // 采矿
@@ -209,6 +211,7 @@ export class World {
               this.orderMove(e, cmd.cellX, cmd.cellY);
               e.targetId = null;
               e.attackMove = false;
+              e.attackDest = null;
               e.patrol = null;
               // 矿车手动移动后回到自动采矿状态：先去目的地，到了再自找最近矿（见 stepHarvester seek）
               if (e.harvester) e.harvester.mode = 'seek';
@@ -222,6 +225,7 @@ export class World {
               this.orderMove(e, cmd.cellX, cmd.cellY);
               e.targetId = null;
               e.attackMove = true;
+              e.attackDest = { x: cmd.cellX, y: cmd.cellY };
               e.patrol = null;
             }
           }
@@ -236,6 +240,7 @@ export class World {
             this.orderMove(e, cmd.cellX, cmd.cellY);
             e.targetId = null;
             e.attackMove = true;
+            e.attackDest = { x: cmd.cellX, y: cmd.cellY };
           }
           break;
         case 'attack':
@@ -243,6 +248,8 @@ export class World {
             const e = this.entities.get(eid);
             if (e) {
               e.targetId = cmd.targetId;
+              e.attackMove = false;
+              e.attackDest = null;
               e.patrol = null;
             }
           }
@@ -291,6 +298,7 @@ export class World {
               e.goal = null;
               e.targetId = null;
               e.attackMove = false;
+              e.attackDest = null;
               e.patrol = null;
             }
           }
@@ -328,6 +336,7 @@ export class World {
       targetId: null,
       cooldown: 0,
       attackMove: false,
+      attackDest: null,
       patrol: null,
       rallyX: -1,
       rallyY: -1,
@@ -655,16 +664,10 @@ export class World {
     if (!e.waypoint) {
       const next = e.path.pop();
       if (!next) {
-        if (e.patrol) {
-          // 巡逻到达一端：折返另一端（刚到的点成为新的折返点），保持攻击移动
-          const back = e.patrol;
-          e.patrol = { x: e.cellX, y: e.cellY };
-          this.orderMove(e, back.x, back.y);
-          e.attackMove = true;
-          return;
-        }
+        // 攻击移动/巡逻的续行与折返由 stepAggressiveMarch 统一负责，这里不擅自结束
+        if (e.attackMove && (e.attackDest || e.patrol)) return;
         e.goal = null;
-        e.attackMove = false; // 抵达目的地，攻击移动结束
+        e.attackMove = false; // 普通移动抵达目的地
         return;
       }
       e.waypoint = { x: cellToLepton(next.x), y: cellToLepton(next.y) };
@@ -797,30 +800,41 @@ export class World {
   // ───────────────────────── 战斗 ─────────────────────────
 
   /** 返回 true 表示正在交火（本 tick 应暂停移动）。 */
+  /** 索敌：返回射程/警戒半径内最近的敌人（非建筑单位用警戒半径主动迎击，
+   *  即便超出武器射程也会上前；敌"建筑"仅在「非攻击移动」时受武器射程约束——
+   *  不自发跑去拆远处建筑，攻击移动/巡逻则一并清理）。 */
+  private acquireEnemy(e: Entity, type: UnitType): Entity | null {
+    const aggressive = e.attackMove;
+    const acquireRange = type.domain === 'building' ? type.weapon!.range : Math.max(type.weapon!.range, GUARD_RANGE);
+    return this.findNearest(e.x, e.y, (o) => {
+      if (o.owner === e.owner || this.players.get(o.owner)?.defeated) return false;
+      const isBuilding = this.rules.units.get(o.typeId)?.domain === 'building';
+      const range = isBuilding && !aggressive ? type.weapon!.range : acquireRange;
+      return dist(o.x - e.x, o.y - e.y) <= range;
+    });
+  }
+
   private stepCombat(e: Entity, type: UnitType): boolean {
     if (!type.weapon) return false;
     if (e.cooldown > 0) e.cooldown--;
 
-    // 空闲或攻击移动时自动索敌（普通 move 行军途中不索敌）。
-    // 非建筑单位用「警戒半径」索敌——附近有敌就主动上前（即便超出武器射程，
-    // 由下方追击逻辑把它带进射程）；建筑只在武器射程内索敌（不能移动）。
-    let target = e.targetId !== null ? this.entities.get(e.targetId) : undefined;
-    const canAcquire = !e.goal || e.attackMove;
-    if ((!target || target.owner === e.owner) && canAcquire) {
-      const acquireRange = type.domain === 'building' ? type.weapon.range : Math.max(type.weapon.range, GUARD_RANGE);
-      const enemy = this.findNearest(e.x, e.y, (o) => {
-        if (o.owner === e.owner || this.players.get(o.owner)?.defeated) return false;
-        // 空闲单位主动迎击警戒范围内的敌"单位"；敌"建筑"只在武器射程内才打
-        // （不自发跑去拆远处建筑，攻击移动除外）
-        const isBuilding = this.rules.units.get(o.typeId)?.domain === 'building';
-        const range = isBuilding && !e.attackMove ? type.weapon!.range : acquireRange;
-        return dist(o.x - e.x, o.y - e.y) <= range;
-      });
-      target = enemy ?? undefined;
-      e.targetId = enemy ? enemy.id : null;
+    let target: Entity | undefined;
+    if (e.attackMove) {
+      // 攻击移动/巡逻：每帧锁定射程/警戒内最近的敌人——逐个停下歼灭挡路之敌，
+      // 打完（目标消失/驶离警戒）再据 attackDest 续行或折返。
+      target = this.acquireEnemy(e, type) ?? undefined;
+      e.targetId = target ? target.id : null;
+    } else {
+      // 显式攻击：紧咬指定目标；空闲（无目的地）：警戒索敌被动自卫。
+      target = e.targetId !== null ? this.entities.get(e.targetId) : undefined;
+      if (target && (target.owner === e.owner || this.players.get(target.owner)?.defeated)) target = undefined;
+      if (!target && !e.goal) target = this.acquireEnemy(e, type) ?? undefined;
+      e.targetId = target ? target.id : null;
     }
-    if (!target || target.owner === e.owner) {
-      e.targetId = null;
+
+    if (!target) {
+      // 攻击移动/巡逻无敌可打：继续奔向终点（到点则结束/折返）
+      if (e.attackMove && e.attackDest) this.stepAggressiveMarch(e);
       return false;
     }
 
@@ -828,22 +842,18 @@ export class World {
     const dy = target.y - e.y;
     const d = dist(dx, dy);
     if (d > type.weapon.range) {
-      if (e.attackMove) {
-        // 行军中目标脱离射程：放弃它，继续奔向目的地
-        e.targetId = null;
-      } else if (type.domain !== 'building' && !e.goal) {
-        // 显式攻击：追击到目标最近可达格
+      // 够不着：上前进入射程。攻击移动暂离行军路线迎敌（attackDest 留待事后续行）；
+      // 显式攻击同样追击；建筑不能动。
+      if (e.attackMove ? e.path.length === 0 && !e.waypoint : type.domain !== 'building' && !e.goal) {
         const near = this.passableNear(target.cellX, target.cellY);
         if (near) this.orderMove(e, near.x, near.y);
       }
       return false;
     }
-    // 进入射程：转向、开火。普通攻击就地停住；攻击移动保留目的地（交火完继续走）
-    if (!e.attackMove) {
-      e.path = [];
-      e.waypoint = null;
-      e.goal = null;
-    }
+    // 进入射程：停住、转向、开火（攻击移动也停下打完，靠 attackDest 事后续行）
+    e.path = [];
+    e.waypoint = null;
+    e.goal = null;
     const aim = dirToBangle(dx, dy);
     if (type.rot > 0) {
       e.facing = turnToward(e.facing, aim, type.rot);
@@ -854,6 +864,25 @@ export class World {
       e.cooldown = type.weapon.cooldown;
     }
     return true;
+  }
+
+  /** 攻击移动/巡逻在无敌情时推进：未到终点则（站定后）继续奔向终点；
+   *  到终点——巡逻折返另一端，普通攻击移动则结束。 */
+  private stepAggressiveMarch(e: Entity): void {
+    const dest = e.attackDest!;
+    if (e.cellX === dest.x && e.cellY === dest.y) {
+      if (e.patrol) {
+        const next = e.patrol; // 折返：刚到的点成为新的折返点
+        e.patrol = e.attackDest;
+        e.attackDest = next;
+        this.orderMove(e, next.x, next.y);
+      } else {
+        e.attackMove = false;
+        e.attackDest = null;
+      }
+    } else if (e.path.length === 0 && !e.waypoint) {
+      this.orderMove(e, dest.x, dest.y); // 刚打完站住 / 路径耗尽未到点：续行
+    }
   }
 
   private fire(shooter: Entity, target: Entity, weapon: NonNullable<UnitType['weapon']>): void {
