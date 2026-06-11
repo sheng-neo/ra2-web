@@ -272,6 +272,7 @@ export class MatchView {
          <span id="mv-sel" style="color:#8fd0a0"></span>
          <span class="mv-net" id="mv-net"></span>
          <span style="flex:1"></span>
+         <button id="mv-help" style="background:none;border:1px solid #2a3a48;border-radius:5px;color:#9aa7b0;cursor:pointer;font-size:12px;padding:2px 8px">? 帮助</button>
          <button id="mv-idle" style="background:none;border:1px solid #2a3a48;border-radius:5px;color:#9aa7b0;cursor:pointer;font-size:12px;padding:2px 8px">空闲</button>
          <button id="mv-mute" style="background:none;border:none;color:#9aa7b0;cursor:pointer;font-size:15px">🔊</button>
          <a href="#">退出</a>
@@ -353,6 +354,7 @@ export class MatchView {
       muteBtn.textContent = audioBus.toggleMute() ? '🔇' : '🔊';
     });
     this.root.querySelector('#mv-idle')!.addEventListener('click', () => this.jumpToIdle());
+    this.root.querySelector('#mv-help')!.addEventListener('click', () => this.toggleHelp());
     // 首次交互解锁音频（浏览器自动播放策略）
     const unlock = (): void => audioBus.resume();
     this.app.canvas.addEventListener('pointerdown', unlock, { once: true });
@@ -682,6 +684,10 @@ export class MatchView {
       }
       if (e.key === 'e' || e.key === 'E') {
         this.jumpToIdle(); // E：定位下一个空闲作战单位
+        return;
+      }
+      if (e.key === 'h' || e.key === 'H' || e.key === '?') {
+        this.toggleHelp(); // H/?：操作帮助
         return;
       }
       if (e.key >= '1' && e.key <= '9') {
@@ -1160,6 +1166,29 @@ export class MatchView {
       el.classList.remove('show');
       setTimeout(() => el.remove(), 500);
     }, 4500);
+  }
+
+  /** 切换操作帮助面板（? 帮助按钮 / H 键）——汇总所有控制与克制关系。 */
+  private toggleHelp(): void {
+    const existing = this.root.querySelector('.mv-help');
+    if (existing) {
+      existing.remove();
+      return;
+    }
+    const touch = matchMedia('(pointer: coarse)').matches;
+    const tip = document.createElement('div');
+    tip.className = 'mv-tip mv-help';
+    tip.innerHTML =
+      `<h3>操作帮助</h3><ul>` +
+      `<li>选择：${touch ? '点选 · 拖框选 · 双击选同类' : '左键选/框选 · 双击选同类 · Ctrl+数字编队'}</li>` +
+      `<li>下令：${touch ? '点地移动 · 点敌攻击 · 下方操作条' : '右键移动/攻击'}（移/攻=攻击移动/巡=巡逻/采/停）</li>` +
+      (touch ? '' : `<li>键位：A 攻击移动 · P 巡逻 · G 切姿态 · E 找空闲兵 · S 停止</li>`) +
+      `<li>姿态：进攻(主动出击)·警戒(默认)·坚守(原地不追)·不还火</li>` +
+      `<li>经济科技：发电厂→精炼厂→兵营→战车厂→作战实验室(解锁光棱/天启)；连点排队·点✕取消·建筑设集结点</li>` +
+      `<li>克制：反坦克兵打坦克 · 军犬秒步兵 · 攻城车轰步兵/建筑 · 坦克碾步兵</li>` +
+      `</ul><button id="mv-help-ok">关闭</button>`;
+    this.root.appendChild(tip);
+    tip.querySelector('#mv-help-ok')!.addEventListener('click', () => tip.remove());
   }
 
   private renderBuildingBar(): void {
