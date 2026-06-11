@@ -204,30 +204,59 @@ export class AudioBus {
     return true;
   }
 
-  /** 「红色警戒」警报警笛（程序合成，开场红场转场用）。须音频已解锁(用户手势后)。 */
+  /** 「红色警戒」警报警笛（程序合成，开场红场转场用）。须音频已解锁(用户手势后)。
+   *  更高亢：主音在 660↔1180Hz 拉鸣 + 一条高八度叠音，明亮刺耳。 */
   alarm(): void {
     if (!this.ctx || !this.master || this.muted) return;
     const ctx = this.ctx;
     const t0 = ctx.currentTime;
     const dur = 4.4;
-    const cycles = 5;
-    const osc = ctx.createOscillator();
-    osc.type = 'sawtooth';
-    osc.frequency.setValueAtTime(420, t0);
-    for (let i = 1; i <= cycles; i++) {
-      osc.frequency.linearRampToValueAtTime(i % 2 === 1 ? 760 : 420, t0 + (dur * i) / cycles);
-    }
-    const lp = ctx.createBiquadFilter();
-    lp.type = 'lowpass';
-    lp.frequency.value = 1700;
+    const cycles = 6;
     const g = ctx.createGain();
     g.gain.setValueAtTime(0.0001, t0);
-    g.gain.exponentialRampToValueAtTime(0.16, t0 + 0.25);
-    g.gain.setValueAtTime(0.16, t0 + dur - 0.6);
+    g.gain.exponentialRampToValueAtTime(0.22, t0 + 0.2);
+    g.gain.setValueAtTime(0.22, t0 + dur - 0.6);
     g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
-    osc.connect(lp).connect(g).connect(this.master);
-    osc.start(t0);
-    this.track(osc, dur + 0.1);
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.value = 3200;
+    lp.connect(g).connect(this.master);
+    // 主音 + 高八度叠音（更明亮）
+    for (const [base, mul, gain] of [
+      [660, 1, 1],
+      [660, 2, 0.4],
+    ] as const) {
+      const osc = ctx.createOscillator();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(base * mul, t0);
+      for (let i = 1; i <= cycles; i++) {
+        osc.frequency.linearRampToValueAtTime((i % 2 === 1 ? 1180 : 660) * mul, t0 + (dur * i) / cycles);
+      }
+      const og = ctx.createGain();
+      og.gain.value = gain;
+      osc.connect(og).connect(lp);
+      osc.start(t0);
+      this.track(osc, dur + 0.1);
+    }
+  }
+
+  /** 终端打字机的按键嗒声（开场打字逐字调用）。极短、轻；音频已解锁才出声。 */
+  key(): void {
+    if (!this.ctx || !this.master || this.muted) return;
+    const ctx = this.ctx;
+    const t0 = ctx.currentTime;
+    const src = ctx.createBufferSource();
+    src.buffer = this.noiseBuffer;
+    const bp = ctx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.frequency.value = 2200;
+    bp.Q.value = 0.8;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.07, t0);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.025);
+    src.connect(bp).connect(g).connect(this.master);
+    src.start(t0);
+    this.track(src, 0.04);
   }
 
   /** 由 16bit PCM 建并缓存 AudioBuffer 后播放（按 key 缓存）。 */

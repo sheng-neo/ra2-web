@@ -191,6 +191,9 @@ export async function renderBootScreen(root: HTMLElement): Promise<void> {
   // —— 见证者计数 ——
   void showWitness(boot.querySelector<HTMLElement>('#witness')!);
 
+  // —— 背景音乐（用户自备 /bgm.mp3；浏览器策略需首次手势后才能播） ——
+  setupBgm(root);
+
   // —— 素材面板（下载/导入）——
   const fileInput = document.createElement('input');
   fileInput.type = 'file';
@@ -311,6 +314,7 @@ function runIntro(boot: HTMLElement, at: (ms: number, fn: () => void) => void, r
       const shown = line.slice(0, i);
       at(t, () => {
         term.innerHTML = `${html}${shown}<span class="cur">&nbsp;</span>`;
+        audioBus.key(); // 打字嗒声（音频解锁后才出声）
       });
       t += 32;
     }
@@ -358,4 +362,43 @@ async function showWitness(el: HTMLElement): Promise<void> {
   } catch {
     el.innerHTML = `守夜 · ${date}`;
   }
+}
+
+/** 背景音乐：用户自备 /bgm.mp3；浏览器禁止自动播放，首次手势后启动；带静音开关。
+ *  无该文件则静默隐藏开关（不报错）。 */
+function setupBgm(root: HTMLElement): void {
+  const bgm = document.createElement('audio');
+  bgm.src = '/bgm.mp3';
+  bgm.loop = true;
+  bgm.volume = 0.4;
+  let ok = true;
+  let on = localStorage.getItem('ra2.bgm') !== 'off';
+  const toggle = document.createElement('div');
+  toggle.title = '背景音乐';
+  toggle.style.cssText = 'position:fixed;right:58px;top:13px;z-index:45;cursor:pointer;font-size:18px;user-select:none';
+  const sync = (): void => {
+    toggle.textContent = on ? '🎵' : '🔇';
+    toggle.style.opacity = on ? '0.95' : '0.4';
+  };
+  bgm.addEventListener('error', () => {
+    ok = false;
+    toggle.style.display = 'none';
+  });
+  toggle.addEventListener('click', () => {
+    on = !on;
+    localStorage.setItem('ra2.bgm', on ? 'on' : 'off');
+    sync();
+    if (on && ok) void bgm.play().catch(() => undefined);
+    else bgm.pause();
+  });
+  root.appendChild(bgm);
+  root.appendChild(toggle);
+  sync();
+  const start = (): void => {
+    if (on && ok) void bgm.play().catch(() => undefined);
+    window.removeEventListener('pointerdown', start);
+    window.removeEventListener('keydown', start);
+  };
+  window.addEventListener('pointerdown', start);
+  window.addEventListener('keydown', start);
 }

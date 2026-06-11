@@ -68,6 +68,12 @@ export const MATCH_STYLE = `
 .mv-bldbar button.on { background: #2d6fb0; color: #fff; }
 .mv-bldbar .sell { color: #e08080; }
 .mv-bldbar .hint { color: #8a97a0; font-size: 12px; }
+.mv-unitbar { position: fixed; left: 50%; transform: translateX(-50%); bottom: 44px; z-index: 21; display: none;
+  gap: 8px; padding: 6px; background: rgba(12,16,20,.95); border: 1px solid #2a3a48; border-radius: 9px; }
+.mv-unitbar.show { display: flex; }
+.mv-unitbar button { padding: 9px 15px; border: 1px solid #2a3a48; border-radius: 6px; background: #1d2730; color: #d6e2ea; cursor: pointer; font-size: 14px; }
+.mv-unitbar button.on { background: #2d6fb0; color: #fff; border-color: #3d8fd0; }
+.mv-unitbar button.stop { color: #e0a860; }
 .mv-tip { position: fixed; left: 50%; top: 80px; transform: translateX(-50%); z-index: 25; max-width: 420px;
   background: rgba(14,20,26,.96); border: 1px solid #2d6fb0; border-radius: 10px; padding: 16px 18px; color: #d8e0e6; }
 .mv-tip h3 { margin: 0 0 8px; font-size: 15px; color: #6db3e8; }
@@ -78,8 +84,8 @@ export const MATCH_STYLE = `
   .mv-mini { display: none; }
   .mv-tabs { flex-direction: column; width: 56px; }
   .mv-build { grid-template-columns: repeat(auto-fill, 56px); }
-  /* 底部抽屉占 132px，把建筑操作条与提示上移避免遮挡 */
-  .mv-bldbar { bottom: 142px; }
+  /* 底部抽屉占 132px，把建筑/单位操作条与提示上移避免遮挡 */
+  .mv-bldbar, .mv-unitbar { bottom: 142px; }
   .mv-hint { display: none; }
 }
 `;
@@ -130,6 +136,9 @@ export class MatchView {
   private miniEl!: HTMLCanvasElement;
   private selBox!: HTMLElement;
   private bldBar!: HTMLElement;
+  private unitBar!: HTMLElement;
+  /** 触控：选中单位后下方操作条选定的待执行命令（下次点地/点目标执行）。 */
+  private pendingAction: 'move' | 'attack' | 'attackMove' | null = null;
 
   constructor(
     private readonly root: HTMLElement,
@@ -227,6 +236,12 @@ export class MatchView {
            : '左键选/框选 · 双击选同类 · 右键移动或攻击 · A 攻击移动 · S 停止 · Ctrl+数字编队 · 中键/方向键平移 · 滚轮缩放'
        }</div>
        <div class="mv-bldbar" id="mv-bldbar"></div>
+       <div class="mv-unitbar" id="mv-unitbar">
+         <button data-act="move">移动</button>
+         <button data-act="attack">攻击</button>
+         <button data-act="attackMove">攻击移动</button>
+         <button class="stop" data-act="stop">停止</button>
+       </div>
        <div id="mv-selbox"></div>`,
     );
     this.creditsEl = this.root.querySelector('#mv-credits')!;
@@ -237,6 +252,20 @@ export class MatchView {
     this.miniEl = this.root.querySelector('#mv-mini')!;
     this.selBox = this.root.querySelector('#mv-selbox')!;
     this.bldBar = this.root.querySelector('#mv-bldbar')!;
+    this.unitBar = this.root.querySelector('#mv-unitbar')!;
+    this.unitBar.querySelectorAll('button').forEach((b) =>
+      b.addEventListener('click', () => {
+        const act = (b as HTMLElement).dataset.act!;
+        if (act === 'stop') {
+          if (this.selected.size > 0) this.emit({ kind: 'stop', entityIds: [...this.selected].sort((a, c) => a - c) });
+          this.pendingAction = null;
+        } else {
+          this.pendingAction = this.pendingAction === act ? null : (act as 'move' | 'attack' | 'attackMove');
+        }
+        audioBus.play('select');
+        this.updateUnitBar();
+      }),
+    );
 
     // 点击小地图 → 相机跳转
     this.miniEl.addEventListener('pointerdown', (e) => {
@@ -629,6 +658,33 @@ export class MatchView {
       }
       return;
     }
+    // 触控操作条选了命令：本次点击执行该命令（取代右键），随后归位
+    if (this.pendingAction && this.selected.size > 0) {
+      const ids = [...this.selected].sort((a, b) => a - b);
+      const cell = this.screenToCell(clientX, clientY);
+      const inBounds = cell.x >= 0 && cell.y >= 0 && cell.x < this.mapW && cell.y < this.mapH;
+      if (this.pendingAction === 'attackMove') {
+        if (inBounds) {
+          this.emit({ kind: 'attackMove', entityIds: ids, cellX: cell.x, cellY: cell.y });
+          this.playUnitVoice('attack', ids[0]!);
+        }
+      } else if (this.pendingAction === 'attack') {
+        const target = this.targetAt(clientX, clientY);
+        if (target !== null) {
+          this.emit({ kind: 'attack', entityIds: ids, targetId: target });
+          this.playUnitVoice('attack', ids[0]!);
+        } else if (inBounds) {
+          this.emit({ kind: 'move', entityIds: ids, cellX: cell.x, cellY: cell.y });
+          this.playUnitVoice('move', ids[0]!);
+        }
+      } else if (inBounds) {
+        this.emit({ kind: 'move', entityIds: ids, cellX: cell.x, cellY: cell.y });
+        this.playUnitVoice('move', ids[0]!);
+      }
+      this.pendingAction = null;
+      this.updateUnitBar();
+      return;
+    }
     // 先看是否点中己方可移动单位 → 选中（精灵框，单位优先于身后建筑）
     const hitUnit = this.unitAtScreen(clientX, clientY);
     if (hitUnit !== null) {
@@ -929,8 +985,27 @@ export class MatchView {
   render(): void {
     const alpha = Math.min(1, (performance.now() - this.lastStepAt) / (1000 / 15));
     this.edgeScroll();
+    this.updateUnitBar();
     this.renderer.render(alpha, this.selected);
     this.drawGhost();
+  }
+
+  /** 触控：选中己方单位时显示下方操作条（移动/攻击/攻击移动/停止），高亮待执行命令。 */
+  private updateUnitBar(): void {
+    if (!this.isTouch) return;
+    let hasUnit = false;
+    for (const id of this.selected) {
+      const e = this.world.entities.get(id);
+      if (e && this.world.rules.units.get(e.typeId)?.domain !== 'building') {
+        hasUnit = true;
+        break;
+      }
+    }
+    if (!hasUnit) this.pendingAction = null;
+    this.unitBar.classList.toggle('show', hasUnit);
+    this.unitBar.querySelectorAll('button').forEach((b) => {
+      b.classList.toggle('on', (b as HTMLElement).dataset.act === this.pendingAction);
+    });
   }
 
   /** 桌面平移：方向键 + 光标贴边滚屏（仅画布内、非放置/拖动态；右缘留给侧栏）。 */
