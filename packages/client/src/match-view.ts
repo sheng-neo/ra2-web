@@ -164,6 +164,7 @@ export class MatchView {
   private creditsEl!: HTMLElement;
   private powerEl!: HTMLElement;
   private netEl!: HTMLElement;
+  private selEl!: HTMLElement;
   private tabsEl!: HTMLElement;
   private buildEl!: HTMLElement;
   private miniEl!: HTMLCanvasElement;
@@ -264,6 +265,7 @@ export class MatchView {
       `<div class="mv-top">
          <span>资金 <b id="mv-credits">0</b></span>
          <span>电力 <b id="mv-power" class="pwr-ok">0</b></span>
+         <span id="mv-sel" style="color:#8fd0a0"></span>
          <span class="mv-net" id="mv-net"></span>
          <span style="flex:1"></span>
          <button id="mv-idle" style="background:none;border:1px solid #2a3a48;border-radius:5px;color:#9aa7b0;cursor:pointer;font-size:12px;padding:2px 8px">空闲</button>
@@ -293,6 +295,7 @@ export class MatchView {
     );
     this.creditsEl = this.root.querySelector('#mv-credits')!;
     this.powerEl = this.root.querySelector('#mv-power')!;
+    this.selEl = this.root.querySelector('#mv-sel')!;
     this.netEl = this.root.querySelector('#mv-net')!;
     this.tabsEl = this.root.querySelector('#mv-tabs')!;
     this.buildEl = this.root.querySelector('#mv-build')!;
@@ -1277,6 +1280,7 @@ export class MatchView {
     const alpha = Math.min(1, (performance.now() - this.lastStepAt) / (1000 / 15));
     this.edgeScroll();
     if (this.camera.tickShake()) this.camera.apply(); // 震屏衰减（爆炸战斗感）
+    this.selEl.textContent = this.selected.size > 0 ? `选中 ${this.selected.size}` : '';
     this.updateUnitBar();
     this.renderer.render(alpha, this.selected);
     this.drawGhost();
