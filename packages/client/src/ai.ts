@@ -241,8 +241,32 @@ export class SimpleAI {
     if (this.countBuildings(world, 'tesla') + this.countBuildings(world, 'pillbox') < this.defenses) {
       return player.powerProduced > player.powerDrained + 150 ? 'tesla' : 'pillbox';
     }
+    // 反应式加固：基地被攻击时超出常规上限再补 1–2 座防御（靠建筑顶住，不退兵 → 不破坏滚雪球）
+    if (this.d.reacts && this.baseUnderAttack(world)) {
+      const def = this.countBuildings(world, 'tesla') + this.countBuildings(world, 'pillbox');
+      if (def < this.defenses + 2) return player.powerProduced > player.powerDrained + 120 ? 'tesla' : 'pillbox';
+    }
     if (player.powerDrained > player.powerProduced - 50) return 'powerplant';
     return null;
+  }
+
+  /** 是否有敌方非建筑单位逼近我方任一建筑（~8 格内）——用于反应式加固。 */
+  private baseUnderAttack(world: World): boolean {
+    const buildings: Entity[] = [];
+    for (const e of world.entities.values()) {
+      if (e.owner === this.playerId && world.rules.units.get(e.typeId)?.domain === 'building') buildings.push(e);
+    }
+    if (buildings.length === 0) return false;
+    for (const e of world.entities.values()) {
+      if (e.owner === this.playerId || !world.players.has(e.owner)) continue;
+      if (world.rules.units.get(e.typeId)?.domain === 'building') continue;
+      for (const b of buildings) {
+        const dx = e.cellX - b.cellX;
+        const dy = e.cellY - b.cellY;
+        if (dx * dx + dy * dy <= 64) return true;
+      }
+    }
+    return false;
   }
 
   private findBuildSpot(world: World, typeId: string): { x: number; y: number } | null {
