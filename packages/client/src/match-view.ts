@@ -149,6 +149,8 @@ export class MatchView {
   private attackPing: { x: number; y: number; at: number } | null = null;
   /** 己方单位老兵等级跟踪（升级时响一声）。 */
   private prevKills = new Map<number, number>();
+  /** 本局最大兵力（结算展示）。 */
+  private peakArmy = 0;
   private lastPointer = { x: -1, y: -1 };
   private overCanvas = false;
   private midDrag: { x: number; y: number } | null = null;
@@ -1247,6 +1249,12 @@ export class MatchView {
         this.prevKills.set(e.id, e.kills);
       }
       if (promoted) audioBus.play('ready');
+      // 记录本局最大兵力（结算展示）
+      let army = 0;
+      for (const e of this.world.entities.values()) {
+        if (e.owner === this.localPlayerId && this.world.rules.units.get(e.typeId)?.domain !== 'building') army++;
+      }
+      if (army > this.peakArmy) this.peakArmy = army;
     }
     // 建筑建造完成（队列首项变为就绪）→ 提示音
     for (const cat of ['building', 'infantry', 'vehicle'] as const) {
@@ -1268,8 +1276,11 @@ export class MatchView {
       const banner = document.createElement('div');
       banner.className = 'mv-banner';
       banner.style.color = me.defeated && !win ? '#e05050' : '#6fe06f';
+      const dur = Math.floor(this.world.tick / 15);
+      const mmss = `${Math.floor(dur / 60)}:${String(dur % 60).padStart(2, '0')}`;
       banner.innerHTML =
         `<div>${me.defeated && !win ? '战败' : '胜利！'}</div>` +
+        `<div style="font-size:15px;font-weight:400;color:#9aa7b0">用时 ${mmss} · 最大兵力 ${this.peakArmy}</div>` +
         (this.onRestart ? `<a href="#" id="mv-restart">再来一局</a>` : '') +
         `<a href="#">返回首页</a>`;
       this.root.appendChild(banner);
