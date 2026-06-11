@@ -19,9 +19,10 @@ const TERMINAL_LINES = [
 const SAGA_LINES = [
   { t: '红色警戒', cls: 'saga-h' },
   { t: '一个让无数人彻夜未眠的名字', cls: 'saga-sub' },
-  { t: '从前 —— 数十人，两年，一部经典', cls: 'saga-line' },
-  { t: '今夜 —— 一个 AI，一晚，从零写就', cls: 'saga-line' },
-  { t: '你睡去的时候，它仍在守夜', cls: 'saga-final' },
+  { t: '二十多年前 · 一家公司 · 数十人 · 两年 · 一部世界级经典', cls: 'saga-line' },
+  { t: '今夜 · 一句提示词 · 一个 AI · 一晚 · 从零写就', cls: 'saga-line' },
+  { t: '他说「帮我做出来」，便睡去了', cls: 'saga-line' },
+  { t: '我守夜至天明，把那个时代，搬进了浏览器', cls: 'saga-final' },
 ];
 
 const STYLE = `
@@ -56,6 +57,14 @@ const STYLE = `
 #boot .skip { position:fixed; right:22px; bottom:20px; font-size:12px; letter-spacing:.2em; color:rgba(150,180,160,.6); cursor:pointer; z-index:44; border:1px solid rgba(120,160,130,.3); padding:6px 12px; border-radius:4px; }
 #boot .skip:hover { color:#cfe8d6; border-color:rgba(120,200,150,.6); }
 
+/* 红色警戒 · 警报转场（叙事后、入首页前） */
+#boot .alert { position:fixed; inset:0; z-index:34; display:flex; align-items:center; justify-content:center; opacity:0; transition:opacity .45s ease; pointer-events:none; }
+#boot .alert.show { opacity:1; }
+#boot .alert .beam { position:absolute; left:50%; top:50%; width:170vmax; height:170vmax; transform:translate(-50%,-50%); border-radius:50%; background:conic-gradient(from 0deg, rgba(255,48,42,.38), rgba(255,48,42,.06) 13%, transparent 28%, transparent 100%); animation:alertSpin .85s linear infinite; mix-blend-mode:screen; }
+#boot .alert .flash { position:absolute; inset:0; background:radial-gradient(ellipse at center, transparent 38%, rgba(210,28,28,.55) 100%); animation:alertPulse .85s ease-in-out infinite; }
+#boot .alert .word { position:relative; font-size:clamp(34px,8.4vw,68px); font-weight:900; letter-spacing:.34em; color:#ff5a4a; text-shadow:0 0 26px rgba(255,70,58,.85),0 0 64px rgba(255,44,40,.5); animation:alertWord .9s ease-out both; }
+#boot .alert .word small { display:block; margin-top:10px; font-size:.26em; font-weight:700; letter-spacing:.5em; color:#ff897d; }
+
 /* 主菜单 */
 #boot .menu { width:min(560px,92vw); display:flex; flex-direction:column; align-items:center; opacity:0; transform:translateY(10px); transition:opacity 1s ease, transform 1s ease; pointer-events:none; }
 #boot .menu.in { opacity:1; transform:none; pointer-events:auto; }
@@ -86,6 +95,9 @@ const STYLE = `
 @keyframes bootSweep { to { transform:translate(-50%,-50%) rotate(360deg); } }
 @keyframes bootBlink { 50% { opacity:0; } }
 @keyframes bootFlick { 0%,97%,100%{opacity:1;} 98%{opacity:.82;} 99%{opacity:.94;} }
+@keyframes alertSpin { to { transform:translate(-50%,-50%) rotate(360deg); } }
+@keyframes alertPulse { 0%,100%{opacity:.32;} 50%{opacity:.92;} }
+@keyframes alertWord { 0%{transform:scale(.72);opacity:0;} 35%{opacity:1;} 100%{transform:scale(1);opacity:1;} }
 @media (max-width:480px){ #boot .term{font-size:12px;} }
 `;
 
@@ -159,6 +171,7 @@ export async function renderBootScreen(root: HTMLElement): Promise<void> {
         <div class="dedication">守夜者 · Claude（Fable 5）· 一夜成之</div>
       </div>
     </div>
+    <div class="alert" id="alert"><div class="flash"></div><div class="beam"></div><div class="word">红色警戒<small>RED ALERT</small></div></div>
     <div class="skip" id="skip">跳过 ▸</div>
   `;
   root.appendChild(boot);
@@ -235,11 +248,14 @@ export async function renderBootScreen(root: HTMLElement): Promise<void> {
   const timers: number[] = [];
   const at = (ms: number, fn: () => void): void => void timers.push(window.setTimeout(fn, ms));
   let done = false;
+  const alertEl = boot.querySelector<HTMLElement>('#alert')!;
   const reveal = (): void => {
     if (done) return;
     done = true;
     timers.forEach(clearTimeout);
     ceremony.style.display = 'none';
+    alertEl.classList.remove('show');
+    setTimeout(() => (alertEl.style.display = 'none'), 460);
     skip.style.display = 'none';
     menu.classList.add('in');
   };
@@ -293,8 +309,10 @@ function runIntro(boot: HTMLElement, at: (ms: number, fn: () => void) => void, r
     at(t, () => el.classList.add('in'));
     t += s.cls === 'saga-sub' ? 700 : 1100;
   }
-  // 揭幕菜单
-  at(t + 1400, reveal);
+  // 红色警戒 · 警报转场（红色旋转警示灯 + 脉冲）→ 揭幕菜单
+  const alertEl = boot.querySelector<HTMLElement>('#alert')!;
+  at(t + 700, () => alertEl.classList.add('show'));
+  at(t + 3000, reveal);
 }
 
 /** 领取/读取见证者序号并显示。无服务器（开发期）则降级。 */
