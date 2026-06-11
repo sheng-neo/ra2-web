@@ -138,8 +138,15 @@ export class SimpleAI {
     if (world.hasBuilding(this.playerId, 'barracks')) {
       const iq = world.queueFor(this.playerId, 'infantry');
       const inf = side === 'soviet' ? 'conscript' : 'gi';
+      const antiArmor = side === 'soviet' ? 'tankbuster' : 'rocketsoldier';
+      // 反应式：敌载具多于步兵 → 出反装甲步兵克制坦克
+      let pick = inf;
+      if (this.d.reacts) {
+        const comp = this.enemyComposition(world);
+        if (comp.vehicle > comp.infantry) pick = antiArmor;
+      }
       if (!iq || iq.items.length === 0) {
-        cmds.push({ kind: 'produce', owner: this.playerId, typeId: inf });
+        cmds.push({ kind: 'produce', owner: this.playerId, typeId: pick });
         if (this.p.infantryHeavy) cmds.push({ kind: 'produce', owner: this.playerId, typeId: inf });
       }
     }

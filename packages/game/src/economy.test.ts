@@ -312,6 +312,23 @@ describe('个体 AI 与采矿指令（本批改进）', () => {
     void b;
   });
 
+  it('反装甲步兵：克制坦克（对重甲伤害远高于普通步兵）', () => {
+    const dmgToTank = (infId: string): number => {
+      const w = new World(gridTerrain(30, 30), 81);
+      w.addPlayer(1, 'allied', 0);
+      w.addPlayer(2, 'soviet', 0);
+      const s = w.spawnUnit(1, infId, 5, 5)!;
+      s.hp = 100000;
+      s.maxHp = 100000; // 步兵不死，纯量输出
+      const t = w.spawnUnit(2, 'rhino', 6, 5)!;
+      t.hp = 100000;
+      t.maxHp = 100000; // 坦克不死，纯量承伤
+      for (let i = 0; i < 200; i++) w.step();
+      return 100000 - t.hp;
+    };
+    expect(dmgToTank('rocketsoldier')).toBeGreaterThan(dmgToTank('gi') * 3); // 火箭兵打坦克远强于大兵
+  });
+
   it('老兵：击杀让攻击者涨经验（kills+1）', () => {
     const w = new World(gridTerrain(40, 40), 71);
     w.addPlayer(1, 'allied', 0);
