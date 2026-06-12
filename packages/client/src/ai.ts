@@ -33,14 +33,16 @@ interface ModeParams {
   siegeAt: number;
   /** 是否步兵海（廉价兵力更快攒成波）。 */
   infantryHeavy: boolean;
+  /** 出击时留守家中的兵力（基地永不空——成波压上≠把家搬空被反偷）。 */
+  homeReserve: number;
 }
 const MODE: Record<Mode, ModeParams> = {
-  // 防守流：8 座防御 + 小经济（兵少但龟壳硬）
-  defensive: { defenseTarget: 8, waveSize: 15, harvesters: 2, refineries: 2, siegeAt: 4, infantryHeavy: false },
-  // 均衡流：4 座防御 + 中等经济
-  balanced: { defenseTarget: 4, waveSize: 15, harvesters: 3, refineries: 2, siegeAt: 5, infantryHeavy: false },
-  // 全力进攻：1 座防御 + 大经济（兵海，一波接一波）
-  aggressive: { defenseTarget: 1, waveSize: 15, harvesters: 4, refineries: 2, siegeAt: 6, infantryHeavy: true },
+  // 防守流：8 座防御 + 小经济 + 重留守（兵少但龟壳硬）
+  defensive: { defenseTarget: 8, waveSize: 15, harvesters: 2, refineries: 2, siegeAt: 4, infantryHeavy: false, homeReserve: 8 },
+  // 均衡流：4 座防御 + 中等经济 + 中等留守
+  balanced: { defenseTarget: 4, waveSize: 15, harvesters: 3, refineries: 2, siegeAt: 5, infantryHeavy: false, homeReserve: 5 },
+  // 全力进攻：1 座防御 + 大经济 + 少量留守（主力倾巢，一波接一波）
+  aggressive: { defenseTarget: 1, waveSize: 15, harvesters: 4, refineries: 2, siegeAt: 6, infantryHeavy: true, homeReserve: 3 },
 };
 
 interface DiffParams {
@@ -196,9 +198,13 @@ export class SimpleAI {
 
     // 没攒够 → 守家积蓄（全部留在家，个体警戒会自卫；这天然让基地在出击前不空）。
     if (!this.engaged) return;
-    // 攒够 → 成波，全军压上（绝不一个个送）。
+    // 攒够 → 成波出击：留守 homeReserve（离家最近的那批），其余主力压上。
+    // 这样基地永远有守军 + 炮塔，绝不会被你"绕过主力直接偷家"——同时主力仍成波进攻。
+    if (army.length <= this.m.homeReserve) return; // 还不够"留守 + 一支可出击的波"，继续守家攒兵
     const target = this.pickTarget(world, enemies, this.centroid(army));
-    if (target !== null) cmds.push({ kind: 'attack', entityIds: ids, targetId: target });
+    if (target === null) return;
+    const attackers = home ? this.byDistToHome(army, home).slice(this.m.homeReserve).map((e) => e.id) : ids;
+    if (attackers.length > 0) cmds.push({ kind: 'attack', entityIds: attackers, targetId: target });
   }
 
   /** 老家威胁：返回最逼近我方建筑（≤12 格）的敌方非建筑单位 id，否则 null。 */
