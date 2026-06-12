@@ -86,6 +86,16 @@ const STYLE = `
 #boot .links { margin-top:18px; font-size:12.5px; color:#6f8a78; letter-spacing:.06em; }
 #boot .links a { color:#7fb0d8; cursor:pointer; text-decoration:none; }
 #boot .links a:hover { color:#a8d4f0; text-shadow:0 0 8px rgba(120,180,230,.5); }
+#boot .ver { font-size:.4em; vertical-align:middle; color:#ffd98a; border:1px solid rgba(255,217,138,.55); border-radius:6px; padding:1px 7px; margin-left:10px; letter-spacing:.08em; text-shadow:none; }
+#boot .links2 { margin-top:16px; font-size:13px; letter-spacing:.04em; }
+#boot .links2 a { cursor:pointer; text-decoration:none; }
+#boot .links2 .nw { color:#ffd98a; font-weight:700; text-shadow:0 0 12px rgba(255,200,90,.4); }
+#boot .links2 .gh { color:#ade0b0; }
+#boot .links2 a:hover { filter:brightness(1.2); }
+#boot .changelog { margin:12px auto 0; width:min(540px,92vw); background:rgba(10,18,16,.92); border:1px solid #3a5a48; border-radius:9px; padding:12px 16px; text-align:left; }
+#boot .changelog h3 { margin:0 0 8px; font-size:14px; color:#ffd98a; letter-spacing:.06em; }
+#boot .changelog ul { margin:0; padding-left:18px; line-height:1.9; font-size:12.5px; color:#cfe2d4; }
+#boot .changelog b { color:#eaf4ec; }
 #boot .witness { margin-top:16px; font-size:13.5px; color:#ffd98a; letter-spacing:.1em; min-height:18px; text-shadow:0 0 12px rgba(255,200,90,.25); }
 #boot .witness b { color:#ffe9b0; font-size:16px; }
 #boot .dedication { margin-top:8px; font-size:12px; color:#7c948a; letter-spacing:.14em; }
@@ -172,13 +182,25 @@ export async function renderBootScreen(root: HTMLElement): Promise<void> {
         <div class="saga" id="saga"></div>
       </div>
       <div class="menu" id="menu">
-        <div class="title">网页版红色警戒2</div>
+        <div class="title">网页版红色警戒2 <span class="ver">2.0</span></div>
         <div class="tagline">谨以此夜，致 傅盛</div>
         <div class="tagsub">你的一个里程碑 · 或许，也是我们的</div>
         <div class="rule"></div>
         <div class="cmds">
           <div class="cmd" data-go="#play"><span class="ic">▶</span><span>单机遭遇战</span></div>
           <div class="cmd mp" data-go="#mp"><span class="ic">🌐</span><span>联机对战</span></div>
+        </div>
+        <div class="links2"><a class="nw" id="whatsnew">✨ 2.0 重磅更新（点开看看）</a> · <a class="gh" href="https://github.com/sheng-neo/ra2-web" target="_blank" rel="noopener">⭐ GitHub 开源 · 求 Star</a></div>
+        <div class="changelog" id="changelog" style="display:none">
+          <h3>✨ 2.0 重磅更新</h3>
+          <ul>
+            <li>🎨 <b>真实美术</b>：一键下载免费素材，坦克 / 建筑 / 地形 / 音效全部真实</li>
+            <li>🔊 <b>音效全面升级</b>：对战配乐 · 空间化音效 · EVA 战场播报 · 仪式开场</li>
+            <li>🧠 <b>更聪明的对手</b>：三种打法（钢铁防线 / 攻守均衡 / 全力进攻），成波进攻、留守守家</li>
+            <li>📱 <b>触控大改</b>：编队 · 选中构成 · 点建筑选建筑 · 单位操作条</li>
+            <li>🔧 <b>工程师</b>修复 / 占领建筑 · 🚀 <b>新单位</b>：火箭兵 · 磁能兵 · 光棱 · 天启 · 军犬 · 作战实验室</li>
+            <li>🔗 <b>邀请链接联机</b>：扔个链接给朋友就开打</li>
+          </ul>
         </div>
         <div class="links">
           <a id="replay" style="color:#ffd98a">↻ 重看开场</a> · <a data-go="#assets">资源浏览器</a> · <a data-go="#map">地图查看器</a> · <a data-go="#sim">模拟沙盒</a>
@@ -317,6 +339,11 @@ export async function renderBootScreen(root: HTMLElement): Promise<void> {
   };
   window.addEventListener('keydown', onKey);
   boot.querySelector('#replay')?.addEventListener('click', startIntro);
+  // 「2.0 重磅更新」展开/收起更新清单
+  boot.querySelector('#whatsnew')?.addEventListener('click', () => {
+    const cl = boot.querySelector<HTMLElement>('#changelog');
+    if (cl) cl.style.display = cl.style.display === 'none' ? 'block' : 'none';
+  });
 
   // —— 点击进入门：首次手势解锁音频（浏览器策略禁止无手势出声），再带声播开场 ——
   const gate = boot.querySelector<HTMLElement>('#gate')!;
