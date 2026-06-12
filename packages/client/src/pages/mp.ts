@@ -61,39 +61,79 @@ export async function renderMp(root: HTMLElement): Promise<void> {
   let hostId = 0;
   let inMatch = false;
 
+  // —— 邀请链接：#mp?room=xxx，朋友打开即自动加入同一房间（服务器按房间名匹配，免去建房/选房）——
+  const genId = (): string => Math.random().toString(36).slice(2, 8);
+  const inviteUrl = (room: string): string => `${location.origin}${location.pathname}#mp?room=${room}`;
+  const hashQ = location.hash.includes('?') ? location.hash.slice(location.hash.indexOf('?') + 1) : '';
+  const urlRoom = new URLSearchParams(hashQ).get('room') ?? '';
+  let currentRoom = '';
+
   // 连接表单
   root.innerHTML = `
     <div class="mp-lobby"><div class="mp-card" id="mp-card">
       <h1>联机对战</h1>
-      <div class="sub">本机双开两个浏览器标签、填同一房间名即可对战。</div>
-      <label>服务器地址</label>
-      <input id="mp-url" value="${defaultServerUrl()}" />
-      <label>房间名</label>
-      <input id="mp-room" value="room1" />
+      <div class="sub">${urlRoom ? '正在加入朋友的房间…' : '点下面按钮生成邀请链接发给朋友，对方打开即同房；也可手动填同一房间名。'}</div>
+      ${urlRoom ? '' : '<button id="mp-invite" style="background:#2d6fb0;color:#fff;border:none;border-radius:6px;padding:10px;width:100%;cursor:pointer;font-size:15px">🔗 创建对战并邀请朋友</button>'}
+      <div id="mp-invitebox" style="display:none;margin-top:8px">
+        <label>把这个链接发给朋友（已复制到剪贴板）</label>
+        <div style="display:flex;gap:6px"><input id="mp-invlink" readonly style="flex:1" /><button id="mp-copy" style="width:64px">复制</button></div>
+      </div>
+      <details style="margin-top:10px"><summary style="cursor:pointer;color:#8aa7b0">手动 / 本机双开</summary>
+        <label>服务器地址</label><input id="mp-url" value="${defaultServerUrl()}" />
+        <label>房间名</label><input id="mp-room" value="${urlRoom || 'room1'}" />
+      </details>
       <label>昵称</label>
       <input id="mp-name" value="玩家" />
-      <button id="mp-connect">连接并加入</button>
+      <button id="mp-connect">${urlRoom ? '加入房间' : '连接并加入'}</button>
       <div class="mp-err" id="mp-err"></div>
       <a class="mp-back" href="#">← 返回首页</a>
     </div></div>`;
 
   const errEl = root.querySelector('#mp-err') as HTMLElement;
   const connectBtn = root.querySelector('#mp-connect') as HTMLButtonElement;
+  const roomInput = root.querySelector('#mp-room') as HTMLInputElement;
+  const nameOf = (): string => (root.querySelector('#mp-name') as HTMLInputElement).value.trim() || '玩家';
+  const urlOf = (): string => (root.querySelector('#mp-url') as HTMLInputElement).value.trim();
 
-  connectBtn.addEventListener('click', async () => {
-    const url = (root.querySelector('#mp-url') as HTMLInputElement).value.trim();
-    const room = (root.querySelector('#mp-room') as HTMLInputElement).value.trim() || 'room1';
-    const name = (root.querySelector('#mp-name') as HTMLInputElement).value.trim() || '玩家';
+  function showInvite(room: string): void {
+    const box = root.querySelector('#mp-invitebox') as HTMLElement | null;
+    const link = root.querySelector('#mp-invlink') as HTMLInputElement | null;
+    if (!box || !link) return;
+    box.style.display = '';
+    link.value = inviteUrl(room);
+    navigator.clipboard?.writeText(link.value).catch(() => undefined);
+  }
+
+  async function join(room: string): Promise<void> {
     errEl.textContent = '连接中…';
     connectBtn.disabled = true;
     try {
-      await net.connect(url);
-      net.send({ t: 'join', room, name, protocol: PROTOCOL_VERSION });
+      await net.connect(urlOf());
+      net.send({ t: 'join', room, name: nameOf(), protocol: PROTOCOL_VERSION });
     } catch {
       errEl.textContent = '连接失败：请确认服务器已启动（pnpm dev:server）。';
       connectBtn.disabled = false;
     }
+  }
+
+  root.querySelector('#mp-invite')?.addEventListener('click', () => {
+    const room = genId();
+    roomInput.value = room;
+    showInvite(room);
+    void join(room);
   });
+  root.querySelector('#mp-copy')?.addEventListener('click', () => {
+    const link = root.querySelector('#mp-invlink') as HTMLInputElement;
+    link.select();
+    navigator.clipboard?.writeText(link.value).catch(() => undefined);
+  });
+  connectBtn.addEventListener('click', () => void join(roomInput.value.trim() || 'room1'));
+
+  // 经邀请链接进入：自动连接并加入该房间
+  if (urlRoom) {
+    showInvite(urlRoom);
+    void join(urlRoom);
+  }
 
   net.onClose = () => {
     if (!inMatch) errEl.textContent = '连接已断开。';
@@ -103,6 +143,7 @@ export async function renderMp(root: HTMLElement): Promise<void> {
     switch (msg.t) {
       case 'joined':
         myId = msg.playerId;
+        currentRoom = msg.room;
         break;
       case 'lobby':
         players = msg.players;
@@ -145,6 +186,7 @@ export async function renderMp(root: HTMLElement): Promise<void> {
     card.innerHTML = `
       <h1>房间大厅</h1>
       <div class="sub">满 2 人且全部准备后自动开始。${myId === hostId ? '（你是房主）' : ''}</div>
+      <div class="mp-row" style="margin:6px 0"><input id="mp-lobinv" readonly value="${inviteUrl(currentRoom)}" style="flex:1" title="发给朋友，打开即同房" /><button id="mp-lobcopy" style="width:96px">复制邀请</button></div>
       <ul class="mp-players">
         ${players
           .map(
@@ -167,6 +209,11 @@ export async function renderMp(root: HTMLElement): Promise<void> {
       </div>
       <a class="mp-back" href="#">← 退出房间</a>`;
 
+    (card.querySelector('#mp-lobcopy') as HTMLButtonElement | null)?.addEventListener('click', () => {
+      const link = card.querySelector('#mp-lobinv') as HTMLInputElement;
+      link.select();
+      navigator.clipboard?.writeText(link.value).catch(() => undefined);
+    });
     (card.querySelector('#mp-side') as HTMLButtonElement).addEventListener('click', () => {
       const next: Side = me?.side === 'allied' ? 'soviet' : 'allied';
       net.send({ t: 'setSide', side: next });
