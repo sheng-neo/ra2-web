@@ -50,6 +50,7 @@ export class WorldRenderer {
   private readonly particleGfx = new Graphics();
   /** 地面焦痕（死亡残留，缓慢淡出）：屏幕坐标。 */
   private readonly decals: { x: number; y: number; r: number; born: number; life: number }[] = [];
+  private fxFrame = 0;
   private readonly views = new Map<number, UnitView>();
   private buildingKey = '';
   private oreTick = -1;
@@ -430,6 +431,7 @@ export class WorldRenderer {
     const now = performance.now();
     const dt = this.lastFxTime === 0 ? 16 : Math.min(64, now - this.lastFxTime);
     this.lastFxTime = now;
+    this.fxFrame++;
 
     const seen = new Set<number>();
     for (const e of this.world.entities.values()) {
@@ -437,11 +439,23 @@ export class WorldRenderer {
       const sx = leptonToScreenX(e.x, e.y);
       const sy = leptonToScreenY(e.x, e.y);
       const isBuilding = !!this.world.rules.units.get(e.typeId)?.building;
-      // 掉血 → 火星
+      // 移动扬尘：单位行进时脚下偶尔扬起一小撮尘（节流 + 按 id 错峰，控量）
+      if (!isBuilding) {
+        const pp = this.prevPos.get(e.id);
+        if (pp && (this.fxFrame + e.id) % 5 === 0) {
+          const dxm = sx - pp.x;
+          const dym = sy - pp.y;
+          if (dxm * dxm + dym * dym > 4) {
+            this.particles.push({ x: sx + ((e.id % 3) - 1) * 2, y: sy, vx: 0, vy: -6, life: 360, maxLife: 360, size: 3, color: 0x9c8f78, kind: 'smoke' });
+          }
+        }
+      }
+      // 掉血 → 火星 + 受击白闪
       const ph = this.prevHp.get(e.id);
       if (ph !== undefined && e.hp < ph) {
         const n = isBuilding ? 4 : 2;
         for (let i = 0; i < n; i++) this.spawnSpark(sx, sy - 4);
+        this.particles.push({ x: sx, y: sy - 4, vx: 0, vy: 0, life: 80, maxLife: 80, size: isBuilding ? 8 : 5, color: 0xffffff, kind: 'flash' });
       }
       // 开火（冷却被重置抬升）→ 枪口闪光
       const pc = this.prevCooldown.get(e.id) ?? 0;
@@ -500,6 +514,9 @@ export class WorldRenderer {
       this.spawnExplosion(pos.x, pos.y, 0.7);
       this.prevProj.delete(id);
     }
+
+    // 粒子上限（保手机性能）：超量丢最旧
+    if (this.particles.length > 700) this.particles.splice(0, this.particles.length - 700);
 
     // 地面焦痕：缓慢淡出
     this.decalGfx.clear();
