@@ -379,6 +379,7 @@ function setupBgm(root: HTMLElement): void {
   root.appendChild(toggle);
   sync();
   const start = (): void => {
+    audioBus.resume(); // 首次手势同时解锁音效上下文：打字嗒声/警笛/战斗音都靠它（原来只解锁了音乐）
     bgm.play();
     window.removeEventListener('pointerdown', start);
     window.removeEventListener('keydown', start);
