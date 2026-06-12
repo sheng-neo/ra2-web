@@ -15,16 +15,24 @@ export class NetClient {
   onClose: (() => void) | null = null;
 
   connect(url: string): Promise<void> {
+    // 重复 connect 防僵尸：关掉旧连接，且旧 socket 的事件不再上抛
+    // （否则旧连接仍挂在服务器房间里占位，"全员准备"永远凑不齐）
+    const old = this.ws;
+    this.ws = null;
+    old?.close();
     return new Promise((resolve, reject) => {
       const ws = new WebSocket(url);
       this.ws = ws;
       ws.addEventListener('open', () => {
-        this.onOpen?.();
+        if (this.ws === ws) this.onOpen?.();
         resolve();
       });
       ws.addEventListener('error', () => reject(new Error('无法连接服务器')));
-      ws.addEventListener('close', () => this.onClose?.());
+      ws.addEventListener('close', () => {
+        if (this.ws === ws) this.onClose?.();
+      });
       ws.addEventListener('message', (e) => {
+        if (this.ws !== ws) return;
         try {
           this.onMessage?.(decodeMessage<ServerMessage>(String(e.data)));
         } catch {

@@ -61,18 +61,23 @@ export async function renderMp(root: HTMLElement): Promise<void> {
   let hostId = 0;
   let inMatch = false;
 
-  // —— 邀请链接：#mp?room=xxx，朋友打开即自动加入同一房间（服务器按房间名匹配，免去建房/选房）——
+  // —— 邀请链接：/?room=xxx，朋友打开即自动加入同一房间（服务器按房间名匹配）。
+  //    房间号放 query 而非 # 后面：微信等聊天工具转发链接时经常剥掉 #fragment——
+  //    旧 #mp?room=xxx 链接被剥后朋友落在首页 → 自建房间 → 两人各在一房（互相看不见、准备凑不齐）。
   const genId = (): string => Math.random().toString(36).slice(2, 8);
-  const inviteUrl = (room: string): string => `${location.origin}${location.pathname}#mp?room=${room}`;
+  const inviteUrl = (room: string): string => `${location.origin}${location.pathname}?room=${encodeURIComponent(room)}`;
   const hashQ = location.hash.includes('?') ? location.hash.slice(location.hash.indexOf('?') + 1) : '';
-  const urlRoom = new URLSearchParams(hashQ).get('room') ?? '';
+  const searchRoom = new URLSearchParams(location.search).get('room') ?? '';
+  const urlRoom = searchRoom || (new URLSearchParams(hashQ).get('room') ?? '');
+  // 进页后把 query 规范成 hash 形式：避免「返回首页」时 ?room 残留又被路由送回联机页
+  if (searchRoom) history.replaceState(null, '', `${location.pathname}#mp?room=${encodeURIComponent(searchRoom)}`);
   let currentRoom = '';
 
   // 连接表单
   root.innerHTML = `
     <div class="mp-lobby"><div class="mp-card" id="mp-card">
       <h1>联机对战</h1>
-      <div class="sub">${urlRoom ? '正在加入朋友的房间…' : '点下面按钮生成邀请链接发给朋友，对方打开即同房；也可手动填同一房间名。'}</div>
+      <div class="sub">${urlRoom ? `正在加入朋友的房间 <b style="color:#ffd98a">${escapeHtml(urlRoom)}</b>…` : '点下面按钮生成邀请链接发给朋友，对方打开即同房；链接发不过去就把房间号告诉 TA，双方手动填同一房间名。'}</div>
       ${urlRoom ? '' : '<button id="mp-invite" style="background:#2d6fb0;color:#fff;border:none;border-radius:6px;padding:10px;width:100%;cursor:pointer;font-size:15px">🔗 创建对战并邀请朋友</button>'}
       <div id="mp-invitebox" style="display:none;margin-top:8px">
         <label>把这个链接发给朋友（已复制到剪贴板）</label>
@@ -104,19 +109,29 @@ export async function renderMp(root: HTMLElement): Promise<void> {
     navigator.clipboard?.writeText(link.value).catch(() => undefined);
   }
 
+  // 防重复加入：连点「创建对战」会每次生成新房间 + 留下僵尸连接（自己跟自己分房）
+  let joining = false;
+  const inviteBtn = root.querySelector('#mp-invite') as HTMLButtonElement | null;
+
   async function join(room: string): Promise<void> {
+    if (joining) return;
+    joining = true;
     errEl.textContent = '连接中…';
     connectBtn.disabled = true;
+    if (inviteBtn) inviteBtn.disabled = true;
     try {
       await net.connect(urlOf());
       net.send({ t: 'join', room, name: nameOf(), protocol: PROTOCOL_VERSION });
     } catch {
       errEl.textContent = '连接失败：请确认服务器已启动（pnpm dev:server）。';
+      joining = false;
       connectBtn.disabled = false;
+      if (inviteBtn) inviteBtn.disabled = false;
     }
   }
 
-  root.querySelector('#mp-invite')?.addEventListener('click', () => {
+  inviteBtn?.addEventListener('click', () => {
+    if (joining) return;
     const room = genId();
     roomInput.value = room;
     showInvite(room);
@@ -155,7 +170,9 @@ export async function renderMp(root: HTMLElement): Promise<void> {
         break;
       case 'error':
         errEl.textContent = msg.message;
+        joining = false;
         connectBtn.disabled = false;
+        if (inviteBtn) inviteBtn.disabled = false;
         break;
       case 'start':
         inMatch = true;
@@ -183,10 +200,12 @@ export async function renderMp(root: HTMLElement): Promise<void> {
   function renderLobby(): void {
     const me = players.find((p) => p.playerId === myId);
     const card = root.querySelector('#mp-card') as HTMLElement;
+    const waiting = players.length < 2;
     card.innerHTML = `
       <h1>房间大厅</h1>
-      <div class="sub">满 2 人且全部准备后自动开始。${myId === hostId ? '（你是房主）' : ''}</div>
+      <div class="sub">房间号 <b style="color:#ffd98a">${escapeHtml(currentRoom)}</b> · <b>${players.length}/2 人</b>${myId === hostId ? ' · 你是房主' : ''} · 满 2 人全部准备后自动开始</div>
       <div class="mp-row" style="margin:6px 0"><input id="mp-lobinv" readonly value="${inviteUrl(currentRoom)}" style="flex:1" title="发给朋友，打开即同房" /><button id="mp-lobcopy" style="width:96px">复制邀请</button></div>
+      ${waiting ? `<div style="color:#e0b050;font-size:12.5px;margin:4px 0 6px;line-height:1.6">⏳ 等待朋友加入…把链接发给 TA。若 TA 打开后没出现在这里，让 TA 进「联机对战 → 手动/本机双开」，房间名填 <b>${escapeHtml(currentRoom)}</b></div>` : ''}
       <ul class="mp-players">
         ${players
           .map(

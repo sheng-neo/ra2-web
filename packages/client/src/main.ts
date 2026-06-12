@@ -20,8 +20,8 @@ async function route(): Promise<void> {
     await renderSimSandbox(app);
   } else if (location.hash === '#play') {
     await renderPlay(app);
-  } else if (location.hash.startsWith('#mp')) {
-    await renderMp(app); // 含邀请链接 #mp?room=xxx
+  } else if (location.hash.startsWith('#mp') || new URLSearchParams(location.search).has('room')) {
+    await renderMp(app); // 含邀请链接 /?room=xxx（query 防聊天工具剥 #）与旧 #mp?room=xxx
   } else {
     await renderBootScreen(app);
   }
