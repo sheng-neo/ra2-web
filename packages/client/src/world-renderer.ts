@@ -524,12 +524,23 @@ export class WorldRenderer {
   }
 
   private spawnExplosion(x: number, y: number, scale: number): void {
-    this.particles.push({ x, y, vx: 0, vy: 0, life: 320, maxLife: 320, size: 10 * scale, color: 0xffa030, kind: 'ring' });
-    const n = Math.round(6 * scale);
+    // 亮核闪光（瞬亮即逝）
+    this.particles.push({ x, y, vx: 0, vy: 0, life: 160, maxLife: 160, size: 13 * scale, color: 0xfff0c0, kind: 'flash' });
+    // 火球扩张双层环
+    this.particles.push({ x, y, vx: 0, vy: 0, life: 340, maxLife: 340, size: 12 * scale, color: 0xffb040, kind: 'ring' });
+    this.particles.push({ x, y, vx: 0, vy: 0, life: 220, maxLife: 220, size: 7 * scale, color: 0xff6818, kind: 'ring' });
+    // 飞溅火星/碎块
+    const n = Math.round(8 * scale);
     for (let i = 0; i < n; i++) {
-      const ang = (i / n) * Math.PI * 2;
-      const spd = 30 + (i % 3) * 18;
-      this.particles.push({ x, y, vx: Math.cos(ang) * spd, vy: Math.sin(ang) * spd - 15, life: 360, maxLife: 360, size: 3 + (i % 2) + scale, color: i % 2 ? 0xff8020 : 0x555555, kind: 'smoke' });
+      const ang = (i / n) * Math.PI * 2 + scale;
+      const spd = 40 + (i % 3) * 22;
+      this.particles.push({ x, y, vx: Math.cos(ang) * spd, vy: Math.sin(ang) * spd - 20, life: 300, maxLife: 300, size: 2 + (i % 2), color: i % 3 ? 0xffc040 : 0xff7020, kind: 'spark' });
+    }
+    // 上升烟柱（变大变淡、缓缓上飘）
+    const m = Math.round(4 * scale);
+    for (let i = 0; i < m; i++) {
+      const jx = ((i % 3) - 1) * 5 * scale;
+      this.particles.push({ x: x + jx, y, vx: ((i % 2) * 2 - 1) * 8, vy: -22 - (i % 3) * 6, life: 620, maxLife: 620, size: 5 * scale + (i % 2) * 2, color: i % 2 ? 0x4a4a4a : 0x2e2e2e, kind: 'smoke' });
     }
   }
 
