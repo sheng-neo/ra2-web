@@ -28,8 +28,8 @@ interface Particle {
   maxLife: number;
   size: number;
   color: number;
-  kind: 'spark' | 'smoke' | 'flash' | 'ring' | 'tracer';
-  /** tracer 的终点。 */
+  kind: 'spark' | 'smoke' | 'flash' | 'ring' | 'tracer' | 'beam' | 'arc';
+  /** tracer/beam/arc 的终点。 */
   x2?: number;
   y2?: number;
 }
@@ -447,20 +447,23 @@ export class WorldRenderer {
         const weapon = this.world.rules.units.get(e.typeId)?.weapon;
         const instant = !weapon || weapon.projectileSpeed <= 0;
         this.onEvent?.(instant ? 'fire' : 'cannon');
-        // 瞬中武器画一条曳光线，便于看清谁在打谁
+        // 瞬中武器画一条线：磁暴线圈=电弧、光棱坦克=光束、其余=普通曳光
         if (instant) {
           const tgt = this.world.entities.get(e.targetId);
           if (tgt) {
+            const beamKind = e.typeId === 'tesla' ? 'arc' : e.typeId === 'prism' ? 'beam' : 'tracer';
+            const beamColor = beamKind === 'arc' ? 0xbfe0ff : beamKind === 'beam' ? 0xff60e0 : 0xfff0b0;
+            const beamLife = beamKind === 'tracer' ? 70 : 200;
             this.particles.push({
               x: sx,
               y: sy - 4,
               vx: 0,
               vy: 0,
-              life: 70,
-              maxLife: 70,
+              life: beamLife,
+              maxLife: beamLife,
               size: 1,
-              color: 0xfff0b0,
-              kind: 'tracer',
+              color: beamColor,
+              kind: beamKind,
               x2: leptonToScreenX(tgt.x, tgt.y),
               y2: leptonToScreenY(tgt.x, tgt.y) - 4,
             });
@@ -502,7 +505,8 @@ export class WorldRenderer {
         this.particles.splice(i, 1);
         continue;
       }
-      if (p.kind !== 'tracer') {
+      const isLine = p.kind === 'tracer' || p.kind === 'beam' || p.kind === 'arc';
+      if (!isLine) {
         p.x += (p.vx * dt) / 1000;
         p.y += (p.vy * dt) / 1000;
         p.vy += (dt * 60) / 1000; // 轻微重力
@@ -510,6 +514,28 @@ export class WorldRenderer {
       const a = p.life / p.maxLife;
       if (p.kind === 'tracer') {
         g.moveTo(p.x, p.y).lineTo(p.x2 ?? p.x, p.y2 ?? p.y).stroke({ color: p.color, width: 1.5, alpha: a * 0.9 });
+      } else if (p.kind === 'beam') {
+        const x2 = p.x2 ?? p.x;
+        const y2 = p.y2 ?? p.y;
+        g.moveTo(p.x, p.y).lineTo(x2, y2).stroke({ color: p.color, width: 6, alpha: a * 0.3 }); // 外辉光
+        g.moveTo(p.x, p.y).lineTo(x2, y2).stroke({ color: 0xffffff, width: 2, alpha: a }); // 亮核
+      } else if (p.kind === 'arc') {
+        const x2 = p.x2 ?? p.x;
+        const y2 = p.y2 ?? p.y;
+        const dx = x2 - p.x;
+        const dy = y2 - p.y;
+        const len = Math.hypot(dx, dy) || 1;
+        const nx = -dy / len;
+        const ny = dx / len; // 垂直方向
+        g.moveTo(p.x, p.y);
+        const seg = 6;
+        for (let s = 1; s <= seg; s++) {
+          const t = s / seg;
+          const j = s === seg ? 0 : (((s * 131 + Math.floor(p.life)) % 17) - 8) * 1.6; // 逐帧抖动=电弧
+          g.lineTo(p.x + dx * t + nx * j, p.y + dy * t + ny * j);
+        }
+        g.stroke({ color: p.color, width: 2, alpha: a });
+        g.moveTo(p.x, p.y).lineTo(x2, y2).stroke({ color: p.color, width: 5, alpha: a * 0.18 }); // 外辉光
       } else if (p.kind === 'ring') {
         g.circle(p.x, p.y, p.size * (1.4 - a)).stroke({ color: p.color, width: 2, alpha: a });
       } else {
