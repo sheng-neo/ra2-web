@@ -44,6 +44,7 @@ export class WorldRenderer {
   private readonly oreGfx = new Graphics();
   private readonly buildingLayer = new Container();
   private readonly unitLayer = new Container();
+  private readonly shadowGfx = new Graphics();
   private readonly fxGfx = new Graphics();
   private readonly particleGfx = new Graphics();
   private readonly views = new Map<number, UnitView>();
@@ -80,7 +81,7 @@ export class WorldRenderer {
     this.fogEnabled = localPlayerId > 0;
     this.vis = new Uint8Array(world.terrain.width * world.terrain.height);
     // 迷雾盖在地形/建筑/单位之上，但在血条/特效之下
-    this.stage.addChild(this.terrainGfx, this.oreGfx, this.buildingLayer, this.unitLayer, this.fogGfx, this.fxGfx, this.particleGfx);
+    this.stage.addChild(this.terrainGfx, this.oreGfx, this.shadowGfx, this.buildingLayer, this.unitLayer, this.fogGfx, this.fxGfx, this.particleGfx);
     this.drawTerrain();
   }
 
@@ -300,6 +301,7 @@ export class WorldRenderer {
     }
 
     this.updateFog();
+    this.shadowGfx.clear(); // 每帧重画单位落地阴影
 
     // 单位层
     const seen = new Set<number>();
@@ -362,6 +364,11 @@ export class WorldRenderer {
       // 敌方单位仅在可见格显示（迷雾隐藏）
       const visible = e.owner === this.localPlayerId || this.cellVisible(e.cellX, e.cellY);
       v.body.visible = visible;
+      if (visible) {
+        // 落地阴影：脚下扁椭圆，单位"踩"在地面而非悬空（纯表现）
+        const rx = type.domain === 'vehicle' ? 15 : 8;
+        this.shadowGfx.ellipse(sx, sy + 2, rx, rx * 0.42).fill({ color: 0x000000, alpha: 0.22 });
+      }
       if (v.barrel) {
         v.barrel.visible = visible;
         v.barrel.position.set(sx, sy);
