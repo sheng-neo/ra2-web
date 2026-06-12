@@ -331,7 +331,7 @@ export class MatchView {
        </div>
        <div class="mv-hint">${
          matchMedia('(pointer: coarse)').matches
-           ? '点选单位 · 点建筑选建筑 · 点空地取消选择 · 命令走下方操作条(移/攻/修…) · 左侧①-⑤编队(点召回·长按设组) · 双指平移缩放'
+           ? '点选单位 · 点空地移动 · 点敌攻击 · 点建筑选建筑 ·「移」可移到建筑 · ✕取消 · 左侧①-⑤编队(点设组/召回·长按取消) · 双指缩放'
            : '左键选/框选 · 双击选同类 · 右键移动/攻击 · A 攻击移动 · P 巡逻 · G 姿态 · E 找空闲 · S 停止 · Ctrl+数字编队 · 滚轮缩放'
        }</div>
        <div class="mv-bldbar" id="mv-bldbar"></div>
@@ -389,7 +389,7 @@ export class MatchView {
       }),
     );
 
-    // 触控编队条：点=召回该组（空组+有选择=设组）、长按=把当前选择设为该组。桌面隐藏（用 Ctrl+数字）。
+    // 触控编队条：点=召回该组（空组+有选择=设组）；长按=有选择则设组、无选择则取消该组。桌面隐藏（用 Ctrl+数字）。
     this.groupBar = this.root.querySelector('#mv-groups')!;
     if (this.isTouch) {
       this.groupBar.querySelectorAll('button').forEach((b) => {
@@ -401,7 +401,9 @@ export class MatchView {
           longed = false;
           lp = window.setTimeout(() => {
             longed = true;
-            this.assignGroup(g);
+            // 长按：有选择=设为该组；无选择=取消（清空）该组
+            if (this.selected.size > 0) this.assignGroup(g);
+            else this.clearGroup(g);
           }, 450);
         });
         b.addEventListener('pointerup', () => {
@@ -986,7 +988,7 @@ export class MatchView {
       audioBus.play('select');
       return;
     }
-    // 3) 已有选择：点敌→攻击、点矿田(含矿车)→采矿、点空地→取消选择（操作条随之消失）
+    // 3) 已有选择：点敌→攻击、点矿田(含矿车)→采矿、点空地→直接移动（取消选择用 ✕ 按钮）
     if (this.selected.size > 0) {
       const enemy = this.targetAt(clientX, clientY);
       if (enemy !== null) {
@@ -995,16 +997,20 @@ export class MatchView {
         this.playUnitVoice('attack', ids[0]!);
         return;
       }
-      const harv = this.selectedHarvesterIds();
       const inB = cellB.x >= 0 && cellB.y >= 0 && cellB.x < this.mapW && cellB.y < this.mapH;
-      if (harv.length > 0 && inB && this.world.oreAt(cellB.x, cellB.y) > 0) {
+      if (!inB) return;
+      const harv = this.selectedHarvesterIds();
+      if (harv.length > 0 && this.world.oreAt(cellB.x, cellB.y) > 0) {
         this.emit({ kind: 'harvest', entityIds: harv, cellX: cellB.x, cellY: cellB.y });
+        const others = [...this.selected].filter((id) => !harv.includes(id)).sort((a, b) => a - b);
+        if (others.length > 0) this.emit({ kind: 'move', entityIds: others, cellX: cellB.x, cellY: cellB.y });
         this.playUnitVoice('move', harv[0]!);
         return;
       }
-      // 空地 → 取消选择
-      this.selected.clear();
-      this.selectBuilding(null);
+      // 空地 → 直接移动（点地就走；要移动到某建筑处，先点「移」再点该建筑）
+      const ids = [...this.selected].sort((a, b) => a - b);
+      this.emit({ kind: 'move', entityIds: ids, cellX: cellB.x, cellY: cellB.y });
+      this.playUnitVoice('move', ids[0]!);
     }
   }
 
@@ -1190,13 +1196,27 @@ export class MatchView {
     audioBus.play('select');
   }
 
-  /** 刷新触控编队条：已设组的按钮高亮并显示存活数。 */
+  /** 取消（清空）第 g 编组，释放该槽位。 */
+  private clearGroup(g: number): void {
+    if (!this.controlGroups.has(g)) return;
+    this.controlGroups.delete(g);
+    this.setNetStatus(`已取消 ${g} 组`);
+    audioBus.play('select');
+  }
+
+  /** 刷新触控编队条：剔除已亡成员、空组自动释放、已设组高亮显存活数。 */
   private updateGroupBar(): void {
     if (!this.isTouch) return;
     this.groupBar.querySelectorAll('button').forEach((b) => {
       const el = b as HTMLButtonElement;
       const g = Number(el.dataset.grp);
-      const n = (this.controlGroups.get(g) ?? []).filter((id) => this.world.entities.has(id)).length;
+      const stored = this.controlGroups.get(g);
+      if (stored) {
+        const alive = stored.filter((id) => this.world.entities.has(id));
+        if (alive.length === 0) this.controlGroups.delete(g); // 全员阵亡 → 槽位自动释放
+        else if (alive.length !== stored.length) this.controlGroups.set(g, alive); // 顺手剔除已亡
+      }
+      const n = this.controlGroups.get(g)?.length ?? 0;
       el.classList.toggle('has', n > 0);
       el.textContent = n > 0 ? `${g}·${n}` : `${g}`;
     });
@@ -1341,11 +1361,11 @@ export class MatchView {
       `<li>采矿车自动采矿换钱；右侧栏点图标造单位/建筑（连点排队，左上角×N，点✕取消）</li>` +
       `<li>${
         touch
-          ? '点选单位 / 点建筑选建筑 / 点空地取消选择；命令走下方操作条：移·攻(攻击移动)·巡·姿态·采·修(工程师)·停。点敌可直接攻击'
+          ? '点选单位 / 点空地移动 / 点敌攻击 / 点建筑选建筑；下方操作条：移(可移到建筑)·攻(攻击移动)·巡·姿态·采·修(工程师)·停·✕取消'
           : '左键选/双击选同类；右键移动/攻击；A 攻击移动·P 巡逻·G 切姿态·E 找空闲兵·S 停止·Ctrl+数字编队'
       }</li>` +
       `<li>克制：反坦克兵(火箭兵)打坦克、攻城车溅射轰步兵/建筑、坦克碾步兵——用对兵种</li>` +
-      `<li>工程师：选中后点「修」再点建筑——己方满血修复、敌方直接占领（${touch ? '左侧①-⑤编队：点召回·长按设组' : '工程师右键建筑亦可'}）</li>` +
+      `<li>工程师：选中后点「修」再点建筑——己方满血修复、敌方直接占领（${touch ? '左侧①-⑤编队：点设组/召回·长按取消' : '工程师右键建筑亦可'}）</li>` +
       `<li>点己方建筑可修理/出售/设集结点；摧毁对方全部建筑获胜</li>` +
       `</ul><button id="mv-tip-ok">知道了</button>`;
     this.root.appendChild(tip);
@@ -1426,9 +1446,9 @@ export class MatchView {
     tip.className = 'mv-tip mv-help';
     tip.innerHTML =
       `<h3>操作帮助</h3><ul>` +
-      `<li>选择：${touch ? '点选单位 · 拖框选 · 双击选同类 · 点建筑选建筑 · 点空地取消' : '左键选/框选 · 双击选同类 · Ctrl+数字编队'}</li>` +
-      `<li>下令：${touch ? '下方操作条(移/攻/巡/采/修/停)；点敌可直接攻击' : '右键移动/攻击'}（攻=攻击移动沿途交战）</li>` +
-      `<li>编队：${touch ? '左侧 ①-⑤ — 点=召回 · 长按=把当前选择设为该组' : 'Ctrl+数字 设组 · 数字 选组'}</li>` +
+      `<li>选择：${touch ? '点选单位 · 拖框选 · 双击选同类 · 点建筑选建筑 · ✕取消' : '左键选/框选 · 双击选同类 · Ctrl+数字编队'}</li>` +
+      `<li>下令：${touch ? '点空地移动 · 点敌攻击 · 操作条移/攻/巡/采/修/停（点「移」再点建筑=移到该建筑）' : '右键移动/攻击'}（攻=攻击移动沿途交战）</li>` +
+      `<li>编队：${touch ? '左侧 ①-⑤ — 点=设组(空槽)/召回 · 长按=设组(有选择)/取消(无选择) · 全员阵亡自动释放' : 'Ctrl+数字 设组 · 数字 选组'}</li>` +
       (touch ? '' : `<li>键位：A 攻击移动 · P 巡逻 · G 切姿态 · E 找空闲兵 · S 停止</li>`) +
       `<li>工程师：选「修」再点建筑——己方满血修复 / 敌方直接占领${touch ? '' : '（右键建筑亦可）'}</li>` +
       `<li>姿态：进攻(主动出击)·警戒(默认)·坚守(原地不追)·不还火</li>` +
