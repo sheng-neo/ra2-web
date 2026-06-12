@@ -100,6 +100,21 @@ const STYLE = `
 @keyframes alertSpin { to { transform:translate(-50%,-50%) rotate(360deg); } }
 @keyframes alertPulse { 0%,100%{opacity:.32;} 50%{opacity:.92;} }
 @keyframes alertWord { 0%{transform:scale(.72);opacity:0;} 35%{opacity:1;} 100%{transform:scale(1);opacity:1;} }
+/* 点击进入门（首次手势解锁音频，再带声播开场——浏览器策略禁止无手势出声） */
+#boot .gate { position:fixed; inset:0; z-index:60; display:flex; flex-direction:column; align-items:center; justify-content:center; cursor:pointer; background:radial-gradient(ellipse at 50% 45%, rgba(6,12,10,.5), rgba(3,6,9,.93) 72%); transition:opacity .6s ease; }
+#boot .gate.out { opacity:0; pointer-events:none; }
+#boot .gate-orb { position:relative; width:132px; height:132px; display:flex; align-items:center; justify-content:center; margin-bottom:34px; }
+#boot .gate-orb .ping { position:absolute; left:50%; top:50%; width:132px; height:132px; margin:-66px 0 0 -66px; border-radius:50%; border:1px solid rgba(86,224,128,.55); animation:gatePing 3s ease-out infinite; }
+#boot .gate-orb .ping:nth-child(2){ animation-delay:1s; } #boot .gate-orb .ping:nth-child(3){ animation-delay:2s; }
+#boot .gate-core { position:relative; width:132px; height:132px; border-radius:50%; border:2px solid rgba(86,224,128,.75); background:radial-gradient(circle at 50% 40%, rgba(42,94,60,.55), rgba(8,16,12,.9)); color:#bdf3cf; cursor:pointer; display:flex; align-items:center; justify-content:center; animation:gateBreath 2.4s ease-in-out infinite; }
+#boot .gate-core .gate-tri { font-size:44px; margin-left:7px; filter:drop-shadow(0 0 14px rgba(120,240,150,.85)); }
+#boot .gate-core:hover { border-color:#86f0a8; transform:scale(1.05); }
+#boot .gate-title { font-size:clamp(26px,6vw,46px); font-weight:800; letter-spacing:.2em; color:#eef6ee; text-shadow:0 0 16px rgba(86,224,128,.45),0 0 42px rgba(220,60,50,.22); margin-bottom:13px; text-align:center; }
+#boot .gate-hint { font-size:clamp(15px,4vw,19px); color:#ffd98a; letter-spacing:.36em; text-shadow:0 0 14px rgba(255,200,90,.4); animation:gateHint 1.8s ease-in-out infinite; }
+#boot .gate-sub { margin-top:10px; font-size:11.5px; color:#7f9a89; letter-spacing:.26em; }
+@keyframes gatePing { 0%{ transform:scale(.62); opacity:.85; } 100%{ transform:scale(2.7); opacity:0; } }
+@keyframes gateBreath { 0%,100%{ box-shadow:0 0 30px rgba(86,224,128,.3),0 0 0 6px rgba(86,224,128,.05) inset; } 50%{ box-shadow:0 0 58px rgba(86,224,128,.6),0 0 0 6px rgba(86,224,128,.12) inset; } }
+@keyframes gateHint { 0%,100%{ opacity:.5; } 50%{ opacity:1; } }
 @media (max-width:480px){ #boot .term{font-size:12px;} }
 `;
 
@@ -175,6 +190,15 @@ export async function renderBootScreen(root: HTMLElement): Promise<void> {
     </div>
     <div class="alert" id="alert"><div class="flash"></div><div class="beam"></div><div class="word">红色警戒<small>RED ALERT</small></div></div>
     <div class="skip" id="skip">跳过 ▸</div>
+    <div class="gate" id="gate">
+      <div class="gate-orb">
+        <span class="ping"></span><span class="ping"></span><span class="ping"></span>
+        <button class="gate-core" id="gate-core" type="button" aria-label="进入"><span class="gate-tri">▶</span></button>
+      </div>
+      <div class="gate-title">网页版红色警戒2</div>
+      <div class="gate-hint">点击进入</div>
+      <div class="gate-sub">TAP TO ENTER · 开启声音与开场</div>
+    </div>
   `;
   root.appendChild(boot);
 
@@ -260,6 +284,7 @@ export async function renderBootScreen(root: HTMLElement): Promise<void> {
   };
   const at = (ms: number, fn: () => void): void => void timers.push(window.setTimeout(fn, ms));
   let done = false;
+  let gateEntered = false;
   const reveal = (): void => {
     if (done) return;
     done = true;
@@ -287,13 +312,26 @@ export async function renderBootScreen(root: HTMLElement): Promise<void> {
   };
   skip.addEventListener('click', reveal);
   const onKey = (e: KeyboardEvent): void => {
+    if (!gateEntered) return; // 门未进时按键交给 gateKey 处理（解锁+进入）
     if (!done && (e.key === 'Enter' || e.key === 'Escape' || e.key === ' ')) reveal();
   };
   window.addEventListener('keydown', onKey);
   boot.querySelector('#replay')?.addEventListener('click', startIntro);
 
-  // 每次进首页都播放开场动画（看过想再看可点"重看开场"）
-  startIntro();
+  // —— 点击进入门：首次手势解锁音频（浏览器策略禁止无手势出声），再带声播开场 ——
+  const gate = boot.querySelector<HTMLElement>('#gate')!;
+  const enterGate = (): void => {
+    if (gateEntered) return;
+    gateEntered = true;
+    audioBus.resume(); // 手势解锁音效上下文：打字嗒声/警笛/战斗音都靠它
+    bgm.play(); // 同时起背景音乐
+    window.removeEventListener('keydown', enterGate);
+    gate.classList.add('out');
+    window.setTimeout(() => gate.remove(), 650);
+    startIntro(); // 此刻音频已解锁 → 开场带声播放
+  };
+  gate.addEventListener('click', enterGate);
+  window.addEventListener('keydown', enterGate); // 任意键也可进入
 }
 
 /** 打字机开机 + 叙事淡入，结束揭幕菜单。 */
