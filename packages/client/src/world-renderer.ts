@@ -44,9 +44,12 @@ export class WorldRenderer {
   private readonly oreGfx = new Graphics();
   private readonly buildingLayer = new Container();
   private readonly unitLayer = new Container();
+  private readonly decalGfx = new Graphics();
   private readonly shadowGfx = new Graphics();
   private readonly fxGfx = new Graphics();
   private readonly particleGfx = new Graphics();
+  /** 地面焦痕（死亡残留，缓慢淡出）：屏幕坐标。 */
+  private readonly decals: { x: number; y: number; r: number; born: number; life: number }[] = [];
   private readonly views = new Map<number, UnitView>();
   private buildingKey = '';
   private oreTick = -1;
@@ -81,7 +84,7 @@ export class WorldRenderer {
     this.fogEnabled = localPlayerId > 0;
     this.vis = new Uint8Array(world.terrain.width * world.terrain.height);
     // 迷雾盖在地形/建筑/单位之上，但在血条/特效之下
-    this.stage.addChild(this.terrainGfx, this.oreGfx, this.shadowGfx, this.buildingLayer, this.unitLayer, this.fogGfx, this.fxGfx, this.particleGfx);
+    this.stage.addChild(this.terrainGfx, this.oreGfx, this.decalGfx, this.shadowGfx, this.buildingLayer, this.unitLayer, this.fogGfx, this.fxGfx, this.particleGfx);
     this.drawTerrain();
   }
 
@@ -479,6 +482,9 @@ export class WorldRenderer {
       if (seen.has(id)) continue;
       this.spawnExplosion(pos.x, pos.y, pos.building ? 2.2 : 1);
       this.onEvent?.(pos.building ? 'bigExplosion' : 'explosion');
+      // 地面焦痕（缓慢淡出，让战场留痕）
+      this.decals.push({ x: pos.x, y: pos.y + 2, r: pos.building ? 22 : 11, born: now, life: 12000 });
+      if (this.decals.length > 40) this.decals.shift();
       this.prevPos.delete(id);
       this.prevHp.delete(id);
       this.prevCooldown.delete(id);
@@ -493,6 +499,18 @@ export class WorldRenderer {
       if (projSeen.has(id)) continue;
       this.spawnExplosion(pos.x, pos.y, 0.7);
       this.prevProj.delete(id);
+    }
+
+    // 地面焦痕：缓慢淡出
+    this.decalGfx.clear();
+    for (let i = this.decals.length - 1; i >= 0; i--) {
+      const d = this.decals[i]!;
+      const age = now - d.born;
+      if (age >= d.life) {
+        this.decals.splice(i, 1);
+        continue;
+      }
+      this.decalGfx.ellipse(d.x, d.y, d.r, d.r * 0.5).fill({ color: 0x1a1410, alpha: 0.42 * (1 - age / d.life) });
     }
 
     // 推进 + 绘制
