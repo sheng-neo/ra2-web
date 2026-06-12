@@ -47,12 +47,13 @@ interface DiffParams {
   waveBias: number; // 开战门槛偏移（负=更激进）
   harvBonus: number;
   defBonus: number;
+  refBonus: number; // 额外精炼厂（更强经济 → 更快爆兵）
   reacts: boolean; // 是否按敌情反应
 }
 const DIFF: Record<Difficulty, DiffParams> = {
-  easy: { waveBias: 4, harvBonus: 0, defBonus: 0, reacts: false },
-  normal: { waveBias: 0, harvBonus: 0, defBonus: 1, reacts: true },
-  hard: { waveBias: -1, harvBonus: 1, defBonus: 1, reacts: true },
+  easy: { waveBias: 4, harvBonus: 0, defBonus: 0, refBonus: 0, reacts: false },
+  normal: { waveBias: 0, harvBonus: 0, defBonus: 1, refBonus: 0, reacts: true },
+  hard: { waveBias: -1, harvBonus: 1, defBonus: 1, refBonus: 0, reacts: true },
 };
 
 export class SimpleAI {
@@ -62,12 +63,18 @@ export class SimpleAI {
   private readonly harvesters: number;
   private readonly defenses: number;
   private readonly baseWave: number;
+  /** 留守家中的最小防守兵力（基地永不空，杜绝被一波偷家平推）。 */
+  private readonly garrison: number;
   private engaged = false;
 
   constructor(
     private readonly playerId: number,
     difficulty: Difficulty = 'normal',
     seed: number = playerId,
+    /** 起始留守兵力（出击只派"超出留守"的部分，基地不空，专治人类一波偷家）。
+     *  随时间衰减到 0 → 后期全员压上。**默认 0**：AI 互殴（对称）保持原激进度、必分胜负；
+     *  仅遭遇战(play.ts)按难度开启 → 不影响 ai.test 的无僵局保证。 */
+    homeGuard = 0,
   ) {
     // 人格由种子决定（同种子可复现；play.ts 每局给不同种子 → 每局打法不同）
     this.persona = PERSONAS[((seed >>> 0) + playerId) % PERSONAS.length]!;
@@ -76,6 +83,7 @@ export class SimpleAI {
     this.harvesters = this.p.harvesters + this.d.harvBonus;
     this.defenses = this.p.defenses + this.d.defBonus;
     this.baseWave = Math.max(2, this.p.waveSize + this.d.waveBias);
+    this.garrison = homeGuard;
   }
 
   /** 调试/展示用：当前人格（英文键）。 */
@@ -179,25 +187,57 @@ export class SimpleAI {
     if (army.length >= effWave) this.engaged = true;
     else if (army.length < Math.max(2, effWave >> 1)) this.engaged = false; // 被打残：撤下来重整，不添油
 
+    // 留守兵力（默认 0；遭遇战按难度开启）。基地永远留这么多防守，其余出击。
+    const effGarrison = this.garrison;
     const ids = army.map((e) => e.id);
+    const home = this.baseCentroid(world);
     const threat = this.nearestThreatToBase(world, enemies); // 老家是否被敌方单位逼近
     if (threat !== null) {
-      // 老家被攻击：分兵御敌。成军且兵多→约 1/3 回防、2/3 继续推进（保持攻势，避免双方全军回防→僵局）；
-      // 否则全军回防保命。
-      if (this.engaged && ids.length >= 6) {
-        const d = Math.max(1, Math.floor(ids.length / 3));
-        cmds.push({ kind: 'attack', entityIds: ids.slice(0, d), targetId: threat });
+      // 老家受袭：离家最近的约 1/3 回防迎敌（响应最快），2/3 继续推进
+      // （保持攻势，避免双方全员回防→僵局）；兵少则全员御敌保命。
+      if (this.engaged && home && army.length >= 6) {
+        const sorted = this.byDistToHome(army, home);
+        const d = Math.max(1, Math.floor(sorted.length / 3));
+        cmds.push({ kind: 'attack', entityIds: sorted.slice(0, d).map((e) => e.id), targetId: threat });
         const t = this.pickTarget(world, enemies, this.centroid(army));
-        if (t !== null) cmds.push({ kind: 'attack', entityIds: ids.slice(d), targetId: t });
+        if (t !== null) cmds.push({ kind: 'attack', entityIds: sorted.slice(d).map((e) => e.id), targetId: t });
       } else {
         cmds.push({ kind: 'attack', entityIds: ids, targetId: threat });
       }
       return;
     }
 
-    if (!this.engaged) return; // 重整中：留在家（顺带守家），攒够再打
+    if (!this.engaged) return; // 重整/攒兵中：留在家（个体警戒自卫）
     const target = this.pickTarget(world, enemies, this.centroid(army));
-    if (target !== null) cmds.push({ kind: 'attack', entityIds: ids, targetId: target });
+    if (target === null) return;
+    // 出击：离家最近的 effGarrison 个留守（基地不空，杜绝被偷家平推），其余压上
+    if (army.length <= effGarrison) return;
+    const attackers = home && effGarrison > 0 ? this.byDistToHome(army, home).slice(effGarrison).map((e) => e.id) : ids;
+    if (attackers.length > 0) cmds.push({ kind: 'attack', entityIds: attackers, targetId: target });
+  }
+
+  /** 按到家距离升序（近家在前；整数距离平方，确定性）。 */
+  private byDistToHome(army: Entity[], home: { x: number; y: number }): Entity[] {
+    return [...army].sort((a, b) => {
+      const da = (a.cellX - home.x) * (a.cellX - home.x) + (a.cellY - home.y) * (a.cellY - home.y);
+      const db = (b.cellX - home.x) * (b.cellX - home.x) + (b.cellY - home.y) * (b.cellY - home.y);
+      return da - db;
+    });
+  }
+
+  /** 我方建筑质心（出击留守判定的「家」）。 */
+  private baseCentroid(world: World): { x: number; y: number } | null {
+    let sx = 0;
+    let sy = 0;
+    let n = 0;
+    for (const e of world.entities.values()) {
+      if (e.owner === this.playerId && world.rules.units.get(e.typeId)?.domain === 'building') {
+        sx += e.cellX;
+        sy += e.cellY;
+        n++;
+      }
+    }
+    return n === 0 ? null : { x: Math.round(sx / n), y: Math.round(sy / n) };
   }
 
   /** 老家威胁：返回最逼近我方建筑（≤12 格）的敌方非建筑单位 id，否则 null。 */
@@ -290,7 +330,7 @@ export class SimpleAI {
     const has = (id: string): boolean => world.hasBuilding(this.playerId, id);
     if (player.powerDrained > player.powerProduced - 20 && has('powerplant')) return 'powerplant';
     for (const id of BUILD_ORDER) if (!has(id)) return id;
-    if (this.countBuildings(world, 'refinery') < this.p.refineries) return 'refinery';
+    if (this.countBuildings(world, 'refinery') < this.p.refineries + this.d.refBonus) return 'refinery';
     // 注：AI 暂不自建作战实验室/高级单位——实测会拖慢节奏致某些人格对阵僵持；
     // 高级单位作为玩家科技奖励先开放，AI 用法待平衡调好再开（见 prism/apocalypse）。
     if (this.countBuildings(world, 'tesla') + this.countBuildings(world, 'pillbox') < this.defenses) {

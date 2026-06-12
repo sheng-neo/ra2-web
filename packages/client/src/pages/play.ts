@@ -124,8 +124,30 @@ export async function renderPlay(root: HTMLElement): Promise<void> {
     await view.init();
     view.onRestart = () => void renderPlay(root);
 
-    // 每局给 AI 一个不同的种子 → 随机抽一套打法人格（同图每局不一样）
-    const ai = new SimpleAI(AI_ID, difficulty, (Date.now() ^ (AI_ID * 2654435761)) >>> 0);
+    // 每局给 AI 一个不同的种子 → 随机抽一套打法人格（同图每局不一样）。
+    // homeGuard：让 AI 留守一支防守队（基地不空，治"被一波偷家平推"）；仅遭遇战开启，
+    // 不传进 AI 互殴测试 → 不影响其"无僵局"保证。
+    const HOME_GUARD: Record<Difficulty, number> = { easy: 0, normal: 3, hard: 5 };
+    const ai = new SimpleAI(AI_ID, difficulty, (Date.now() ^ (AI_ID * 2654435761)) >>> 0, HOME_GUARD[difficulty]);
+    // 起手部队：普通/困难给 AI 几辆坦克——即时防守 + 早期压力，对手不再是发育期的活靶子。
+    const startTanks = { easy: 0, normal: 2, hard: 3 }[difficulty];
+    if (startTanks > 0) {
+      const aiSide = world.players.get(AI_ID)?.side;
+      const tankId = aiSide === 'soviet' ? 'rhino' : 'grizzly';
+      let anchor: { x: number; y: number } | null = null;
+      for (const e of world.entities.values()) {
+        if (e.owner === AI_ID && world.rules.units.get(e.typeId)?.building) {
+          anchor = { x: e.cellX, y: e.cellY };
+          break;
+        }
+      }
+      if (anchor) {
+        for (let i = 0; i < startTanks; i++) {
+          const spot = world.passableNear(anchor.x - 2, anchor.y + 2 + i) ?? anchor;
+          world.spawnUnit(AI_ID, tankId, spot.x, spot.y);
+        }
+      }
+    }
     // 敌情简报：开局揭示对手打法人格 + 难度（让 AI 显得有性格）
     const diffName = { easy: '简单', normal: '普通', hard: '困难' }[difficulty];
     view.flashIntel(`⚠ 敌军指挥官：${ai.personaName} · ${diffName}`);

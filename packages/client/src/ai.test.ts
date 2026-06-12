@@ -55,6 +55,19 @@ describe('AI 对战全流程', () => {
     }
   });
 
+  it('遭遇战留守：homeGuard AI 留守同时仍出击，能平推挂机对手（守家不等于不打）', () => {
+    // 对手 2 号挂机（有基地但不生产/不出击）。homeGuard=5 的 AI 应留守一支、仍用主力平推取胜。
+    const world = createWorldFromConfig(localSkirmishConfig(5000));
+    const ai = new SimpleAI(1, 'hard', 0, 5);
+    let winner = 0;
+    for (let t = 0; t < 24000 && winner === 0; t++) {
+      if (t % 15 === 0) world.applyCommands(ai.emit(world));
+      world.step();
+      if (world.players.get(2)!.defeated) winner = 1;
+    }
+    expect(winner, '留守的 AI 仍应主动出击并取胜').toBe(1);
+  });
+
   it('打法人格由种子决定：同种子复现、不同种子可抽到不同人格', () => {
     const persona = (seed: number): string => new SimpleAI(2, 'normal', seed).personality;
     expect(persona(7)).toBe(persona(7)); // 同种子 → 同人格（可复现）
