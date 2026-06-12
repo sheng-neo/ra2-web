@@ -27,6 +27,7 @@ const BUILDING_ART: Record<Side, Record<string, string>> = {
     warfactory: 'gtweap.shp',
     pillbox: 'gtctwr.shp',
     tesla: 'gtctwr.shp',
+    battlelab: 'gtech.shp', // TS 科技中心；本地无 Temperat.mix 未能验证文件名，缺失则优雅回退占位
   },
   soviet: {
     conyard: 'gtcnst.shp',
@@ -36,6 +37,7 @@ const BUILDING_ART: Record<Side, Record<string, string>> = {
     warfactory: 'ntweap.shp',
     pillbox: 'ntlasr.shp',
     tesla: 'ntobel.shp',
+    battlelab: 'ntech.shp', // 同上，Nod 科技中心
   },
 };
 
@@ -44,6 +46,10 @@ const INFANTRY_ART: Record<string, string> = {
   gi: 'e1.shp',
   conscript: 'e2.shp',
   engineer: 'e3.shp',
+  // 反装甲步兵（火箭兵/磁能兵）→ TS 改造人，重甲科技感，与基础步枪兵区分。
+  rocketsoldier: 'cyc2.shp',
+  tankbuster: 'cyc2.shp',
+  // 军犬：TS 无动物精灵，留空 → 回退原创占位（程序绘制的犬形）。
 };
 
 /** typeId → 载具 VXL（TS 体素）。 */
@@ -54,6 +60,9 @@ const VEHICLE_ART: Record<string, string> = {
   flaktrak: 'hvr.vxl',
   arty: 'art2.vxl',
   v3: 'art2.vxl',
+  // 二级单位：TS 无对应原型，取免费库里最接近的体素做替身（真·RA2 文件导入后另说）。
+  prism: 'lpst.vxl', // 传感/科技外形，区别于主战坦克
+  apocalypse: 'apc.vxl', // 重甲装甲外形
 };
 
 /** 载具烘焙朝向数（与 RA2 一致）。 */
