@@ -157,8 +157,8 @@ export class SimpleAI {
     }
   }
 
-  // ——— 军队：攒够一波「全军压上」并每轮重发（滚雪球持续推进，不回撤）；
-  //      开战门槛随时间下降，后期必全力出击（防僵持，保证能分胜负） ———
+  // ——— 军队：成军「全军压上」；老家被攻击则全军御敌（不再裸奔被平推）；
+  //      兵力被打残则脱离重整、不添油送死；开战门槛随时间衰减保证后期必出击、能分胜负 ———
   private manageArmy(world: World, cmds: Command[]): void {
     const army: Entity[] = [];
     const enemies: Entity[] = [];
@@ -177,10 +177,51 @@ export class SimpleAI {
     const decay = Math.floor(world.tick / (15 * 45));
     const effWave = Math.max(2, this.baseWave - decay);
     if (army.length >= effWave) this.engaged = true;
-    if (!this.engaged) return;
+    else if (army.length < Math.max(2, effWave >> 1)) this.engaged = false; // 被打残：撤下来重整，不添油
 
+    const ids = army.map((e) => e.id);
+    const threat = this.nearestThreatToBase(world, enemies); // 老家是否被敌方单位逼近
+    if (threat !== null) {
+      // 老家被攻击：分兵御敌。成军且兵多→约 1/3 回防、2/3 继续推进（保持攻势，避免双方全军回防→僵局）；
+      // 否则全军回防保命。
+      if (this.engaged && ids.length >= 6) {
+        const d = Math.max(1, Math.floor(ids.length / 3));
+        cmds.push({ kind: 'attack', entityIds: ids.slice(0, d), targetId: threat });
+        const t = this.pickTarget(world, enemies, this.centroid(army));
+        if (t !== null) cmds.push({ kind: 'attack', entityIds: ids.slice(d), targetId: t });
+      } else {
+        cmds.push({ kind: 'attack', entityIds: ids, targetId: threat });
+      }
+      return;
+    }
+
+    if (!this.engaged) return; // 重整中：留在家（顺带守家），攒够再打
     const target = this.pickTarget(world, enemies, this.centroid(army));
-    if (target !== null) cmds.push({ kind: 'attack', entityIds: army.map((e) => e.id), targetId: target });
+    if (target !== null) cmds.push({ kind: 'attack', entityIds: ids, targetId: target });
+  }
+
+  /** 老家威胁：返回最逼近我方建筑（≤12 格）的敌方非建筑单位 id，否则 null。 */
+  private nearestThreatToBase(world: World, enemies: Entity[]): number | null {
+    const buildings: Entity[] = [];
+    for (const e of world.entities.values()) {
+      if (e.owner === this.playerId && world.rules.units.get(e.typeId)?.domain === 'building') buildings.push(e);
+    }
+    if (buildings.length === 0) return null;
+    let best: number | null = null;
+    let bestD = 12 * 12;
+    for (const e of enemies) {
+      if (world.rules.units.get(e.typeId)?.domain === 'building') continue;
+      for (const b of buildings) {
+        const dx = e.cellX - b.cellX;
+        const dy = e.cellY - b.cellY;
+        const d = dx * dx + dy * dy;
+        if (d <= bestD) {
+          bestD = d;
+          best = e.id;
+        }
+      }
+    }
+    return best;
   }
 
   /** 选攻击目标：离主力最近的敌方建筑（逐步推平到老家），无建筑则打最近敌方单位。 */
