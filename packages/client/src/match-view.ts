@@ -111,7 +111,12 @@ export const MATCH_STYLE = `
 .mv-unitbar button.stop { color: #e0a860; }
 .mv-unitbar button.harv { color: #f0d040; }
 .mv-unitbar button.stance { color: #9ad0e0; }
+.mv-unitbar button.eng { color: #8fe0a0; }
+.mv-unitbar button.desel { color: #e08080; }
 .mv-unitbar button[hidden] { display: none; }
+.mv-groups { position: fixed; left: 6px; top: 50%; transform: translateY(-50%); z-index: 24; display: flex; flex-direction: column; gap: 6px; }
+.mv-groups button { width: 40px; height: 36px; border-radius: 7px; background: rgba(12,18,24,.72); border: 1px solid #2a3a48; color: #7f8c96; font-size: 12.5px; font-weight: 700; cursor: pointer; padding: 0; -webkit-user-select: none; user-select: none; touch-action: none; }
+.mv-groups button.has { color: #cfe8d6; border-color: #3f7e6a; background: rgba(20,46,36,.82); }
 .mv-tip { position: fixed; left: 50%; top: 80px; transform: translateX(-50%); z-index: 25; max-width: 420px;
   background: rgba(14,20,26,.96); border: 1px solid #2d6fb0; border-radius: 10px; padding: 16px 18px; color: #d8e0e6; }
 .mv-tip h3 { margin: 0 0 8px; font-size: 15px; color: #6db3e8; }
@@ -214,9 +219,10 @@ export class MatchView {
   private selBox!: HTMLElement;
   private bldBar!: HTMLElement;
   private unitBar!: HTMLElement;
+  private groupBar!: HTMLElement;
   /** 触控：选中单位后下方操作条选定的待执行命令（下次点地/点目标执行）。
    *  攻=点敌锁定/点地攻击移动；巡=巡逻；移=普通移动。 */
-  private pendingAction: 'move' | 'attack' | 'patrol' | null = null;
+  private pendingAction: 'move' | 'attack' | 'patrol' | 'engineer' | null = null;
   /** 触控：点了「集结点」按钮后待设集结点的生产建筑 id（下次点地执行）。 */
   private pendingRally: number | null = null;
 
@@ -325,7 +331,7 @@ export class MatchView {
        </div>
        <div class="mv-hint">${
          matchMedia('(pointer: coarse)').matches
-           ? '点选单位/建筑 · 拖动框选 · 单指点地移动/攻击 · 双指平移缩放'
+           ? '点选单位 · 点建筑选建筑 · 点空地取消选择 · 命令走下方操作条(移/攻/修…) · 左侧①-⑤编队(点召回·长按设组) · 双指平移缩放'
            : '左键选/框选 · 双击选同类 · 右键移动/攻击 · A 攻击移动 · P 巡逻 · G 姿态 · E 找空闲 · S 停止 · Ctrl+数字编队 · 滚轮缩放'
        }</div>
        <div class="mv-bldbar" id="mv-bldbar"></div>
@@ -335,7 +341,12 @@ export class MatchView {
          <button data-act="patrol" title="巡逻（两点间往返警戒）">巡</button>
          <button class="stance" data-act="stance" title="作战姿态（点击循环：警戒→进攻→坚守→不还火）">戒</button>
          <button class="harv" data-act="harvest" title="采矿 / 恢复采矿">采</button>
+         <button class="eng" data-act="engineer" title="工程师：点己方建筑满血修复 / 点敌方建筑占领">修</button>
          <button class="stop" data-act="stop" title="停止">停</button>
+         <button class="desel" data-act="deselect" title="取消选择">✕</button>
+       </div>
+       <div class="mv-groups" id="mv-groups">
+         <button data-grp="1">1</button><button data-grp="2">2</button><button data-grp="3">3</button><button data-grp="4">4</button><button data-grp="5">5</button>
        </div>
        <div id="mv-selbox"></div>`,
     );
@@ -352,7 +363,11 @@ export class MatchView {
     this.unitBar.querySelectorAll('button').forEach((b) =>
       b.addEventListener('click', () => {
         const act = (b as HTMLElement).dataset.act!;
-        if (act === 'stop') {
+        if (act === 'deselect') {
+          this.selected.clear();
+          this.selectBuilding(null);
+          this.pendingAction = null;
+        } else if (act === 'stop') {
           if (this.selected.size > 0) this.emit({ kind: 'stop', entityIds: [...this.selected].sort((a, c) => a - c) });
           this.pendingAction = null;
         } else if (act === 'harvest') {
@@ -367,12 +382,41 @@ export class MatchView {
           this.cycleStance(); // 立即循环切换作战姿态
           this.pendingAction = null;
         } else {
-          this.pendingAction = this.pendingAction === act ? null : (act as 'move' | 'attack' | 'patrol');
+          this.pendingAction = this.pendingAction === act ? null : (act as 'move' | 'attack' | 'patrol' | 'engineer');
         }
         audioBus.play('select');
         this.updateUnitBar();
       }),
     );
+
+    // 触控编队条：点=召回该组（空组+有选择=设组）、长按=把当前选择设为该组。桌面隐藏（用 Ctrl+数字）。
+    this.groupBar = this.root.querySelector('#mv-groups')!;
+    if (this.isTouch) {
+      this.groupBar.querySelectorAll('button').forEach((b) => {
+        const g = Number((b as HTMLElement).dataset.grp);
+        let lp = 0;
+        let longed = false;
+        const clear = (): void => window.clearTimeout(lp);
+        b.addEventListener('pointerdown', () => {
+          longed = false;
+          lp = window.setTimeout(() => {
+            longed = true;
+            this.assignGroup(g);
+          }, 450);
+        });
+        b.addEventListener('pointerup', () => {
+          clear();
+          if (longed) return; // 长按已设组
+          const alive = (this.controlGroups.get(g) ?? []).filter((id) => this.world.entities.has(id));
+          if (alive.length > 0) this.recallGroup(g);
+          else this.assignGroup(g);
+        });
+        b.addEventListener('pointerleave', clear);
+        b.addEventListener('pointercancel', clear);
+      });
+    } else {
+      this.groupBar.style.display = 'none';
+    }
 
     // 点击小地图 → 相机跳转
     this.miniEl.addEventListener('pointerdown', (e) => {
@@ -896,7 +940,11 @@ export class MatchView {
       const ids = [...this.selected].sort((a, b) => a - b);
       const cell = this.screenToCell(clientX, clientY);
       const inBounds = cell.x >= 0 && cell.y >= 0 && cell.x < this.mapW && cell.y < this.mapH;
-      if (this.pendingAction === 'patrol') {
+      if (this.pendingAction === 'engineer') {
+        // 修：点建筑 → 工程师进入（己方满血修复 / 敌方占领）
+        const b = this.buildingAtScreen(clientX, clientY);
+        if (b !== null) this.sendEngineers(b);
+      } else if (this.pendingAction === 'patrol') {
         if (inBounds) {
           this.emit({ kind: 'patrol', entityIds: ids, cellX: cell.x, cellY: cell.y });
           this.playUnitVoice('attack', ids[0]!);
@@ -920,7 +968,8 @@ export class MatchView {
       this.updateUnitBar();
       return;
     }
-    // 先看是否点中己方可移动单位 → 选中（精灵框，单位优先于身后建筑）
+    // 轻点（无待执行命令）：以"选择"为主，移动/攻击等命令走下方操作条
+    // 1) 点中己方可移动单位 → 选中（精灵框，单位优先于身后建筑）
     const hitUnit = this.unitAtScreen(clientX, clientY);
     if (hitUnit !== null) {
       this.selected.clear();
@@ -929,17 +978,33 @@ export class MatchView {
       this.playUnitVoice('select', hitUnit);
       return;
     }
-    // 点中己方建筑 → 选中建筑（出修理/出售条）
+    // 2) 点中己方建筑 → 选中建筑（即便有部队在选；命令既然走操作条，建筑优先于"移动到此"）
     const cellB = this.screenToCell(clientX, clientY);
-    const bld = this.ownBuildingAtCell(cellB.x, cellB.y);
-    if (bld !== null && this.selected.size === 0) {
-      this.selectBuilding(bld);
+    const ownB = this.ownBuildingAtCell(cellB.x, cellB.y);
+    if (ownB !== null) {
+      this.selectBuilding(ownB); // selectBuilding 会清空已选部队 → 操作条隐藏
       audioBus.play('select');
       return;
     }
-    // 否则：对已有选择下令（敌方单位优先于其身后建筑；点矿田则采矿车去采）
+    // 3) 已有选择：点敌→攻击、点矿田(含矿车)→采矿、点空地→取消选择（操作条随之消失）
     if (this.selected.size > 0) {
-      this.orderTo(clientX, clientY, [...this.selected].sort((a, b) => a - b));
+      const enemy = this.targetAt(clientX, clientY);
+      if (enemy !== null) {
+        const ids = [...this.selected].sort((a, b) => a - b);
+        this.emit({ kind: 'attack', entityIds: ids, targetId: enemy });
+        this.playUnitVoice('attack', ids[0]!);
+        return;
+      }
+      const harv = this.selectedHarvesterIds();
+      const inB = cellB.x >= 0 && cellB.y >= 0 && cellB.x < this.mapW && cellB.y < this.mapH;
+      if (harv.length > 0 && inB && this.world.oreAt(cellB.x, cellB.y) > 0) {
+        this.emit({ kind: 'harvest', entityIds: harv, cellX: cellB.x, cellY: cellB.y });
+        this.playUnitVoice('move', harv[0]!);
+        return;
+      }
+      // 空地 → 取消选择
+      this.selected.clear();
+      this.selectBuilding(null);
     }
   }
 
@@ -1060,6 +1125,83 @@ export class MatchView {
     return out.sort((a, b) => a - b);
   }
 
+  /** 顶栏选中信息：数量 + 兵种构成（按数量取前 3 类）。如「选中 7：4 灰熊 2 大兵 1 工程师」。 */
+  private selectionSummary(): string {
+    if (this.selected.size === 0) return '';
+    const counts = new Map<string, number>();
+    for (const id of this.selected) {
+      const t = this.world.rules.units.get(this.world.entities.get(id)?.typeId ?? '');
+      if (!t) continue;
+      counts.set(t.name, (counts.get(t.name) ?? 0) + 1);
+    }
+    const parts = [...counts.entries()].sort((a, b) => b[1] - a[1]);
+    const shown = parts.slice(0, 3).map(([n, c]) => `${c} ${n}`).join(' ');
+    return `选中 ${this.selected.size}：${shown}${parts.length > 3 ? ' …' : ''}`;
+  }
+
+  /** 当前选中里的工程师 id（升序）。 */
+  private engineerIdsInSelection(): number[] {
+    const out: number[] = [];
+    for (const id of this.selected) {
+      const e = this.world.entities.get(id);
+      if (e && this.world.rules.units.get(e.typeId)?.engineer) out.push(id);
+    }
+    return out.sort((a, b) => a - b);
+  }
+
+  /** 屏幕点处的建筑 id（己方任意；敌方须在视野内），否则 null。供工程师修理/占领。 */
+  private buildingAtScreen(clientX: number, clientY: number): number | null {
+    const cell = this.screenToCell(clientX, clientY);
+    for (const e of this.world.entities.values()) {
+      const t = this.world.rules.units.get(e.typeId);
+      if (!t?.building) continue;
+      if (cell.x >= e.cellX && cell.x < e.cellX + t.building.footprintW && cell.y >= e.cellY && cell.y < e.cellY + t.building.footprintH) {
+        if (e.owner !== this.localPlayerId && !this.renderer.isCellVisible(cell.x, cell.y)) continue;
+        return e.id;
+      }
+    }
+    return null;
+  }
+
+  /** 把选中的工程师派去进入某建筑（己方修复/敌方占领）。返回是否已派出。 */
+  private sendEngineers(buildingId: number): boolean {
+    const eng = this.engineerIdsInSelection();
+    if (eng.length === 0) return false;
+    this.emit({ kind: 'engineerEnter', entityIds: eng, targetId: buildingId });
+    this.playUnitVoice('move', eng[0]!);
+    return true;
+  }
+
+  /** 把当前选择设为第 g 编组（触控长按/桌面 Ctrl+数字共用语义）。 */
+  private assignGroup(g: number): void {
+    if (this.selected.size === 0) return;
+    this.controlGroups.set(g, [...this.selected].sort((a, b) => a - b));
+    this.setNetStatus(`已编为 ${g} 组（${this.selected.size}）`);
+    audioBus.play('select');
+  }
+
+  /** 召回第 g 编组（选中其仍存活的成员并移除已阵亡者）。 */
+  private recallGroup(g: number): void {
+    const ids = (this.controlGroups.get(g) ?? []).filter((id) => this.world.entities.has(id));
+    if (ids.length === 0) return;
+    this.selected.clear();
+    this.selectBuilding(null);
+    for (const id of ids) this.selected.add(id);
+    audioBus.play('select');
+  }
+
+  /** 刷新触控编队条：已设组的按钮高亮并显示存活数。 */
+  private updateGroupBar(): void {
+    if (!this.isTouch) return;
+    this.groupBar.querySelectorAll('button').forEach((b) => {
+      const el = b as HTMLButtonElement;
+      const g = Number(el.dataset.grp);
+      const n = (this.controlGroups.get(g) ?? []).filter((id) => this.world.entities.has(id)).length;
+      el.classList.toggle('has', n > 0);
+      el.textContent = n > 0 ? `${g}·${n}` : `${g}`;
+    });
+  }
+
   /** 循环切换选中武装单位的作战姿态（以首个单位的当前姿态为基准 +1）。 */
   private cycleStance(): void {
     const ids = this.selectedCombatIds();
@@ -1073,6 +1215,17 @@ export class MatchView {
   /** 对一组单位向屏幕点下令：命中敌方→攻击；点到矿田且选中含采矿车→采矿车去采、
    *  其余移动；否则全体移动。统一供触控轻点与桌面右键调用。 */
   private orderTo(clientX: number, clientY: number, ids: number[]): void {
+    // 工程师：右键建筑 → 进入（己方满血修复 / 敌方占领）；其余单位继续按下方逻辑下令
+    const eng = this.engineerIdsInSelection();
+    if (eng.length > 0) {
+      const b = this.buildingAtScreen(clientX, clientY);
+      if (b !== null) {
+        this.emit({ kind: 'engineerEnter', entityIds: eng, targetId: b });
+        this.playUnitVoice('move', eng[0]!);
+        ids = ids.filter((id) => !eng.includes(id));
+        if (ids.length === 0) return;
+      }
+    }
     const target = this.targetAt(clientX, clientY);
     if (target !== null) {
       this.emit({ kind: 'attack', entityIds: ids, targetId: target });
@@ -1188,10 +1341,11 @@ export class MatchView {
       `<li>采矿车自动采矿换钱；右侧栏点图标造单位/建筑（连点排队，左上角×N，点✕取消）</li>` +
       `<li>${
         touch
-          ? '点选/双击选同类；下方操作条：攻=攻击移动(沿途逐个交战)·巡=巡逻·姿态(警戒/进攻/坚守/不还火)·采=采矿；点敌攻击、点地移动'
-          : '左键选/双击选同类；A 攻击移动(沿途交战)·P 巡逻·G 切姿态·E 找空闲兵·S 停止'
+          ? '点选单位 / 点建筑选建筑 / 点空地取消选择；命令走下方操作条：移·攻(攻击移动)·巡·姿态·采·修(工程师)·停。点敌可直接攻击'
+          : '左键选/双击选同类；右键移动/攻击；A 攻击移动·P 巡逻·G 切姿态·E 找空闲兵·S 停止·Ctrl+数字编队'
       }</li>` +
       `<li>克制：反坦克兵(火箭兵)打坦克、攻城车溅射轰步兵/建筑、坦克碾步兵——用对兵种</li>` +
+      `<li>工程师：选中后点「修」再点建筑——己方满血修复、敌方直接占领（${touch ? '左侧①-⑤编队：点召回·长按设组' : '工程师右键建筑亦可'}）</li>` +
       `<li>点己方建筑可修理/出售/设集结点；摧毁对方全部建筑获胜</li>` +
       `</ul><button id="mv-tip-ok">知道了</button>`;
     this.root.appendChild(tip);
@@ -1272,9 +1426,11 @@ export class MatchView {
     tip.className = 'mv-tip mv-help';
     tip.innerHTML =
       `<h3>操作帮助</h3><ul>` +
-      `<li>选择：${touch ? '点选 · 拖框选 · 双击选同类' : '左键选/框选 · 双击选同类 · Ctrl+数字编队'}</li>` +
-      `<li>下令：${touch ? '点地移动 · 点敌攻击 · 下方操作条' : '右键移动/攻击'}（移/攻=攻击移动/巡=巡逻/采/停）</li>` +
+      `<li>选择：${touch ? '点选单位 · 拖框选 · 双击选同类 · 点建筑选建筑 · 点空地取消' : '左键选/框选 · 双击选同类 · Ctrl+数字编队'}</li>` +
+      `<li>下令：${touch ? '下方操作条(移/攻/巡/采/修/停)；点敌可直接攻击' : '右键移动/攻击'}（攻=攻击移动沿途交战）</li>` +
+      `<li>编队：${touch ? '左侧 ①-⑤ — 点=召回 · 长按=把当前选择设为该组' : 'Ctrl+数字 设组 · 数字 选组'}</li>` +
       (touch ? '' : `<li>键位：A 攻击移动 · P 巡逻 · G 切姿态 · E 找空闲兵 · S 停止</li>`) +
+      `<li>工程师：选「修」再点建筑——己方满血修复 / 敌方直接占领${touch ? '' : '（右键建筑亦可）'}</li>` +
       `<li>姿态：进攻(主动出击)·警戒(默认)·坚守(原地不追)·不还火</li>` +
       `<li>经济科技：发电厂→精炼厂→兵营→战车厂→作战实验室(解锁光棱/天启)；连点排队·点✕取消·建筑设集结点</li>` +
       `<li>克制：反坦克兵打坦克 · 军犬秒步兵 · 攻城车轰步兵/建筑 · 坦克碾步兵</li>` +
@@ -1439,8 +1595,9 @@ export class MatchView {
     const alpha = Math.min(1, (performance.now() - this.lastStepAt) / (1000 / 15));
     this.edgeScroll();
     if (this.camera.tickShake()) this.camera.apply(); // 震屏衰减（爆炸战斗感）
-    this.selEl.textContent = this.selected.size > 0 ? `选中 ${this.selected.size}` : '';
+    this.selEl.textContent = this.selectionSummary();
     this.updateUnitBar();
+    this.updateGroupBar();
     this.renderer.render(alpha, this.selected);
     this.drawGhost();
     this.drawPings();
@@ -1452,12 +1609,14 @@ export class MatchView {
     if (!this.isTouch) return;
     let hasUnit = false;
     let hasCombat = false; // 选中里是否有带武器的单位（决定显示 攻/进/巡）
+    let hasEngineer = false;
     for (const id of this.selected) {
       const e = this.world.entities.get(id);
       const t = e && this.world.rules.units.get(e.typeId);
       if (!t || t.domain === 'building') continue;
       hasUnit = true;
       if (t.weapon) hasCombat = true;
+      if (t.engineer) hasEngineer = true;
     }
     if (!hasUnit) this.pendingAction = null;
     this.unitBar.classList.toggle('show', hasUnit);
@@ -1468,6 +1627,7 @@ export class MatchView {
       const el = b as HTMLButtonElement;
       const act = el.dataset.act;
       if (act === 'harvest') el.hidden = !hasHarv;
+      else if (act === 'engineer') el.hidden = !hasEngineer;
       else if (act === 'attack' || act === 'patrol') el.hidden = !hasCombat;
       else if (act === 'stance') {
         el.hidden = combat.length === 0;

@@ -88,6 +88,8 @@ export interface Entity {
   attackDest: { x: number; y: number } | null;
   /** 巡逻：到达当前目的地后折返的另一端点（格），null=不巡逻。沿途自动交战。 */
   patrol: { x: number; y: number } | null;
+  /** 工程师前往进入的目标建筑 id（己方=满血修复 / 敌方=占领；进入即消耗）。null=无。 */
+  enterTarget: number | null;
   /** 作战姿态（默认 guard 警戒）。 */
   stance: Stance;
   // 采矿
@@ -120,6 +122,7 @@ export type Command =
   | { kind: 'attackMove'; entityIds: number[]; cellX: number; cellY: number }
   | { kind: 'patrol'; entityIds: number[]; cellX: number; cellY: number }
   | { kind: 'attack'; entityIds: number[]; targetId: number }
+  | { kind: 'engineerEnter'; entityIds: number[]; targetId: number }
   | { kind: 'harvest'; entityIds: number[]; cellX: number; cellY: number }
   | { kind: 'setRally'; owner: number; buildingId: number; cellX: number; cellY: number }
   | { kind: 'sell'; owner: number; entityId: number }
@@ -270,6 +273,25 @@ export class World {
             }
           }
           break;
+        case 'engineerEnter': {
+          // 工程师前往目标建筑：抵达即修复（己方）/ 占领（敌方），由 stepEngineer 处理。
+          const tgt = this.entities.get(cmd.targetId);
+          const tt = tgt && this.rules.units.get(tgt.typeId);
+          if (tgt && tt?.building) {
+            const dock = this.passableNear(tgt.cellX, tgt.cellY + 1) ?? this.passableNear(tgt.cellX, tgt.cellY) ?? { x: tgt.cellX, y: tgt.cellY };
+            for (const eid of [...cmd.entityIds].sort((a, b) => a - b)) {
+              const e = this.entities.get(eid);
+              if (!e || !this.rules.units.get(e.typeId)?.engineer) continue;
+              e.enterTarget = cmd.targetId;
+              e.targetId = null;
+              e.attackMove = false;
+              e.attackDest = null;
+              e.patrol = null;
+              this.orderMove(e, dock.x, dock.y);
+            }
+          }
+          break;
+        }
         case 'harvest':
           for (const eid of [...cmd.entityIds].sort((a, b) => a - b)) {
             const e = this.entities.get(eid);
@@ -365,6 +387,7 @@ export class World {
       attackMove: false,
       attackDest: null,
       patrol: null,
+      enterTarget: null,
       stance: 'guard',
       rallyX: -1,
       rallyY: -1,
@@ -840,6 +863,30 @@ export class World {
     void type;
   }
 
+  /** 工程师 FSM：前往目标建筑，贴近（移动结束）即进入——己方满血修复、敌方占领，
+   *  随后工程师被消耗。返回 true 表示本帧已进入并消耗（跳过其余处理）。 */
+  private stepEngineer(e: Entity): boolean {
+    const tgt = e.enterTarget !== null ? this.entities.get(e.enterTarget) : null;
+    const tt = tgt && this.rules.units.get(tgt.typeId);
+    if (!tgt || !tt?.building || this.players.get(tgt.owner)?.defeated) {
+      e.enterTarget = null;
+      return false;
+    }
+    // 仍在路上：交给 stepMovement 推进，本帧不进入
+    if (e.goal || e.waypoint || e.path.length > 0) return false;
+    // 抵达停靠点 → 进入建筑
+    if (tgt.owner === e.owner) {
+      tgt.hp = tgt.maxHp; // 己方：满血修复
+    } else {
+      tgt.owner = e.owner; // 敌方：占领（连同其修理状态/集结点归零）
+      tgt.repairing = false;
+      tgt.rallyX = -1;
+      tgt.rallyY = -1;
+    }
+    this.entities.delete(e.id); // 工程师消耗（渲染器对工程师消失不播死亡爆炸）
+    return true;
+  }
+
   private routeToRefinery(e: Entity): void {
     const refinery = this.findNearest(e.x, e.y, (o) =>
       o.owner === e.owner && this.rules.units.get(o.typeId)?.building?.refinery === true,
@@ -1091,6 +1138,7 @@ export class World {
       const type = this.rules.units.get(e.typeId);
       if (!type) continue;
       if (e.harvester) this.stepHarvester(e, type);
+      if (e.enterTarget !== null && this.stepEngineer(e)) continue; // 工程师进入建筑→已消耗，跳过本帧余下
       const engaging = this.stepCombat(e, type);
       if (!engaging) this.stepMovement(e, type);
     }
@@ -1112,7 +1160,7 @@ export class World {
     for (const e of this.entities.values()) {
       h.addInt(e.id).addInt(e.owner).addInt(e.x).addInt(e.y).addInt(e.facing).addInt(e.hp);
       h.addInt(e.harvester ? e.harvester.load : -1);
-      h.addInt(e.repairing ? 1 : 0).addInt(e.rallyX).addInt(e.rallyY);
+      h.addInt(e.repairing ? 1 : 0).addInt(e.rallyX).addInt(e.rallyY).addInt(e.enterTarget ?? -1);
     }
     h.addInt(this.projectiles.length);
     for (const p of this.projectiles) h.addInt(p.id).addInt(p.x).addInt(p.y);

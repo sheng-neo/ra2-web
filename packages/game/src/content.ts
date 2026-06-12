@@ -57,6 +57,8 @@ export interface UnitType {
   weapon?: WeaponSpec;
   /** 建筑专属。 */
   building?: BuildingTraits;
+  /** 工程师：进入己方建筑满血修复、进入敌方建筑占领（进入后被消耗）。 */
+  engineer?: boolean;
 }
 
 export interface BuildingTraits {
@@ -265,6 +267,23 @@ const UNIT_LIST: UnitType[] = [
     speed: 18,
     rot: 32,
     sight: 4,
+    engineer: true,
+  },
+  {
+    id: 'sovengineer',
+    name: '工程师',
+    side: 'soviet',
+    domain: 'infantry',
+    cost: 500,
+    hp: 75,
+    armor: 'none',
+    buildTime: 40,
+    builtBy: 'barracks',
+    prerequisites: ['barracks'],
+    speed: 18,
+    rot: 32,
+    sight: 4,
+    engineer: true,
   },
   // —— 反装甲步兵（火箭弹：强克载具/建筑，对步兵很弱——给步兵一个打坦克的答案）——
   {

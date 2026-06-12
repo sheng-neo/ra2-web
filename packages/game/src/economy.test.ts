@@ -561,3 +561,41 @@ describe('个体 AI 与采矿指令（本批改进）', () => {
     expect(tank.goal).toBeNull();
   });
 });
+
+describe('工程师', () => {
+  it('进入己方受损建筑 → 满血修复并消耗工程师', () => {
+    const w = baseWorld();
+    const cy = w.spawnUnit(1, 'conyard', 20, 20)!;
+    cy.hp = Math.floor(cy.maxHp / 2);
+    const eng = w.spawnUnit(1, 'engineer', 15, 20)!;
+    w.applyCommands([{ kind: 'engineerEnter', entityIds: [eng.id], targetId: cy.id }]);
+    let consumed = false;
+    for (let i = 0; i < 400; i++) {
+      w.step();
+      if (!w.entities.has(eng.id)) {
+        consumed = true;
+        break;
+      }
+    }
+    expect(consumed).toBe(true); // 工程师进入后被消耗
+    expect(w.entities.get(cy.id)!.hp).toBe(cy.maxHp); // 满血修复
+  });
+
+  it('进入敌方建筑 → 占领（易主）并消耗工程师', () => {
+    const w = baseWorld();
+    w.addPlayer(2, 'soviet', 5000);
+    const enemy = w.spawnUnit(2, 'powerplant', 22, 20)!;
+    const eng = w.spawnUnit(1, 'engineer', 15, 20)!;
+    w.applyCommands([{ kind: 'engineerEnter', entityIds: [eng.id], targetId: enemy.id }]);
+    let consumed = false;
+    for (let i = 0; i < 400; i++) {
+      w.step();
+      if (!w.entities.has(eng.id)) {
+        consumed = true;
+        break;
+      }
+    }
+    expect(consumed).toBe(true);
+    expect(w.entities.get(enemy.id)!.owner).toBe(1); // 占领后易主
+  });
+});

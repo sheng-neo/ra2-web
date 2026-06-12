@@ -58,7 +58,7 @@ export class WorldRenderer {
   // 特效推导用的上一帧快照
   private readonly particles: Particle[] = [];
   private readonly prevHp = new Map<number, number>();
-  private readonly prevPos = new Map<number, { x: number; y: number; max: number; building: boolean }>();
+  private readonly prevPos = new Map<number, { x: number; y: number; max: number; building: boolean; engineer: boolean }>();
   private readonly prevCooldown = new Map<number, number>();
   private readonly prevProj = new Map<number, { x: number; y: number }>();
   private lastFxTime = 0;
@@ -490,16 +490,20 @@ export class WorldRenderer {
       }
       this.prevHp.set(e.id, e.hp);
       this.prevCooldown.set(e.id, e.cooldown);
-      this.prevPos.set(e.id, { x: sx, y: sy, max: e.maxHp, building: isBuilding });
+      this.prevPos.set(e.id, { x: sx, y: sy, max: e.maxHp, building: isBuilding, engineer: this.world.rules.units.get(e.typeId)?.engineer === true });
     }
-    // 单位消失 → 爆炸
+    // 单位消失 → 爆炸（工程师除外：进入建筑/阵亡只冒一小撮烟，不爆炸不留痕）
     for (const [id, pos] of this.prevPos) {
       if (seen.has(id)) continue;
-      this.spawnExplosion(pos.x, pos.y, pos.building ? 2.2 : 1);
-      this.onEvent?.(pos.building ? 'bigExplosion' : 'explosion', pos.x, pos.y);
-      // 地面焦痕（缓慢淡出，让战场留痕）
-      this.decals.push({ x: pos.x, y: pos.y + 2, r: pos.building ? 22 : 11, born: now, life: 12000 });
-      if (this.decals.length > 40) this.decals.shift();
+      if (pos.engineer) {
+        this.particles.push({ x: pos.x, y: pos.y - 4, vx: 0, vy: -10, life: 420, maxLife: 420, size: 5, color: 0xbfc6cc, kind: 'smoke' });
+      } else {
+        this.spawnExplosion(pos.x, pos.y, pos.building ? 2.2 : 1);
+        this.onEvent?.(pos.building ? 'bigExplosion' : 'explosion', pos.x, pos.y);
+        // 地面焦痕（缓慢淡出，让战场留痕）
+        this.decals.push({ x: pos.x, y: pos.y + 2, r: pos.building ? 22 : 11, born: now, life: 12000 });
+        if (this.decals.length > 40) this.decals.shift();
+      }
       this.prevPos.delete(id);
       this.prevHp.delete(id);
       this.prevCooldown.delete(id);

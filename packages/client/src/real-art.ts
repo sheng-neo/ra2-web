@@ -46,6 +46,7 @@ const INFANTRY_ART: Record<string, string> = {
   gi: 'e1.shp',
   conscript: 'e2.shp',
   engineer: 'e3.shp',
+  sovengineer: 'e3.shp',
   // 反装甲步兵（火箭兵/磁能兵）→ TS 改造人，重甲科技感，与基础步枪兵区分。
   rocketsoldier: 'cyc2.shp',
   tankbuster: 'cyc2.shp',
