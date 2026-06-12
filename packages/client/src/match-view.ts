@@ -261,9 +261,10 @@ export class MatchView {
     let realArt: RealArtProvider | null = new RealArtProvider(this.app);
     if (await realArt.tryInit()) {
       const typeIds = [...this.world.rules.units.values()].map((u) => u.id);
-      // 双方阵营美术都预载（敌方可能是另一阵营）
-      await realArt.preload('allied', typeIds);
-      await realArt.preload('soviet', typeIds);
+      // 双方阵营美术都预载（敌方可能是另一阵营）。进度上遮罩：手机上烘焙较久，不显示进度像卡死
+      const total = typeIds.length * 2;
+      await realArt.preload('allied', typeIds, (d) => (loading.textContent = `加载素材中… ${d}/${total}`));
+      await realArt.preload('soviet', typeIds, (d) => (loading.textContent = `加载素材中… ${typeIds.length + d}/${total}`));
     } else {
       realArt = null;
     }
@@ -1610,14 +1611,22 @@ export class MatchView {
     this.netEl.classList.toggle('stall', stall);
   }
 
+  /** 上次同步 HUD DOM 的时刻（顶栏选中/操作条/编队条节流到 ~6Hz——每帧写 DOM 在手机上是卡顿源）。 */
+  private lastDomSync = 0;
+
   /** rAF 渲染（插值）。返回是否已结束。 */
   render(): void {
-    const alpha = Math.min(1, (performance.now() - this.lastStepAt) / (1000 / 15));
+    const now = performance.now();
+    const alpha = Math.min(1, (now - this.lastStepAt) / (1000 / 15));
     this.edgeScroll();
     if (this.camera.tickShake()) this.camera.apply(); // 震屏衰减（爆炸战斗感）
-    this.selEl.textContent = this.selectionSummary();
-    this.updateUnitBar();
-    this.updateGroupBar();
+    if (now - this.lastDomSync > 160) {
+      this.lastDomSync = now;
+      const sum = this.selectionSummary();
+      if (this.selEl.textContent !== sum) this.selEl.textContent = sum;
+      this.updateUnitBar();
+      this.updateGroupBar();
+    }
     this.renderer.render(alpha, this.selected);
     this.drawGhost();
     this.drawPings();

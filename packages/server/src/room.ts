@@ -22,7 +22,9 @@ export interface Client {
 }
 
 const SIDES: Side[] = ['allied', 'soviet'];
-const INPUT_DELAY = 4;
+/** 锁步输入延迟（tick）。6≈400ms：真实公网两手机间 4G 抖动下大幅减少
+ *  「等待对方指令」停顿（原 4 频繁停滞=「走路卡顿」的主因之一）；命令延迟换流畅。 */
+const INPUT_DELAY = 6;
 
 export class Room {
   readonly clients = new Map<number, Client>();

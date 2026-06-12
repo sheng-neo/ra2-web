@@ -16,6 +16,7 @@ import {
 import { NetClient, defaultServerUrl } from '../net-client';
 import { createMatchWorld } from '../match-setup';
 import { MATCH_STYLE, MatchView } from '../match-view';
+import { downloadFreeArt, hasRealArtFiles } from '../game-files';
 
 const TICK_MS = 1000 / SIM_TICKS_PER_SECOND;
 const HASH_EVERY = 30;
@@ -188,6 +189,45 @@ export async function renderMp(root: HTMLElement): Promise<void> {
   let matchHandler: ((msg: ServerMessage) => void) | null = null;
   const chatLog: { text: string; me: boolean }[] = [];
 
+  // —— 大厅内素材下载：朋友经链接第一次玩多半没素材，趁等人下载（存本机 IndexedDB，
+  //    开局时 MatchView 直接读到 → 无需刷新页面/断开连接）——
+  let artReady: boolean | null = null;
+  let artProg = ''; // 非空 = 下载中/出错的进度文案
+  void hasRealArtFiles().then((ok) => {
+    artReady = ok;
+    if (!inMatch && root.querySelector('.mp-players')) renderLobby();
+  });
+
+  function startArtDownload(): void {
+    if (artProg) return;
+    artProg = '准备下载…';
+    syncArtPanel();
+    downloadFreeArt((p) => {
+      const mb = (n: number): string => (n / 1024 / 1024).toFixed(1);
+      artProg = `下载素材 ${p.index + 1}/${p.total}（${p.source}）：${p.name} ${mb(p.loaded)}MB`;
+      syncArtPanel();
+    })
+      .then(() => {
+        artReady = true;
+        artProg = '';
+        if (!inMatch && root.querySelector('.mp-players')) renderLobby();
+      })
+      .catch((e) => {
+        artProg = `下载失败：${String(e).slice(0, 80)}（稍后可在首页重试）`;
+        syncArtPanel();
+        setTimeout(() => {
+          artProg = '';
+          if (!inMatch && root.querySelector('.mp-players')) renderLobby();
+        }, 4000);
+      });
+  }
+
+  /** 只更新面板文字（下载进度高频，不整页重渲染）。 */
+  function syncArtPanel(): void {
+    const el = root.querySelector('#mp-art');
+    if (el && artProg) el.textContent = artProg;
+  }
+
   function appendChat(text: string, me: boolean): void {
     chatLog.push({ text, me });
     const box = root.querySelector('#mp-chat');
@@ -226,6 +266,15 @@ export async function renderMp(root: HTMLElement): Promise<void> {
         <input id="mp-chatinput" placeholder="说点什么…" />
         <button id="mp-send" style="width:80px">发送</button>
       </div>
+      ${
+        artReady === false
+          ? `<div id="mp-art" style="margin-top:8px;background:#0d1318;border:1px solid #3a5a48;border-radius:6px;padding:8px 10px;font-size:12.5px;color:#bcd0c4;line-height:1.6">${
+              artProg
+                ? escapeHtml(artProg)
+                : `🎨 真实美术未就绪（开局将用占位图形）。趁等人一键下载 EA 免费素材（约 30MB，存本机、不上传），<b>下完无需刷新</b>：<button id="mp-artdl" style="margin-top:6px;width:100%;padding:8px;border:none;border-radius:6px;background:#2d6fb0;color:#fff;cursor:pointer;font-size:13px">⬇ 下载免费素材（国内镜像）</button>`
+            }</div>`
+          : ''
+      }
       <a class="mp-back" href="#">← 退出房间</a>`;
 
     (card.querySelector('#mp-lobcopy') as HTMLButtonElement | null)?.addEventListener('click', () => {
@@ -250,6 +299,7 @@ export async function renderMp(root: HTMLElement): Promise<void> {
     chatInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') sendChat();
     });
+    card.querySelector('#mp-artdl')?.addEventListener('click', startArtDownload);
     appendChat('', false);
     chatLog.pop();
     const box = root.querySelector('#mp-chat')!;
@@ -285,6 +335,9 @@ export async function renderMp(root: HTMLElement): Promise<void> {
     // 锁步驱动：定时器节拍，仅在收齐命令时推进
     let acc = 0;
     let prev = performance.now();
+    let lastHashHex = ''; // 最近一次上报的哈希（仅展示用，不再每帧重算——手机性能）
+    let lastStatusAt = 0; // 状态行 DOM 写入节流（~1Hz；停滞提示即时）
+    let wasStalled = false;
     const clock = setInterval(() => {
       const now = performance.now();
       acc += now - prev;
@@ -303,14 +356,21 @@ export async function renderMp(root: HTMLElement): Promise<void> {
         for (const c of view.takeLocalCommands()) session.queueLocal(c);
         const pkt = session.afterStep();
         net.send({ t: 'cmd', tick: pkt.tick, commands: pkt.commands });
-        if (execTick % HASH_EVERY === 0) net.send({ t: 'hash', tick: execTick, hash: world.hash() });
+        if (execTick % HASH_EVERY === 0) {
+          const h = world.hash();
+          net.send({ t: 'hash', tick: execTick, hash: h });
+          lastHashHex = h.toString(16).slice(0, 6);
+        }
         acc -= TICK_MS;
         steps++;
       }
       if (acc > TICK_MS * 8) acc = 0;
-      const ahead = session.bufferedAhead();
-      if (stalled) view.setNetStatus('⏳ 等待对方指令…', true);
-      else view.setNetStatus(`t${session.currentTick} 缓冲${ahead} ${world.hash().toString(16).slice(0, 6)}`);
+      if (stalled !== wasStalled || now - lastStatusAt > 1000) {
+        wasStalled = stalled;
+        lastStatusAt = now;
+        if (stalled) view.setNetStatus('⏳ 等待对方指令…', true);
+        else view.setNetStatus(`t${session.currentTick} 缓冲${session.bufferedAhead()} ${lastHashHex}`);
+      }
     }, TICK_MS);
 
     view.app.ticker.add(() => {

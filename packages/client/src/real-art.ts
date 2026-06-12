@@ -174,17 +174,26 @@ export class RealArtProvider {
     }
   }
 
-  /** 预解码本局用到的建筑/步兵 SHP + 载具 VXL（init 时 await，渲染期零等待）。 */
-  async preload(side: Side, typeIds: Iterable<string>): Promise<void> {
+  /** 预解码本局用到的建筑/步兵 SHP + 载具 VXL（init 时 await，渲染期零等待）。
+   *  onProgress 供加载遮罩显示进度；烘焙间让出主线程（手机上不再像卡死）。 */
+  async preload(side: Side, typeIds: Iterable<string>, onProgress?: (done: number, total: number) => void): Promise<void> {
     if (!this.ready) return;
-    for (const id of typeIds) {
+    const ids = [...typeIds];
+    let done = 0;
+    for (const id of ids) {
       const bName = BUILDING_ART[side][id];
       if (bName) await this.loadInto(this.buildings, `${side}:${id}`, bName, 0, true);
       const iName = INFANTRY_ART[id];
       if (iName) await this.loadInto(this.infantry, id, iName, 0, false);
       const vName = VEHICLE_ART[id];
       if (vName) await this.bakeVehicle(side, id, vName);
+      onProgress?.(++done, ids.length);
     }
+  }
+
+  /** 让出主线程一帧：长任务（体素烘焙）期间浏览器仍可绘制/响应。 */
+  private yieldToUi(): Promise<void> {
+    return new Promise((r) => setTimeout(r, 0));
   }
 
   private async bakeVehicle(side: Side, typeId: string, vxlName: string): Promise<void> {
@@ -199,6 +208,7 @@ export class RealArtProvider {
         const bangle = Math.round((i * 256) / VEHICLE_FACINGS);
         const { canvas, anchorX, anchorY } = bakeVoxelFacing(vxl, bangle, remap, this.unitPal?.rgba);
         facings.push({ tex: Texture.from(canvas), anchorX, anchorY });
+        if (i % 8 === 7) await this.yieldToUi(); // 每 8 个朝向歇一口气
       }
       this.vehicles.set(key, facings);
     } catch {
