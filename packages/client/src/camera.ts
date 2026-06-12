@@ -47,6 +47,14 @@ export class Camera {
     };
   }
 
+  /** 世界像素 → 屏幕像素（screenToWorld 的逆；音效空间化按屏幕位置算声像）。 */
+  worldToScreen(wx: number, wy: number): { x: number; y: number } {
+    return {
+      x: this.world.position.x + wx * this.zoom,
+      y: this.world.position.y + wy * this.zoom,
+    };
+  }
+
   /** 按屏幕像素平移（触控双指拖动 / 鼠标拖动复用）。 */
   panByScreen(dx: number, dy: number): void {
     this.x -= dx / this.zoom;

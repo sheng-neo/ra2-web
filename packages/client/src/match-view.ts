@@ -14,7 +14,7 @@ import {
   type UnitType,
 } from '@ra2web/game';
 import { Camera } from './camera';
-import { audioBus } from './audio-bus';
+import { audioBus, type Eva } from './audio-bus';
 import { bgm } from './bgm';
 import { cornerX, cornerY, screenToLepton, TILE_H, TILE_W } from './iso';
 import { buildArt, makeCameo } from './placeholder-art';
@@ -121,6 +121,13 @@ export const MATCH_STYLE = `
   background: rgba(14,20,26,.95); border: 1px solid #b04848; border-radius: 8px; color: #e8c4c4; font-size: 14px;
   pointer-events: none; opacity: 0; transition: opacity .4s; white-space: nowrap; }
 .mv-intel.show { opacity: 1; }
+.mv-eva-wrap { position: fixed; left: 50%; top: 102px; transform: translateX(-50%); z-index: 27; display: flex; flex-direction: column; gap: 6px; align-items: center; pointer-events: none; }
+.mv-eva { padding: 6px 16px; border-radius: 7px; background: rgba(10,14,18,.94); border: 1px solid #3a4a57; color: #d6e2ea;
+  font-size: 13.5px; font-weight: 600; white-space: nowrap; opacity: 0; transform: translateY(-6px); transition: opacity .25s, transform .25s; }
+.mv-eva.show { opacity: 1; transform: translateY(0); }
+.mv-eva.warn { border-color: #c06a2a; color: #f0c89a; }
+.mv-eva.alert { border-color: #c04444; color: #f0b0b0; }
+.mv-eva.good { border-color: #3f7e46; color: #aee0b4; }
 @media (max-width: 760px) {
   .mv-side { top: auto; bottom: 0; left: 0; width: 100%; height: 132px; flex-direction: row; border-left: none; border-top: 1px solid #243039; }
   .mv-mini { display: none; }
@@ -170,7 +177,9 @@ export class MatchView {
   private prevReady: Record<string, boolean> = {};
   /** 「基地受攻击」告警：记录己方建筑血量，掉血即报警（节流）。 */
   private bldHp = new Map<number, number>();
-  private lastAttackAlert = 0;
+  private prevPowerNeg = false; // 电力净值上帧是否为负（低电边沿检测）
+  private evaWrap: HTMLElement | null = null; // EVA 文字横幅容器（懒建）
+  private readonly evaAt = new Map<Eva, number>(); // 各 EVA 事件上次播报时刻（节流）
   /** 最近被攻击建筑的位置（小地图红点闪烁定位）。 */
   private attackPing: { x: number; y: number; at: number } | null = null;
   /** 己方单位老兵等级跟踪（升级时响一声）。 */
@@ -220,7 +229,7 @@ export class MatchView {
   ) {}
 
   async init(): Promise<void> {
-    bgm.stop(); // 正式对战开始：停掉首页/设置阶段的背景音乐
+    bgm.enterMatch(); // 正式对战：续播背景音乐（压低音量），战斗全程也有配乐
     await this.app.init({
       resizeTo: window,
       background: '#06090c',
@@ -253,11 +262,13 @@ export class MatchView {
       realArt = null;
     }
     this.renderer = new WorldRenderer(this.app, this.world, art, this.localPlayerId, realArt);
-    this.renderer.onEvent = (kind) => {
-      audioBus.play(kind);
-      // 爆炸震屏（战斗感）：大爆炸更猛，幅度有上限+逐帧衰减（见 Camera）
-      if (kind === 'bigExplosion') this.camera.addShake(6);
-      else if (kind === 'explosion') this.camera.addShake(1.5);
+    this.renderer.onEvent = (kind, wx, wy) => {
+      // 空间化：按事件屏幕位置算声像 + 距离衰减（屏外渐弱直至不响）
+      const { pan, gain } = this.spatialOf(wx, wy);
+      if (gain > 0.02) audioBus.play(kind, { pan, gain });
+      // 爆炸震屏（战斗感）：按距离衰减，屏外不晃；幅度有上限+逐帧衰减（见 Camera）
+      if (kind === 'bigExplosion') this.camera.addShake(6 * gain);
+      else if (kind === 'explosion') this.camera.addShake(1.5 * gain);
     };
     void audioBus.loadRealSounds(); // 本机有 Sounds.mix 则用真实 TS 音效（无则合成音）
     this.app.stage.addChild(this.renderer.stage);
@@ -381,7 +392,9 @@ export class MatchView {
 
     const muteBtn = this.root.querySelector('#mv-mute') as HTMLButtonElement;
     muteBtn.addEventListener('click', () => {
-      muteBtn.textContent = audioBus.toggleMute() ? '🔇' : '🔊';
+      const muted = audioBus.toggleMute();
+      bgm.setMatchMuted(muted); // 一个静音键管住音效+音乐
+      muteBtn.textContent = muted ? '🔇' : '🔊';
     });
     this.root.querySelector('#mv-idle')!.addEventListener('click', () => this.jumpToIdle());
     this.root.querySelector('#mv-help')!.addEventListener('click', () => this.toggleHelp());
@@ -476,6 +489,12 @@ export class MatchView {
       this.placingType = type;
       audioBus.play('select');
       return;
+    }
+    // 资金不足播报：本类无在造、且穷到付不起一个 tick（生产是按 tick 扣费、没钱就停滞）
+    const me = this.world.players.get(this.localPlayerId)!;
+    const costPerTick = type.buildTime > 0 ? type.cost / type.buildTime : type.cost;
+    if ((!q || q.items.length === 0) && me.credits < costPerTick && this.world.canBuild(this.localPlayerId, type)) {
+      this.eva('noFunds', '💲 资金不足', 'warn', 3000);
     }
     audioBus.play('select');
     this.emit({ kind: 'produce', owner: this.localPlayerId, typeId: type.id });
@@ -1199,6 +1218,48 @@ export class MatchView {
     }, 4500);
   }
 
+  /** 事件世界坐标 → 声像(pan,-1..1) + 距离增益(0..1)。屏内满增益，越出视口越弱直至不响。 */
+  private spatialOf(wx: number, wy: number): { pan: number; gain: number } {
+    const s = this.camera.worldToScreen(wx, wy);
+    const W = this.app.screen.width;
+    const H = this.app.screen.height;
+    const cx = W / 2;
+    const cy = H / 2;
+    const pan = Math.max(-1, Math.min(1, (s.x - cx) / Math.max(1, cx))) * 0.9;
+    const offX = Math.max(0, Math.abs(s.x - cx) - cx); // 超出左右边缘的像素
+    const offY = Math.max(0, Math.abs(s.y - cy) - cy); // 超出上下边缘的像素
+    const off = Math.hypot(offX, offY);
+    const gain = Math.max(0, 1 - off / (Math.max(W, H) * 0.6));
+    return { pan, gain };
+  }
+
+  /** 触发一次 EVA 播报：提示音 + 顶部文字横幅，按事件类型节流（cooldownMs）。 */
+  private eva(kind: Eva, text: string, tone: 'info' | 'warn' | 'alert' | 'good', cooldownMs: number): void {
+    const now = performance.now();
+    if (now - (this.evaAt.get(kind) ?? -1e9) < cooldownMs) return;
+    this.evaAt.set(kind, now);
+    audioBus.playEva(kind);
+    this.evaToast(text, tone);
+  }
+
+  /** 顶部居中的 EVA 文字横幅（2.2s 自动淡出，可短暂堆叠）。 */
+  private evaToast(text: string, tone: 'info' | 'warn' | 'alert' | 'good'): void {
+    if (!this.evaWrap) {
+      this.evaWrap = document.createElement('div');
+      this.evaWrap.className = 'mv-eva-wrap';
+      this.root.appendChild(this.evaWrap);
+    }
+    const el = document.createElement('div');
+    el.className = tone === 'info' ? 'mv-eva' : `mv-eva ${tone}`;
+    el.textContent = text;
+    this.evaWrap.appendChild(el);
+    requestAnimationFrame(() => el.classList.add('show'));
+    setTimeout(() => {
+      el.classList.remove('show');
+      setTimeout(() => el.remove(), 300);
+    }, 2200);
+  }
+
   /** 切换操作帮助面板（? 帮助按钮 / H 键）——汇总所有控制与克制关系。 */
   private toggleHelp(): void {
     const existing = this.root.querySelector('.mv-help');
@@ -1275,6 +1336,9 @@ export class MatchView {
     const net = p.powerProduced - p.powerDrained;
     this.powerEl.textContent = `${p.powerProduced}/${p.powerDrained}`;
     this.powerEl.className = net >= 0 ? 'pwr-ok' : 'pwr-low';
+    const neg = net < 0;
+    if (neg && !this.prevPowerNeg) this.eva('lowPower', '⚡ 电力不足', 'warn', 8000); // 转入低电瞬间报一次
+    this.prevPowerNeg = neg;
     if (this.world.tick % 4 === 0) {
       this.refreshSidebar();
       this.drawMinimap();
@@ -1294,11 +1358,7 @@ export class MatchView {
         }
         this.bldHp.set(e.id, e.hp);
       }
-      if (attacked && now - this.lastAttackAlert > 6000) {
-        this.lastAttackAlert = now;
-        audioBus.alarm();
-        this.setNetStatus('⚠ 基地受到攻击！', true);
-      }
+      if (attacked) this.eva('attack', '⚠ 基地受袭！', 'alert', 6000);
       // 老兵升级提示音：己方作战单位跨过 2/5 杀阈值（rank 提升）响一声
       const rankOf = (k: number): number => (k >= 5 ? 2 : k >= 2 ? 1 : 0);
       let promoted = false;
@@ -1318,18 +1378,25 @@ export class MatchView {
         if (e.owner === this.localPlayerId) army++;
       }
       if (army > this.peakArmy) this.peakArmy = army;
+      let lostMine = false;
       for (const [id, owner] of this.aliveUnits) {
         if (cur.has(id)) continue;
-        if (owner === this.localPlayerId) this.ownLost++;
-        else this.enemyKilled++;
+        if (owner === this.localPlayerId) {
+          this.ownLost++;
+          lostMine = true;
+        } else this.enemyKilled++;
       }
       this.aliveUnits = cur;
+      if (lostMine) this.eva('unitLost', '✖ 单位损失', 'alert', 4000);
     }
     // 建筑建造完成（队列首项变为就绪）→ 提示音
     for (const cat of ['building', 'infantry', 'vehicle'] as const) {
       const q = this.world.queueFor(this.localPlayerId, cat);
       const ready = !!q?.readyToPlace;
-      if (ready && !this.prevReady[cat]) audioBus.play('ready');
+      if (ready && !this.prevReady[cat]) {
+        if (cat === 'building') this.eva('buildComplete', '🔧 建造完成', 'good', 1200);
+        else audioBus.play('ready'); // 兵种就绪很频繁：仅轻提示音，不弹横幅
+      }
       this.prevReady[cat] = ready;
     }
     this.checkVictory();

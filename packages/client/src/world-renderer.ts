@@ -62,8 +62,9 @@ export class WorldRenderer {
   private readonly prevCooldown = new Map<number, number>();
   private readonly prevProj = new Map<number, { x: number; y: number }>();
   private lastFxTime = 0;
-  /** 战斗事件回调（接音效）。kind: 开火/命中/爆炸/大爆炸。 */
-  onEvent: ((kind: 'fire' | 'cannon' | 'hit' | 'explosion' | 'bigExplosion') => void) | null = null;
+  /** 战斗事件回调（接音效）。kind: 开火/命中/爆炸/大爆炸；wx/wy 为世界像素坐标
+   *  （与精灵同坐标系），供 match-view 换算屏幕位置做声像/距离衰减。 */
+  onEvent: ((kind: 'fire' | 'cannon' | 'hit' | 'explosion' | 'bigExplosion', wx: number, wy: number) => void) | null = null;
 
   // 战争迷雾（纯渲染，本地玩家视角；0=未探索 1=已探索 2=可见）
   private readonly fogGfx = new Graphics();
@@ -463,7 +464,7 @@ export class WorldRenderer {
         this.particles.push({ x: sx, y: sy - 4, vx: 0, vy: 0, life: 90, maxLife: 90, size: isBuilding ? 7 : 4, color: 0xfff2a0, kind: 'flash' });
         const weapon = this.world.rules.units.get(e.typeId)?.weapon;
         const instant = !weapon || weapon.projectileSpeed <= 0;
-        this.onEvent?.(instant ? 'fire' : 'cannon');
+        this.onEvent?.(instant ? 'fire' : 'cannon', sx, sy);
         // 瞬中武器画一条线：磁暴线圈=电弧、光棱坦克=光束、其余=普通曳光
         if (instant) {
           const tgt = this.world.entities.get(e.targetId);
@@ -495,7 +496,7 @@ export class WorldRenderer {
     for (const [id, pos] of this.prevPos) {
       if (seen.has(id)) continue;
       this.spawnExplosion(pos.x, pos.y, pos.building ? 2.2 : 1);
-      this.onEvent?.(pos.building ? 'bigExplosion' : 'explosion');
+      this.onEvent?.(pos.building ? 'bigExplosion' : 'explosion', pos.x, pos.y);
       // 地面焦痕（缓慢淡出，让战场留痕）
       this.decals.push({ x: pos.x, y: pos.y + 2, r: pos.building ? 22 : 11, born: now, life: 12000 });
       if (this.decals.length > 40) this.decals.shift();

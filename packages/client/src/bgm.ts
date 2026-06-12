@@ -1,6 +1,6 @@
 /**
  * 全局背景音乐（用户自备 /bgm.mp3）。挂在 document.body 上、跨页面存活，
- * 所以从首页一路放到遭遇战设置/大厅，直到正式对战载入（MatchView.init）才停。
+ * 从首页一路放到遭遇战设置/大厅，并续播进正式对战（压低音量，见 enterMatch）。
  * 浏览器禁自动播放：须用户首次手势后 play()。无该文件则标记不可用（隐藏开关）。
  */
 class Bgm {
@@ -50,7 +50,21 @@ class Bgm {
     else this.el?.pause();
   }
 
-  /** 进入正式对战时停止（矿车/地图出现）。 */
+  /** 进入正式对战：不再静音战场——压低音量（让音效/EVA 盖在上面）后续播，
+   *  使战斗全程也有配乐（红警的灵魂）。无 bgm.mp3 或已关闭则保持无声。 */
+  enterMatch(): void {
+    if (this.wanted) this.ensure().volume = 0.42; // 战斗内压低；菜单维持 0.5
+    this.play();
+  }
+
+  /** 对战内"全部静音"开关联动：静音即暂停音乐，取消静音按意愿恢复（不改用户偏好）。 */
+  setMatchMuted(muted: boolean): void {
+    if (!this.el) return;
+    if (muted) this.el.pause();
+    else if (this.wanted) void this.el.play().catch(() => undefined);
+  }
+
+  /** 完全停止（返回菜单等场景）。当前对战内改用 enterMatch 续播，不再于开局调用。 */
   stop(): void {
     if (this.el) {
       this.el.pause();

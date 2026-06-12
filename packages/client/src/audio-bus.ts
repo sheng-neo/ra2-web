@@ -9,6 +9,9 @@ import { loadGameMix } from './game-files';
 
 export type Sfx = 'fire' | 'cannon' | 'hit' | 'explosion' | 'bigExplosion' | 'build' | 'ready' | 'place' | 'select';
 
+/** EVA 播报事件（程序合成提示音；文字横幅在 match-view 负责）。 */
+export type Eva = 'attack' | 'lowPower' | 'noFunds' | 'unitLost' | 'buildComplete';
+
 /** 事件 → 泰伯利亚之日 Sounds.mix 真实音效文件（名取自 Sound01.ini）。 */
 const REAL_SFX: Partial<Record<Sfx, string>> = {
   fire: 'infgun3.aud', // 步兵/轻武器开火
@@ -62,6 +65,9 @@ export class AudioBus {
   private readonly bufCache = new Map<string, AudioBuffer>();
   private realLoaded = false;
   private lastVoiceAt = -1e9;
+  private lastEvaAt = -1e9;
+  /** 本次 play() 的输出节点（含声像/距离增益）；合成与采样都接到这里。null=直连 master。 */
+  private curOut: AudioNode | null = null;
 
   /** 载入本机 Sounds.mix 并解码常用音效为真实采样（有则替换合成音）。
    *  无文件/解码失败则静默保持合成音。可在任意时刻调用（不需 ctx）。 */
@@ -141,46 +147,101 @@ export class AudioBus {
     return this.muted;
   }
 
-  play(sfx: Sfx, now = performance.now()): void {
+  /** 播放音效。opts.pan(-1..1) 声像、opts.gain(0..1) 距离增益——由 match-view
+   *  按事件屏幕位置算好传入；UI 类音效不传则居中满增益。 */
+  play(sfx: Sfx, opts: { pan?: number; gain?: number } = {}): void {
     if (!this.ctx || !this.master || this.muted) return;
+    const now = performance.now();
     const gap = AudioBus.MIN_GAP[sfx];
     const last = this.lastPlayed.get(sfx) ?? -1e9;
     if (now - last < gap) return;
     if (this.activeVoices > 24) return;
     this.lastPlayed.set(sfx, now);
-    if (this.realPcm.has(sfx)) {
-      this.playSample(sfx);
-      return;
+    this.curOut = this.makeOut(opts.pan ?? 0, opts.gain ?? 1);
+    try {
+      if (this.realPcm.has(sfx)) {
+        this.playSample(sfx);
+        return;
+      }
+      switch (sfx) {
+        case 'fire':
+          this.blip(720, 0.05, 'square', 0.18);
+          this.noise(0.04, 1400, 0.12);
+          break;
+        case 'cannon':
+          this.blip(180, 0.12, 'sawtooth', 0.25);
+          this.noise(0.1, 800, 0.2);
+          break;
+        case 'hit':
+          this.noise(0.06, 2500, 0.12);
+          break;
+        case 'explosion':
+          this.boom(0.35, 0.3);
+          break;
+        case 'bigExplosion':
+          this.boom(0.6, 0.45);
+          break;
+        case 'build':
+          this.chime([440, 660], 0.16);
+          break;
+        case 'ready':
+          this.chime([520, 780, 1040], 0.12);
+          break;
+        case 'place':
+          this.blip(120, 0.12, 'sine', 0.3);
+          break;
+        case 'select':
+          this.blip(900, 0.03, 'triangle', 0.1);
+          break;
+      }
+    } finally {
+      this.curOut = null;
     }
-    switch (sfx) {
-      case 'fire':
-        this.blip(720, 0.05, 'square', 0.18);
-        this.noise(0.04, 1400, 0.12);
+  }
+
+  /** 为本次播放构造输出节点：声像 + 距离增益。居中且满增益时直连 master（零开销）。 */
+  private makeOut(pan: number, gainMul: number): AudioNode {
+    const master = this.master!;
+    if (pan === 0 && gainMul >= 1) return master;
+    const ctx = this.ctx!;
+    const g = ctx.createGain();
+    g.gain.value = Math.max(0, Math.min(1, gainMul));
+    if (pan !== 0 && typeof ctx.createStereoPanner === 'function') {
+      const p = ctx.createStereoPanner();
+      p.pan.value = Math.max(-1, Math.min(1, pan));
+      g.connect(p).connect(master);
+    } else {
+      g.connect(master);
+    }
+    return g;
+  }
+
+  /** 合成/采样节点的输出落点：本次 play 的声像节点，或（EVA/UI）直连 master。 */
+  private dest(): AudioNode {
+    return this.curOut ?? this.master!;
+  }
+
+  /** EVA 事件提示音（居中、互相节流，避免与战斗音叠太密）。文字横幅由 match-view 显示。 */
+  playEva(kind: Eva): void {
+    if (!this.ctx || !this.master || this.muted) return;
+    const now = performance.now();
+    if (now - this.lastEvaAt < 900) return;
+    this.lastEvaAt = now;
+    switch (kind) {
+      case 'attack':
+        this.alarm();
         break;
-      case 'cannon':
-        this.blip(180, 0.12, 'sawtooth', 0.25);
-        this.noise(0.1, 800, 0.2);
+      case 'buildComplete':
+        this.chime([523, 784], 0.14); // 上行二音：肯定
         break;
-      case 'hit':
-        this.noise(0.06, 2500, 0.12);
+      case 'lowPower':
+        this.blip(300, 0.24, 'sawtooth', 0.2); // 低沉嗡鸣
         break;
-      case 'explosion':
-        this.boom(0.35, 0.3);
+      case 'noFunds':
+        this.blip(170, 0.12, 'square', 0.24); // 低频"拒绝"
         break;
-      case 'bigExplosion':
-        this.boom(0.6, 0.45);
-        break;
-      case 'build':
-        this.chime([440, 660], 0.16);
-        break;
-      case 'ready':
-        this.chime([520, 780, 1040], 0.12);
-        break;
-      case 'place':
-        this.blip(120, 0.12, 'sine', 0.3);
-        break;
-      case 'select':
-        this.blip(900, 0.03, 'triangle', 0.1);
+      case 'unitLost':
+        this.blip(330, 0.3, 'sine', 0.2); // 柔和下坠：黯然
         break;
     }
   }
@@ -284,7 +345,7 @@ export class AudioBus {
     src.buffer = buf;
     const g = ctx.createGain();
     g.gain.value = gain;
-    src.connect(g).connect(this.master!);
+    src.connect(g).connect(this.dest());
     src.start();
     this.track(src, buf.duration);
   }
@@ -310,7 +371,7 @@ export class AudioBus {
     osc.frequency.exponentialRampToValueAtTime(Math.max(40, freq * 0.5), this.t() + dur);
     g.gain.setValueAtTime(gain, this.t());
     g.gain.exponentialRampToValueAtTime(0.001, this.t() + dur);
-    osc.connect(g).connect(this.master!);
+    osc.connect(g).connect(this.dest());
     osc.start();
     this.track(osc, dur + 0.02);
   }
@@ -325,7 +386,7 @@ export class AudioBus {
     const g = ctx.createGain();
     g.gain.setValueAtTime(gain, this.t());
     g.gain.exponentialRampToValueAtTime(0.001, this.t() + dur);
-    src.connect(filter).connect(g).connect(this.master!);
+    src.connect(filter).connect(g).connect(this.dest());
     src.start();
     this.track(src, dur + 0.02);
   }
@@ -341,7 +402,7 @@ export class AudioBus {
     const g = ctx.createGain();
     g.gain.setValueAtTime(gain, this.t());
     g.gain.exponentialRampToValueAtTime(0.001, this.t() + dur);
-    src.connect(filter).connect(g).connect(this.master!);
+    src.connect(filter).connect(g).connect(this.dest());
     src.start();
     this.track(src, dur + 0.02);
   }
@@ -357,7 +418,7 @@ export class AudioBus {
       g.gain.setValueAtTime(0.0001, start);
       g.gain.exponentialRampToValueAtTime(0.22, start + 0.01);
       g.gain.exponentialRampToValueAtTime(0.0001, start + step + 0.05);
-      osc.connect(g).connect(this.master!);
+      osc.connect(g).connect(this.dest());
       osc.start(start);
       this.activeVoices++;
       osc.onended = () => {
