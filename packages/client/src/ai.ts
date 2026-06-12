@@ -1,11 +1,14 @@
 /**
- * 遭遇战 AI（命令驱动，便于将来移进确定性 sim / 回放）。
+ * 遭遇战 AI —— 规则化策略（非 ML；仅读世界 + 发命令，确定性，无随机/时钟）。
  *
- * 2.0 升级：① 多种「打法人格」按种子随机抽取——同一张图每局开局/兵种/节奏不同；
- * ② 反应式生产——按侦察到的敌军构成微调（步兵多则提前出攻城车补刀）；
- * ③ 防僵持升级——随时间推移降低开战门槛，后期必然全力一击（也保证 AI 互殴能分胜负）。
- * 核心仍是「稳经济 → 持续造兵 → 攒成波一起压上、滚雪球不回撤」，避免拉锯僵局。
- * 仅读世界状态 + 发命令（确定性，无随机/时钟；人格由构造期种子决定）。
+ * 按种子抽取一种「打法」，三种风格只在「防御投入 / 经济规模」上不同，
+ * 但都遵循同一条核心节奏：**攒够约 15 个兵才成波出击；不够就在家积蓄、守家；从不一个一个送。**
+ * - 防守流(defensive)：重防御（多碉堡/磁暴）+ 小经济 → 龟壳硬，靠你来啃。
+ * - 均衡流(balanced)：防御与兵力兼顾。
+ * - 全力进攻流(aggressive)：几乎不修防御 + 大经济 → 兵海，一波接一波压上。
+ *
+ * 不囤钱：钱持续投进「防御建筑 + 造兵」两条线。难度只改行为（出击门槛/是否按敌情反应），
+ * 不给任何经济作弊——双方起始资源一致。
  */
 import type { Command, Entity, Player, World } from '@ra2web/game';
 
@@ -13,87 +16,74 @@ const BUILD_ORDER = ['powerplant', 'refinery', 'barracks', 'warfactory'];
 
 export type Difficulty = 'easy' | 'normal' | 'hard';
 
-/** 打法人格。 */
-type Personality = 'tank' | 'rusher' | 'turtle' | 'economy';
-const PERSONAS: Personality[] = ['tank', 'rusher', 'turtle', 'economy'];
+/** 打法风格（按种子抽取，同图每局不同）。 */
+type Mode = 'defensive' | 'balanced' | 'aggressive';
+const MODES: Mode[] = ['defensive', 'balanced', 'aggressive'];
 
-interface PersonaParams {
-  /** 攒够多少「闲置」作战单位发起一波。 */
+interface ModeParams {
+  /** 静态防御建筑目标数（碉堡/磁暴）——「防御投入」，越大越龟。 */
+  defenseTarget: number;
+  /** 攒够多少兵成波出击（核心节奏）。 */
   waveSize: number;
-  /** 维持的矿车数。 */
+  /** 维持的矿车数（经济规模 → 兵力规模）。 */
   harvesters: number;
-  /** 防御建筑上限。 */
-  defenses: number;
-  /** 维持的精炼厂数（经济规模）。 */
+  /** 维持的精炼厂数。 */
   refineries: number;
   /** 多少主战坦克后开始补攻城车。 */
   siegeAt: number;
-  /** 是否步兵海（廉价兵力压制）。 */
+  /** 是否步兵海（廉价兵力更快攒成波）。 */
   infantryHeavy: boolean;
 }
-
-const PERSONA: Record<Personality, PersonaParams> = {
-  // 标准重装：坦克为主，中等节奏
-  tank: { waveSize: 6, harvesters: 3, defenses: 1, refineries: 2, siegeAt: 5, infantryHeavy: false },
-  // 速攻：极简经济、早出步兵+坦克，小波快压
-  rusher: { waveSize: 3, harvesters: 2, defenses: 0, refineries: 1, siegeAt: 99, infantryHeavy: true },
-  // 龟缩反推：先经济+多防御，攒大军一波带走
-  turtle: { waveSize: 9, harvesters: 3, defenses: 4, refineries: 2, siegeAt: 4, infantryHeavy: false },
-  // 暴经济：多矿车多精炼，后期兵力滚雪球
-  economy: { waveSize: 8, harvesters: 5, defenses: 2, refineries: 3, siegeAt: 6, infantryHeavy: false },
+const MODE: Record<Mode, ModeParams> = {
+  // 防守流：8 座防御 + 小经济（兵少但龟壳硬）
+  defensive: { defenseTarget: 8, waveSize: 15, harvesters: 2, refineries: 2, siegeAt: 4, infantryHeavy: false },
+  // 均衡流：4 座防御 + 中等经济
+  balanced: { defenseTarget: 4, waveSize: 15, harvesters: 3, refineries: 2, siegeAt: 5, infantryHeavy: false },
+  // 全力进攻：1 座防御 + 大经济（兵海，一波接一波）
+  aggressive: { defenseTarget: 1, waveSize: 15, harvesters: 4, refineries: 2, siegeAt: 6, infantryHeavy: true },
 };
 
 interface DiffParams {
-  waveBias: number; // 开战门槛偏移（负=更激进）
-  harvBonus: number;
-  defBonus: number;
-  refBonus: number; // 额外精炼厂（更强经济 → 更快爆兵）
-  reacts: boolean; // 是否按敌情反应
+  /** 出击门槛偏移（负=更早成波出击/更激进；正=更晚、更被动）。 */
+  waveBias: number;
+  /** 是否按敌情调整兵种（反装甲步兵/攻城车）。 */
+  reacts: boolean;
 }
 const DIFF: Record<Difficulty, DiffParams> = {
-  easy: { waveBias: 4, harvBonus: 0, defBonus: 0, refBonus: 0, reacts: false },
-  normal: { waveBias: 0, harvBonus: 0, defBonus: 1, refBonus: 0, reacts: true },
-  hard: { waveBias: -1, harvBonus: 1, defBonus: 1, refBonus: 0, reacts: true },
+  easy: { waveBias: 6, reacts: false }, // 攒到 ~21 才出击、不反应 → 好打
+  normal: { waveBias: 0, reacts: true }, // ~15
+  hard: { waveBias: -3, reacts: true }, // ~12 就压上、按敌情反制 → 凶
 };
 
 export class SimpleAI {
-  private readonly persona: Personality;
-  private readonly p: PersonaParams;
+  private readonly mode: Mode;
+  private readonly m: ModeParams;
   private readonly d: DiffParams;
-  private readonly harvesters: number;
-  private readonly defenses: number;
-  private readonly baseWave: number;
-  /** 留守家中的最小防守兵力（基地永不空，杜绝被一波偷家平推）。 */
-  private readonly garrison: number;
+  /** 实际出击门槛（mode.waveSize + 难度偏移）。 */
+  private readonly waveSize: number;
+  /** 是否已成波出击（攒够→true 全军压上；被打残→false 撤回重整）。 */
   private engaged = false;
 
   constructor(
     private readonly playerId: number,
     difficulty: Difficulty = 'normal',
     seed: number = playerId,
-    /** 起始留守兵力（出击只派"超出留守"的部分，基地不空，专治人类一波偷家）。
-     *  随时间衰减到 0 → 后期全员压上。**默认 0**：AI 互殴（对称）保持原激进度、必分胜负；
-     *  仅遭遇战(play.ts)按难度开启 → 不影响 ai.test 的无僵局保证。 */
-    homeGuard = 0,
   ) {
-    // 人格由种子决定（同种子可复现；play.ts 每局给不同种子 → 每局打法不同）
-    this.persona = PERSONAS[((seed >>> 0) + playerId) % PERSONAS.length]!;
-    this.p = PERSONA[this.persona];
+    // 打法由种子决定（同种子可复现；play.ts 每局给不同种子 → 每局风格不同）
+    this.mode = MODES[((seed >>> 0) + playerId) % MODES.length]!;
+    this.m = MODE[this.mode];
     this.d = DIFF[difficulty];
-    this.harvesters = this.p.harvesters + this.d.harvBonus;
-    this.defenses = this.p.defenses + this.d.defBonus;
-    this.baseWave = Math.max(2, this.p.waveSize + this.d.waveBias);
-    this.garrison = homeGuard;
+    this.waveSize = Math.max(6, this.m.waveSize + this.d.waveBias);
   }
 
-  /** 调试/展示用：当前人格（英文键）。 */
+  /** 调试/展示用：当前打法（英文键）。 */
   get personality(): string {
-    return this.persona;
+    return this.mode;
   }
 
-  /** 敌情简报用：人格中文名。 */
+  /** 敌情简报用：打法中文名。 */
   get personaName(): string {
-    return { tank: '重装集群', rusher: '速攻流', turtle: '龟缩反推', economy: '暴矿滚雪球' }[this.persona];
+    return { defensive: '钢铁防线', balanced: '攻守均衡', aggressive: '全力进攻' }[this.mode];
   }
 
   /** 每 15 tick（≈1s）调用一次，返回要应用的命令。 */
@@ -121,7 +111,7 @@ export class SimpleAI {
     }
   }
 
-  // ——— 生产：保矿车 → 持续造兵（按人格/敌情调兵种），步兵与载具并行 ———
+  // ——— 生产：保矿车 → 持续造兵（按敌情调兵种），步兵与载具并行；从不囤钱 ———
   private manageProduction(world: World, player: Player, cmds: Command[]): void {
     const side = player.side;
     if (world.hasBuilding(this.playerId, 'warfactory')) {
@@ -131,12 +121,12 @@ export class SimpleAI {
         const siege = side === 'soviet' ? 'v3' : 'arty';
         const tanks = this.countUnits(world, tank);
         // 反应式：敌步兵海则提前出攻城车（溅射克步兵）
-        let siegeAt = this.p.siegeAt;
+        let siegeAt = this.m.siegeAt;
         if (this.d.reacts) {
           const comp = this.enemyComposition(world);
           if (comp.infantry > comp.vehicle * 2 + 1) siegeAt = Math.min(siegeAt, 3);
         }
-        if (this.countUnits(world, 'harvester') < this.harvesters) {
+        if (this.countUnits(world, 'harvester') < this.m.harvesters) {
           cmds.push({ kind: 'produce', owner: this.playerId, typeId: 'harvester' });
         } else if (tanks >= siegeAt && this.countUnits(world, siege) < 3) {
           cmds.push({ kind: 'produce', owner: this.playerId, typeId: siege });
@@ -147,7 +137,7 @@ export class SimpleAI {
         }
       }
     }
-    // 步兵与载具并行造（不同队列）。步兵海人格连续补兵，其余兵营空了才补。
+    // 步兵与载具并行造（不同队列）。步兵海打法连续补兵，其余兵营空了才补。
     if (world.hasBuilding(this.playerId, 'barracks')) {
       const iq = world.queueFor(this.playerId, 'infantry');
       const inf = side === 'soviet' ? 'conscript' : 'gi';
@@ -160,13 +150,13 @@ export class SimpleAI {
       }
       if (!iq || iq.items.length === 0) {
         cmds.push({ kind: 'produce', owner: this.playerId, typeId: pick });
-        if (this.p.infantryHeavy) cmds.push({ kind: 'produce', owner: this.playerId, typeId: inf });
+        if (this.m.infantryHeavy) cmds.push({ kind: 'produce', owner: this.playerId, typeId: inf });
       }
     }
   }
 
-  // ——— 军队：成军「全军压上」；老家被攻击则全军御敌（不再裸奔被平推）；
-  //      兵力被打残则脱离重整、不添油送死；开战门槛随时间衰减保证后期必出击、能分胜负 ———
+  // ——— 军队（核心节奏）：攒够 waveSize 才成波「全军压上」；不够则守家积蓄（不一个个送）；
+  //      老家受袭就近回防（保持部分攻势避免僵局）；被打残则撤回重整，攒够再来一波 ———
   private manageArmy(world: World, cmds: Command[]): void {
     const army: Entity[] = [];
     const enemies: Entity[] = [];
@@ -181,20 +171,17 @@ export class SimpleAI {
     }
     if (army.length === 0 || enemies.length === 0) return;
 
-    // 门槛随时间衰减：每 ~45s 降 1，最低 2 —— 后期必然成军出击
+    // 出击门槛随时间衰减：每 ~45s 降 1，最低 2 —— 后期必然成军出击（也保证 AI 互殴必分胜负）。
     const decay = Math.floor(world.tick / (15 * 45));
-    const effWave = Math.max(2, this.baseWave - decay);
+    const effWave = Math.max(2, this.waveSize - decay);
     if (army.length >= effWave) this.engaged = true;
-    else if (army.length < Math.max(2, effWave >> 1)) this.engaged = false; // 被打残：撤下来重整，不添油
+    else if (army.length < Math.max(2, effWave >> 1)) this.engaged = false; // 被打残：撤回重整、不添油
 
-    // 留守兵力（默认 0；遭遇战按难度开启）。基地永远留这么多防守，其余出击。
-    const effGarrison = this.garrison;
     const ids = army.map((e) => e.id);
     const home = this.baseCentroid(world);
     const threat = this.nearestThreatToBase(world, enemies); // 老家是否被敌方单位逼近
     if (threat !== null) {
-      // 老家受袭：离家最近的约 1/3 回防迎敌（响应最快），2/3 继续推进
-      // （保持攻势，避免双方全员回防→僵局）；兵少则全员御敌保命。
+      // 老家受袭：离家最近的约 1/3 回防迎敌（响应最快），2/3 继续推进（避免双方全员回防→僵局）；兵少则全员御敌。
       if (this.engaged && home && army.length >= 6) {
         const sorted = this.byDistToHome(army, home);
         const d = Math.max(1, Math.floor(sorted.length / 3));
@@ -207,37 +194,11 @@ export class SimpleAI {
       return;
     }
 
-    if (!this.engaged) return; // 重整/攒兵中：留在家（个体警戒自卫）
+    // 没攒够 → 守家积蓄（全部留在家，个体警戒会自卫；这天然让基地在出击前不空）。
+    if (!this.engaged) return;
+    // 攒够 → 成波，全军压上（绝不一个个送）。
     const target = this.pickTarget(world, enemies, this.centroid(army));
-    if (target === null) return;
-    // 出击：离家最近的 effGarrison 个留守（基地不空，杜绝被偷家平推），其余压上
-    if (army.length <= effGarrison) return;
-    const attackers = home && effGarrison > 0 ? this.byDistToHome(army, home).slice(effGarrison).map((e) => e.id) : ids;
-    if (attackers.length > 0) cmds.push({ kind: 'attack', entityIds: attackers, targetId: target });
-  }
-
-  /** 按到家距离升序（近家在前；整数距离平方，确定性）。 */
-  private byDistToHome(army: Entity[], home: { x: number; y: number }): Entity[] {
-    return [...army].sort((a, b) => {
-      const da = (a.cellX - home.x) * (a.cellX - home.x) + (a.cellY - home.y) * (a.cellY - home.y);
-      const db = (b.cellX - home.x) * (b.cellX - home.x) + (b.cellY - home.y) * (b.cellY - home.y);
-      return da - db;
-    });
-  }
-
-  /** 我方建筑质心（出击留守判定的「家」）。 */
-  private baseCentroid(world: World): { x: number; y: number } | null {
-    let sx = 0;
-    let sy = 0;
-    let n = 0;
-    for (const e of world.entities.values()) {
-      if (e.owner === this.playerId && world.rules.units.get(e.typeId)?.domain === 'building') {
-        sx += e.cellX;
-        sy += e.cellY;
-        n++;
-      }
-    }
-    return n === 0 ? null : { x: Math.round(sx / n), y: Math.round(sy / n) };
+    if (target !== null) cmds.push({ kind: 'attack', entityIds: ids, targetId: target });
   }
 
   /** 老家威胁：返回最逼近我方建筑（≤12 格）的敌方非建筑单位 id，否则 null。 */
@@ -301,6 +262,30 @@ export class SimpleAI {
     return best;
   }
 
+  /** 按到家距离升序（近家在前；整数距离平方，确定性）。 */
+  private byDistToHome(army: Entity[], home: { x: number; y: number }): Entity[] {
+    return [...army].sort((a, b) => {
+      const da = (a.cellX - home.x) * (a.cellX - home.x) + (a.cellY - home.y) * (a.cellY - home.y);
+      const db = (b.cellX - home.x) * (b.cellX - home.x) + (b.cellY - home.y) * (b.cellY - home.y);
+      return da - db;
+    });
+  }
+
+  /** 我方建筑质心（回防判定的「家」）。 */
+  private baseCentroid(world: World): { x: number; y: number } | null {
+    let sx = 0;
+    let sy = 0;
+    let n = 0;
+    for (const e of world.entities.values()) {
+      if (e.owner === this.playerId && world.rules.units.get(e.typeId)?.domain === 'building') {
+        sx += e.cellX;
+        sy += e.cellY;
+        n++;
+      }
+    }
+    return n === 0 ? null : { x: Math.round(sx / n), y: Math.round(sy / n) };
+  }
+
   private centroid(list: Entity[]): { x: number; y: number } {
     let sx = 0;
     let sy = 0;
@@ -325,43 +310,18 @@ export class SimpleAI {
     return n;
   }
 
-  /** 决定下一座建筑：保电 → 科技链 → 扩经济（按人格精炼厂数）→ 防御（按人格上限）→ 多电托底。 */
+  /** 决定下一座建筑：保电 → 科技链 → 扩经济 → 防御（按打法 defenseTarget）→ 多电托底。 */
   private nextBuilding(world: World, player: Player): string | null {
     const has = (id: string): boolean => world.hasBuilding(this.playerId, id);
     if (player.powerDrained > player.powerProduced - 20 && has('powerplant')) return 'powerplant';
     for (const id of BUILD_ORDER) if (!has(id)) return id;
-    if (this.countBuildings(world, 'refinery') < this.p.refineries + this.d.refBonus) return 'refinery';
-    // 注：AI 暂不自建作战实验室/高级单位——实测会拖慢节奏致某些人格对阵僵持；
-    // 高级单位作为玩家科技奖励先开放，AI 用法待平衡调好再开（见 prism/apocalypse）。
-    if (this.countBuildings(world, 'tesla') + this.countBuildings(world, 'pillbox') < this.defenses) {
+    if (this.countBuildings(world, 'refinery') < this.m.refineries) return 'refinery';
+    // 防御投入：按打法修到 defenseTarget 座（防守流 8 / 均衡 4 / 进攻 1）。电够上磁暴，否则碉堡。
+    if (this.countBuildings(world, 'tesla') + this.countBuildings(world, 'pillbox') < this.m.defenseTarget) {
       return player.powerProduced > player.powerDrained + 150 ? 'tesla' : 'pillbox';
-    }
-    // 反应式加固：基地被攻击时超出常规上限再补 1–2 座防御（靠建筑顶住，不退兵 → 不破坏滚雪球）
-    if (this.d.reacts && this.baseUnderAttack(world)) {
-      const def = this.countBuildings(world, 'tesla') + this.countBuildings(world, 'pillbox');
-      if (def < this.defenses + 2) return player.powerProduced > player.powerDrained + 120 ? 'tesla' : 'pillbox';
     }
     if (player.powerDrained > player.powerProduced - 50) return 'powerplant';
     return null;
-  }
-
-  /** 是否有敌方非建筑单位逼近我方任一建筑（~8 格内）——用于反应式加固。 */
-  private baseUnderAttack(world: World): boolean {
-    const buildings: Entity[] = [];
-    for (const e of world.entities.values()) {
-      if (e.owner === this.playerId && world.rules.units.get(e.typeId)?.domain === 'building') buildings.push(e);
-    }
-    if (buildings.length === 0) return false;
-    for (const e of world.entities.values()) {
-      if (e.owner === this.playerId || !world.players.has(e.owner)) continue;
-      if (world.rules.units.get(e.typeId)?.domain === 'building') continue;
-      for (const b of buildings) {
-        const dx = e.cellX - b.cellX;
-        const dy = e.cellY - b.cellY;
-        if (dx * dx + dy * dy <= 64) return true;
-      }
-    }
-    return false;
   }
 
   private findBuildSpot(world: World, typeId: string): { x: number; y: number } | null {

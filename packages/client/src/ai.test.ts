@@ -55,17 +55,27 @@ describe('AI 对战全流程', () => {
     }
   });
 
-  it('遭遇战留守：homeGuard AI 留守同时仍出击，能平推挂机对手（守家不等于不打）', () => {
-    // 对手 2 号挂机（有基地但不生产/不出击）。homeGuard=5 的 AI 应留守一支、仍用主力平推取胜。
+  it('攒够才成波出击：首次主动进攻时兵力已成规模（不一个一个送）', () => {
+    // 对手 2 号挂机、其单位不动 → 不会逼近 AI 老家（排除"回防"分支）。AI 只会在攒够 waveSize 后才出击。
     const world = createWorldFromConfig(localSkirmishConfig(5000));
-    const ai = new SimpleAI(1, 'hard', 0, 5);
-    let winner = 0;
-    for (let t = 0; t < 24000 && winner === 0; t++) {
-      if (t % 15 === 0) world.applyCommands(ai.emit(world));
+    const ai = new SimpleAI(1, 'normal', 1);
+    let firstAttackArmy = -1;
+    for (let t = 0; t < 6000 && firstAttackArmy < 0; t++) {
+      if (t % 15 === 0) {
+        const cmds = ai.emit(world);
+        if (cmds.some((c) => c.kind === 'attack')) {
+          let army = 0;
+          for (const e of world.entities.values()) {
+            const ty = world.rules.units.get(e.typeId);
+            if (e.owner === 1 && ty && ty.domain !== 'building' && ty.weapon) army++;
+          }
+          firstAttackArmy = army;
+        }
+        world.applyCommands(cmds);
+      }
       world.step();
-      if (world.players.get(2)!.defeated) winner = 1;
     }
-    expect(winner, '留守的 AI 仍应主动出击并取胜').toBe(1);
+    expect(firstAttackArmy, '首波进攻应已成规模，而非 1-2 个').toBeGreaterThanOrEqual(6);
   });
 
   it('打法人格由种子决定：同种子复现、不同种子可抽到不同人格', () => {
