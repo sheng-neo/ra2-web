@@ -3,7 +3,8 @@ import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
   {
-    ignores: ['**/dist/**', '**/node_modules/**', 'game-data/**', '**/*.d.ts'],
+    // experiments/ 下是独立的小实验（自带打包脚本），不纳入主工程的 lint
+    ignores: ['**/dist/**', '**/node_modules/**', 'game-data/**', '**/*.d.ts', 'experiments/**'],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,

@@ -1,0 +1,137 @@
+<title>天安门三维模型</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@500;700&family=Noto+Sans+SC:wght@400;500&display=swap">
+<style>
+  :root {
+    --ink: #1b1512;
+    --paper: #f3ebdc;
+    --paper-dim: rgba(243, 235, 220, 0.62);
+    --vermilion: #a5262b;
+    --glaze: #d9a31c;
+    --glaze-soft: #e8c463;
+    --hud: rgba(27, 21, 18, 0.72);
+    --hud-line: rgba(243, 235, 220, 0.14);
+    --serif: 'Noto Serif SC', 'Songti SC', 'STSong', 'SimSun', serif;
+    --sans: 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
+  }
+  html, body { height: 100%; }
+  body { margin: 0; background: var(--ink); color: var(--paper); font-family: var(--sans); overflow: hidden; -webkit-font-smoothing: antialiased; }
+  #stage { position: fixed; inset: 0; }
+  #stage canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+
+  .hud { position: fixed; z-index: 2; pointer-events: none; }
+  .hud > * { pointer-events: auto; }
+
+  #brand { top: 0; left: 0; right: 0; display: flex; align-items: flex-start; justify-content: space-between; padding: 18px 20px 28px; gap: 16px; background: linear-gradient(rgba(27, 21, 18, 0.5), rgba(27, 21, 18, 0)); }
+  #brand h1 { margin: 0; font: 700 clamp(30px, 4.6vw, 52px)/1 var(--serif); letter-spacing: 0.08em; text-shadow: 0 2px 18px rgba(0,0,0,0.55); }
+  #brand h1 small { display: block; margin-top: 8px; font: 500 12px/1.4 var(--sans); letter-spacing: 0.22em; text-transform: uppercase; color: var(--glaze-soft); }
+  #brand p { margin: 10px 0 0; max-width: 34em; font-size: 12px; line-height: 1.6; color: var(--paper-dim); text-shadow: 0 1px 8px rgba(0,0,0,0.6); }
+  #hint { margin-top: 6px; font-size: 12px; line-height: 1.6; color: var(--paper-dim); text-shadow: 0 1px 8px rgba(0,0,0,0.6); }
+  #clock { flex: none; text-align: right; font: 500 12px/1.6 var(--sans); letter-spacing: 0.12em; color: var(--paper-dim); text-shadow: 0 1px 8px rgba(0,0,0,0.6); font-variant-numeric: tabular-nums; }
+  #clock b { display: block; font: 700 22px/1.2 var(--serif); color: var(--paper); letter-spacing: 0.1em; }
+
+  #bar { left: 0; right: 0; bottom: 0; padding: 0 16px 16px; display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: center; gap: 10px; }
+  .group { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; padding: 6px; background: var(--hud); border: 1px solid var(--hud-line); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
+  .group .label { font-size: 11px; letter-spacing: 0.18em; color: var(--paper-dim); padding: 0 8px 0 6px; }
+  .group button { appearance: none; font: 500 13px/1 var(--sans); letter-spacing: 0.06em; color: var(--paper); background: transparent; border: 1px solid transparent; padding: 9px 12px; cursor: pointer; transition: background 0.15s, border-color 0.15s, color 0.15s; }
+  .group button:hover { background: rgba(243, 235, 220, 0.08); }
+  .group button:focus-visible { outline: 2px solid var(--glaze); outline-offset: -2px; }
+  .group button[aria-pressed="true"] { background: var(--glaze); color: var(--ink); }
+  .group button.act[aria-pressed="true"] { background: var(--vermilion); color: var(--paper); }
+  .group.time { gap: 8px; padding-right: 10px; }
+  .group.time output { font: 500 12px/1 var(--sans); letter-spacing: 0.1em; color: var(--glaze-soft); min-width: 6.5em; font-variant-numeric: tabular-nums; }
+  .group.time input[type="range"] { width: 150px; accent-color: var(--glaze); cursor: pointer; }
+  .group.time input[type="range"]:focus-visible { outline: 2px solid var(--glaze); outline-offset: 2px; }
+  .group.time .quick button { padding: 9px 8px; font-size: 12px; }
+
+  #info { right: 20px; top: 110px; width: min(320px, calc(100vw - 32px)); background: var(--hud); border: 1px solid var(--hud-line); border-top: 3px solid var(--glaze); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); padding: 16px 18px 18px; transform: translateY(6px); opacity: 0; visibility: hidden; transition: opacity 0.2s, transform 0.2s, visibility 0.2s; }
+  #info.on { opacity: 1; transform: none; visibility: visible; }
+  #info .eyebrow { font-size: 11px; letter-spacing: 0.2em; color: var(--glaze-soft); }
+  #info h2 { margin: 6px 0 0; font: 700 24px/1.2 var(--serif); letter-spacing: 0.06em; text-wrap: balance; }
+  #info h2 small { display: block; font: 400 12px/1.4 var(--sans); letter-spacing: 0.14em; color: var(--paper-dim); margin-top: 4px; }
+  #info p { margin: 12px 0 0; font-size: 13px; line-height: 1.75; color: var(--paper); }
+  #info dl { margin: 12px 0 0; display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; font-size: 12px; }
+  #info dt { color: var(--paper-dim); letter-spacing: 0.08em; }
+  #info dd { margin: 0; font-variant-numeric: tabular-nums; }
+  #info .close { position: absolute; top: 8px; right: 8px; appearance: none; background: none; border: 0; color: var(--paper-dim); font: 16px/1 var(--sans); cursor: pointer; padding: 6px; }
+  #info .close:hover { color: var(--paper); }
+  #info .close:focus-visible { outline: 2px solid var(--glaze); }
+
+  #loading { position: fixed; inset: 0; z-index: 3; display: grid; place-items: center; background: var(--ink); transition: opacity 0.6s; }
+  #loading.off { opacity: 0; pointer-events: none; }
+  #loading .mark { font: 700 46px/1 var(--serif); letter-spacing: 0.3em; color: var(--paper); padding-left: 0.3em; }
+  #loading .sub { margin-top: 14px; font-size: 12px; letter-spacing: 0.2em; color: var(--glaze-soft); text-align: center; }
+  #loading .err { margin-top: 18px; max-width: 34em; font-size: 13px; line-height: 1.7; color: var(--paper-dim); text-align: center; padding: 0 16px; }
+
+  @media (max-width: 640px) {
+    #brand { padding: 14px 16px 0; }
+    #brand p, #hint, #clock { display: none; }
+    #info { top: auto; bottom: 160px; right: 16px; left: 16px; width: auto; max-height: calc(100vh - 250px); overflow-y: auto; }
+    #bar { padding-bottom: 12px; gap: 6px; }
+    .group .label { display: none; }
+    .group button { padding: 9px 10px; font-size: 12px; }
+    .group.time input[type="range"] { width: 120px; }
+  }
+  @media (prefers-reduced-motion: reduce) { #info, .group button, #loading { transition: none; } }
+</style>
+
+<div id="stage"></div>
+
+<div id="loading">
+  <div>
+    <div class="mark">天安门</div>
+    <div class="sub" id="loading-sub">正在生成模型 …</div>
+    <div class="err" id="loading-err" hidden></div>
+  </div>
+</div>
+
+<header id="brand" class="hud">
+  <div>
+    <h1>天安门<small>Tiananmen · 三维交互模型</small></h1>
+    <p>程序化建模，尺度按米：城台 68 × 38，通高约 36 m，面阔九间、进深五间，重檐歇山顶。</p>
+    <div id="hint">拖动旋转 · 滚轮或双指缩放 · 右键或双指平移 · 点击部件查看说明</div>
+  </div>
+  <div id="clock"><span id="clock-mode">白昼</span><b id="clock-time">10:30</b></div>
+</header>
+
+<aside id="info" class="hud" role="dialog" aria-live="polite" aria-labelledby="info-title">
+  <button class="close" id="info-close" aria-label="关闭说明">✕</button>
+  <div class="eyebrow" id="info-eyebrow">部件</div>
+  <h2 id="info-title">—<small id="info-sub"></small></h2>
+  <p id="info-text"></p>
+  <dl id="info-dims"></dl>
+</aside>
+
+<nav id="bar" class="hud" aria-label="控制">
+  <div class="group" role="group" aria-label="视角">
+    <span class="label">视角</span>
+    <button type="button" id="view-front" data-view="front">正面</button>
+    <button type="button" id="view-square" data-view="square">广场</button>
+    <button type="button" id="view-east" data-view="east">东侧</button>
+    <button type="button" id="view-eave" data-view="eave">檐下</button>
+    <button type="button" id="view-mirror" data-view="mirror">倒影</button>
+    <button type="button" id="view-top" data-view="top">俯瞰</button>
+  </div>
+  <div class="group time" role="group" aria-label="时刻">
+    <span class="label">时刻</span>
+    <input type="range" id="time-range" min="0" max="287" step="1" value="126" aria-label="一天中的时刻">
+    <output id="time-label" for="time-range">白昼 10:30</output>
+    <span class="quick">
+      <button type="button" id="time-dawn" data-time="6.3">日出</button>
+      <button type="button" id="time-dusk" data-time="18.6">黄昏</button>
+      <button type="button" id="time-night" data-time="20.5">夜景</button>
+    </span>
+  </div>
+  <div class="group" role="group" aria-label="动画">
+    <span class="label">动画</span>
+    <button type="button" id="btn-lapse" class="act" aria-pressed="false">延时一天</button>
+    <button type="button" id="btn-explode" class="act" aria-pressed="false">结构分层</button>
+    <button type="button" id="btn-tour" class="act" aria-pressed="false">飞行游览</button>
+    <button type="button" id="btn-spin" aria-pressed="false">自动旋转</button>
+  </div>
+</nav>
+
+<script type="module">
+/*BUNDLE*/
+</script>
