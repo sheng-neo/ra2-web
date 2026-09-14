@@ -30,7 +30,8 @@ camera.position.set(90, 50, 320);
 
 // 后期：辉光（夜景灯光）+ 输出色彩
 const HIGH = quality === 'high';
-const composerTarget = new THREE.WebGLRenderTarget(innerWidth * pixelRatio(), innerHeight * pixelRatio(), { type: THREE.HalfFloatType, samples: HIGH ? 4 : 0 });
+const MSAA = new URLSearchParams(location.search).get('msaa');
+const composerTarget = new THREE.WebGLRenderTarget(innerWidth * pixelRatio(), innerHeight * pixelRatio(), { type: THREE.HalfFloatType, samples: MSAA != null ? Number(MSAA) : (HIGH ? 4 : 0) });
 const composer = new EffectComposer(renderer, composerTarget);
 composer.addPass(new RenderPass(scene, camera));
 let gtao = null;
@@ -52,7 +53,7 @@ let csm = null;
 if (HIGH) {
   csm = new CSM({ camera, parent: scene, cascades: 3, maxFar: 620, mode: 'practical', shadowMapSize: 2048, shadowBias: -0.00025, lightMargin: 320, lightFar: 3000, lightIntensity: 3.0 });
   csm.fade = true;
-  for (const l of csm.lights) { l.shadow.normalBias = 0.06; }
+  for (const l of csm.lights) { l.shadow.normalBias = 0.2; l.shadow.bias = -0.0004; }
   csmHook.lights = csm.lights;
   sun.castShadow = false;
   const seen = new Set();

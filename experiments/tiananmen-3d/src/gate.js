@@ -10,6 +10,7 @@ import {
 } from './lib.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { roofTiles } from './tiles.js';
+import { addRafters, mainRidge, archTrim, gateDoors } from './detail.js';
 
 /** 高画质：屋面底图改为板瓦，叠加实例化筒瓦。 */
 function tileRoof(roofMesh, parent) {
@@ -18,6 +19,8 @@ function tileRoof(roofMesh, parent) {
   const t = roofTiles(roofMesh);
   t.position.copy(roofMesh.position);
   parent.add(t);
+  const r = group(parent, 0, roofMesh.position.y, 0);
+  addRafters(roofMesh.userData.eaveRing, r);
 }
 
 export const layers = { rampart: group(), base: group(), lowerEave: group(), upper: group(), roof: group() };
@@ -81,6 +84,15 @@ export const ARCHES = [
   for (const xc of [R.hwBot + bump / 2, -R.hwBot - bump / 2]) {
     sumeru(layers.rampart, bump + 0.4, R.hlBot * 2 + bump * 2, bh, xc > 0 ? xc - 0.2 : xc + 0.2, 0, 0);
   }
+
+  // 券脸与门扇（南北两面券脸，南面门扇开启）
+  for (const a of ARCHES) {
+    archTrim(a, R.hlBot, layers.rampart, 1);
+    archTrim(a, -R.hlBot, layers.rampart, -1);
+    if (quality === 'high') gateDoors(a, R.hlBot, layers.rampart);
+  }
+  // 城台顶面铺方砖
+  box(R.hwTop * 2 - 0.2, 0.06, R.hlTop * 2 - 0.2, mat.paving, 0, R.top + 0.03, 0, layers.rampart);
 
   // 城台顶：台基以外的边缘为琉璃瓦封顶的矮墙
   const parapet = group(layers.rampart, 0, R.top, 0);
@@ -437,15 +449,7 @@ function addRidges(roofMesh, parent, beasts = 5) {
   addRidges(upperRoof, layers.roof, 6);
   const ridgeHalf = 28.6 - 8.8;
   const ridgeTop = roofY + rise;
-  box(ridgeHalf * 2, 0.9, 0.9, mat.glazeDeep, 0, ridgeTop + 0.15, 0, layers.roof);
-  for (const sgn of [-1, 1]) {
-    const chi = group(layers.roof, sgn * ridgeHalf, ridgeTop + 0.15, 0);
-    box(1.1, 2.4, 1.3, mat.glazeDeep, 0, 1.1, 0, chi);
-    const tail = new THREE.Mesh(new THREE.TorusGeometry(0.7, 0.28, 8, 12, Math.PI), mat.glazeDeep);
-    tail.position.set(-sgn * 0.4, 2.2, 0); tail.rotation.y = Math.PI / 2; tail.rotation.z = sgn > 0 ? 0 : Math.PI;
-    tail.castShadow = true;
-    chi.add(tail);
-  }
+  mainRidge(ridgeHalf, ridgeTop - 0.3, layers.roof);
   describe(upperRoof, {
     eyebrow: '城楼', title: '重檐歇山顶', sub: 'DOUBLE-EAVE HIP-AND-GABLE ROOF',
     text: '上檐为歇山顶：前后坡直抵正脊，两侧下段为四坡的戗脊，上段收为竖直山花。等级仅次于庑殿顶，配黄琉璃瓦、正脊两端置鸱吻。1970 年重建后通高 34.7 m（原 33.87 m）。',

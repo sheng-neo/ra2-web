@@ -98,8 +98,12 @@ export const brickTex = canvasTexture(512, 512, (g, w, h) => {
     grad.addColorStop(0, 'rgba(80,10,12,0)'); grad.addColorStop(1, `rgba(80,10,12,${0.04 + Math.random() * 0.06})`);
     g.fillStyle = grad; g.fillRect(x, 0, 4 + Math.random() * 10, h);
   }
-  g.fillStyle = 'rgba(255,230,210,0.05)';   // 上部微亮
-  g.fillRect(0, 0, w, h * 0.3);
+  // 大尺度明暗云斑（无周期性条带）
+  for (let i = 0; i < 14; i++) {
+    const grad = g.createRadialGradient(Math.random() * w, Math.random() * h, 0, Math.random() * w, Math.random() * h, 120 + Math.random() * 160);
+    grad.addColorStop(0, `rgba(${Math.random() < 0.5 ? '60,8,10' : '235,120,100'},${0.05 + Math.random() * 0.06})`); grad.addColorStop(1, 'rgba(0,0,0,0)');
+    g.fillStyle = grad; g.fillRect(0, 0, w, h);
+  }
 }, [6, 6]);
 
 /**
@@ -203,6 +207,7 @@ export const mat = {
   lattice: std(0xffffff, { map: latticeTex, roughness: 0.7 }),
   caihua: std(0xffffff, { map: caihuaTex, roughness: 0.75 }),
   plaza: std(0xffffff, { map: plazaTex, roughness: 0.95 }),
+  paving: std(0x8e8a82, { map: plazaTex, roughness: 0.95 }),
 };
 
 // ---- 场景登记 ------------------------------------------------------------

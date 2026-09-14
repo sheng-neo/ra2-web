@@ -7,6 +7,7 @@ import { Water } from 'three/addons/objects/Water.js';
 import waterNormalsUrl from '../assets/waternormals.jpg';
 import { scene, mat, std, C, box, cyl, group, describe, canvasTexture, balustrade, nightOnly, lanternMats } from './lib.js';
 import { layers, RAMPART, ARCHES } from './gate.js';
+import { lion, huabiao } from './detail.js';
 
 export const isSmall = Math.min(innerWidth, innerHeight) < 560;
 const FRONT = RAMPART.hlBot;                                  // 城台南面墙基 z = 20
@@ -134,22 +135,9 @@ export let water = null;
 
 // ---- 华表：同侧一对间距 96 m ----
 {
-  const mkHuabiao = (x, z, parent) => {
-    const g = group(parent, x, 0, z);
-    cyl(1.9, 2.1, 0.9, mat.marble, 0, 0.45, 0, 8, g);
-    cyl(1.5, 1.7, 0.6, mat.marbleShade, 0, 1.2, 0, 8, g);
-    cyl(0.49, 0.55, 6.9, mat.marble, 0, 1.5 + 3.45, 0, 8, g);
-    box(3.0, 0.8, 0.3, mat.marble, 0, 7.4, 0, g);
-    cyl(0.95, 0.95, 0.22, mat.marble, 0, 8.6, 0, 16, g);
-    const hou = new THREE.Mesh(new THREE.SphereGeometry(0.42, 12, 10), mat.marble);
-    hou.position.y = 9.1; hou.scale.set(0.9, 1, 1.3); hou.castShadow = true;
-    g.add(hou);
-    balustrade(g, 2.2, 2.2, 0, { postH: 0.9, panelH: 0.55, step: 1.5 });
-    return g;
-  };
   const hb = group(scene);
-  mkHuabiao(-48, FRONT + 24, hb); mkHuabiao(48, FRONT + 24, hb);
-  mkHuabiao(-48, -FRONT - 14, hb); mkHuabiao(48, -FRONT - 14, hb);
+  huabiao(-48, FRONT + 24, hb, true); huabiao(48, FRONT + 24, hb, true);
+  huabiao(-48, -FRONT - 14, hb, false); huabiao(48, -FRONT - 14, hb, false);
   describe(hb, {
     eyebrow: '前庭', title: '华表', sub: 'HUABIAO · ORNAMENTAL COLUMNS',
     text: '门前门后各一对汉白玉华表，建于明永乐十八年（1420）：通高 9.57 m，柱径 0.98 m，重 20 余吨，同侧一对相距 96 m。柱身盘龙、顶置云板与承露盘，盘上蹲兽名“犼”。门前的犼面向南，称“望君归”；门后的面北，称“望君出”。',
@@ -157,27 +145,11 @@ export let water = null;
   });
 }
 
-// ---- 石狮：高 3.4 m（含座） ----
+// ---- 石狮：高 3.4 m（含座），东雄西雌 ----
 {
-  const mkLion = (x, z, faceSouth, parent) => {
-    const g = group(parent, x, 0, z);
-    box(2.6, 1.4, 1.9, mat.marbleShade, 0, 0.7, 0, g);
-    const body = new THREE.Mesh(new THREE.SphereGeometry(0.72, 14, 10), mat.stone);
-    body.scale.set(1, 1.05, 1.5); body.position.set(0, 2.1, 0.1); body.castShadow = true; g.add(body);
-    const chest = new THREE.Mesh(new THREE.SphereGeometry(0.62, 12, 10), mat.stone);
-    chest.position.set(0, 2.45, 0.85); chest.castShadow = true; g.add(chest);
-    const head = new THREE.Mesh(new THREE.SphereGeometry(0.55, 12, 10), mat.stone);
-    head.position.set(0, 3.15, 0.95); head.castShadow = true; g.add(head);
-    const mane = new THREE.Mesh(new THREE.TorusGeometry(0.55, 0.2, 8, 14), mat.stone);
-    mane.position.set(0, 3.0, 0.62); mane.castShadow = true; g.add(mane);
-    for (const sx of [-0.5, 0.5]) box(0.38, 1.1, 0.45, mat.stone, sx, 1.95, 1.2, g);
-    box(0.8, 0.5, 1.0, mat.stone, 0, 1.7, -0.8, g);
-    g.rotation.y = faceSouth ? 0 : Math.PI;
-    return g;
-  };
   const lions = group(scene);
-  mkLion(-10, FRONT + 9, true, lions); mkLion(10, FRONT + 9, true, lions);
-  mkLion(-10, -FRONT - 9, false, lions); mkLion(10, -FRONT - 9, false, lions);
+  lion(-10, FRONT + 9, true, false, lions); lion(10, FRONT + 9, true, true, lions);
+  lion(-10, -FRONT - 9, false, false, lions); lion(10, -FRONT - 9, false, true, lions);
   describe(lions, {
     eyebrow: '前庭', title: '石狮', sub: 'STONE LIONS',
     text: '门前门后各一对明代汉白玉石狮，连座高 3.4 m，是北京最高大的石狮。东为雄狮踏绣球，西为雌狮抚幼狮。传说东狮腹部有一处凹痕，为 1900 年前后战火所留。',
