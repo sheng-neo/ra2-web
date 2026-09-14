@@ -262,6 +262,9 @@ $('btn-lapse').addEventListener('click', () => { if (timelapse) stopTimelapse();
 $('btn-explode').addEventListener('click', () => { explode.target = toggle($('btn-explode')) ? 1 : 0; });
 $('btn-tour').addEventListener('click', () => { if (tour) stopTour(); else { closeInfo(); startTour(); } });
 $('btn-spin').addEventListener('click', () => { controls.autoRotate = toggle($('btn-spin')); });
+const toggleHud = () => document.body.classList.toggle('hud-off');
+$('btn-hud').addEventListener('click', toggleHud);
+$('hud-show').addEventListener('click', toggleHud);
 $('btn-quality').textContent = HIGH ? '画质：高' : (new URLSearchParams(location.search).get('auto') ? '画质：低（自动）' : '画质：低');
 $('btn-quality').addEventListener('click', () => {
   const u = new URL(location.href); u.searchParams.set('q', HIGH ? 'low' : 'high'); location.href = u.toString();
@@ -276,6 +279,7 @@ addEventListener('keydown', (e) => {
   else if (e.key === 'e' || e.key === 'E') $('btn-explode').click();
   else if (e.key === 't' || e.key === 'T') $('btn-tour').click();
   else if (e.key === 'r' || e.key === 'R') $('btn-spin').click();
+  else if (e.key === 'h' || e.key === 'H') toggleHud();
   else if (e.key === 'Escape') closeInfo();
 });
 function onResize() {

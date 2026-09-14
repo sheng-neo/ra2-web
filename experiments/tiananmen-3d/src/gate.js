@@ -94,6 +94,21 @@ export const ARCHES = [
   // 城台顶面铺方砖
   box(R.hwTop * 2 - 0.2, 0.06, R.hlTop * 2 - 0.2, mat.paving, 0, R.top + 0.03, 0, layers.rampart);
 
+  // 马道：城台北面两端的斜坡道（供上下城楼）
+  for (const sgn of [-1, 1]) {
+    const L = 46, W = 6.5, Hh = R.top;
+    const sh = new THREE.Shape(); sh.moveTo(0, 0); sh.lineTo(L, 0); sh.lineTo(L, Hh); sh.closePath();
+    const geo = new THREE.ExtrudeGeometry(sh, { depth: W, bevelEnabled: false });
+    const ramp = new THREE.Mesh(geo, mat.brick);
+    ramp.castShadow = ramp.receiveShadow = true;
+    // 斜坡自城台端部向中央下降；贴在北面墙外
+    ramp.position.set(sgn * R.hwTop, 0, -R.hlBot - W);
+    ramp.scale.x = -sgn;
+    layers.rampart.add(ramp);
+    const par = box(L, 0.9, 0.4, mat.vermilion, sgn * (R.hwTop - L / 2), 0, -R.hlBot - W - 0.2, layers.rampart);
+    par.rotation.z = sgn * Math.atan2(Hh, L); par.position.y = Hh / 2 + 0.45;
+  }
+
   // 城台顶：台基以外的边缘为琉璃瓦封顶的矮墙
   const parapet = group(layers.rampart, 0, R.top, 0);
   const wall = (len, x, z, alongX) => {

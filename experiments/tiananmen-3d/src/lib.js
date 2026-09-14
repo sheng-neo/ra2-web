@@ -57,31 +57,86 @@ export const latticeTex = canvasTexture(256, 512, (g, w, h) => {
   g.strokeStyle = '#b5852a'; g.lineWidth = 6; g.strokeRect(3, 3, w - 6, h - 6);
 });
 
-/** 和玺彩画：青绿地、金线枋心。 */
-export const caihuaTex = canvasTexture(512, 64, (g, w, h) => {
-  g.fillStyle = '#2b5f7e'; g.fillRect(0, 0, w, h);
-  g.fillStyle = '#3a8458'; g.fillRect(w * 0.2, 0, w * 0.6, h);
-  g.fillStyle = '#2b5f7e'; g.fillRect(w * 0.34, 8, w * 0.32, h - 16);
-  g.strokeStyle = '#e3b93e'; g.lineWidth = 3;
-  g.strokeRect(w * 0.34, 8, w * 0.32, h - 16);
-  g.beginPath();
-  g.moveTo(w * 0.2, 0); g.lineTo(w * 0.28, h / 2); g.lineTo(w * 0.2, h);
-  g.moveTo(w * 0.8, 0); g.lineTo(w * 0.72, h / 2); g.lineTo(w * 0.8, h);
+/** 和玺彩画：箍头（青绿相间金线）、藻头（卷草）、枋心（金龙），512×64 覆盖一整间额枋。 */
+export const caihuaTex = canvasTexture(1024, 96, (g, w, h) => {
+  const blue = '#27587a', green = '#2f7a55', gold = '#e6bd45', white = '#e9e4d3';
+  g.fillStyle = blue; g.fillRect(0, 0, w, h);
+  // 箍头
+  for (const x0 of [0, w - w * 0.1]) {
+    g.fillStyle = green; g.fillRect(x0, 0, w * 0.1, h);
+    g.strokeStyle = gold; g.lineWidth = 3;
+    for (let k = 1; k <= 3; k++) { g.beginPath(); g.moveTo(x0 + (w * 0.1) * k / 4, 6); g.lineTo(x0 + (w * 0.1) * k / 4, h - 6); g.stroke(); }
+  }
+  // 藻头：卷草涡纹
+  g.strokeStyle = gold; g.lineWidth = 2.5;
+  for (const [x0, x1] of [[w * 0.1, w * 0.3], [w * 0.7, w * 0.9]]) {
+    g.fillStyle = green; g.beginPath(); g.moveTo(x0, 0); g.lineTo(x1, 0); g.lineTo(x1 - 24, h / 2); g.lineTo(x1, h); g.lineTo(x0, h); g.lineTo(x0 + 24, h / 2); g.closePath(); g.fill();
+    for (let i = 0; i < 5; i++) {
+      const cx = x0 + 30 + i * ((x1 - x0 - 60) / 4), cy = i % 2 ? h * 0.32 : h * 0.68;
+      g.beginPath(); g.arc(cx, cy, 11, 0, Math.PI * 1.6); g.stroke();
+      g.beginPath(); g.arc(cx + 8, cy - 4, 5, 0, Math.PI * 2); g.stroke();
+    }
+  }
+  // 枋心：金龙
+  g.fillStyle = blue; g.fillRect(w * 0.3, 0, w * 0.4, h);
+  g.strokeStyle = gold; g.lineWidth = 3; g.strokeRect(w * 0.3 + 6, 6, w * 0.4 - 12, h - 12);
+  g.lineWidth = 5; g.beginPath(); g.moveTo(w * 0.33, h * 0.5);
+  for (let i = 1; i <= 8; i++) { const x = w * 0.33 + (w * 0.34) * i / 8; g.quadraticCurveTo(x - w * 0.02, i % 2 ? h * 0.2 : h * 0.8, x, h * 0.5); }
   g.stroke();
-  g.fillStyle = '#e3b93e';
-  for (let x = 12; x < w; x += 32) { g.beginPath(); g.arc(x, 6, 2.5, 0, 7); g.arc(x, h - 6, 2.5, 0, 7); g.fill(); }
+  g.fillStyle = gold; g.beginPath(); g.arc(w * 0.67, h * 0.5, 9, 0, 7); g.fill();
+  g.beginPath(); g.moveTo(w * 0.67 + 6, h * 0.5 - 8); g.lineTo(w * 0.67 + 18, h * 0.5 - 2); g.lineTo(w * 0.67 + 6, h * 0.5 + 8); g.closePath(); g.fill();
+  g.strokeStyle = white; g.lineWidth = 1;
+  for (let i = 0; i < 6; i++) { const x = w * 0.36 + i * w * 0.05; g.beginPath(); g.arc(x, h * 0.5, 14, 0, 7); g.stroke(); }
+  g.strokeStyle = white; g.lineWidth = 1.5; g.strokeRect(1, 1, w - 2, h - 2);
 }, [1, 1]);
 
-/** 广场花岗岩铺装。 */
+/** 广场花岗岩铺装：每块板略有色差，缝线凹槽（法线图）。一张贴图 4 × 4 块。 */
 export const plazaTex = canvasTexture(256, 256, (g, w, h) => {
-  g.fillStyle = '#b7b0a2'; g.fillRect(0, 0, w, h);
-  for (let i = 0; i < 900; i++) {
-    g.fillStyle = `rgba(${60 + Math.random() * 40},${55 + Math.random() * 40},${50 + Math.random() * 40},${0.08 + Math.random() * 0.1})`;
-    g.fillRect(Math.random() * w, Math.random() * h, 2, 2);
+  for (let r = 0; r < 4; r++) for (let c = 0; c < 4; c++) {
+    const k = 0.9 + Math.random() * 0.16;
+    g.fillStyle = `rgb(${Math.round(176 * k)},${Math.round(170 * k)},${Math.round(160 * k)})`;
+    g.fillRect(c * 64, r * 64, 64, 64);
   }
-  g.strokeStyle = 'rgba(70,64,56,0.35)'; g.lineWidth = 1.5;
+  for (let i = 0; i < 1400; i++) {
+    g.fillStyle = `rgba(${40 + Math.random() * 40},${36 + Math.random() * 40},${30 + Math.random() * 40},${0.06 + Math.random() * 0.1})`;
+    g.fillRect(Math.random() * w, Math.random() * h, 1.5, 1.5);
+  }
+  g.strokeStyle = 'rgba(60,54,46,0.5)'; g.lineWidth = 2;
   for (let i = 0; i <= 4; i++) { g.beginPath(); g.moveTo(i * 64, 0); g.lineTo(i * 64, h); g.moveTo(0, i * 64); g.lineTo(w, i * 64); g.stroke(); }
 }, [290, 290]);
+export const plazaNormalTex = canvasTexture(256, 256, (g, w, h) => {
+  const img = g.createImageData(w, h);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const dx = ((x % 64) + 64) % 64, dy = ((y % 64) + 64) % 64;
+    let nx = 0, ny = 0;
+    if (dx < 3) nx = -0.5 + dx * 0.33; else if (dx > 60) nx = (dx - 60) * 0.17;
+    if (dy < 3) ny = -0.5 + dy * 0.33; else if (dy > 60) ny = (dy - 60) * 0.17;
+    const nz = Math.sqrt(Math.max(0.1, 1 - nx * nx - ny * ny));
+    const i = (y * w + x) * 4;
+    img.data[i] = Math.round((nx * 0.5 + 0.5) * 255); img.data[i + 1] = Math.round((ny * 0.5 + 0.5) * 255); img.data[i + 2] = Math.round((nz * 0.5 + 0.5) * 255); img.data[i + 3] = 255;
+  }
+  g.putImageData(img, 0, 0);
+}, [290, 290], { srgb: false });
+
+/** 松枝：透明底上的针叶簇，用于交叉面片树冠。 */
+export const foliageTex = canvasTexture(256, 256, (g, w, h) => {
+  g.clearRect(0, 0, w, h);
+  const cx = w / 2, cy = h / 2;
+  for (let i = 0; i < 140; i++) {
+    const a = Math.random() * Math.PI * 2, r0 = Math.random() * 30, r1 = 60 + Math.random() * 62;
+    const l = 0.55 + Math.random() * 0.5;
+    g.strokeStyle = `rgba(${Math.round(38 * l)},${Math.round(78 * l)},${Math.round(42 * l)},${0.85 + Math.random() * 0.15})`;
+    g.lineWidth = 5 + Math.random() * 9; g.lineCap = 'round';
+    g.beginPath(); g.moveTo(cx + Math.cos(a) * r0, cy + Math.sin(a) * r0); g.lineTo(cx + Math.cos(a) * r1, cy + Math.sin(a) * r1); g.stroke();
+    // 针叶细枝
+    for (let k = 0; k < 4; k++) {
+      const t = 0.4 + Math.random() * 0.6, px = cx + Math.cos(a) * (r0 + (r1 - r0) * t), py = cy + Math.sin(a) * (r0 + (r1 - r0) * t);
+      const b = a + (Math.random() - 0.5) * 1.6;
+      g.lineWidth = 2 + Math.random() * 2;
+      g.beginPath(); g.moveTo(px, py); g.lineTo(px + Math.cos(b) * 18, py + Math.sin(b) * 18); g.stroke();
+    }
+  }
+});
 
 /** 朱红墙面：抹灰质感，轻微斑驳与雨痕。 */
 export const brickTex = canvasTexture(512, 512, (g, w, h) => {
@@ -187,8 +242,8 @@ export const mat = {
   glazePan: std(0xffffff, { map: tilePanTex, roughness: 0.5, metalness: 0.05 }),
   tile: std(C.glaze, { roughness: 0.3, metalness: 0.12, envMapIntensity: 0.55 }),
   glazeDeep: std(C.glazeDeep, { roughness: 0.5 }),
-  marble: std(C.marble, { roughness: 0.55 }),
-  marbleShade: std(C.marbleShade, { roughness: 0.6 }),
+  marble: std(0xeae3d4, { roughness: 0.62, envMapIntensity: 0.18 }),
+  marbleShade: std(0xd6cfbf, { roughness: 0.66, envMapIntensity: 0.18 }),
   jade: std(C.jade, { roughness: 0.8 }),
   jadeLight: std(0x3f8aa8, { roughness: 0.75 }),
   green: std(C.green, { roughness: 0.8 }),
@@ -206,8 +261,10 @@ export const mat = {
   brick: std(0xffffff, { map: brickTex, roughness: 0.92 }),
   lattice: std(0xffffff, { map: latticeTex, roughness: 0.7 }),
   caihua: std(0xffffff, { map: caihuaTex, roughness: 0.75 }),
-  plaza: std(0xffffff, { map: plazaTex, roughness: 0.95 }),
-  paving: std(0x8e8a82, { map: plazaTex, roughness: 0.95 }),
+  plaza: std(0xffffff, { map: plazaTex, normalMap: plazaNormalTex, normalScale: new THREE.Vector2(0.6, 0.6), roughness: 0.95 }),
+  foliage: std(0xffffff, { map: foliageTex, alphaTest: 0.45, side: THREE.DoubleSide, roughness: 1 }),
+  paving: std(0xa8a399, { map: plazaTex, roughness: 0.95 }),
+  bridgeStone: std(0xd8d2c4, { roughness: 0.7, envMapIntensity: 0.15 }),
 };
 
 // ---- 场景登记 ------------------------------------------------------------
@@ -352,15 +409,18 @@ export function ridgeTube(points, radius = 0.32, material = mat.glazeDeep) {
   return m;
 }
 
+/** 望柱头：束腰莲座上的圆头。 */
+export const postCapGeo = (() => {
+  const pts = [0.19, 0.19, 0.12, 0.2, 0.24, 0.2, 0.1].map((r, i) => new THREE.Vector2(r, [0, 0.05, 0.1, 0.17, 0.32, 0.44, 0.52][i]));
+  pts.push(new THREE.Vector2(0.0, 0.56));
+  const g = new THREE.LatheGeometry(pts, 10); g.translate(0, -0.1, 0); return g;
+})();
+
 /** 汉白玉栏杆：望柱 + 栏板，沿矩形四边。 */
 export function balustrade(parent, hw, hl, y, { postH = 1.35, panelH = 0.85, step = 2.2, skipFront = null, sides = 'snew' } = {}) {
   const g = group(parent, 0, y, 0);
   const postGeo = new THREE.BoxGeometry(0.34, postH, 0.34);
-  const capGeo = (() => {                      // 望柱头：束腰莲座上的圆头
-    const pts = [0.19, 0.19, 0.12, 0.2, 0.24, 0.2, 0.1].map((r, i) => new THREE.Vector2(r, [0, 0.05, 0.1, 0.17, 0.32, 0.44, 0.52][i]));
-    pts.push(new THREE.Vector2(0.0, 0.56));
-    const g = new THREE.LatheGeometry(pts, 10); g.translate(0, -0.1, 0); return g;
-  })();
+  const capGeo = postCapGeo;
   const posts = [], rails = [];
   const edges = [
     ['s', [-hw, hl], [hw, hl]], ['n', [-hw, -hl], [hw, -hl]],

@@ -5,7 +5,7 @@ import * as THREE from 'three';
 import { Sky } from 'three/addons/objects/Sky.js';
 import { Water } from 'three/addons/objects/Water.js';
 import waterNormalsUrl from '../assets/waternormals.jpg';
-import { scene, mat, std, C, box, cyl, group, describe, canvasTexture, balustrade, nightOnly, lanternMats } from './lib.js';
+import { scene, mat, std, C, box, cyl, group, describe, canvasTexture, balustrade, nightOnly, lanternMats, postCapGeo } from './lib.js';
 import { layers, RAMPART, ARCHES } from './gate.js';
 import { lion, huabiao } from './detail.js';
 
@@ -98,7 +98,7 @@ export let water = null;
     s.lineTo(-half, -RIVER.depth + 0.2);
     const geo = new THREE.ExtrudeGeometry(s, { depth: w, bevelEnabled: false, curveSegments: 16 });
     geo.translate(0, 0, -w / 2);
-    const deck = new THREE.Mesh(geo, mat.marble);
+    const deck = new THREE.Mesh(geo, mat.bridgeStone);
     deck.rotation.y = Math.PI / 2;
     deck.position.set(x, 0, (RIVER.z0 + RIVER.z1) / 2);
     deck.castShadow = deck.receiveShadow = true;
@@ -107,21 +107,27 @@ export let water = null;
     const count = 11;
     for (const side of [-1, 1]) {
       const pm = new THREE.InstancedMesh(postGeo, mat.marble, count);
+      const cm = new THREE.InstancedMesh(postCapGeo, mat.marble, count);
       const m4 = new THREE.Matrix4();
       for (let i = 0; i < count; i++) {
         const t = -half + 0.3 + (i / (count - 1)) * (L - 0.6);
         m4.makeTranslation(x + side * (w / 2 - 0.25), prof(t) + 0.55, (RIVER.z0 + RIVER.z1) / 2 + t);
         pm.setMatrixAt(i, m4);
+        m4.makeTranslation(x + side * (w / 2 - 0.25), prof(t) + 1.1, (RIVER.z0 + RIVER.z1) / 2 + t);
+        cm.setMatrixAt(i, m4);
       }
-      pm.castShadow = true;
-      bridges.add(pm);
+      pm.castShadow = cm.castShadow = true;
+      bridges.add(pm, cm);
       for (let i = 0; i < count - 1; i++) {
         const t0 = -half + 0.3 + (i / (count - 1)) * (L - 0.6), t1 = -half + 0.3 + ((i + 1) / (count - 1)) * (L - 0.6);
         const y0 = prof(t0), y1 = prof(t1);
-        const panel = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.7, Math.hypot(t1 - t0, y1 - y0)), mat.marbleShade);
+        const len = Math.hypot(t1 - t0, y1 - y0);
+        const panel = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.7, len), mat.marbleShade);
         panel.position.set(x + side * (w / 2 - 0.25), (y0 + y1) / 2 + 0.4, (RIVER.z0 + RIVER.z1) / 2 + (t0 + t1) / 2);
         panel.rotation.x = -Math.atan2(y1 - y0, t1 - t0);
-        bridges.add(panel);
+        const inset = new THREE.Mesh(new THREE.BoxGeometry(0.17, 0.42, len - 0.3), mat.marble);
+        inset.position.copy(panel.position); inset.rotation.copy(panel.rotation);
+        bridges.add(panel, inset);
       }
     }
   };
@@ -214,37 +220,42 @@ export const flag = {};
   });
 }
 
-// ---- 松柏：树干 + 多团不规则树冠（实例化） ----
+// ---- 松柏：树干 + 交叉面片针叶簇（实例化，透明剔除） ----
 {
   const trees = group(scene);
-  const blob = new THREE.IcosahedronGeometry(1, 2);
-  { const p = blob.attributes.position; for (let i = 0; i < p.count; i++) { const k = 0.82 + ((i * 7919) % 101) / 101 * 0.36; p.setXYZ(i, p.getX(i) * k, p.getY(i) * (0.7 + ((i * 131) % 17) / 40), p.getZ(i) * k); } blob.computeVertexNormals(); }
+  const plane = new THREE.PlaneGeometry(1, 1);
   const trunkGeo = new THREE.CylinderGeometry(0.22, 0.34, 1, 7);
   const spots = [];
   for (const sgn of [-1, 1]) {
     for (let x = 66; x <= 250; x += 7.5) spots.push([sgn * x, RIVER.z0 - 9 + (x % 3), 0.85 + (x % 5) / 8, x * 0.37]);
     for (let x = 66; x <= 250; x += 9) spots.push([sgn * x, -FRONT - 10 - (x % 4), 0.95 + (x % 7) / 10, x * 0.53]);
   }
-  const BLOBS = 5;
-  const mF = new THREE.InstancedMesh(blob, mat.pine, spots.length * BLOBS), mT = new THREE.InstancedMesh(trunkGeo, mat.trunk, spots.length);
+  const CL = 6, PL = 3;
+  const mF = new THREE.InstancedMesh(plane, mat.foliage, spots.length * CL * PL), mT = new THREE.InstancedMesh(trunkGeo, mat.trunk, spots.length);
   const m4 = new THREE.Matrix4(), v = new THREE.Vector3(), q = new THREE.Quaternion(), sc = new THREE.Vector3(), e = new THREE.Euler();
   const col = new THREE.Color();
+  let k = 0;
   spots.forEach(([x, z, s, seed], i) => {
     const h = 7.5 * s;
     m4.compose(v.set(x, h * 0.5, z), q.identity(), sc.set(1, h, 1)); mT.setMatrixAt(i, m4);
-    for (let b = 0; b < BLOBS; b++) {
-      const t = b / (BLOBS - 1);
-      const ang = seed + b * 2.4, r = (1 - t) * 1.6 * s;
-      const y = h * (0.42 + 0.58 * t), rad = (2.6 - 1.4 * t) * s;
-      q.setFromEuler(e.set(0, seed + b, 0));
-      m4.compose(v.set(x + Math.cos(ang) * r, y, z + Math.sin(ang) * r), q, sc.set(rad, rad * 0.75, rad));
-      mF.setMatrixAt(i * BLOBS + b, m4);
-      col.setHSL(0.34 + ((i * 13 + b * 7) % 10) / 100 - 0.05, 0.42, 0.2 + t * 0.07);
-      mF.setColorAt(i * BLOBS + b, col);
+    for (let b = 0; b < CL; b++) {
+      const t = b / (CL - 1);
+      const ang = seed + b * 2.4, r = (1 - t) * 1.7 * s;
+      const y = h * (0.4 + 0.6 * t), size = (5.2 - 2.6 * t) * s;
+      const cx = x + Math.cos(ang) * r, cz = z + Math.sin(ang) * r;
+      for (let p = 0; p < PL; p++) {
+        q.setFromEuler(e.set(0, seed + (p * Math.PI) / PL, 0));
+        m4.compose(v.set(cx, y, cz), q, sc.set(size, size * 0.8, 1));
+        mF.setMatrixAt(k, m4);
+        col.setHSL(0.33 + ((i * 13 + b * 7) % 10) / 120 - 0.04, 0.35, 0.36 + t * 0.14);
+        mF.setColorAt(k, col);
+        k++;
+      }
     }
   });
   mF.instanceColor.needsUpdate = true;
   mF.castShadow = mT.castShadow = true; mF.receiveShadow = true;
+  mF.customDepthMaterial = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking, map: mat.foliage.map, alphaTest: 0.45 });
   trees.add(mF, mT);
 }
 
@@ -312,7 +323,7 @@ sky.material.uniforms.mieDirectionalG.value = 0.8;
 // Preetham 天空在 ACES 下偏白，整体压暗并略偏蓝，接近晴天照片的天色
 sky.material.fragmentShader = sky.material.fragmentShader.replace(
   'gl_FragColor = vec4( retColor, 1.0 );',
-  'retColor *= vec3( 0.42, 0.50, 0.70 ); gl_FragColor = vec4( retColor, 1.0 );',
+  'retColor *= vec3( 0.36, 0.46, 0.74 ); gl_FragColor = vec4( retColor, 1.0 );',
 );
 sky.material.needsUpdate = true;
 scene.add(sky);

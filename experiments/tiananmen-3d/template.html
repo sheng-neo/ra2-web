@@ -73,10 +73,15 @@
     .group button { padding: 9px 10px; font-size: 12px; }
     .group.time input[type="range"] { width: 120px; }
   }
+  body.hud-off .hud { opacity: 0; pointer-events: none; }
+  body.hud-off .hud > * { pointer-events: none; }
+  #hud-show { position: fixed; right: 16px; bottom: 16px; z-index: 4; appearance: none; font: 500 12px/1 var(--sans); letter-spacing: 0.1em; color: var(--paper); background: var(--hud); border: 1px solid var(--hud-line); padding: 9px 12px; cursor: pointer; display: none; }
+  body.hud-off #hud-show { display: block; }
   @media (prefers-reduced-motion: reduce) { #info, .group button, #loading { transition: none; } }
 </style>
 
 <div id="stage"></div>
+<button type="button" id="hud-show">显示界面</button>
 
 <div id="loading">
   <div>
@@ -130,6 +135,7 @@
     <button type="button" id="btn-tour" class="act" aria-pressed="false">飞行游览</button>
     <button type="button" id="btn-spin" aria-pressed="false">自动旋转</button>
     <button type="button" id="btn-quality" title="切换画质（高：级联阴影 / 环境光遮蔽 / 抗锯齿 / 实例化瓦件）">画质：高</button>
+    <button type="button" id="btn-hud" title="隐藏界面（H）">隐藏界面</button>
   </div>
 </nav>
 
