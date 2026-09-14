@@ -1,12 +1,16 @@
-// 周边环境 · 天空与昼夜 · 灯光
+// 周边环境 · 天空与昼夜 · 灯光 —— 尺寸按公开资料（米）
+//   外金水河：宽 18，长 500，北岸距城台墙基 32；外金水桥五座（御路 8.55 / 王公 5.78 / 品级 4.55 宽，长 23.15）+ 两座公生桥
+//   华表：通高 9.57，柱径 0.98，同侧一对间距 96；石狮高 3.4（含座）；国旗杆净高 30
 import * as THREE from 'three';
 import { Sky } from 'three/addons/objects/Sky.js';
 import { Reflector } from 'three/addons/objects/Reflector.js';
 import { scene, mat, std, C, box, cyl, group, describe, canvasTexture, balustrade, nightOnly, lanternMats } from './lib.js';
-import { layers, RAMPART } from './gate.js';
+import { layers, RAMPART, ARCHES } from './gate.js';
 
 export const isSmall = Math.min(innerWidth, innerHeight) < 560;
-const RIVER = { z0: 36, z1: 48, hx: 82, depth: 1.6 };
+const FRONT = RAMPART.hlBot;                                  // 城台南面墙基 z = 20
+const RIVER = { z0: FRONT + 32, z1: FRONT + 32 + 18, hx: 250, depth: 3.0 };   // 52 → 70
+export { RIVER };
 
 // ---- 地面（金水河处分块留槽） ----
 {
@@ -16,13 +20,23 @@ const RIVER = { z0: 36, z1: 48, hx: 82, depth: 1.6 };
     scene.add(g);
     return g;
   };
-  mk(900, 450 + RIVER.z0, 0, (RIVER.z0 - 450) / 2);
-  mk(900, 450 - RIVER.z1, 0, (RIVER.z1 + 450) / 2);
-  mk(450 - RIVER.hx, RIVER.z1 - RIVER.z0, (RIVER.hx + 450) / 2, (RIVER.z0 + RIVER.z1) / 2);
-  mk(450 - RIVER.hx, RIVER.z1 - RIVER.z0, -(RIVER.hx + 450) / 2, (RIVER.z0 + RIVER.z1) / 2);
+  const S = 700;
+  mk(1400, S + RIVER.z0, 0, (RIVER.z0 - S) / 2);
+  mk(1400, S - RIVER.z1, 0, (RIVER.z1 + S) / 2);
+  mk(S - RIVER.hx, RIVER.z1 - RIVER.z0, (RIVER.hx + S) / 2, (RIVER.z0 + RIVER.z1) / 2);
+  mk(S - RIVER.hx, RIVER.z1 - RIVER.z0, -(RIVER.hx + S) / 2, (RIVER.z0 + RIVER.z1) / 2);
   for (const z of [RIVER.z0, RIVER.z1]) box(RIVER.hx * 2, RIVER.depth, 0.6, mat.marbleShade, 0, -RIVER.depth / 2, z);
   for (const x of [-RIVER.hx, RIVER.hx]) box(0.6, RIVER.depth, RIVER.z1 - RIVER.z0, mat.marbleShade, x, -RIVER.depth / 2, (RIVER.z0 + RIVER.z1) / 2);
 }
+
+// ---- 金水桥：五座正对券门 + 两座公生桥 ----
+const BRIDGES = [
+  { x: 0, w: 8.55, name: '御路桥' },
+  { x: ARCHES[1].x, w: 5.78, name: '王公桥' }, { x: ARCHES[3].x, w: 5.78, name: '王公桥' },
+  { x: ARCHES[0].x, w: 4.55, name: '品级桥' }, { x: ARCHES[4].x, w: 4.55, name: '品级桥' },
+  { x: -96, w: 4.6, name: '公生桥' }, { x: 96, w: 4.6, name: '公生桥' },
+].sort((a, b) => a.x - b.x);
+const BRIDGE_L = 23.15;
 
 // ---- 金水河：镜面反射 + 水色 ----
 export let reflector = null;
@@ -44,18 +58,28 @@ export let reflector = null;
   river.add(tint);
   describe(river, {
     eyebrow: '前庭', title: '外金水河', sub: 'OUTER GOLDEN WATER RIVER',
-    text: '天安门前的外金水河自西向东穿过，河上架七座汉白玉石桥，中间五座正对五阙券门，称外金水桥。水面倒映城楼，是最经典的取景角度。',
-    dims: [['河宽', '约 12 m'], ['桥数', '七座（此处示意五座）']],
+    text: '天安门前的外金水河自西向东穿过，全长 500 m、宽 18 m，北岸距城台墙基 32 m。河上架七座汉白玉石桥，中间五座正对五阙券门。水面倒映城楼，是最经典的取景角度。',
+    dims: [['河宽', '18 m'], ['全长', '500 m'], ['距墙基', '32 m'], ['桥数', '七座']],
   });
-  balustrade(scene, RIVER.hx, 0.01, 0, { sides: 's', step: 2.2, postH: 1.2, panelH: 0.75, skipFront: 25.5 }).position.z = RIVER.z0 - 0.7;
-  balustrade(scene, RIVER.hx, 0.01, 0, { sides: 's', step: 2.2, postH: 1.2, panelH: 0.75, skipFront: 25.5 }).position.z = RIVER.z1 + 0.7;
+  // 两岸栏杆：避开桥位分段
+  const bankRail = (z) => {
+    const cuts = BRIDGES.map((b) => [b.x - b.w / 2 - 0.4, b.x + b.w / 2 + 0.4]);
+    let x = -RIVER.hx;
+    for (const [c0, c1] of [...cuts, [RIVER.hx, RIVER.hx]]) {
+      if (c0 - x > 1.5) {
+        const g = balustrade(scene, (c0 - x) / 2, 0.01, 0, { sides: 's', step: 2.2, postH: 1.2, panelH: 0.75 });
+        g.position.set((x + c0) / 2, 0, z);
+      }
+      x = c1;
+    }
+  };
+  bankRail(RIVER.z0 - 0.7);
+  bankRail(RIVER.z1 + 0.7);
 }
-
-// ---- 金水桥 ----
 {
   const bridges = group(scene);
   const mkBridge = (x, w) => {
-    const L = RIVER.z1 - RIVER.z0 + 4, half = L / 2, hump = 1.25;
+    const L = BRIDGE_L, half = L / 2, hump = 1.3;
     const prof = (t) => hump * Math.cos((t / half) * Math.PI / 2) ** 1.4;
     const s = new THREE.Shape();
     s.moveTo(-half, -RIVER.depth + 0.2);
@@ -63,8 +87,8 @@ export let reflector = null;
     const n = 24;
     for (let i = 0; i <= n; i++) { const t = -half + (i / n) * L; s.lineTo(t, prof(t)); }
     s.lineTo(half, -RIVER.depth + 0.2);
-    s.lineTo(half * 0.62, -RIVER.depth + 0.2);
-    s.absarc(0, -RIVER.depth + 0.2, half * 0.62, 0, Math.PI, true);
+    s.lineTo(half * 0.72, -RIVER.depth + 0.2);
+    s.absarc(0, -RIVER.depth + 0.2, half * 0.72, 0, Math.PI, true);
     s.lineTo(-half, -RIVER.depth + 0.2);
     const geo = new THREE.ExtrudeGeometry(s, { depth: w, bevelEnabled: false, curveSegments: 16 });
     geo.translate(0, 0, -w / 2);
@@ -74,7 +98,7 @@ export let reflector = null;
     deck.castShadow = deck.receiveShadow = true;
     bridges.add(deck);
     const postGeo = new THREE.BoxGeometry(0.3, 1.1, 0.3);
-    const count = 9;
+    const count = 11;
     for (const side of [-1, 1]) {
       const pm = new THREE.InstancedMesh(postGeo, mat.marble, count);
       const m4 = new THREE.Matrix4();
@@ -95,93 +119,93 @@ export let reflector = null;
       }
     }
   };
-  mkBridge(0, 7.4); mkBridge(-10.5, 5.8); mkBridge(10.5, 5.8); mkBridge(-21, 5.2); mkBridge(21, 5.2);
+  for (const b of BRIDGES) mkBridge(b.x, b.w);
   describe(bridges, {
     eyebrow: '前庭', title: '外金水桥', sub: 'GOLDEN WATER BRIDGES',
-    text: '五座汉白玉单孔拱桥正对五阙券门。中央御路桥最宽，桥栏望柱雕蟠龙，其余各桥依次递减，与门阙等级一一对应。',
-    dims: [['御路桥宽', '约 7 m'], ['桥长', '约 16 m']],
+    text: '正对五阙券门的五座汉白玉拱桥长均 23.15 m：中央御路桥宽 8.55 m，两侧王公桥宽 5.78 m，再外品级桥宽 4.55 m，与门阙等级一一对应；东西更远处还有两座公生桥，合计七座。',
+    dims: [['桥长', '23.15 m'], ['御路桥宽', '8.55 m'], ['王公桥 / 品级桥', '5.78 / 4.55 m']],
   });
 }
 
-// ---- 华表 ----
+// ---- 华表：同侧一对间距 96 m ----
 {
   const mkHuabiao = (x, z, parent) => {
     const g = group(parent, x, 0, z);
     cyl(1.9, 2.1, 0.9, mat.marble, 0, 0.45, 0, 8, g);
     cyl(1.5, 1.7, 0.6, mat.marbleShade, 0, 1.2, 0, 8, g);
-    cyl(0.5, 0.58, 7.2, mat.marble, 0, 1.5 + 3.6, 0, 8, g);
-    box(3.0, 0.8, 0.3, mat.marble, 0, 7.6, 0, g);
-    cyl(0.95, 0.95, 0.22, mat.marble, 0, 8.85, 0, 16, g);
+    cyl(0.49, 0.55, 6.9, mat.marble, 0, 1.5 + 3.45, 0, 8, g);
+    box(3.0, 0.8, 0.3, mat.marble, 0, 7.4, 0, g);
+    cyl(0.95, 0.95, 0.22, mat.marble, 0, 8.6, 0, 16, g);
     const hou = new THREE.Mesh(new THREE.SphereGeometry(0.42, 12, 10), mat.marble);
-    hou.position.y = 9.35; hou.scale.set(0.9, 1, 1.3); hou.castShadow = true;
+    hou.position.y = 9.1; hou.scale.set(0.9, 1, 1.3); hou.castShadow = true;
     g.add(hou);
     balustrade(g, 2.2, 2.2, 0, { postH: 0.9, panelH: 0.55, step: 1.5 });
     return g;
   };
   const hb = group(scene);
-  mkHuabiao(-17.5, RIVER.z0 - 6, hb); mkHuabiao(17.5, RIVER.z0 - 6, hb);
-  mkHuabiao(-17.5, -RAMPART.hl - 10, hb); mkHuabiao(17.5, -RAMPART.hl - 10, hb);
+  mkHuabiao(-48, FRONT + 24, hb); mkHuabiao(48, FRONT + 24, hb);
+  mkHuabiao(-48, -FRONT - 14, hb); mkHuabiao(48, -FRONT - 14, hb);
   describe(hb, {
     eyebrow: '前庭', title: '华表', sub: 'HUABIAO · ORNAMENTAL COLUMNS',
-    text: '门前门后各一对汉白玉华表，柱身盘龙、顶置云板与承露盘，盘上蹲兽名“犼”。门前的犼面向南，称“望君归”；门后的面北，称“望君出”。',
-    dims: [['通高', '9.57 m'], ['重量', '约 20 吨'], ['数量', '四座']],
+    text: '门前门后各一对汉白玉华表，建于明永乐十八年（1420）：通高 9.57 m，柱径 0.98 m，重 20 余吨，同侧一对相距 96 m。柱身盘龙、顶置云板与承露盘，盘上蹲兽名“犼”。门前的犼面向南，称“望君归”；门后的面北，称“望君出”。',
+    dims: [['通高', '9.57 m'], ['柱径', '0.98 m'], ['间距', '96 m'], ['数量', '四座']],
   });
 }
 
-// ---- 石狮 ----
+// ---- 石狮：高 3.4 m（含座） ----
 {
   const mkLion = (x, z, faceSouth, parent) => {
     const g = group(parent, x, 0, z);
-    box(2.6, 1.7, 1.9, mat.marbleShade, 0, 0.85, 0, g);
-    const body = new THREE.Mesh(new THREE.SphereGeometry(0.85, 14, 10), mat.stone);
-    body.scale.set(1, 1.05, 1.5); body.position.set(0, 2.5, 0.1); body.castShadow = true; g.add(body);
-    const chest = new THREE.Mesh(new THREE.SphereGeometry(0.72, 12, 10), mat.stone);
-    chest.position.set(0, 2.9, 0.95); chest.castShadow = true; g.add(chest);
-    const head = new THREE.Mesh(new THREE.SphereGeometry(0.62, 12, 10), mat.stone);
-    head.position.set(0, 3.85, 1.05); head.castShadow = true; g.add(head);
-    const mane = new THREE.Mesh(new THREE.TorusGeometry(0.62, 0.22, 8, 14), mat.stone);
-    mane.position.set(0, 3.7, 0.7); mane.castShadow = true; g.add(mane);
-    for (const sx of [-0.55, 0.55]) box(0.42, 1.3, 0.5, mat.stone, sx, 2.35, 1.35, g);
-    box(0.9, 0.6, 1.1, mat.stone, 0, 2.05, -0.9, g);
+    box(2.6, 1.4, 1.9, mat.marbleShade, 0, 0.7, 0, g);
+    const body = new THREE.Mesh(new THREE.SphereGeometry(0.72, 14, 10), mat.stone);
+    body.scale.set(1, 1.05, 1.5); body.position.set(0, 2.1, 0.1); body.castShadow = true; g.add(body);
+    const chest = new THREE.Mesh(new THREE.SphereGeometry(0.62, 12, 10), mat.stone);
+    chest.position.set(0, 2.45, 0.85); chest.castShadow = true; g.add(chest);
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.55, 12, 10), mat.stone);
+    head.position.set(0, 3.15, 0.95); head.castShadow = true; g.add(head);
+    const mane = new THREE.Mesh(new THREE.TorusGeometry(0.55, 0.2, 8, 14), mat.stone);
+    mane.position.set(0, 3.0, 0.62); mane.castShadow = true; g.add(mane);
+    for (const sx of [-0.5, 0.5]) box(0.38, 1.1, 0.45, mat.stone, sx, 1.95, 1.2, g);
+    box(0.8, 0.5, 1.0, mat.stone, 0, 1.7, -0.8, g);
     g.rotation.y = faceSouth ? 0 : Math.PI;
     return g;
   };
   const lions = group(scene);
-  mkLion(-9.5, RAMPART.hl + 5.5, true, lions); mkLion(9.5, RAMPART.hl + 5.5, true, lions);
-  mkLion(-9.5, -RAMPART.hl - 5.5, false, lions); mkLion(9.5, -RAMPART.hl - 5.5, false, lions);
+  mkLion(-10, FRONT + 9, true, lions); mkLion(10, FRONT + 9, true, lions);
+  mkLion(-10, -FRONT - 9, false, lions); mkLion(10, -FRONT - 9, false, lions);
   describe(lions, {
     eyebrow: '前庭', title: '石狮', sub: 'STONE LIONS',
-    text: '门前门后各一对明代汉白玉石狮，东为雄狮踏绣球，西为雌狮抚幼狮。传说东狮腹部有一处凹痕，为 1900 年前后战火所留。',
-    dims: [['年代', '明 · 永乐年间'], ['高', '约 2.5 m（不含座）']],
+    text: '门前门后各一对明代汉白玉石狮，连座高 3.4 m，是北京最高大的石狮。东为雄狮踏绣球，西为雌狮抚幼狮。传说东狮腹部有一处凹痕，为 1900 年前后战火所留。',
+    dims: [['年代', '明 · 永乐年间'], ['高', '3.4 m（含座）']],
   });
 }
 
 // ---- 长安街 ----
 {
   const road = group(scene);
-  const z0 = 56, z1 = 94;
-  box(420, 0.12, z1 - z0, mat.asphalt, 0, 0.04, (z0 + z1) / 2, road).receiveShadow = true;
-  const dash = new THREE.InstancedMesh(new THREE.BoxGeometry(4, 0.02, 0.25), new THREE.MeshBasicMaterial({ color: 0xe9e4d6 }), 5 * 52);
+  const z0 = RIVER.z1 + 6, z1 = z0 + 64;
+  box(700, 0.12, z1 - z0, mat.asphalt, 0, 0.04, (z0 + z1) / 2, road).receiveShadow = true;
+  const dash = new THREE.InstancedMesh(new THREE.BoxGeometry(4, 0.02, 0.25), new THREE.MeshBasicMaterial({ color: 0xe9e4d6 }), 5 * 86);
   const m4 = new THREE.Matrix4();
   let k = 0;
-  for (let lane = -2; lane <= 2; lane++) for (let i = 0; i < 52; i++) {
-    m4.makeTranslation(-206 + i * 8, 0.11, (z0 + z1) / 2 + lane * 6.5);
+  for (let lane = -2; lane <= 2; lane++) for (let i = 0; i < 86; i++) {
+    m4.makeTranslation(-344 + i * 8, 0.11, (z0 + z1) / 2 + lane * 6.5);
     dash.setMatrixAt(k++, m4);
   }
   road.add(dash);
-  box(420, 0.3, 1.2, mat.marbleShade, 0, 0.15, z0 - 0.6, road);
-  box(420, 0.3, 1.2, mat.marbleShade, 0, 0.15, z1 + 0.6, road);
+  box(700, 0.3, 1.2, mat.marbleShade, 0, 0.15, z0 - 0.6, road);
+  box(700, 0.3, 1.2, mat.marbleShade, 0, 0.15, z1 + 0.6, road);
   describe(road, {
     eyebrow: '前庭', title: '长安街', sub: "CHANG'AN AVENUE",
-    text: '东西横贯天安门前的长安街是北京的中轴横线，国庆阅兵的受阅方队自东向西沿此街行进，于城楼前通过。',
-    dims: [['路宽', '此段约 40 m'], ['走向', '东西向']],
+    text: '东西横贯天安门前的长安街是北京的中轴横线，红线宽 100 m；金水桥南至国旗杆之间铺成宽 80 m 的石板道。国庆阅兵的受阅方队自东向西沿此街行进，于城楼前通过。',
+    dims: [['红线宽', '100 m'], ['石板道', '80 m'], ['走向', '东西向']],
   });
 }
 
-// ---- 国旗 ----
+// ---- 国旗：杆净高 30 m，距金水桥南端约 80 m ----
 export const flag = {};
 {
-  const g = group(scene, 0, 0, 122);
+  const g = group(scene, 0, 0, RIVER.z1 + 4 + 80);
   cyl(2.2, 2.4, 0.4, mat.marble, 0, 0.2, 0, 8, g);
   cyl(0.18, 0.24, 30, std(0xd8d4cc, { metalness: 0.7, roughness: 0.3 }), 0, 15.2, 0, 10, g);
   const flagTex = canvasTexture(512, 342, (ctx, w, h) => {
@@ -199,17 +223,17 @@ export const flag = {};
     star(5 * u, 5 * u, 3 * u, 0);
     for (const [x, y] of [[10, 2], [12, 4], [12, 7], [10, 9]]) star(x * u, y * u, u, Math.atan2(x - 5, -(y - 5)) + Math.PI);
   });
-  const geo = new THREE.PlaneGeometry(6, 4, 30, 18);
+  const geo = new THREE.PlaneGeometry(5, 3.33, 30, 18);
   const cloth = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ map: flagTex, side: THREE.DoubleSide, roughness: 0.9, envMapIntensity: 0.35 }));
-  cloth.position.set(3.05, 27.8, 0);
+  cloth.position.set(2.55, 28.2, 0);
   cloth.castShadow = true;
   g.add(cloth);
   flag.mesh = cloth;
   flag.base = geo.attributes.position.array.slice();
   describe(g, {
     eyebrow: '广场', title: '国旗杆', sub: 'NATIONAL FLAGPOLE',
-    text: '国旗杆立于长安街南侧、天安门广场北端。每日随太阳升起升旗、日落降旗，国旗为 5 × 3.33 m 的一号旗。',
-    dims: [['杆高', '32.6 m'], ['旗面', '5 × 3.33 m']],
+    text: '国旗杆立于长安街南侧、天安门广场北端，净高 30 m（含地下部分 32.6 m）。每日随太阳升起升旗、日落降旗，国旗为 5 × 3.33 m 的一号旗。',
+    dims: [['杆高', '30 m（净高）'], ['旗面', '5 × 3.33 m']],
   });
 }
 
@@ -219,8 +243,8 @@ export const flag = {};
   const coneA = new THREE.ConeGeometry(2.2, 5, 7), coneB = new THREE.ConeGeometry(1.7, 4, 7), trunkGeo = new THREE.CylinderGeometry(0.25, 0.32, 2.2, 6);
   const spots = [];
   for (const sgn of [-1, 1]) {
-    for (let x = 44; x <= 168; x += 7.5) spots.push([sgn * x, RIVER.z0 - 5.5 + (x % 3), 0.8 + (x % 5) / 8]);
-    for (let x = 40; x <= 170; x += 9) spots.push([sgn * x, -RAMPART.hl - 8 - (x % 4), 0.9 + (x % 7) / 10]);
+    for (let x = 66; x <= 250; x += 7.5) spots.push([sgn * x, RIVER.z0 - 9 + (x % 3), 0.8 + (x % 5) / 8]);
+    for (let x = 66; x <= 250; x += 9) spots.push([sgn * x, -FRONT - 10 - (x % 4), 0.9 + (x % 7) / 10]);
   }
   const mA = new THREE.InstancedMesh(coneA, mat.pine, spots.length), mB = new THREE.InstancedMesh(coneB, mat.pineDark, spots.length), mT = new THREE.InstancedMesh(trunkGeo, mat.trunk, spots.length);
   const m4 = new THREE.Matrix4(), v = new THREE.Vector3(), q = new THREE.Quaternion(), sc = new THREE.Vector3();
@@ -239,12 +263,12 @@ export const flag = {};
 // ============================================================================
 export const hemi = new THREE.HemisphereLight(0xcfe3ff, 0x8a7a5a, 0.9);
 scene.add(hemi);
-export const sun = new THREE.DirectionalLight(0xfff1d6, 3.2);
+export const sun = new THREE.DirectionalLight(0xfff1d6, 3.0);
 sun.castShadow = !isSmall;
 sun.shadow.mapSize.set(isSmall ? 1024 : 2048, isSmall ? 1024 : 2048);
-sun.shadow.camera.left = -120; sun.shadow.camera.right = 120;
-sun.shadow.camera.top = 120; sun.shadow.camera.bottom = -120;
-sun.shadow.camera.near = 20; sun.shadow.camera.far = 520;
+sun.shadow.camera.left = -170; sun.shadow.camera.right = 170;
+sun.shadow.camera.top = 170; sun.shadow.camera.bottom = -170;
+sun.shadow.camera.near = 20; sun.shadow.camera.far = 620;
 sun.shadow.bias = -0.0008;
 sun.shadow.normalBias = 0.05;
 scene.add(sun, sun.target);
@@ -252,19 +276,19 @@ const moonLight = new THREE.DirectionalLight(0x9db4ff, 0);
 moonLight.position.set(-120, 200, -80);
 scene.add(moonLight);
 
-// 夜景泛光灯
-for (const [x, z, tx, i] of [[-46, 64, -12, 7000], [46, 64, 12, 7000], [0, 56, 0, 5600], [-60, -40, -10, 6000], [60, -40, 10, 6000]]) {
-  const sp = new THREE.SpotLight(0xffc98a, 0, 260, Math.PI / 6, 0.6, 2);
+// 夜景泛光灯（物理衰减）
+for (const [x, z, tx, i] of [[-70, 76, -20, 9000], [70, 76, 20, 9000], [0, 74, 0, 8000], [-80, -50, -15, 8000], [80, -50, 15, 8000]]) {
+  const sp = new THREE.SpotLight(0xffc98a, 0, 320, Math.PI / 6, 0.6, 2);
   sp.position.set(x, 4, z);
   sp.target.position.set(tx, 22, 0);
   scene.add(sp, sp.target);
   nightOnly.push({ light: sp, intensity: i });
 }
 {
-  const sp = new THREE.SpotLight(0xffe2b0, 0, 90, Math.PI / 9, 0.5, 2);
-  sp.position.set(0, 3, 44); sp.target.position.set(0, 11, RAMPART.hl);
+  const sp = new THREE.SpotLight(0xffe2b0, 0, 110, Math.PI / 9, 0.5, 2);
+  sp.position.set(0, 3, FRONT + 30); sp.target.position.set(0, 11, FRONT);
   scene.add(sp, sp.target);
-  nightOnly.push({ light: sp, intensity: 700 });
+  nightOnly.push({ light: sp, intensity: 1100 });
 }
 
 // 轮廓灯（HDR 亮度 >1，供辉光提取）
@@ -273,7 +297,7 @@ for (const [x, z, tx, i] of [[-46, 64, -12, 7000], [46, 64, 12, 7000], [0, 56, 0
   for (const ring of [layers.roof.userData.eaveRing, layers.lowerEave.userData.eaveRing]) {
     for (let i = 0; i < ring.length; i += 2) pts.push([ring[i].x, ring[i].y + 0.35, ring[i].z, ring === layers.roof.userData.eaveRing ? 'roof' : 'lowerEave']);
   }
-  const hw = RAMPART.hw, hl = RAMPART.hl, y = RAMPART.h + 0.1;
+  const hw = RAMPART.hwTop, hl = RAMPART.hlTop, y = RAMPART.top + 0.1;
   for (let x = -hw; x <= hw; x += 1.5) { pts.push([x, y, hl, 'rampart']); pts.push([x, y, -hl, 'rampart']); }
   for (let z = -hl + 1.5; z < hl; z += 1.5) { pts.push([hw, y, z, 'rampart']); pts.push([-hw, y, z, 'rampart']); }
   const byLayer = {};
@@ -312,7 +336,7 @@ const moon = new THREE.Mesh(new THREE.SphereGeometry(7, 16, 12), new THREE.MeshB
 moon.position.set(-0.45, 0.62, -0.65).normalize().multiplyScalar(620);
 scene.add(moon);
 
-scene.fog = new THREE.Fog(0xd7dfe6, 260, 620);
+scene.fog = new THREE.Fog(0xd7dfe6, 320, 760);
 
 // ---- 时刻 → 太阳、灯光、雾、夜景 ----
 export const clock = { hours: 10.5, night: 0, elevation: 0 };

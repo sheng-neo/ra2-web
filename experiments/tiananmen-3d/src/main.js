@@ -7,14 +7,15 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { scene, mat } from './lib.js';
 import { layers, explodeOffsets } from './gate.js';
-import { isSmall, flag, sky, stars, sun, clock, setTime, refreshEnvironment } from './env.js';
+import { isSmall, flag, sky, stars, sun, clock, setTime, refreshEnvironment, reflector } from './env.js';
 
 const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const $ = (id) => document.getElementById(id);
+const pixelRatio = () => Math.min(devicePixelRatio || 1, 2);
 
 // ---- 渲染器 ----
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
-renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
+renderer.setPixelRatio(pixelRatio());
 renderer.setSize(innerWidth, innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -22,70 +23,104 @@ renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 0.5;
 $('stage').appendChild(renderer.domElement);
 
-const camera = new THREE.PerspectiveCamera(42, innerWidth / innerHeight, 1, 1600);
-camera.position.set(60, 40, 220);
+const camera = new THREE.PerspectiveCamera(42, innerWidth / innerHeight, 1, 2200);
+camera.position.set(90, 50, 320);
 
 // 后期：辉光（夜景灯光）+ 输出色彩
 const composer = new EffectComposer(renderer);
 composer.addPass(new RenderPass(scene, camera));
-const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.0, 0.4, 1.6);
+const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth * pixelRatio(), innerHeight * pixelRatio()), 0.0, 0.4, 1.6);
 composer.addPass(bloom);
 composer.addPass(new OutputPass());
+composer.setSize(innerWidth, innerHeight);
+
+// ---- 视场角随窗口比例自适应 ----
+//  预设机位按 16:10 构图。更宽的窗口：锁定水平视场角（避免边缘拉伸）；更窄的窗口：保持垂直视场角、机位后退。
+const DESIGN_ASPECT = 1.6;
+let baseFov = 42;
+function fovFor(base, aspect) {
+  if (aspect >= DESIGN_ASPECT) {
+    return THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(base / 2)) * DESIGN_ASPECT / aspect));
+  }
+  return base;
+}
+function dollyFor(aspect) { return aspect < DESIGN_ASPECT ? Math.pow(DESIGN_ASPECT / aspect, 0.85) : 1; }
+function applyFov() {
+  const f = fovFor(baseFov, camera.aspect);
+  if (Math.abs(camera.fov - f) > 1e-3) { camera.fov = f; camera.updateProjectionMatrix(); }
+}
 
 // ---- 轨道控制 ----
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 controls.dampingFactor = 0.08;
 controls.minDistance = 14;
-controls.maxDistance = 460;
+controls.maxDistance = 700;
 controls.maxPolarAngle = Math.PI / 2 - 0.03;
 controls.target.set(0, 16, 0);
 controls.autoRotateSpeed = 0.6;
-controls.addEventListener('start', () => { stopTour(); cameraTween = null; });
+controls.addEventListener('start', () => {
+  stopTour(); cameraTween = null;
+  if (baseFov !== 42) fovTween = { t0: performance.now(), dur: 700, from: baseFov, to: 42 };
+});
 
 // ---- 机位预设 ----
 const VIEWS = {
-  front: { pos: [0, 22, 112], target: [0, 17, 0] },
-  square: { pos: [18, 10, 236], target: [0, 20, 0] },
-  east: { pos: [150, 34, 62], target: [0, 16, 0] },
-  eave: { pos: [16, 22, 46], target: [0, 24, 6] },
+  // 正面机位在国旗杆（z≈154）以北，旗杆不遮挡
+  front: { pos: [0, 26, 138], target: [0, 15, 0] },
+  square: { pos: [24, 12, 330], target: [0, 20, 0] },
+  east: { pos: [230, 44, 90], target: [0, 16, 0] },
+  eave: { pos: [24, 26, 52], target: [0, 24, 6] },
   // 倒影：贴着南岸水面、广角——楼有多高，倒影就有多深，只有广角才装得下
-  mirror: { pos: [-42, 1.3, 46.5], target: [-10, 1.3, 14], fov: 74 },
-  top: { pos: [0, 232, 88], target: [0, 8, 12] },
+  mirror: { pos: [-72, 1.3, 69], target: [-22, 1.3, 14], fov: 74 },
+  top: { pos: [0, 330, 110], target: [0, 8, 14] },
 };
-let cameraTween = null;
+let cameraTween = null, fovTween = null;
 const ease = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
-function setFov(f) { if (camera.fov !== f) { camera.fov = f; camera.updateProjectionMatrix(); } }
 function flyTo(view, dur = reduceMotion ? 0 : 1.6) {
   stopTour();
-  const toPos = new THREE.Vector3(...view.pos), toT = new THREE.Vector3(...view.target), toFov = view.fov || 42;
-  if (dur <= 0) { camera.position.copy(toPos); controls.target.copy(toT); setFov(toFov); return; }
-  cameraTween = { t0: performance.now(), dur: dur * 1000, fromPos: camera.position.clone(), fromT: controls.target.clone(), fromFov: camera.fov, toPos, toT, toFov };
+  const toT = new THREE.Vector3(...view.target);
+  const toPos = new THREE.Vector3(...view.pos).sub(toT).multiplyScalar(dollyFor(camera.aspect)).add(toT);
+  const toFov = view.fov || 42;
+  if (dur <= 0) { camera.position.copy(toPos); controls.target.copy(toT); baseFov = toFov; applyFov(); return; }
+  cameraTween = { t0: performance.now(), dur: dur * 1000, fromPos: camera.position.clone(), fromT: controls.target.clone(), toPos, toT };
+  fovTween = { t0: performance.now(), dur: dur * 1000, from: baseFov, to: toFov };
 }
 function updateCameraTween(now) {
-  if (!cameraTween) return;
-  const k = Math.min(1, (now - cameraTween.t0) / cameraTween.dur), e = ease(k);
-  camera.position.copy(cameraTween.fromPos).lerp(cameraTween.toPos, e);
-  controls.target.copy(cameraTween.fromT).lerp(cameraTween.toT, e);
-  setFov(THREE.MathUtils.lerp(cameraTween.fromFov, cameraTween.toFov, e));
-  if (k >= 1) cameraTween = null;
+  if (cameraTween) {
+    const k = Math.min(1, (now - cameraTween.t0) / cameraTween.dur), e = ease(k);
+    camera.position.copy(cameraTween.fromPos).lerp(cameraTween.toPos, e);
+    controls.target.copy(cameraTween.fromT).lerp(cameraTween.toT, e);
+    if (k >= 1) cameraTween = null;
+  }
+  if (fovTween) {
+    const k = Math.min(1, (now - fovTween.t0) / fovTween.dur);
+    baseFov = THREE.MathUtils.lerp(fovTween.from, fovTween.to, ease(k));
+    if (k >= 1) fovTween = null;
+  }
+  applyFov();
 }
 
 // ---- 飞行游览 ----
+const S = 1.55;
 const tourPath = new THREE.CatmullRomCurve3([
-  new THREE.Vector3(0, 20, 190), new THREE.Vector3(120, 26, 130), new THREE.Vector3(160, 40, 10),
-  new THREE.Vector3(90, 60, -110), new THREE.Vector3(-60, 48, -120), new THREE.Vector3(-150, 30, -20),
-  new THREE.Vector3(-110, 22, 90), new THREE.Vector3(-30, 30, 60), new THREE.Vector3(30, 26, 44),
-  new THREE.Vector3(70, 18, 110),
-], true, 'catmullrom', 0.6);
+  new THREE.Vector3(0, 22, 190), new THREE.Vector3(120, 28, 130), new THREE.Vector3(160, 42, 10),
+  new THREE.Vector3(90, 62, -110), new THREE.Vector3(-60, 50, -120), new THREE.Vector3(-150, 32, -20),
+  new THREE.Vector3(-110, 24, 90), new THREE.Vector3(-30, 30, 60), new THREE.Vector3(30, 26, 44),
+  new THREE.Vector3(70, 20, 110),
+].map((v) => v.multiply(new THREE.Vector3(S, 1.15, S))), true, 'catmullrom', 0.6);
 const tourLook = new THREE.CatmullRomCurve3([
   new THREE.Vector3(0, 18, 0), new THREE.Vector3(0, 20, 0), new THREE.Vector3(0, 22, 0), new THREE.Vector3(0, 26, 0),
   new THREE.Vector3(0, 24, 0), new THREE.Vector3(0, 18, 0), new THREE.Vector3(0, 16, 10), new THREE.Vector3(0, 24, 8),
   new THREE.Vector3(0, 26, 4), new THREE.Vector3(0, 18, 0),
 ], true, 'catmullrom', 0.6);
 let tour = null;
-const TOUR_SECONDS = 52;
-function startTour() { tour = { t0: performance.now() }; $('btn-tour').setAttribute('aria-pressed', 'true'); }
+const TOUR_SECONDS = 56;
+function startTour() {
+  tour = { t0: performance.now() };
+  if (baseFov !== 42) fovTween = { t0: performance.now(), dur: 700, from: baseFov, to: 42 };
+  $('btn-tour').setAttribute('aria-pressed', 'true');
+}
 function stopTour() { if (!tour) return; tour = null; $('btn-tour').setAttribute('aria-pressed', 'false'); }
 function updateTour(now) {
   if (!tour) return;
@@ -120,8 +155,7 @@ function phaseName(h) {
 function applyTime(h, fromSlider = false) {
   setTime(h);
   envDirty = true;
-  const label = `${phaseName(h)} ${fmtTime(h)}`;
-  timeLabel.textContent = label;
+  timeLabel.textContent = `${phaseName(h)} ${fmtTime(h)}`;
   clockMode.textContent = phaseName(h);
   clockTime.textContent = fmtTime(h);
   if (!fromSlider) timeInput.value = String(Math.round(h * 12));
@@ -132,7 +166,7 @@ function stopTimelapse() { if (!timelapse) return; timelapse = null; $('btn-laps
 function updateTimelapse(now) {
   if (!timelapse) return;
   const dt = (now - timelapse.last) / 1000; timelapse.last = now;
-  let h = clock.hours + dt * (24 / 48);          // 48 秒走完一天
+  let h = clock.hours + dt * (24 / 48);
   if (h >= 24) h -= 24;
   applyTime(h);
 }
@@ -159,7 +193,8 @@ function highlight(root) {
   });
 }
 function pick(cx, cy) {
-  raycaster.setFromCamera(new THREE.Vector2((cx / innerWidth) * 2 - 1, -(cy / innerHeight) * 2 + 1), camera);
+  const r = renderer.domElement.getBoundingClientRect();
+  raycaster.setFromCamera(new THREE.Vector2(((cx - r.left) / r.width) * 2 - 1, -((cy - r.top) / r.height) * 2 + 1), camera);
   const hits = raycaster.intersectObjects(scene.children, true).filter((h) => h.object !== sky && h.object !== stars);
   let node = hits[0] ? hits[0].object : null;
   while (node && !node.userData.info) node = node.parent;
@@ -208,20 +243,35 @@ addEventListener('keydown', (e) => {
   else if (e.key === 'r' || e.key === 'R') $('btn-spin').click();
   else if (e.key === 'Escape') closeInfo();
 });
-addEventListener('resize', () => {
-  camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
+function resizeReflector() {
+  const pr = pixelRatio();
+  const w = Math.max(256, Math.round(innerWidth * pr * 0.5)), h = Math.max(256, Math.round(innerHeight * pr * 0.5));
+  reflector.getRenderTarget().setSize(w, h);
+}
+function onResize() {
+  const pr = pixelRatio();
+  camera.aspect = innerWidth / innerHeight;
+  applyFov();
+  camera.updateProjectionMatrix();
+  renderer.setPixelRatio(pr);
+  composer.setPixelRatio(pr);
   renderer.setSize(innerWidth, innerHeight);
   composer.setSize(innerWidth, innerHeight);
-});
+  resizeReflector();
+  matchMedia(`(resolution: ${devicePixelRatio}dppx)`).addEventListener('change', onResize, { once: true });
+}
+addEventListener('resize', onResize);
+resizeReflector();
+matchMedia(`(resolution: ${devicePixelRatio}dppx)`).addEventListener('change', onResize, { once: true });
 
 // ---- 国旗布料 ----
 function updateFlag(t) {
   const pos = flag.mesh.geometry.attributes.position, base = flag.base;
   for (let i = 0; i < pos.count; i++) {
     const x = base[i * 3], y = base[i * 3 + 1];
-    const k = (x + 3) / 6;
-    const z = Math.sin(x * 1.5 - t * 3.4 + y * 0.5) * 0.42 * k + Math.sin(x * 3.2 - t * 5.1 + y * 1.2) * 0.14 * k;
-    pos.setXYZ(i, x, y - 0.12 * k * k, z);
+    const k = (x + 2.5) / 5;
+    const z = Math.sin(x * 1.6 - t * 3.4 + y * 0.5) * 0.36 * k + Math.sin(x * 3.4 - t * 5.1 + y * 1.2) * 0.12 * k;
+    pos.setXYZ(i, x, y - 0.1 * k * k, z);
   }
   pos.needsUpdate = true;
   flag.mesh.geometry.computeVertexNormals();
@@ -249,4 +299,12 @@ function frame(now) {
   }
 }
 applyTime(clock.hours);
+applyFov();
 requestAnimationFrame(frame);
+
+// 调试钩子（测量与自动化截图用）
+window.__tam = {
+  camera, controls, scene, renderer, VIEWS, flyTo,
+  setBaseFov: (f) => { baseFov = f; fovTween = null; applyFov(); },
+  setTime: applyTime,
+};

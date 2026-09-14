@@ -1,105 +1,140 @@
-// 城台 · 两翼 · 城楼
+// 城台 · 两翼 · 城楼 —— 尺寸按公开资料（米）
+//   城台：下端 120 × 40，上端 116 × 38.76；须弥座 1.59，朱红墩台 13 → 城台顶 14.59
+//   券门：中门 8.82 × 5.25，次间 7.6 × 4.43，梢间 6.2 × 3.83
+//   城楼：面阔九间 57.14，进深五间 20.97；台基（含回廊）66 × 37；城台顶至正脊 ≈ 20.1；通高 34.7
+//   画像 6 × 4.6（框 6.4 × 5），标语 30 × 2.2
 import * as THREE from 'three';
 import {
   scene, mat, std, box, cyl, group, describe, canvasTexture, textBoardTexture,
-  latticeTex, caihuaTex, roofLoft, ridgeTube, balustrade, nightOnly, lanternMats,
+  latticeTex, caihuaTex, roofLoft, ridgeTube, balustrade, nightOnly, lanternMats, quality,
 } from './lib.js';
+import { roofTiles } from './tiles.js';
+
+/** 高画质：屋面底图改为板瓦，叠加实例化筒瓦。 */
+function tileRoof(roofMesh, parent) {
+  if (quality !== 'high') return;
+  roofMesh.material = roofMesh.material.map((m, i) => (i === 0 ? mat.glazePan : m));
+  const t = roofTiles(roofMesh);
+  t.position.copy(roofMesh.position);
+  parent.add(t);
+}
 
 export const layers = { rampart: group(), base: group(), lowerEave: group(), upper: group(), roof: group() };
 export const explodeOffsets = { rampart: 0, base: 7, lowerEave: 14, upper: 21, roof: 30 };
 
-export const RAMPART = { hw: 34, hl: 19, h: 13.6, baseH: 1.6 };
-const ARCHES = [
-  { x: 0, w: 5.4, h: 8.6 },
-  { x: -10.5, w: 4.6, h: 7.3 }, { x: 10.5, w: 4.6, h: 7.3 },
-  { x: -21, w: 4.2, h: 6.5 }, { x: 21, w: 4.2, h: 6.5 },
+export const RAMPART = {
+  hwBot: 60, hwTop: 58, hlBot: 20, hlTop: 19.38,
+  baseH: 1.59, redH: 13.0,
+};
+RAMPART.top = RAMPART.baseH + RAMPART.redH;   // 14.59
+export const TOTAL_HEIGHT = 34.7;
+
+export const ARCHES = [
+  { x: 0, w: 5.25, h: 8.82 },
+  { x: -18.5, w: 4.43, h: 7.6 }, { x: 18.5, w: 4.43, h: 7.6 },
+  { x: -37, w: 3.83, h: 6.2 }, { x: 37, w: 3.83, h: 6.2 },
 ].sort((a, b) => a.x - b.x);
 
-// ---- 城台 ----
+// ---- 城台：带五个券门缺口的梯形轮廓，沿南北向拉伸，再按收分收窄南北 ----
 {
+  const R = RAMPART;
   const s = new THREE.Shape();
-  s.moveTo(-RAMPART.hw, 0);
+  s.moveTo(-R.hwBot, 0);
   for (const a of ARCHES) {
     const l = a.x - a.w / 2, r = a.x + a.w / 2, cy = a.h - a.w / 2;
     s.lineTo(l, 0); s.lineTo(l, cy);
     s.absarc(a.x, cy, a.w / 2, Math.PI, 0, true);
     s.lineTo(r, 0);
   }
-  s.lineTo(RAMPART.hw, 0); s.lineTo(RAMPART.hw, RAMPART.h); s.lineTo(-RAMPART.hw, RAMPART.h);
+  s.lineTo(R.hwBot, 0); s.lineTo(R.hwTop, R.top); s.lineTo(-R.hwTop, R.top);
   s.closePath();
-  const geo = new THREE.ExtrudeGeometry(s, { depth: RAMPART.hl * 2, bevelEnabled: false, curveSegments: 18 });
-  geo.translate(0, 0, -RAMPART.hl);
-  const uv = geo.attributes.uv, p = geo.attributes.position;
-  for (let i = 0; i < uv.count; i++) uv.setXY(i, (p.getX(i) + p.getZ(i)) / 9, p.getY(i) / 9);
+  const geo = new THREE.ExtrudeGeometry(s, { depth: R.hlBot * 2, bevelEnabled: false, curveSegments: 20 });
+  geo.translate(0, 0, -R.hlBot);
+  const p = geo.attributes.position, uv = geo.attributes.uv;
+  for (let i = 0; i < p.count; i++) {
+    const y = p.getY(i);
+    p.setZ(i, p.getZ(i) * (1 - (1 - R.hlTop / R.hlBot) * (y / R.top)));   // 南北收分
+    uv.setXY(i, (p.getX(i) + p.getZ(i)) / 9, y / 9);
+  }
+  geo.computeVertexNormals();
   const rampart = new THREE.Mesh(geo, mat.brick);
   rampart.castShadow = rampart.receiveShadow = true;
   layers.rampart.add(rampart);
   describe(rampart, {
     eyebrow: '城台', title: '城台与五阙券门', sub: 'RAMPART · FIVE ARCHED GATEWAYS',
-    text: '朱红城台是天安门的基座，下承汉白玉须弥座。五个券门贯通南北，中门最高大，明清时唯皇帝可行；两侧依次为宗室、文武官员所用。',
-    dims: [['城台高度', '约 13 m'], ['中门', '高 8.8 m · 宽 5.3 m'], ['券门数', '五阙']],
+    text: '朱红城台是天安门的基座：下端东西长 120 m、南北宽 40 m，上端收至 116 × 38.76 m，连须弥座高 14.6 m。五个券门贯通南北、各长 40 m，中门最高大，明清时唯皇帝可行；两侧依次为宗室、文武官员所用。',
+    dims: [['城台', '120 × 40 m（底）'], ['高', '14.6 m（含须弥座 1.59）'], ['中门', '高 8.82 · 宽 5.25 m'], ['次间 / 梢间', '7.6 × 4.43 · 6.2 × 3.83 m']],
   });
 
-  const bh = RAMPART.baseH, bump = 0.7;
+  // 须弥座：前后分段（避开券门）+ 两侧
+  const bh = R.baseH, bump = 0.6;
   const segsX = [];
-  let cursor = -RAMPART.hw - bump;
+  let cursor = -R.hwBot - bump;
   for (const a of ARCHES) { segsX.push([cursor, a.x - a.w / 2]); cursor = a.x + a.w / 2; }
-  segsX.push([cursor, RAMPART.hw + bump]);
+  segsX.push([cursor, R.hwBot + bump]);
   for (const [x0, x1] of segsX) {
-    for (const zc of [RAMPART.hl + bump / 2, -RAMPART.hl - bump / 2]) {
+    for (const zc of [R.hlBot + bump / 2, -R.hlBot - bump / 2]) {
       box(x1 - x0, bh, bump + 0.4, mat.marble, (x0 + x1) / 2, bh / 2, zc > 0 ? zc - 0.2 : zc + 0.2, layers.rampart);
     }
   }
-  for (const xc of [RAMPART.hw + bump / 2, -RAMPART.hw - bump / 2]) {
-    box(bump + 0.4, bh, RAMPART.hl * 2 + bump * 2, mat.marble, xc > 0 ? xc - 0.2 : xc + 0.2, bh / 2, 0, layers.rampart);
+  for (const xc of [R.hwBot + bump / 2, -R.hwBot - bump / 2]) {
+    box(bump + 0.4, bh, R.hlBot * 2 + bump * 2, mat.marble, xc > 0 ? xc - 0.2 : xc + 0.2, bh / 2, 0, layers.rampart);
   }
-  const bal = balustrade(layers.rampart, RAMPART.hw - 0.5, RAMPART.hl - 0.5, RAMPART.h);
-  describe(bal, {
-    eyebrow: '城台', title: '汉白玉栏杆', sub: 'MARBLE BALUSTRADE',
-    text: '城台四周环以汉白玉望柱与栏板。望柱头雕云龙纹，栏板间以地栿相连，是明清官式建筑的等级标识。',
-    dims: [['望柱高', '约 1.4 m'], ['间距', '约 2.2 m']],
-  });
+
+  // 城台顶：台基以外的边缘为琉璃瓦封顶的矮墙
+  const parapet = group(layers.rampart, 0, R.top, 0);
+  const wall = (len, x, z, alongX) => {
+    box(alongX ? len : 0.6, 1.0, alongX ? 0.6 : len, mat.vermilion, x, 0.5, z, parapet);
+    box(alongX ? len + 0.2 : 0.9, 0.18, alongX ? 0.9 : len + 0.2, mat.glazePlain, x, 1.05, z, parapet);
+  };
+  const px0 = 33.6, px1 = R.hwTop - 0.3;
+  for (const sgn of [-1, 1]) {
+    wall(px1 - px0, sgn * (px0 + px1) / 2, R.hlTop - 0.3, true);
+    wall(px1 - px0, sgn * (px0 + px1) / 2, -R.hlTop + 0.3, true);
+    wall(R.hlTop * 2 - 0.6, sgn * px1, 0, false);
+  }
 
   // 画像（中性色板示意）
-  const portrait = group(layers.rampart, 0, 11.1, RAMPART.hl + 0.18);
-  box(6.2, 4.8, 0.34, mat.gold, 0, 0, 0, portrait);
-  const portraitTex = canvasTexture(256, 200, (g, w, h) => {
+  const portrait = group(layers.rampart, 0, 11.55, R.hlBot + 0.18);
+  box(6.4, 5.0 + 1.4, 0.34, mat.gold, 0, 0, 0, portrait).scale.set(0.78, 1, 1);
+  const portraitTex = canvasTexture(256, 320, (g, w, h) => {
     const grad = g.createLinearGradient(0, 0, 0, h);
     grad.addColorStop(0, '#b9c6d3'); grad.addColorStop(0.55, '#8fa0b2'); grad.addColorStop(1, '#4f5a66');
     g.fillStyle = grad; g.fillRect(0, 0, w, h);
     g.fillStyle = 'rgba(255,255,255,0.18)'; g.beginPath(); g.ellipse(w / 2, h * 0.42, w * 0.22, h * 0.3, 0, 0, 7); g.fill();
   });
-  const portraitPanel = new THREE.Mesh(new THREE.PlaneGeometry(5.6, 4.3), std(0xffffff, { map: portraitTex, roughness: 0.7 }));
+  const portraitPanel = new THREE.Mesh(new THREE.PlaneGeometry(4.4, 5.8), std(0xffffff, { map: portraitTex, roughness: 0.7 }));
   portraitPanel.position.z = 0.19;
   portrait.add(portraitPanel);
   describe(portrait, {
     eyebrow: '城台', title: '画像', sub: 'PORTRAIT',
-    text: '中门上方悬挂的巨幅画像高约 6 m、宽约 4.6 m，重逾 1.5 吨，每年国庆前更换一次。此处以中性色板示意位置与尺度。',
-    dims: [['尺寸', '6.0 × 4.6 m'], ['位置', '中门正上方']],
+    text: '中门上方悬挂的巨幅画像高 6 m、宽 4.6 m（外框 6.4 × 5 m），连框重约 1.5 吨，每年国庆前更换一次。此处以中性色板示意位置与尺度。',
+    dims: [['画幅', '6.0 × 4.6 m'], ['外框', '6.4 × 5.0 m'], ['位置', '中门正上方']],
   });
 
+  // 标语：各长 30 m、高 2.2 m
   const slogans = [
-    { x: -14.2, text: '中华人民共和国万岁', name: '西侧标语' },
-    { x: 14.2, text: '世界人民大团结万岁', name: '东侧标语' },
+    { x: -20.5, text: '中华人民共和国万岁', name: '西侧标语' },
+    { x: 20.5, text: '世界人民大团结万岁', name: '东侧标语' },
   ];
   const sloganMeshes = [];
   for (const s2 of slogans) {
-    const m = new THREE.Mesh(new THREE.PlaneGeometry(20.5, 1.9), std(0xffffff, { map: textBoardTexture(s2.text, 1024, 96), roughness: 0.8 }));
-    m.position.set(s2.x, 11.6, RAMPART.hl + 0.06);
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(30, 2.2), std(0xffffff, { map: textBoardTexture(s2.text, 1536, 112), roughness: 0.8 }));
+    m.position.set(s2.x, 12.3, R.hlBot + 0.06);
     m.userData.retext = s2.text;
     layers.rampart.add(m);
     sloganMeshes.push(m);
     describe(m, {
       eyebrow: '城台', title: s2.name, sub: s2.text,
-      text: '两条标语分列画像两侧。西侧“中华人民共和国万岁”，东侧“世界人民大团结万岁”，均为白字朱底，1950 年代定型沿用至今。',
-      dims: [['字数', `${s2.text.length} 字`], ['长度', '约 20 m']],
+      text: '两条标语分列画像两侧，各长 30 m、高 2.2 m，每字约两米见方。西侧“中华人民共和国万岁”，东侧“世界人民大团结万岁”，均为白字朱底，1950 年代定型沿用至今。',
+      dims: [['字数', `${s2.text.length} 字`], ['尺寸', '30 × 2.2 m'], ['字高', '约 2 m']],
     });
   }
   if (document.fonts && document.fonts.ready) {
     document.fonts.ready.then(() => {
       for (const m of sloganMeshes) {
         const old = m.material.map;
-        m.material.map = textBoardTexture(m.userData.retext, 1024, 96);
+        m.material.map = textBoardTexture(m.userData.retext, 1536, 112);
         m.material.needsUpdate = true;
         old.dispose();
       }
@@ -107,43 +142,50 @@ const ARCHES = [
   }
 }
 
-// ---- 两翼城墙 · 观礼台 ----
+// ---- 两翼皇城红墙 · 观礼台 ----
 {
+  const R = RAMPART;
   const wing = group(scene);
   for (const sgn of [-1, 1]) {
-    const x0 = RAMPART.hw, x1 = 172;
+    const x0 = R.hwBot, x1 = 320;
     const len = x1 - x0, xc = sgn * (x0 + len / 2);
-    box(len, 7.6, 2.0, mat.brick, xc, 3.8, RAMPART.hl - 1.0, wing);
-    box(len + 0.4, 1.2, 2.8, mat.marble, xc, 0.6, RAMPART.hl - 1.0, wing);
-    const cap = cyl(1.25, 1.25, len, mat.glazePlain, xc, 7.35, RAMPART.hl - 1.0, 4, wing);
+    box(len, 7.6, 2.0, mat.brick, xc, 3.8, R.hlBot - 1.0, wing);
+    box(len + 0.4, 1.2, 2.8, mat.marble, xc, 0.6, R.hlBot - 1.0, wing);
+    const cap = cyl(1.25, 1.25, len, mat.glazePlain, xc, 7.35, R.hlBot - 1.0, 4, wing);
     cap.rotation.set(0, 0, Math.PI / 2); cap.rotateY(Math.PI / 4);
-    const stand = group(wing);
-    const sx0 = 40, sx1 = 150, slen = sx1 - sx0, sxc = sgn * (sx0 + slen / 2);
-    for (let i = 0; i < 5; i++) {
-      const h = (5 - i) * 1.05;
-      box(slen, h, 2.7, i % 2 ? mat.vermilionDeep : mat.vermilion, sxc, h / 2, RAMPART.hl + 2.7 * i + 1.35, stand);
+    // 大观礼台 95 × 12，小观礼台 73 × 12，均北高南低
+    for (const [sx0, slen, name] of [[62, 95, '大观礼台'], [170, 73, '小观礼台']]) {
+      const stand = group(wing);
+      const sxc = sgn * (sx0 + slen / 2);
+      for (let i = 0; i < 5; i++) {
+        const h = (5 - i) * 1.05;
+        box(slen, h, 2.4, i % 2 ? mat.vermilionDeep : mat.vermilion, sxc, h / 2, R.hlBot + 2.4 * i + 1.2, stand);
+      }
+      balustrade(stand, slen / 2, 1.0, 5 * 1.05, { postH: 1.0, panelH: 0.7, step: 2.6, sides: 's' }).position.set(sxc, 0, R.hlBot + 1.2);
+      describe(stand, {
+        eyebrow: '两翼', title: name, sub: 'REVIEWING STANDS',
+        text: '1954 年建成的东西观礼台紧贴皇城红墙：紧邻城楼的两座大观礼台各长 95 m、宽 12 m，外侧两座小观礼台各长 73 m，北高南低，共可容纳约两万一千人观礼。',
+        dims: [['长度', `${slen} m`], ['进深', '12 m'], ['容量', '合计约 21000 人']],
+      });
     }
-    balustrade(stand, slen / 2, 1.2, 5 * 1.05, { postH: 1.0, panelH: 0.7, step: 2.6, sides: 's' }).position.set(sxc, 0, RAMPART.hl + 1.35);
-    describe(stand, {
-      eyebrow: '两翼', title: '观礼台', sub: 'REVIEWING STANDS',
-      text: '1954 年建成的东西观礼台紧贴皇城红墙，各分五级台阶，国庆阅兵与群众游行时可容纳约两万人观礼。',
-      dims: [['长度', '各约 110 m'], ['台阶', '五级']],
-    });
   }
   describe(wing, {
     eyebrow: '两翼', title: '皇城红墙', sub: 'IMPERIAL CITY WALL',
-    text: '天安门两侧向东西延伸的红墙是明清皇城南墙的一段，顶覆黄琉璃瓦，下承汉白玉须弥座，把城楼与长安街隔开。',
-    dims: [['墙高', '约 7.6 m'], ['瓦顶', '黄琉璃']],
+    text: '天安门两侧向东西延伸的红墙是明清皇城南墙的一段，高约 7.5 m，顶覆黄琉璃瓦，下承汉白玉须弥座，把城楼与长安街隔开。',
+    dims: [['墙高', '约 7.5 m'], ['瓦顶', '黄琉璃']],
   });
 }
 
 // ---- 城楼 ----
+//  面阔九间：明间 7.2，其余 6.2425 → 57.14；进深五间 4.194 → 20.97
 const T = {
-  y0: RAMPART.h, baseH: 1.4, colH: 7.0,
-  xs: [-25.1, -19.6, -14.1, -8.6, -3.1, 3.1, 8.6, 14.1, 19.6, 25.1],
-  zs: [-11, -6.6, -2.2, 2.2, 6.6, 11],
+  y0: RAMPART.top,               // 14.59
+  baseH: 1.0,                    // 台基
+  colH: 6.0,                     // 下层檐柱
+  xs: [-28.57, -22.33, -16.09, -9.84, -3.6, 3.6, 9.84, 16.09, 22.33, 28.57],
+  zs: [-10.485, -6.291, -2.097, 2.097, 6.291, 10.485],
 };
-const floorY = T.y0 + T.baseH;
+const floorY = T.y0 + T.baseH;   // 15.59
 
 function latticeWall(w, h, x, y, z, rotY, parent) {
   const tex = latticeTex.clone();
@@ -216,54 +258,56 @@ function addRidges(roofMesh, parent, beasts = 5) {
 }
 
 {
-  const base = box(56, T.baseH, 28, mat.marble, 0, T.y0 + T.baseH / 2, 0, layers.base);
+  // 台基 66 × 37（含前后回廊），四周栏杆
+  const base = box(66, T.baseH, 37, mat.marble, 0, T.y0 + T.baseH / 2, 0, layers.base);
   describe(base, {
-    eyebrow: '城楼', title: '汉白玉台基', sub: 'MARBLE PLATFORM',
-    text: '城楼坐落在城台之上的汉白玉台基上，台基四周设栏杆。国庆典礼上，领导人即于台基南缘的城楼廊下检阅。',
-    dims: [['台基', '56 × 28 m'], ['高', '1.4 m']],
+    eyebrow: '城楼', title: '汉白玉台基与回廊', sub: 'MARBLE PLATFORM · 66 × 37 m',
+    text: '城楼坐落在城台顶的汉白玉台基上，台基连同前后回廊长 66 m、宽 37 m，几乎占满城台顶面，四周设汉白玉栏杆。国庆典礼上，领导人即于南侧回廊的栏杆后检阅。',
+    dims: [['台基', '66 × 37 m'], ['前廊进深', '约 8 m']],
   });
-  balustrade(layers.base, 27.6, 13.6, floorY, { postH: 1.1, panelH: 0.7, step: 2.0 });
+  balustrade(layers.base, 32.7, 18.3, floorY, { postH: 1.1, panelH: 0.7, step: 2.0 });
 
+  // 下层外檐柱：面阔九间 × 进深五间的外圈
   const cols = group(layers.base);
-  const colGeo = new THREE.CylinderGeometry(0.55, 0.58, T.colH, 14);
-  const plinthGeo = new THREE.CylinderGeometry(0.78, 0.82, 0.32, 14);
+  const colGeo = new THREE.CylinderGeometry(0.44, 0.46, T.colH, 14);
+  const plinthGeo = new THREE.CylinderGeometry(0.66, 0.7, 0.3, 14);
   const pts = [];
-  for (const x of T.xs) for (const z of T.zs) if (Math.abs(x) === 25.1 || Math.abs(z) === 11) pts.push([x, z]);
+  for (const x of T.xs) for (const z of T.zs) if (Math.abs(x) === 28.57 || Math.abs(z) === 10.485) pts.push([x, z]);
   const colMesh = new THREE.InstancedMesh(colGeo, mat.vermilion, pts.length);
   const plinthMesh = new THREE.InstancedMesh(plinthGeo, mat.marbleShade, pts.length);
   const m4 = new THREE.Matrix4();
   pts.forEach(([x, z], i) => {
     m4.makeTranslation(x, floorY + T.colH / 2, z); colMesh.setMatrixAt(i, m4);
-    m4.makeTranslation(x, floorY + 0.16, z); plinthMesh.setMatrixAt(i, m4);
+    m4.makeTranslation(x, floorY + 0.15, z); plinthMesh.setMatrixAt(i, m4);
   });
   colMesh.castShadow = colMesh.receiveShadow = true;
   cols.add(colMesh, plinthMesh);
   describe(cols, {
     eyebrow: '城楼', title: '朱红檐柱', sub: 'VERMILION COLUMNS · 9 × 5 BAYS',
-    text: '城楼面阔九间、进深五间，取“九五之尊”之意。外檐一周立朱红圆柱，形成环绕殿身的外廊，全楼共 60 根柱。',
-    dims: [['开间', '面阔九间 · 进深五间'], ['柱高', '约 7 m'], ['柱径', '约 1.1 m']],
+    text: '城楼面阔九间（57.14 m）、进深五间（20.97 m），取“九五之尊”之意。外檐一周立朱红圆柱，形成环绕殿身的外廊；全楼共 60 根木柱，柱径约 0.92 m，1970 年重建时每根用材长 12 m。',
+    dims: [['开间', '面阔九间 · 进深五间'], ['通面阔', '57.14 m'], ['通进深', '20.97 m'], ['柱数', '60 根']],
   });
 
-  const lowerHall = hall(19.6, 6.6, floorY, T.colH, layers.base);
+  const lowerHall = hall(22.33, 6.291, floorY, T.colH, layers.base);
   describe(lowerHall, {
     eyebrow: '城楼', title: '菱花隔扇', sub: 'LATTICE DOORS',
     text: '殿身四面装菱花隔扇门，上部棂格透光，下部裙板雕饰。朱红与金线的配色是紫禁城外朝建筑的通例。',
-    dims: [['隔扇高', '约 7 m'], ['殿身', '39 × 13 m']],
+    dims: [['隔扇高', '约 6 m'], ['殿身', '45 × 13 m']],
   });
 
   const lanternGroup = group(layers.base);
-  for (const x of [-22.35, -16.85, -11.35, -5.85, 5.85, 11.35, 16.85, 22.35]) {
-    const g = group(lanternGroup, x, floorY + T.colH - 0.1, 12.4);
+  for (const x of [-25.45, -19.21, -12.96, -6.72, 6.72, 12.96, 19.21, 25.45]) {
+    const g = group(lanternGroup, x, floorY + T.colH - 0.1, 10.485 + 1.4);
     const body = new THREE.Mesh(new THREE.SphereGeometry(1.0, 20, 14), mat.lantern.clone());
-    body.scale.set(1, 0.82, 1); body.position.y = -1.9; body.castShadow = true;
+    body.scale.set(1, 0.82, 1); body.position.y = -1.7; body.castShadow = true;
     g.add(body);
     lanternMats.push(body.material);
-    cyl(0.5, 0.5, 0.22, mat.gold, 0, -1.02, 0, 12, g);
-    cyl(0.5, 0.5, 0.22, mat.gold, 0, -2.78, 0, 12, g);
-    cyl(0.04, 0.04, 0.9, mat.gold, 0, -0.45, 0, 6, g);
-    cyl(0.1, 0.14, 1.3, mat.lantern, 0, -3.55, 0, 8, g);
+    cyl(0.5, 0.5, 0.22, mat.gold, 0, -0.82, 0, 12, g);
+    cyl(0.5, 0.5, 0.22, mat.gold, 0, -2.58, 0, 12, g);
+    cyl(0.04, 0.04, 0.7, mat.gold, 0, -0.35, 0, 6, g);
+    cyl(0.1, 0.14, 1.2, mat.lantern, 0, -3.3, 0, 8, g);
     const light = new THREE.PointLight(0xff7a3a, 0, 14, 2);
-    light.position.y = -1.9;
+    light.position.y = -1.7;
     g.add(light);
     nightOnly.push({ light, intensity: 3 });
   }
@@ -273,64 +317,70 @@ function addRidges(roofMesh, parent, beasts = 5) {
     dims: [['数量', '8 盏'], ['直径', '约 2 m']],
   });
 
-  lintelRing(25.4, 11.3, floorY + T.colH - 0.8, 0.8, layers.base);
-  const bk1 = bracketRing(26.7, 12.6, floorY + T.colH, 1.1, layers.lowerEave);
+  lintelRing(28.9, 10.8, floorY + T.colH - 0.8, 0.8, layers.base);
+  const bk1 = bracketRing(30.1, 12.2, floorY + T.colH, 1.1, layers.lowerEave);
   describe(bk1, {
     eyebrow: '城楼', title: '斗拱与和玺彩画', sub: 'DOUGONG BRACKETS · HEXI PAINTING',
-    text: '柱头之上层层出挑的斗与栱把屋檐托出数米，是中国木构的核心构件。额枋施青绿地和玺彩画，金线勾勒龙纹，为最高等级的彩画。',
-    dims: [['出檐', '约 5 m'], ['彩画等级', '和玺彩画']],
+    text: '柱头之上层层出挑的斗与栱把屋檐托出约 3 m，是中国木构的核心构件。额枋施青绿地和玺彩画，金线勾勒龙纹，为最高等级的彩画。',
+    dims: [['出檐', '约 3 m'], ['彩画等级', '和玺彩画']],
   });
 
-  const lowerRoof = roofLoft({ hw: 30.1, hl: 16, rise: 2.9, depthIn: 4.6, curve: 1.35, lift: 0.75, liftSpan: 6 });
-  lowerRoof.position.y = floorY + T.colH + 1.1;
+  // 腰檐：檐口 62.77 × 27.25
+  const lowerRoof = roofLoft({ hw: 31.4, hl: 13.6, rise: 2.6, depthIn: 4.2, curve: 1.35, lift: 0.7, liftSpan: 6 });
+  lowerRoof.position.y = floorY + T.colH + 1.1;          // 22.69
   layers.lowerEave.add(lowerRoof);
+  tileRoof(lowerRoof, layers.lowerEave);
   addRidges(lowerRoof, layers.lowerEave, 4);
-  box(52, 0.6, 24, mat.eaveUnder, 0, lowerRoof.position.y + 2.9 - 0.3, 0, layers.lowerEave);
+  box(55, 0.6, 20, mat.eaveUnder, 0, lowerRoof.position.y + 2.6 - 0.3, 0, layers.lowerEave);
   describe(lowerRoof, {
-    eyebrow: '城楼', title: '下檐（腰檐）', sub: 'LOWER EAVE',
-    text: '重檐即上下两层屋檐。下檐环绕殿身一周，檐角起翘，脊上列走兽，覆黄琉璃瓦。',
-    dims: [['檐口', '60 × 32 m'], ['瓦色', '黄琉璃']],
+    eyebrow: '城楼', title: '下檐（腰檐）', sub: 'LOWER EAVE · 62.77 × 27.25 m',
+    text: '重檐即上下两层屋檐。下檐环绕殿身一周，檐口约 62.77 × 27.25 m，檐角起翘，脊上列走兽，覆黄琉璃瓦。',
+    dims: [['檐口', '62.77 × 27.25 m'], ['离城台顶', '约 8 m']],
   });
 
-  const upperY = lowerRoof.position.y + 2.9;
-  const upperH = 4.0;
-  hall(23.3, 9.3, upperY, upperH, layers.upper);
+  // 上层楼身
+  const upperY = lowerRoof.position.y + 2.6 - 0.6;         // 24.69
+  const upperH = 3.5;
+  hall(24.5, 8.8, upperY, upperH, layers.upper);
   const ucols = group(layers.upper);
-  const ucolGeo = new THREE.CylinderGeometry(0.42, 0.45, upperH, 12);
+  const ucolGeo = new THREE.CylinderGeometry(0.36, 0.38, upperH, 12);
   const upts = [];
-  for (const x of T.xs) for (const z of T.zs) if (Math.abs(x) === 25.1 || Math.abs(z) === 11) upts.push([x * (24.2 / 25.1), z * (10.2 / 11)]);
+  for (const x of T.xs) for (const z of T.zs) if (Math.abs(x) === 28.57 || Math.abs(z) === 10.485) upts.push([x * (25.3 / 28.57), z * (9.6 / 10.485)]);
   const ucolMesh = new THREE.InstancedMesh(ucolGeo, mat.vermilion, upts.length);
   upts.forEach(([x, z], i) => { m4.makeTranslation(x, upperY + upperH / 2, z); ucolMesh.setMatrixAt(i, m4); });
   ucolMesh.castShadow = true;
   ucols.add(ucolMesh);
-  lintelRing(24.5, 10.5, upperY + upperH - 0.8, 0.8, layers.upper);
-  bracketRing(25.9, 11.9, upperY + upperH, 1.1, layers.upper);
+  lintelRing(25.6, 9.9, upperY + upperH - 0.8, 0.8, layers.upper);
+  bracketRing(27.0, 11.2, upperY + upperH, 1.1, layers.upper);
   describe(layers.upper, {
     eyebrow: '城楼', title: '上层楼身', sub: 'UPPER STOREY',
     text: '上层楼身收进一圈，四面亦装隔扇，外围再立一周檐柱承托上檐。上下两檐之间的这段楼身让整座城楼显得高耸而稳重。',
-    dims: [['楼身', '47 × 19 m'], ['层高', '约 4 m']],
+    dims: [['楼身', '49 × 18 m'], ['层高', '约 3.5 m']],
   });
 
-  const roofY = upperY + upperH + 1.1;
-  const upperRoof = roofLoft({ hw: 29.7, hl: 15.4, rise: 5.6, depthIn: 15.4, gableAt: 10.6, curve: 1.5, lift: 0.95, liftSpan: 7.5, rings: 16 });
+  // 上檐：重檐歇山顶，正脊到 34.7
+  const roofY = upperY + upperH + 1.1;                     // 29.29
+  const rise = TOTAL_HEIGHT - 0.3 - roofY;                 // 5.11
+  const upperRoof = roofLoft({ hw: 28.6, hl: 12.4, rise, depthIn: 12.4, gableAt: 8.8, curve: 1.5, lift: 0.9, liftSpan: 7.5, rings: 16 });
   upperRoof.position.y = roofY;
   layers.roof.add(upperRoof);
+  tileRoof(upperRoof, layers.roof);
   addRidges(upperRoof, layers.roof, 6);
-  const ridgeHalf = 29.7 - 10.6;
-  const ridgeTop = roofY + 5.6;
-  box(ridgeHalf * 2, 1.0, 1.0, mat.glazeDeep, 0, ridgeTop + 0.3, 0, layers.roof);
+  const ridgeHalf = 28.6 - 8.8;
+  const ridgeTop = roofY + rise;
+  box(ridgeHalf * 2, 0.9, 0.9, mat.glazeDeep, 0, ridgeTop + 0.15, 0, layers.roof);
   for (const sgn of [-1, 1]) {
-    const chi = group(layers.roof, sgn * ridgeHalf, ridgeTop + 0.3, 0);
-    box(1.1, 2.6, 1.3, mat.glazeDeep, 0, 1.2, 0, chi);
+    const chi = group(layers.roof, sgn * ridgeHalf, ridgeTop + 0.15, 0);
+    box(1.1, 2.4, 1.3, mat.glazeDeep, 0, 1.1, 0, chi);
     const tail = new THREE.Mesh(new THREE.TorusGeometry(0.7, 0.28, 8, 12, Math.PI), mat.glazeDeep);
-    tail.position.set(-sgn * 0.4, 2.4, 0); tail.rotation.y = Math.PI / 2; tail.rotation.z = sgn > 0 ? 0 : Math.PI;
+    tail.position.set(-sgn * 0.4, 2.2, 0); tail.rotation.y = Math.PI / 2; tail.rotation.z = sgn > 0 ? 0 : Math.PI;
     tail.castShadow = true;
     chi.add(tail);
   }
   describe(upperRoof, {
     eyebrow: '城楼', title: '重檐歇山顶', sub: 'DOUBLE-EAVE HIP-AND-GABLE ROOF',
-    text: '上檐为歇山顶：前后坡直抵正脊，两侧下段为四坡的戗脊，上段收为竖直山花。等级仅次于庑殿顶，配黄琉璃瓦、正脊两端置鸱吻。',
-    dims: [['通高', '约 34.7 m'], ['正脊长', '约 38 m'], ['屋面', '黄琉璃瓦']],
+    text: '上檐为歇山顶：前后坡直抵正脊，两侧下段为四坡的戗脊，上段收为竖直山花。等级仅次于庑殿顶，配黄琉璃瓦、正脊两端置鸱吻。1970 年重建后通高 34.7 m（原 33.87 m）。',
+    dims: [['通高', '34.7 m'], ['城台顶至正脊', '约 20.1 m'], ['正脊长', '约 40 m']],
   });
   layers.roof.userData.eaveRing = upperRoof.userData.eaveRing.map((p) => p.clone().add(new THREE.Vector3(0, roofY, 0)));
   layers.lowerEave.userData.eaveRing = lowerRoof.userData.eaveRing.map((p) => p.clone().add(new THREE.Vector3(0, lowerRoof.position.y, 0)));

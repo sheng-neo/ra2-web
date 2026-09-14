@@ -20,6 +20,11 @@ export const C = {
   lantern: 0xd6262b,
 };
 
+/** 画质档：high 铺实例化筒瓦、开阴影级联与环境光遮蔽；low 供手机。可用 ?q=low|high 覆盖。 */
+export const quality = (new URLSearchParams(location.search).get('q') === 'low' || new URLSearchParams(location.search).get('q') === 'high')
+  ? new URLSearchParams(location.search).get('q')
+  : (Math.min(innerWidth, innerHeight) < 560 ? 'low' : 'high');
+
 export function std(color, extra = {}) {
   return new THREE.MeshStandardMaterial({ color, roughness: 0.85, metalness: 0.0, envMapIntensity: 0.35, ...extra });
 }
@@ -116,6 +121,20 @@ export const tileColorTex = canvasTexture(256, 256, (g, w, h) => {
     g.fillStyle = 'rgba(255,240,180,0.28)'; g.fillRect(0, r * rh + 2, w, 1);
   }
 }, [1, 1]);
+/** 仅板瓦（凹）阴影的底图：筒瓦以实例几何体表现时使用。 */
+export const tilePanTex = canvasTexture(256, 256, (g, w, h) => {
+  const cw = w / tileCols, rh = h / tileRows;
+  for (let c = 0; c < tileCols; c++) {
+    for (let x = 0; x < cw; x++) {
+      const u = x / cw;
+      const pan = Math.sin(u * Math.PI);
+      const l = 0.7 + pan * 0.14;
+      g.fillStyle = `rgb(${Math.round(190 * l)},${Math.round(140 * l)},${Math.round(30 * l)})`;
+      g.fillRect(c * cw + x, 0, 1, h);
+    }
+  }
+  for (let r = 0; r < tileRows; r++) { g.fillStyle = 'rgba(60,40,0,0.35)'; g.fillRect(0, r * rh, w, 2); }
+}, [1, 1]);
 export const tileNormalTex = canvasTexture(256, 256, (g, w, h) => {
   const cw = w / tileCols, rh = h / tileRows;
   const img = g.createImageData(w, h);
@@ -156,6 +175,8 @@ export const mat = {
   vermilionDeep: std(C.vermilionDeep, { roughness: 0.9 }),
   glaze: std(0xffffff, { map: tileColorTex, normalMap: tileNormalTex, normalScale: new THREE.Vector2(0.9, 0.9), roughness: 0.36, metalness: 0.12 }),
   glazePlain: std(C.glaze, { roughness: 0.42, metalness: 0.08 }),
+  glazePan: std(0xffffff, { map: tilePanTex, roughness: 0.5, metalness: 0.05 }),
+  tile: std(C.glaze, { roughness: 0.3, metalness: 0.12, envMapIntensity: 0.55 }),
   glazeDeep: std(C.glazeDeep, { roughness: 0.5 }),
   marble: std(C.marble, { roughness: 0.55 }),
   marbleShade: std(C.marbleShade, { roughness: 0.6 }),
@@ -293,6 +314,10 @@ export function roofLoft({ hw, hl, rise, depthIn, gableAt = null, curve = 1.55, 
   mesh.castShadow = true; mesh.receiveShadow = true;
   mesh.userData.cornerPaths = [0, 1, 2, 3].map((c) => ringPts.map((r) => new THREE.Vector3(r[c * segs][0], r[c * segs][1] + 0.1, r[c * segs][2])));
   mesh.userData.eaveRing = ringPts[0].map((p) => new THREE.Vector3(p[0], p[1], p[2]));
+  mesh.userData.loft = {
+    hw, hl, rise, depthIn, gableAt, curve, lift, liftSpan, yAt,
+    liftAt: (dc, d) => { const f = Math.max(0, 1 - dc / liftSpan); return lift * f * f * Math.max(0, 1 - d / 4.5); },
+  };
   return mesh;
 }
 
