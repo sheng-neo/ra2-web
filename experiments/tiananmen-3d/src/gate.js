@@ -188,8 +188,9 @@ export const ARCHES = [
       for (let i = 0; i < 5; i++) {
         const h = (5 - i) * 1.05;
         box(slen, h, 2.4, i % 2 ? mat.vermilionDeep : mat.vermilion, sxc, h / 2, R.hlBot + 2.4 * i + 1.2, stand);
+        balustrade(stand, slen / 2, 0.15, h, { postH: 0.85, panelH: 0.55, step: 2.6, sides: 's' }).position.set(sxc, 0, R.hlBot + 2.4 * i + 2.1);
       }
-      balustrade(stand, slen / 2, 1.0, 5 * 1.05, { postH: 1.0, panelH: 0.7, step: 2.6, sides: 's' }).position.set(sxc, 0, R.hlBot + 1.2);
+      sumeru(stand, slen + 0.4, 12.4, 0.5, sxc, 0, R.hlBot + 6.0, mat.marbleShade);
       describe(stand, {
         eyebrow: '两翼', title: name, sub: 'REVIEWING STANDS',
         text: '1954 年建成的东西观礼台紧贴皇城红墙：紧邻城楼的两座大观礼台各长 95 m、宽 12 m，外侧两座小观礼台各长 73 m，北高南低，共可容纳约两万一千人观礼。',
@@ -380,7 +381,7 @@ function addRidges(roofMesh, parent, beasts = 5) {
   ]);
   const pts = [];
   for (const x of T.xs) for (const z of T.zs) if (Math.abs(x) === 28.57 || Math.abs(z) === 10.485) pts.push([x, z]);
-  const colMesh = new THREE.InstancedMesh(colGeo, mat.vermilion, pts.length);
+  const colMesh = new THREE.InstancedMesh(colGeo, mat.lacquer, pts.length);
   const plinthMesh = new THREE.InstancedMesh(plinthGeo, mat.marbleShade, pts.length);
   const m4 = new THREE.Matrix4();
   pts.forEach(([x, z], i) => {
@@ -453,7 +454,7 @@ function addRidges(roofMesh, parent, beasts = 5) {
   const ucolGeo = new THREE.CylinderGeometry(0.36, 0.38, upperH, 12);
   const upts = [];
   for (const x of T.xs) for (const z of T.zs) if (Math.abs(x) === 28.57 || Math.abs(z) === 10.485) upts.push([x * (25.3 / 28.57), z * (9.6 / 10.485)]);
-  const ucolMesh = new THREE.InstancedMesh(ucolGeo, mat.vermilion, upts.length);
+  const ucolMesh = new THREE.InstancedMesh(ucolGeo, mat.lacquer, upts.length);
   upts.forEach(([x, z], i) => { m4.makeTranslation(x, upperY + upperH / 2, z); ucolMesh.setMatrixAt(i, m4); });
   ucolMesh.castShadow = true;
   ucols.add(ucolMesh);

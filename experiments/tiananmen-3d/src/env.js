@@ -230,6 +230,10 @@ export const flag = {};
   for (const sgn of [-1, 1]) {
     for (let x = 66; x <= 250; x += 7.5) spots.push([sgn * x, RIVER.z0 - 9 + (x % 3), 0.85 + (x % 5) / 8, x * 0.37]);
     for (let x = 66; x <= 250; x += 9) spots.push([sgn * x, -FRONT - 10 - (x % 4), 0.95 + (x % 7) / 10, x * 0.53]);
+    // 中山公园 / 劳动人民文化宫：红墙以北的成片树林
+    for (let x = 70; x <= 330; x += 9) for (let zz = -34; zz >= -150; zz -= 11) spots.push([sgn * (x + (zz % 5)), zz + (x % 7), 1.0 + ((x + zz) % 9) / 12, x * 0.11 + zz]);
+    // 广场两侧树带
+    for (let zz = 130; zz <= 620; zz += 10) spots.push([sgn * (150 + (zz % 7)), zz, 0.9 + (zz % 6) / 10, zz * 0.3]);
   }
   const CL = 6, PL = 3;
   const mF = new THREE.InstancedMesh(plane, mat.foliage, spots.length * CL * PL), mT = new THREE.InstancedMesh(trunkGeo, mat.trunk, spots.length);
@@ -258,6 +262,40 @@ export const flag = {};
   mF.castShadow = mT.castShadow = true; mF.receiveShadow = true;
   mF.customDepthMaterial = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking, map: mat.foliage.map, alphaTest: 0.45 });
   trees.add(mF, mT);
+}
+
+// ---- 远景：人民大会堂（西）、国家博物馆（东）、人民英雄纪念碑，以及两侧公园树带 ----
+{
+  const far = group(scene);
+  const hall = (x, w, d, h, name, text) => {
+    const g = group(far, x, 0, 400);
+    box(w, 3, d, mat.marbleShade, 0, 1.5, 0, g);
+    box(w - 6, h - 12, d - 6, std(0xd9d3c4, { roughness: 0.9 }), 0, 3 + (h - 12) / 2, 0, g);
+    box(w, 6, d, std(0xcfc8b8, { roughness: 0.9 }), 0, h - 3, 0, g);
+    // 柱廊：面向广场一侧
+    const colGeo = new THREE.CylinderGeometry(1.1, 1.1, h - 12, 10);
+    const n = Math.floor(d / 8.4);
+    const im = new THREE.InstancedMesh(colGeo, mat.marble, n);
+    const m4 = new THREE.Matrix4();
+    for (let i = 0; i < n; i++) { m4.makeTranslation(-Math.sign(x) * (w / 2 - 4), 3 + (h - 12) / 2, -d / 2 + 4.2 + i * 8.4); im.setMatrixAt(i, m4); }
+    im.castShadow = true; g.add(im);
+    describe(g, { eyebrow: '广场', title: name, sub: 'TIANANMEN SQUARE', text, dims: [['体量', `${w} × ${d} m · 高 ${h} m`]] });
+  };
+  hall(-420, 206, 336, 46.5, '人民大会堂', '天安门广场西侧的人民大会堂，1959 年建成，东西宽 206 m、南北长 336 m、高 46.5 m，远景以简化体块示意。');
+  hall(420, 149, 313, 40, '中国国家博物馆', '天安门广场东侧的国家博物馆，与人民大会堂对称布置，远景以简化体块示意。');
+  // 人民英雄纪念碑：须弥座 + 碑身
+  {
+    const g = group(far, 0, 0, 440);
+    sumeruLike(g);
+    function sumeruLike(gg) {
+      box(50, 1.5, 50, mat.marbleShade, 0, 0.75, 0, gg); box(38, 1.5, 38, mat.marbleShade, 0, 2.25, 0, gg);
+      box(20, 4, 20, mat.marble, 0, 5, 0, gg);
+      box(6.4, 30, 3.2, mat.marbleShade, 0, 7 + 15, 0, gg);
+      box(7.6, 2.2, 4.4, mat.marble, 0, 38, 0, gg);
+      balustrade(gg, 24, 24, 3, { postH: 1.0, panelH: 0.7, step: 2.4 });
+    }
+    describe(g, { eyebrow: '广场', title: '人民英雄纪念碑', sub: 'MONUMENT TO THE PEOPLE\'S HEROES', text: '广场中央的人民英雄纪念碑高 37.94 m，1958 年落成，位于天安门以南约 440 m 的中轴线上。', dims: [['高', '37.94 m']] });
+  }
 }
 
 // ---- 人群 ----

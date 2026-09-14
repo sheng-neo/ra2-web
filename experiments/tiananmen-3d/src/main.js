@@ -116,7 +116,8 @@ controls.addEventListener('start', () => {
 // ---- 机位预设 ----
 const VIEWS = {
   // 正面机位在国旗杆（z≈154）以北，旗杆不遮挡
-  front: { pos: [0, 26, 138], target: [0, 15, 0] },
+  front: { pos: [11, 1.8, 166], target: [0, 15.5, 0], fov: 32 },
+  high: { pos: [0, 26, 138], target: [0, 15, 0] },
   square: { pos: [24, 12, 330], target: [0, 20, 0] },
   east: { pos: [230, 44, 90], target: [0, 16, 0] },
   eave: { pos: [24, 26, 52], target: [0, 24, 6] },
@@ -290,7 +291,7 @@ $('btn-quality').addEventListener('click', () => {
 for (const b of document.querySelectorAll('[data-time]')) b.addEventListener('click', () => { stopTimelapse(); applyTime(Number(b.dataset.time)); });
 addEventListener('keydown', (e) => {
   if (e.target && /input|textarea/i.test(e.target.tagName)) return;
-  const map = { 1: 'front', 2: 'square', 3: 'east', 4: 'eave', 5: 'mirror', 6: 'top' };
+  const map = { 1: 'front', 2: 'square', 3: 'east', 4: 'eave', 5: 'mirror', 6: 'top', 7: 'high' };
   if (map[e.key]) flyTo(VIEWS[map[e.key]]);
   else if (e.key === 'n' || e.key === 'N') { stopTimelapse(); applyTime(clock.night > 0.5 ? 10.5 : 20.5); }
   else if (e.key === 'l' || e.key === 'L') $('btn-lapse').click();

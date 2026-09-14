@@ -90,33 +90,51 @@ export const caihuaTex = canvasTexture(1024, 96, (g, w, h) => {
   g.strokeStyle = white; g.lineWidth = 1.5; g.strokeRect(1, 1, w - 2, h - 2);
 }, [1, 1]);
 
-/** 广场花岗岩铺装：每块板略有色差，缝线凹槽（法线图）。一张贴图 4 × 4 块。 */
-export const plazaTex = canvasTexture(256, 256, (g, w, h) => {
-  for (let r = 0; r < 4; r++) for (let c = 0; c < 4; c++) {
-    const k = 0.9 + Math.random() * 0.16;
-    g.fillStyle = `rgb(${Math.round(176 * k)},${Math.round(170 * k)},${Math.round(160 * k)})`;
-    g.fillRect(c * 64, r * 64, 64, 64);
+/** 广场花岗岩铺装：16 × 16 块板略有色差，叠加大尺度污渍与明暗，缝线凹槽见法线图。一张贴图 19.2 m。 */
+export const plazaTex = canvasTexture(1024, 1024, (g, w, h) => {
+  const N = 16, cell = w / N;
+  for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) {
+    const k = 0.84 + Math.random() * 0.2;
+    g.fillStyle = `rgb(${Math.round(160 * k)},${Math.round(155 * k)},${Math.round(146 * k)})`;
+    g.fillRect(c * cell, r * cell, cell, cell);
   }
-  for (let i = 0; i < 1400; i++) {
-    g.fillStyle = `rgba(${40 + Math.random() * 40},${36 + Math.random() * 40},${30 + Math.random() * 40},${0.06 + Math.random() * 0.1})`;
+  for (let i = 0; i < 24; i++) {
+    const grad = g.createRadialGradient(Math.random() * w, Math.random() * h, 0, Math.random() * w, Math.random() * h, 120 + Math.random() * 260);
+    grad.addColorStop(0, `rgba(${Math.random() < 0.6 ? '50,44,38' : '210,205,195'},${0.06 + Math.random() * 0.1})`); grad.addColorStop(1, 'rgba(0,0,0,0)');
+    g.fillStyle = grad; g.fillRect(0, 0, w, h);
+  }
+  for (let i = 0; i < 9000; i++) {
+    g.fillStyle = `rgba(${30 + Math.random() * 50},${28 + Math.random() * 46},${24 + Math.random() * 40},${0.05 + Math.random() * 0.1})`;
     g.fillRect(Math.random() * w, Math.random() * h, 1.5, 1.5);
   }
-  g.strokeStyle = 'rgba(60,54,46,0.5)'; g.lineWidth = 2;
-  for (let i = 0; i <= 4; i++) { g.beginPath(); g.moveTo(i * 64, 0); g.lineTo(i * 64, h); g.moveTo(0, i * 64); g.lineTo(w, i * 64); g.stroke(); }
-}, [290, 290]);
+  g.strokeStyle = 'rgba(52,47,40,0.55)'; g.lineWidth = 2.5;
+  for (let i = 0; i <= N; i++) { g.beginPath(); g.moveTo(i * cell, 0); g.lineTo(i * cell, h); g.moveTo(0, i * cell); g.lineTo(w, i * cell); g.stroke(); }
+}, [73, 73]);
 export const plazaNormalTex = canvasTexture(256, 256, (g, w, h) => {
   const img = g.createImageData(w, h);
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-    const dx = ((x % 64) + 64) % 64, dy = ((y % 64) + 64) % 64;
+    const dx = ((x % 16) + 16) % 16, dy = ((y % 16) + 16) % 16;
     let nx = 0, ny = 0;
-    if (dx < 3) nx = -0.5 + dx * 0.33; else if (dx > 60) nx = (dx - 60) * 0.17;
-    if (dy < 3) ny = -0.5 + dy * 0.33; else if (dy > 60) ny = (dy - 60) * 0.17;
+    if (dx < 1) nx = -0.5; else if (dx > 14) nx = 0.5;
+    if (dy < 1) ny = -0.5; else if (dy > 14) ny = 0.5;
     const nz = Math.sqrt(Math.max(0.1, 1 - nx * nx - ny * ny));
     const i = (y * w + x) * 4;
     img.data[i] = Math.round((nx * 0.5 + 0.5) * 255); img.data[i + 1] = Math.round((ny * 0.5 + 0.5) * 255); img.data[i + 2] = Math.round((nz * 0.5 + 0.5) * 255); img.data[i + 3] = 255;
   }
   g.putImageData(img, 0, 0);
-}, [290, 290], { srgb: false });
+}, [73, 73], { srgb: false });
+
+/** 朱漆柱：竖向木纹与漆面微变。 */
+export const lacquerTex = canvasTexture(128, 512, (g, w, h) => {
+  g.fillStyle = '#9c2229'; g.fillRect(0, 0, w, h);
+  for (let i = 0; i < 60; i++) {
+    const x = Math.random() * w;
+    g.strokeStyle = `rgba(${Math.random() < 0.5 ? '120,20,24' : '190,60,60'},${0.05 + Math.random() * 0.12})`;
+    g.lineWidth = 1 + Math.random() * 3;
+    g.beginPath(); g.moveTo(x, 0); g.bezierCurveTo(x + 6, h * 0.3, x - 6, h * 0.7, x + 2, h); g.stroke();
+  }
+  for (let i = 0; i < 500; i++) { g.fillStyle = `rgba(255,200,180,${Math.random() * 0.05})`; g.fillRect(Math.random() * w, Math.random() * h, 2, 2); }
+}, [1, 1]);
 
 /** 汉白玉：淡灰纹理与细微噪点。 */
 export const marbleTex = canvasTexture(256, 256, (g, w, h) => {
@@ -248,11 +266,12 @@ export function textBoardTexture(text, w, h, opts = {}) {
 // ---- 材质表 --------------------------------------------------------------
 export const mat = {
   vermilion: std(C.vermilion, { roughness: 0.9 }),
+  lacquer: std(0xffffff, { map: lacquerTex, roughness: 0.48, envMapIntensity: 0.4 }),
   vermilionDeep: std(C.vermilionDeep, { roughness: 0.9 }),
   glaze: std(0xffffff, { map: tileColorTex, normalMap: tileNormalTex, normalScale: new THREE.Vector2(0.9, 0.9), roughness: 0.36, metalness: 0.12 }),
   glazePlain: std(C.glaze, { roughness: 0.42, metalness: 0.08 }),
   glazePan: std(0xffffff, { map: tilePanTex, roughness: 0.5, metalness: 0.05 }),
-  tile: std(C.glaze, { roughness: 0.3, metalness: 0.12, envMapIntensity: 0.55 }),
+  tile: std(0xd8a01e, { roughness: 0.27, metalness: 0.12, envMapIntensity: 0.6 }),
   glazeDeep: std(C.glazeDeep, { roughness: 0.5 }),
   marble: std(0xffffff, { map: marbleTex, roughness: 0.62, envMapIntensity: 0.18 }),
   marbleShade: std(0xe0d9ca, { map: marbleTex, roughness: 0.66, envMapIntensity: 0.18 }),
@@ -275,7 +294,7 @@ export const mat = {
   caihua: std(0xffffff, { map: caihuaTex, roughness: 0.75 }),
   plaza: std(0xffffff, { map: plazaTex, normalMap: plazaNormalTex, normalScale: new THREE.Vector2(0.6, 0.6), roughness: 0.95 }),
   foliage: std(0xffffff, { map: foliageTex, alphaTest: 0.45, side: THREE.DoubleSide, roughness: 1 }),
-  paving: std(0xa8a399, { map: plazaTex, roughness: 0.95 }),
+  paving: std(0xb4afa6, { map: plazaTex, roughness: 0.95 }),
   bridgeStone: std(0xd8d2c4, { roughness: 0.7, envMapIntensity: 0.15 }),
 };
 
