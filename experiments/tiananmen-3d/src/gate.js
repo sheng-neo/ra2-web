@@ -337,13 +337,24 @@ function bracketRing(hw, hl, y, h, parent) {
   g.add(ma, mb);
   return g;
 }
+/** 走兽：蹲踞小兽的侧影（头、身、翘尾），沿戗脊排列。 */
+const beastGeo = (() => {
+  const sh = new THREE.Shape();
+  sh.moveTo(0, 0); sh.lineTo(0.62, 0); sh.lineTo(0.62, 0.22); sh.quadraticCurveTo(0.7, 0.55, 0.52, 0.62);   // 臀与翘尾
+  sh.lineTo(0.36, 0.5); sh.quadraticCurveTo(0.28, 0.72, 0.16, 0.7); sh.quadraticCurveTo(0.02, 0.68, 0.04, 0.5);  // 头
+  sh.lineTo(-0.02, 0.36); sh.lineTo(0.06, 0.3); sh.lineTo(0.02, 0); sh.closePath();
+  const g = new THREE.ExtrudeGeometry(sh, { depth: 0.3, bevelEnabled: false, curveSegments: 6 });
+  g.translate(-0.31, 0, -0.15);
+  return g;
+})();
 function addRidges(roofMesh, parent, beasts = 5) {
   for (const path of roofMesh.userData.cornerPaths) {
     parent.add(ridgeTube(path, 0.34));
     for (let i = 1; i <= beasts; i++) {
       const p = path[i], q2 = path[i + 1] || p;
-      const m = new THREE.Mesh(new THREE.ConeGeometry(0.26, 0.7, 6), mat.ridgeBeast);
-      m.position.copy(p).lerp(q2, 0.3); m.position.y += 0.55;
+      const m = new THREE.Mesh(beastGeo, mat.ridgeBeast);
+      m.position.copy(p).lerp(q2, 0.3); m.position.y += 0.34;
+      m.rotation.y = Math.atan2(q2.x - p.x, q2.z - p.z) + Math.PI / 2;
       m.castShadow = true;
       parent.add(m);
     }

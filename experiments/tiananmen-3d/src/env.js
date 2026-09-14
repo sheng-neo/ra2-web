@@ -8,6 +8,7 @@ import waterNormalsUrl from '../assets/waternormals.jpg';
 import { scene, mat, std, C, box, cyl, group, describe, canvasTexture, balustrade, nightOnly, lanternMats, postCapGeo } from './lib.js';
 import { layers, RAMPART, ARCHES } from './gate.js';
 import { lion, huabiao } from './detail.js';
+import { addCrowd } from './crowd.js';
 
 export const isSmall = Math.min(innerWidth, innerHeight) < 560;
 const FRONT = RAMPART.hlBot;                                  // 城台南面墙基 z = 20
@@ -258,6 +259,17 @@ export const flag = {};
   mF.customDepthMaterial = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking, map: mat.foliage.map, alphaTest: 0.45 });
   trees.add(mF, mT);
 }
+
+// ---- 人群 ----
+addCrowd({
+  river: RIVER, front: FRONT, count: isSmall ? 160 : 460,
+  bridgeY: (x, z) => {
+    const zc = (RIVER.z0 + RIVER.z1) / 2, half = BRIDGE_L / 2, t = z - zc;
+    if (Math.abs(t) > half) return 0;
+    for (const b of BRIDGES) if (Math.abs(x - b.x) < b.w / 2) return 1.3 * Math.cos((t / half) * Math.PI / 2) ** 1.4;
+    return 0;
+  },
+});
 
 // ============================================================================
 // 灯光 · 物理天空 · 时刻

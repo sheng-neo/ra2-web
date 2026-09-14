@@ -118,6 +118,18 @@ export const plazaNormalTex = canvasTexture(256, 256, (g, w, h) => {
   g.putImageData(img, 0, 0);
 }, [290, 290], { srgb: false });
 
+/** 汉白玉：淡灰纹理与细微噪点。 */
+export const marbleTex = canvasTexture(256, 256, (g, w, h) => {
+  g.fillStyle = '#ece6d8'; g.fillRect(0, 0, w, h);
+  for (let i = 0; i < 2600; i++) { g.fillStyle = `rgba(120,110,96,${Math.random() * 0.08})`; g.fillRect(Math.random() * w, Math.random() * h, 1.5, 1.5); }
+  g.strokeStyle = 'rgba(150,140,125,0.22)'; g.lineWidth = 1.2;
+  for (let i = 0; i < 9; i++) {
+    g.beginPath(); let x = Math.random() * w, y = Math.random() * h; g.moveTo(x, y);
+    for (let k = 0; k < 6; k++) { x += (Math.random() - 0.3) * 60; y += (Math.random() - 0.5) * 30; g.lineTo(x, y); }
+    g.stroke();
+  }
+}, [1, 1]);
+
 /** 松枝：透明底上的针叶簇，用于交叉面片树冠。 */
 export const foliageTex = canvasTexture(256, 256, (g, w, h) => {
   g.clearRect(0, 0, w, h);
@@ -242,8 +254,8 @@ export const mat = {
   glazePan: std(0xffffff, { map: tilePanTex, roughness: 0.5, metalness: 0.05 }),
   tile: std(C.glaze, { roughness: 0.3, metalness: 0.12, envMapIntensity: 0.55 }),
   glazeDeep: std(C.glazeDeep, { roughness: 0.5 }),
-  marble: std(0xeae3d4, { roughness: 0.62, envMapIntensity: 0.18 }),
-  marbleShade: std(0xd6cfbf, { roughness: 0.66, envMapIntensity: 0.18 }),
+  marble: std(0xffffff, { map: marbleTex, roughness: 0.62, envMapIntensity: 0.18 }),
+  marbleShade: std(0xe0d9ca, { map: marbleTex, roughness: 0.66, envMapIntensity: 0.18 }),
   jade: std(C.jade, { roughness: 0.8 }),
   jadeLight: std(0x3f8aa8, { roughness: 0.75 }),
   green: std(C.green, { roughness: 0.8 }),
@@ -459,5 +471,11 @@ export function balustrade(parent, hw, hl, y, { postH = 1.35, panelH = 0.85, ste
   rz.forEach((r, i) => { m4.makeTranslation(r[0], panelH / 2 + 0.05, r[1]); mz.setMatrixAt(i, m4); });
   mx.castShadow = mz.castShadow = true;
   g.add(mx, mz);
+  // 栏板浮雕：内框凸起
+  const fx = new THREE.InstancedMesh(new THREE.BoxGeometry(step - 0.5, panelH - 0.28, 0.24), mat.marble, rx.length);
+  const fz = new THREE.InstancedMesh(new THREE.BoxGeometry(0.24, panelH - 0.28, step - 0.5), mat.marble, rz.length);
+  rx.forEach((r, i) => { m4.makeTranslation(r[0], panelH / 2 + 0.05, r[1]); fx.setMatrixAt(i, m4); });
+  rz.forEach((r, i) => { m4.makeTranslation(r[0], panelH / 2 + 0.05, r[1]); fz.setMatrixAt(i, m4); });
+  g.add(fx, fz);
   return g;
 }

@@ -7,6 +7,7 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
 import { CSM } from 'three/addons/csm/CSM.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { scene, mat, quality } from './lib.js';
 import { layers, explodeOffsets } from './gate.js';
 import { isSmall, flag, sky, stars, sun, sunDir, clock, setTime, refreshEnvironment, tickEnv, csmHook } from './env.js';
@@ -46,6 +47,23 @@ if (HIGH) {
 const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth * pixelRatio(), innerHeight * pixelRatio()), 0.0, 0.4, 1.6);
 composer.addPass(bloom);
 composer.addPass(new OutputPass());
+// 摄影感：轻微暗角、胶片颗粒、饱和度微调（在色彩输出之后，sRGB 空间）
+const photoPass = new ShaderPass({
+  uniforms: { tDiffuse: { value: null }, time: { value: 0 }, vignette: { value: 0.34 }, grain: { value: 0.028 }, sat: { value: 1.06 } },
+  vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
+  fragmentShader: `uniform sampler2D tDiffuse; uniform float time, vignette, grain, sat; varying vec2 vUv;
+    float hash(vec2 p){ return fract(sin(dot(p, vec2(12.9898,78.233)) + time) * 43758.5453); }
+    void main(){
+      vec4 c = texture2D(tDiffuse, vUv);
+      float l = dot(c.rgb, vec3(0.299,0.587,0.114));
+      c.rgb = mix(vec3(l), c.rgb, sat);
+      vec2 d = vUv - 0.5; float v = 1.0 - vignette * dot(d, d) * 2.2;
+      c.rgb *= v;
+      c.rgb += (hash(gl_FragCoord.xy) - 0.5) * grain;
+      gl_FragColor = c;
+    }`,
+});
+composer.addPass(photoPass);
 composer.setSize(innerWidth, innerHeight);
 
 // ---- 级联阴影（CSM）：三级阴影贴图随相机分布，远近都清晰 ----
@@ -334,6 +352,7 @@ function frame(now) {
   sun.position.copy(sun.target.position).addScaledVector(sky.material.uniforms.sunPosition.value, 320);
   if (csm) { csm.lightDirection.copy(sunDir).negate(); csm.update(); }
   tickEnv(dt);
+  photoPass.uniforms.time.value = (now % 1000) / 1000;
   bloom.strength = isSmall ? 0 : 0.1 + 0.5 * clock.night;
   composer.render();
   if (frames++ === 1) {
