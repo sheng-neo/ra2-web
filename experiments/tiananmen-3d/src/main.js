@@ -5,9 +5,11 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
-import { scene, mat } from './lib.js';
+import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
+import { CSM } from 'three/addons/csm/CSM.js';
+import { scene, mat, quality } from './lib.js';
 import { layers, explodeOffsets } from './gate.js';
-import { isSmall, flag, sky, stars, sun, clock, setTime, refreshEnvironment, reflector } from './env.js';
+import { isSmall, flag, sky, stars, sun, sunDir, clock, setTime, refreshEnvironment, tickEnv, csmHook } from './env.js';
 
 const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const $ = (id) => document.getElementById(id);
@@ -27,12 +29,40 @@ const camera = new THREE.PerspectiveCamera(42, innerWidth / innerHeight, 1, 2200
 camera.position.set(90, 50, 320);
 
 // 后期：辉光（夜景灯光）+ 输出色彩
-const composer = new EffectComposer(renderer);
+const HIGH = quality === 'high';
+const composerTarget = new THREE.WebGLRenderTarget(innerWidth * pixelRatio(), innerHeight * pixelRatio(), { type: THREE.HalfFloatType, samples: HIGH ? 4 : 0 });
+const composer = new EffectComposer(renderer, composerTarget);
 composer.addPass(new RenderPass(scene, camera));
+let gtao = null;
+if (HIGH) {
+  gtao = new GTAOPass(scene, camera, innerWidth, innerHeight);
+  gtao.output = GTAOPass.OUTPUT.Default;
+  gtao.blendIntensity = 0.85;
+  gtao.updateGtaoMaterial({ radius: 1.3, distanceExponent: 1.0, thickness: 1.0, scale: 1.0, samples: 12, distanceFallOff: 1.0, screenSpaceRadius: false });
+  gtao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 5, radiusExponent: 1, rings: 2, samples: 12 });
+  composer.addPass(gtao);
+}
 const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth * pixelRatio(), innerHeight * pixelRatio()), 0.0, 0.4, 1.6);
 composer.addPass(bloom);
 composer.addPass(new OutputPass());
 composer.setSize(innerWidth, innerHeight);
+
+// ---- 级联阴影（CSM）：三级阴影贴图随相机分布，远近都清晰 ----
+let csm = null;
+if (HIGH) {
+  csm = new CSM({ camera, parent: scene, cascades: 3, maxFar: 620, mode: 'practical', shadowMapSize: 2048, shadowBias: -0.00025, lightMargin: 320, lightFar: 3000, lightIntensity: 3.0 });
+  csm.fade = true;
+  for (const l of csm.lights) { l.shadow.normalBias = 0.06; }
+  csmHook.lights = csm.lights;
+  sun.castShadow = false;
+  const seen = new Set();
+  scene.traverse((o) => {
+    if (!o.isMesh && !o.isInstancedMesh) return;
+    for (const m of Array.isArray(o.material) ? o.material : [o.material]) {
+      if (m && m.isMeshStandardMaterial && !seen.has(m)) { seen.add(m); csm.setupMaterial(m); }
+    }
+  });
+}
 
 // ---- 视场角随窗口比例自适应 ----
 //  预设机位按 16:10 构图。更宽的窗口：锁定水平视场角（避免边缘拉伸）；更窄的窗口：保持垂直视场角、机位后退。
@@ -187,7 +217,7 @@ function highlight(root) {
   root.traverse((o) => {
     if (!o.isMesh || o.material === mat.bulb || o.material.isShaderMaterial) return;
     const orig = o.material;
-    const glow = (m) => { const c = m.clone(); c.emissive = new THREE.Color(0xffd08a); c.emissiveIntensity = 0.16; return c; };
+    const glow = (m) => { const c = m.clone(); c.emissive = new THREE.Color(0xffd08a); c.emissiveIntensity = 0.16; if (csm && c.isMeshStandardMaterial) csm.setupMaterial(c); return c; };
     o.material = Array.isArray(orig) ? orig.map(glow) : glow(orig);
     highlighted.push([o, orig]);
   });
@@ -231,6 +261,10 @@ $('btn-lapse').addEventListener('click', () => { if (timelapse) stopTimelapse();
 $('btn-explode').addEventListener('click', () => { explode.target = toggle($('btn-explode')) ? 1 : 0; });
 $('btn-tour').addEventListener('click', () => { if (tour) stopTour(); else { closeInfo(); startTour(); } });
 $('btn-spin').addEventListener('click', () => { controls.autoRotate = toggle($('btn-spin')); });
+$('btn-quality').textContent = HIGH ? '画质：高' : (new URLSearchParams(location.search).get('auto') ? '画质：低（自动）' : '画质：低');
+$('btn-quality').addEventListener('click', () => {
+  const u = new URL(location.href); u.searchParams.set('q', HIGH ? 'low' : 'high'); location.href = u.toString();
+});
 for (const b of document.querySelectorAll('[data-time]')) b.addEventListener('click', () => { stopTimelapse(); applyTime(Number(b.dataset.time)); });
 addEventListener('keydown', (e) => {
   if (e.target && /input|textarea/i.test(e.target.tagName)) return;
@@ -243,11 +277,6 @@ addEventListener('keydown', (e) => {
   else if (e.key === 'r' || e.key === 'R') $('btn-spin').click();
   else if (e.key === 'Escape') closeInfo();
 });
-function resizeReflector() {
-  const pr = pixelRatio();
-  const w = Math.max(256, Math.round(innerWidth * pr * 0.5)), h = Math.max(256, Math.round(innerHeight * pr * 0.5));
-  reflector.getRenderTarget().setSize(w, h);
-}
 function onResize() {
   const pr = pixelRatio();
   camera.aspect = innerWidth / innerHeight;
@@ -257,11 +286,10 @@ function onResize() {
   composer.setPixelRatio(pr);
   renderer.setSize(innerWidth, innerHeight);
   composer.setSize(innerWidth, innerHeight);
-  resizeReflector();
+  if (csm) csm.updateFrustums();
   matchMedia(`(resolution: ${devicePixelRatio}dppx)`).addEventListener('change', onResize, { once: true });
 }
 addEventListener('resize', onResize);
-resizeReflector();
 matchMedia(`(resolution: ${devicePixelRatio}dppx)`).addEventListener('change', onResize, { once: true });
 
 // ---- 国旗布料 ----
@@ -278,10 +306,18 @@ function updateFlag(t) {
 }
 
 // ---- 主循环 ----
-let last = performance.now(), frames = 0;
+let last = performance.now(), frames = 0, slowAccum = 0;
+const explicitQ = new URLSearchParams(location.search).has('q');
 function frame(now) {
   requestAnimationFrame(frame);
   const dt = Math.min(0.05, (now - last) / 1000); last = now;
+  // 高画质但持续掉帧（前 60 帧均值 > 80 ms）且用户未指定画质：自动降到低画质
+  if (HIGH && !explicitQ && frames > 10 && frames <= 70) {
+    slowAccum += dt * 1000;
+    if (frames === 70 && slowAccum / 60 > 80 && !/HeadlessChrome/.test(navigator.userAgent)) {
+      const u = new URL(location.href); u.searchParams.set('q', 'low'); u.searchParams.set('auto', '1'); location.replace(u.toString());
+    }
+  }
   updateTimelapse(now);
   updateCameraTween(now);
   updateTour(now);
@@ -291,6 +327,8 @@ function frame(now) {
   if (envDirty && now - envLast > 250) { refreshEnvironment(renderer); envDirty = false; envLast = now; }
   sun.target.position.copy(controls.target).setY(0);
   sun.position.copy(sun.target.position).addScaledVector(sky.material.uniforms.sunPosition.value, 320);
+  if (csm) { csm.lightDirection.copy(sunDir).negate(); csm.update(); }
+  tickEnv(dt);
   bloom.strength = isSmall ? 0 : 0.1 + 0.5 * clock.night;
   composer.render();
   if (frames++ === 1) {
@@ -306,5 +344,5 @@ requestAnimationFrame(frame);
 window.__tam = {
   camera, controls, scene, renderer, VIEWS, flyTo,
   setBaseFov: (f) => { baseFov = f; fovTween = null; applyFov(); },
-  setTime: applyTime,
+  setTime: applyTime, csm, gtao, quality,
 };

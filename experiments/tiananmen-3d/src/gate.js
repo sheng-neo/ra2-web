@@ -6,8 +6,9 @@
 import * as THREE from 'three';
 import {
   scene, mat, std, box, cyl, group, describe, canvasTexture, textBoardTexture,
-  latticeTex, caihuaTex, roofLoft, ridgeTube, balustrade, nightOnly, lanternMats, quality,
+  latticeTex, caihuaTex, roofLoft, ridgeTube, balustrade, nightOnly, lanternMats, quality, sumeru,
 } from './lib.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { roofTiles } from './tiles.js';
 
 /** 高画质：屋面底图改为板瓦，叠加实例化筒瓦。 */
@@ -74,11 +75,11 @@ export const ARCHES = [
   segsX.push([cursor, R.hwBot + bump]);
   for (const [x0, x1] of segsX) {
     for (const zc of [R.hlBot + bump / 2, -R.hlBot - bump / 2]) {
-      box(x1 - x0, bh, bump + 0.4, mat.marble, (x0 + x1) / 2, bh / 2, zc > 0 ? zc - 0.2 : zc + 0.2, layers.rampart);
+      sumeru(layers.rampart, x1 - x0, bump + 0.4, bh, (x0 + x1) / 2, 0, zc > 0 ? zc - 0.2 : zc + 0.2);
     }
   }
   for (const xc of [R.hwBot + bump / 2, -R.hwBot - bump / 2]) {
-    box(bump + 0.4, bh, R.hlBot * 2 + bump * 2, mat.marble, xc > 0 ? xc - 0.2 : xc + 0.2, bh / 2, 0, layers.rampart);
+    sumeru(layers.rampart, bump + 0.4, R.hlBot * 2 + bump * 2, bh, xc > 0 ? xc - 0.2 : xc + 0.2, 0, 0);
   }
 
   // 城台顶：台基以外的边缘为琉璃瓦封顶的矮墙
@@ -205,7 +206,58 @@ function hall(hw, hl, y0, h, parent) {
   latticeWall(hl * 2, h, hw, y0 + h / 2, 0, Math.PI / 2, g);
   latticeWall(hl * 2, h, -hw, y0 + h / 2, 0, -Math.PI / 2, g);
   box(hw * 2, h, hl * 2, mat.vermilionDeep, 0, y0 + h / 2, 0, g).scale.set(0.985, 1, 0.985);
+  if (quality === 'high') latticeGeometry(hw, hl, y0, h, g);
   return g;
+}
+/** 隔扇棂格与边框的真实几何：每扇 1.1 m 宽，上段菱花棂条（斜向双层格），下段裙板。 */
+function latticeGeometry(hw, hl, y0, h, parent) {
+  const bars = [], frames = [], panels = [];
+  const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), v = new THREE.Vector3(), sc = new THREE.Vector3();
+  const leafW = 1.1, gridStep = 0.16, barT = 0.045;
+  const top = h * 0.62;                     // 棂格高度
+  const edge = (x0, z0, x1, z1) => {        // 沿一面墙布置：从 (x0,z0) 到 (x1,z1)，外法线朝外
+    const len = Math.hypot(x1 - x0, z1 - z0), ux = (x1 - x0) / len, uz = (z1 - z0) / len;
+    const nx = uz, nz = -ux;                // 右手外法线（顺时针绕行时朝外）
+    const rotY = Math.atan2(ux, uz) - Math.PI / 2;
+    const n = Math.floor(len / leafW);
+    for (let i = 0; i < n; i++) {
+      const c = (i + 0.5) * leafW;
+      const cx = x0 + ux * c + nx * 0.06, cz = z0 + uz * c + nz * 0.06;
+      // 边框（竖）
+      q.setFromEuler(e.set(0, rotY, 0));
+      for (const off of [-leafW / 2 + 0.04, leafW / 2 - 0.04]) {
+        m4.compose(v.set(cx + ux * off, y0 + h / 2, cz + uz * off), q, sc.set(0.08, h - 0.1, 0.09)); frames.push(m4.clone());
+      }
+      // 横向抹头：顶、棂格下缘、裙板上缘、底
+      for (const yy of [y0 + h - 0.06, y0 + h - top, y0 + h - top - 0.26, y0 + 0.08]) {
+        m4.compose(v.set(cx, yy, cz), q, sc.set(leafW - 0.1, 0.09, 0.09)); frames.push(m4.clone());
+      }
+      // 裙板
+      m4.compose(v.set(cx, y0 + (h - top - 0.3) / 2 + 0.05, cz), q, sc.set(leafW - 0.2, h - top - 0.42, 0.06)); panels.push(m4.clone());
+      // 棂条：斜向两组（菱花）
+      const yTop = y0 + h - 0.1, yBot = y0 + h - top + 0.05, hh = yTop - yBot, ww = leafW - 0.16;
+      for (const dir of [1, -1]) {
+        q.setFromEuler(e.set(0, rotY, dir * Math.PI / 4));
+        for (let k = -Math.ceil((ww + hh) / gridStep / 1.4142); k <= Math.ceil((ww + hh) / gridStep / 1.4142); k++) {
+          const off = k * gridStep * 1.4142;          // 沿墙偏移
+          // 斜线与矩形交：长度近似取 min(...)，粗略裁剪
+          const L = Math.min(hh * 1.4142, (ww - Math.abs(off)) * 1.4142 + hh * 0.2);
+          if (L < 0.2) continue;
+          const cxx = cx + ux * (off * 0.5), cyy = (yTop + yBot) / 2 - dir * 0 - (Math.abs(off) > ww ? 0 : 0);
+          m4.compose(v.set(cxx + ux * 0, cyy, cz + uz * (off * 0.5)), q, sc.set(L, barT, barT)); bars.push(m4.clone());
+        }
+      }
+    }
+  };
+  // 顺时针（俯视）绕殿身一周，使外法线朝外
+  edge(-hw, hl, hw, hl); edge(hw, hl, hw, -hl); edge(hw, -hl, -hw, -hl); edge(-hw, -hl, -hw, hl);
+  const mk = (list, material) => {
+    const im = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), material, list.length);
+    list.forEach((m, i) => im.setMatrixAt(i, m));
+    im.castShadow = true; im.receiveShadow = true; im.frustumCulled = false;
+    parent.add(im);
+  };
+  mk(bars, mat.gold); mk(frames, mat.vermilionDeep); mk(panels, mat.vermilion);
 }
 function lintelRing(hw, hl, y, h, parent) {
   const g = group(parent);
@@ -229,17 +281,31 @@ function bracketRing(hw, hl, y, h, parent) {
     const len = Math.hypot(bx - ax, bz - az), n = Math.floor(len / 1.35);
     for (let i = 0; i <= n; i++) {
       const t = (i + 0.5) / (n + 1);
-      items.push([ax + (bx - ax) * t + nx * 0.42, az + (bz - az) * t + nz * 0.42, Math.atan2(nx, nz), i % 2]);
+      items.push([ax + (bx - ax) * t - nx * 0.55, az + (bz - az) * t - nz * 0.55, Math.atan2(nx, nz), i % 2]);
     }
   };
   along(-hw, hl, hw, hl, 0, 1); along(-hw, -hl, hw, -hl, 0, -1);
   along(hw, -hl, hw, hl, 1, 0); along(-hw, -hl, -hw, hl, -1, 0);
-  const geoA = new THREE.BoxGeometry(0.62, h * 0.82, 0.85), geoB = new THREE.BoxGeometry(0.62, h * 0.55, 0.85);
-  const a = items.filter((i) => i[3] === 0), b = items.filter((i) => i[3] === 1);
-  const ma = new THREE.InstancedMesh(geoA, mat.green, a.length), mb = new THREE.InstancedMesh(geoB, mat.gold, b.length);
+  // 一朵斗拱：坐斗 → 两层横栱（沿墙）+ 出跳华栱与昂（向外），几何合并后实例化
+  const k = h / 1.1;
+  const parts = (color) => color;
+  const dou = (w, d, y, hh) => { const b = new THREE.BoxGeometry(w, hh, d); b.translate(0, y, 0); return b; };
+  const greenParts = mergeGeometries([
+    dou(0.5, 0.5, 0.12 * k, 0.24 * k),                        // 坐斗
+    dou(1.5, 0.28, 0.4 * k, 0.16 * k),                        // 一层横栱
+    dou(0.28, 1.1, 0.4 * k, 0.16 * k),                        // 一层华栱（出跳）
+    dou(2.2, 0.28, 0.72 * k, 0.16 * k),                       // 二层横栱
+    dou(0.28, 1.6, 0.72 * k, 0.16 * k),                       // 二层华栱
+    dou(0.36, 0.36, 0.56 * k, 0.12 * k), dou(0.36, 0.36, 0.88 * k, 0.12 * k),
+  ]);
+  const goldParts = mergeGeometries([
+    dou(0.3, 0.3, 0.26 * k, 0.1 * k),
+    (() => { const b = new THREE.BoxGeometry(0.3, 0.14 * k, 1.9); b.rotateX(-0.42); b.translate(0, 0.95 * k, 0.45); return b; })(),   // 昂
+    dou(0.4, 0.4, 0.48 * k, 0.08 * k), dou(0.4, 0.4, 0.8 * k, 0.08 * k),
+  ]);
+  const ma = new THREE.InstancedMesh(greenParts, mat.jadeLight, items.length), mb = new THREE.InstancedMesh(goldParts, mat.gold, items.length);
   const m4 = new THREE.Matrix4(), e = new THREE.Euler(), q = new THREE.Quaternion(), one = new THREE.Vector3(1, 1, 1), v = new THREE.Vector3();
-  a.forEach((it, i) => { q.setFromEuler(e.set(0, it[2], 0)); v.set(it[0], y + h / 2, it[1]); m4.compose(v, q, one); ma.setMatrixAt(i, m4); });
-  b.forEach((it, i) => { q.setFromEuler(e.set(0, it[2], 0)); v.set(it[0], y + h * 0.36, it[1]); m4.compose(v, q, one); mb.setMatrixAt(i, m4); });
+  items.forEach((it, i) => { q.setFromEuler(e.set(0, it[2], 0)); v.set(it[0], y, it[1]); m4.compose(v, q, one); ma.setMatrixAt(i, m4); mb.setMatrixAt(i, m4); });
   ma.castShadow = mb.castShadow = true;
   g.add(ma, mb);
   return g;
@@ -259,7 +325,7 @@ function addRidges(roofMesh, parent, beasts = 5) {
 
 {
   // 台基 66 × 37（含前后回廊），四周栏杆
-  const base = box(66, T.baseH, 37, mat.marble, 0, T.y0 + T.baseH / 2, 0, layers.base);
+  const base = sumeru(layers.base, 66, 37, T.baseH, 0, T.y0, 0);
   describe(base, {
     eyebrow: '城楼', title: '汉白玉台基与回廊', sub: 'MARBLE PLATFORM · 66 × 37 m',
     text: '城楼坐落在城台顶的汉白玉台基上，台基连同前后回廊长 66 m、宽 37 m，几乎占满城台顶面，四周设汉白玉栏杆。国庆典礼上，领导人即于南侧回廊的栏杆后检阅。',
@@ -270,7 +336,10 @@ function addRidges(roofMesh, parent, beasts = 5) {
   // 下层外檐柱：面阔九间 × 进深五间的外圈
   const cols = group(layers.base);
   const colGeo = new THREE.CylinderGeometry(0.44, 0.46, T.colH, 14);
-  const plinthGeo = new THREE.CylinderGeometry(0.66, 0.7, 0.3, 14);
+  const plinthGeo = mergeGeometries([
+    (() => { const b = new THREE.BoxGeometry(1.3, 0.14, 1.3); b.translate(0, -0.08, 0); return b; })(),
+    (() => { const c = new THREE.CylinderGeometry(0.58, 0.66, 0.26, 16); c.translate(0, 0.12, 0); return c; })(),
+  ]);
   const pts = [];
   for (const x of T.xs) for (const z of T.zs) if (Math.abs(x) === 28.57 || Math.abs(z) === 10.485) pts.push([x, z]);
   const colMesh = new THREE.InstancedMesh(colGeo, mat.vermilion, pts.length);
@@ -278,7 +347,7 @@ function addRidges(roofMesh, parent, beasts = 5) {
   const m4 = new THREE.Matrix4();
   pts.forEach(([x, z], i) => {
     m4.makeTranslation(x, floorY + T.colH / 2, z); colMesh.setMatrixAt(i, m4);
-    m4.makeTranslation(x, floorY + 0.15, z); plinthMesh.setMatrixAt(i, m4);
+    m4.makeTranslation(x, floorY + 0.08, z); plinthMesh.setMatrixAt(i, m4);
   });
   colMesh.castShadow = colMesh.receiveShadow = true;
   cols.add(colMesh, plinthMesh);

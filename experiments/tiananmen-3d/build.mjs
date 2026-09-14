@@ -16,6 +16,7 @@ const result = await build({
   write: false,
   legalComments: 'none',
   logLevel: 'warning',
+  loader: { '.jpg': 'dataurl', '.png': 'dataurl' },
 });
 let js = result.outputFiles[0].text;
 // 内联到 <script> 里时不能出现 </script>

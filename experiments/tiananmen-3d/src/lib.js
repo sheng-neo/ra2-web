@@ -81,21 +81,26 @@ export const plazaTex = canvasTexture(256, 256, (g, w, h) => {
   }
   g.strokeStyle = 'rgba(70,64,56,0.35)'; g.lineWidth = 1.5;
   for (let i = 0; i <= 4; i++) { g.beginPath(); g.moveTo(i * 64, 0); g.lineTo(i * 64, h); g.moveTo(0, i * 64); g.lineTo(w, i * 64); g.stroke(); }
-}, [120, 120]);
+}, [290, 290]);
 
-/** 城砖。 */
-export const brickTex = canvasTexture(256, 128, (g, w, h) => {
-  g.fillStyle = '#a5262b'; g.fillRect(0, 0, w, h);
-  g.strokeStyle = 'rgba(60,10,12,0.28)'; g.lineWidth = 2;
-  for (let y = 0; y <= h; y += 32) { g.beginPath(); g.moveTo(0, y); g.lineTo(w, y); g.stroke(); }
-  for (let row = 0; row < 4; row++) for (let x = (row % 2) * 32; x <= w; x += 64) {
-    g.beginPath(); g.moveTo(x, row * 32); g.lineTo(x, row * 32 + 32); g.stroke();
+/** 朱红墙面：抹灰质感，轻微斑驳与雨痕。 */
+export const brickTex = canvasTexture(512, 512, (g, w, h) => {
+  g.fillStyle = '#a4272c'; g.fillRect(0, 0, w, h);
+  for (let i = 0; i < 6000; i++) {
+    const a = Math.random();
+    g.fillStyle = a < 0.5 ? `rgba(120,20,22,${0.05 + Math.random() * 0.12})` : `rgba(215,90,80,${0.03 + Math.random() * 0.08})`;
+    const r = 1 + Math.random() * 3;
+    g.fillRect(Math.random() * w, Math.random() * h, r, r);
   }
-  for (let i = 0; i < 400; i++) {
-    g.fillStyle = `rgba(255,220,200,${Math.random() * 0.06})`;
-    g.fillRect(Math.random() * w, Math.random() * h, 3, 3);
+  for (let i = 0; i < 9; i++) {            // 少量竖向雨痕
+    const x = Math.random() * w;
+    const grad = g.createLinearGradient(0, 0, 0, h);
+    grad.addColorStop(0, 'rgba(80,10,12,0)'); grad.addColorStop(1, `rgba(80,10,12,${0.04 + Math.random() * 0.06})`);
+    g.fillStyle = grad; g.fillRect(x, 0, 4 + Math.random() * 10, h);
   }
-}, [8, 4]);
+  g.fillStyle = 'rgba(255,230,210,0.05)';   // 上部微亮
+  g.fillRect(0, 0, w, h * 0.3);
+}, [6, 6]);
 
 /**
  * 琉璃瓦：颜色图 + 法线图。一张贴图覆盖 TILE_SPAN × TILE_SPAN 米：
@@ -181,6 +186,7 @@ export const mat = {
   marble: std(C.marble, { roughness: 0.55 }),
   marbleShade: std(C.marbleShade, { roughness: 0.6 }),
   jade: std(C.jade, { roughness: 0.8 }),
+  jadeLight: std(0x3f8aa8, { roughness: 0.75 }),
   green: std(C.green, { roughness: 0.8 }),
   gold: std(C.gold, { roughness: 0.35, metalness: 0.5 }),
   stone: std(C.stone, { roughness: 0.95 }),
@@ -321,6 +327,19 @@ export function roofLoft({ hw, hl, rise, depthIn, gableAt = null, curve = 1.55, 
   return mesh;
 }
 
+/** 须弥座：上枋 / 上枭 / 束腰 / 下枭 / 下枋 五层线脚，盒体叠成。w×d 为顶面尺寸，h 总高，底边略外放。 */
+export function sumeru(parent, w, d, h, x = 0, y = 0, z = 0, material = mat.marble) {
+  const g = group(parent, x, y, z);
+  const layers = [[1.0, 0.16], [0.96, 0.12], [0.9, 0.36], [0.96, 0.12], [1.02, 0.16], [1.06, 0.08]];   // [相对外放, 相对高度] 自上而下
+  let yy = h;
+  for (const [k, hh] of layers) {
+    const th = h * hh;
+    box(w + (k - 1) * 2.4, th, d + (k - 1) * 2.4, material, 0, yy - th / 2, 0, g);
+    yy -= th;
+  }
+  return g;
+}
+
 export function ridgeTube(points, radius = 0.32, material = mat.glazeDeep) {
   const curve = new THREE.CatmullRomCurve3(points);
   const m = new THREE.Mesh(new THREE.TubeGeometry(curve, Math.max(8, points.length * 3), radius, 8, false), material);
@@ -332,7 +351,11 @@ export function ridgeTube(points, radius = 0.32, material = mat.glazeDeep) {
 export function balustrade(parent, hw, hl, y, { postH = 1.35, panelH = 0.85, step = 2.2, skipFront = null, sides = 'snew' } = {}) {
   const g = group(parent, 0, y, 0);
   const postGeo = new THREE.BoxGeometry(0.34, postH, 0.34);
-  const capGeo = new THREE.SphereGeometry(0.22, 8, 6);
+  const capGeo = (() => {                      // 望柱头：束腰莲座上的圆头
+    const pts = [0.19, 0.19, 0.12, 0.2, 0.24, 0.2, 0.1].map((r, i) => new THREE.Vector2(r, [0, 0.05, 0.1, 0.17, 0.32, 0.44, 0.52][i]));
+    pts.push(new THREE.Vector2(0.0, 0.56));
+    const g = new THREE.LatheGeometry(pts, 10); g.translate(0, -0.1, 0); return g;
+  })();
   const posts = [], rails = [];
   const edges = [
     ['s', [-hw, hl], [hw, hl]], ['n', [-hw, -hl], [hw, -hl]],
@@ -359,7 +382,7 @@ export function balustrade(parent, hw, hl, y, { postH = 1.35, panelH = 0.85, ste
   const m4 = new THREE.Matrix4();
   posts.forEach(([x, z], i) => {
     m4.makeTranslation(x, postH / 2, z); postMesh.setMatrixAt(i, m4);
-    m4.makeTranslation(x, postH + 0.12, z); capMesh.setMatrixAt(i, m4);
+    m4.makeTranslation(x, postH, z); capMesh.setMatrixAt(i, m4);
   });
   postMesh.castShadow = capMesh.castShadow = true;
   postMesh.receiveShadow = true;

@@ -3,7 +3,8 @@
 //   华表：通高 9.57，柱径 0.98，同侧一对间距 96；石狮高 3.4（含座）；国旗杆净高 30
 import * as THREE from 'three';
 import { Sky } from 'three/addons/objects/Sky.js';
-import { Reflector } from 'three/addons/objects/Reflector.js';
+import { Water } from 'three/addons/objects/Water.js';
+import waterNormalsUrl from '../assets/waternormals.jpg';
 import { scene, mat, std, C, box, cyl, group, describe, canvasTexture, balustrade, nightOnly, lanternMats } from './lib.js';
 import { layers, RAMPART, ARCHES } from './gate.js';
 
@@ -38,24 +39,28 @@ const BRIDGES = [
 ].sort((a, b) => a.x - b.x);
 const BRIDGE_L = 23.15;
 
-// ---- 金水河：镜面反射 + 水色 ----
-export let reflector = null;
+// ---- 金水河：带波纹与日光高光的反射水面（Water） ----
+export const reflector = null;
+export let water = null;
 {
   const river = group(scene);
   const geo = new THREE.PlaneGeometry(RIVER.hx * 2, RIVER.z1 - RIVER.z0);
-  reflector = new Reflector(geo, {
-    clipBias: 0.003,
+  const waterNormals = new THREE.TextureLoader().load(waterNormalsUrl, (t) => { t.wrapS = t.wrapT = THREE.RepeatWrapping; });
+  water = new Water(geo, {
     textureWidth: isSmall ? 512 : 1024,
     textureHeight: isSmall ? 512 : 1024,
-    color: 0x8fa3a8,
+    waterNormals,
+    sunDirection: new THREE.Vector3(0, 1, 0),
+    sunColor: 0xffffff,
+    waterColor: 0x17414d,
+    distortionScale: 0.12,
+    fog: true,
+    clipBias: 0.002,
   });
-  reflector.rotation.x = -Math.PI / 2;
-  reflector.position.set(0, -RIVER.depth, (RIVER.z0 + RIVER.z1) / 2);
-  river.add(reflector);
-  const tint = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: C.water, transparent: true, opacity: 0.38, roughness: 0.12, metalness: 0.2, depthWrite: false, envMapIntensity: 0.35 }));
-  tint.rotation.x = -Math.PI / 2;
-  tint.position.set(0, -RIVER.depth + 0.03, (RIVER.z0 + RIVER.z1) / 2);
-  river.add(tint);
+  water.material.uniforms.size.value = 6.0;
+  water.rotation.x = -Math.PI / 2;
+  water.position.set(0, -RIVER.depth, (RIVER.z0 + RIVER.z1) / 2);
+  river.add(water);
   describe(river, {
     eyebrow: '前庭', title: '外金水河', sub: 'OUTER GOLDEN WATER RIVER',
     text: '天安门前的外金水河自西向东穿过，全长 500 m、宽 18 m，北岸距城台墙基 32 m。河上架七座汉白玉石桥，中间五座正对五阙券门。水面倒映城楼，是最经典的取景角度。',
@@ -237,25 +242,38 @@ export const flag = {};
   });
 }
 
-// ---- 松柏 ----
+// ---- 松柏：树干 + 多团不规则树冠（实例化） ----
 {
   const trees = group(scene);
-  const coneA = new THREE.ConeGeometry(2.2, 5, 7), coneB = new THREE.ConeGeometry(1.7, 4, 7), trunkGeo = new THREE.CylinderGeometry(0.25, 0.32, 2.2, 6);
+  const blob = new THREE.IcosahedronGeometry(1, 2);
+  { const p = blob.attributes.position; for (let i = 0; i < p.count; i++) { const k = 0.82 + ((i * 7919) % 101) / 101 * 0.36; p.setXYZ(i, p.getX(i) * k, p.getY(i) * (0.7 + ((i * 131) % 17) / 40), p.getZ(i) * k); } blob.computeVertexNormals(); }
+  const trunkGeo = new THREE.CylinderGeometry(0.22, 0.34, 1, 7);
   const spots = [];
   for (const sgn of [-1, 1]) {
-    for (let x = 66; x <= 250; x += 7.5) spots.push([sgn * x, RIVER.z0 - 9 + (x % 3), 0.8 + (x % 5) / 8]);
-    for (let x = 66; x <= 250; x += 9) spots.push([sgn * x, -FRONT - 10 - (x % 4), 0.9 + (x % 7) / 10]);
+    for (let x = 66; x <= 250; x += 7.5) spots.push([sgn * x, RIVER.z0 - 9 + (x % 3), 0.85 + (x % 5) / 8, x * 0.37]);
+    for (let x = 66; x <= 250; x += 9) spots.push([sgn * x, -FRONT - 10 - (x % 4), 0.95 + (x % 7) / 10, x * 0.53]);
   }
-  const mA = new THREE.InstancedMesh(coneA, mat.pine, spots.length), mB = new THREE.InstancedMesh(coneB, mat.pineDark, spots.length), mT = new THREE.InstancedMesh(trunkGeo, mat.trunk, spots.length);
-  const m4 = new THREE.Matrix4(), v = new THREE.Vector3(), q = new THREE.Quaternion(), sc = new THREE.Vector3();
-  spots.forEach(([x, z, s], i) => {
-    sc.set(s, s, s);
-    m4.compose(v.set(x, 1.1 * s, z), q, sc); mT.setMatrixAt(i, m4);
-    m4.compose(v.set(x, 2.2 * s + 2.5 * s, z), q, sc); mA.setMatrixAt(i, m4);
-    m4.compose(v.set(x, 2.2 * s + 4.8 * s, z), q, sc); mB.setMatrixAt(i, m4);
+  const BLOBS = 5;
+  const mF = new THREE.InstancedMesh(blob, mat.pine, spots.length * BLOBS), mT = new THREE.InstancedMesh(trunkGeo, mat.trunk, spots.length);
+  const m4 = new THREE.Matrix4(), v = new THREE.Vector3(), q = new THREE.Quaternion(), sc = new THREE.Vector3(), e = new THREE.Euler();
+  const col = new THREE.Color();
+  spots.forEach(([x, z, s, seed], i) => {
+    const h = 7.5 * s;
+    m4.compose(v.set(x, h * 0.5, z), q.identity(), sc.set(1, h, 1)); mT.setMatrixAt(i, m4);
+    for (let b = 0; b < BLOBS; b++) {
+      const t = b / (BLOBS - 1);
+      const ang = seed + b * 2.4, r = (1 - t) * 1.6 * s;
+      const y = h * (0.42 + 0.58 * t), rad = (2.6 - 1.4 * t) * s;
+      q.setFromEuler(e.set(0, seed + b, 0));
+      m4.compose(v.set(x + Math.cos(ang) * r, y, z + Math.sin(ang) * r), q, sc.set(rad, rad * 0.75, rad));
+      mF.setMatrixAt(i * BLOBS + b, m4);
+      col.setHSL(0.34 + ((i * 13 + b * 7) % 10) / 100 - 0.05, 0.42, 0.2 + t * 0.07);
+      mF.setColorAt(i * BLOBS + b, col);
+    }
   });
-  mA.castShadow = mB.castShadow = true;
-  trees.add(mA, mB, mT);
+  mF.instanceColor.needsUpdate = true;
+  mF.castShadow = mT.castShadow = true; mF.receiveShadow = true;
+  trees.add(mF, mT);
 }
 
 // ============================================================================
@@ -315,10 +333,16 @@ for (const [x, z, tx, i] of [[-70, 76, -20, 9000], [70, 76, 20, 9000], [0, 74, 0
 // 物理天空 · 星空 · 月亮
 export const sky = new Sky();
 sky.scale.setScalar(450000);
-sky.material.uniforms.turbidity.value = 4;
-sky.material.uniforms.rayleigh.value = 2.2;
-sky.material.uniforms.mieCoefficient.value = 0.005;
+sky.material.uniforms.turbidity.value = 1.9;
+sky.material.uniforms.rayleigh.value = 3.4;
+sky.material.uniforms.mieCoefficient.value = 0.003;
 sky.material.uniforms.mieDirectionalG.value = 0.8;
+// Preetham 天空在 ACES 下偏白，整体压暗并略偏蓝，接近晴天照片的天色
+sky.material.fragmentShader = sky.material.fragmentShader.replace(
+  'gl_FragColor = vec4( retColor, 1.0 );',
+  'retColor *= vec3( 0.42, 0.50, 0.70 ); gl_FragColor = vec4( retColor, 1.0 );',
+);
+sky.material.needsUpdate = true;
 scene.add(sky);
 
 export const stars = (() => {
@@ -338,9 +362,47 @@ scene.add(moon);
 
 scene.fog = new THREE.Fog(0xd7dfe6, 320, 760);
 
+// 云层：程序噪声贴图的高空平面，缓慢漂移
+const cloudTex = canvasTexture(512, 512, (g, w, h) => {
+  const img = g.createImageData(w, h);
+  // 简易分形噪声（值噪声叠加）
+  const rnd = (x, y) => { const n = Math.sin(x * 127.1 + y * 311.7) * 43758.5453; return n - Math.floor(n); };
+  const smooth = (t) => t * t * (3 - 2 * t);
+  const noise = (x, y) => {
+    const xi = Math.floor(x), yi = Math.floor(y), xf = x - xi, yf = y - yi;
+    const a = rnd(xi, yi), b = rnd(xi + 1, yi), c = rnd(xi, yi + 1), d = rnd(xi + 1, yi + 1);
+    const u = smooth(xf), v = smooth(yf);
+    return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
+  };
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    let f = 0, amp = 0.5, fr = 4 / w;
+    for (let o = 0; o < 5; o++) { f += amp * noise(x * fr, y * fr); amp *= 0.5; fr *= 2; }
+    const a = Math.min(1, Math.max(0, (f - 0.545) * 4.5));
+    const i = (y * w + x) * 4;
+    img.data[i] = 255; img.data[i + 1] = 255; img.data[i + 2] = 255; img.data[i + 3] = Math.round(a * a * 255);
+  }
+  g.putImageData(img, 0, 0);
+}, [2, 2]);
+export const clouds = new THREE.Mesh(
+  new THREE.PlaneGeometry(5200, 5200),
+  new THREE.MeshBasicMaterial({ map: cloudTex, transparent: true, depthWrite: false, opacity: 0.78, fog: false }),
+);
+clouds.rotation.x = Math.PI / 2;
+clouds.position.y = 2100;
+clouds.renderOrder = -1;
+scene.add(clouds);
+
+/** 每帧：水面时间、云层漂移。 */
+export function tickEnv(dt) {
+  if (water) water.material.uniforms.time.value += dt * 0.45;
+  cloudTex.offset.x += dt * 0.0016;
+}
+/** 级联阴影接管太阳光时由 main.js 填入。 */
+export const csmHook = { lights: null };
+export const sunDir = new THREE.Vector3();
+
 // ---- 时刻 → 太阳、灯光、雾、夜景 ----
 export const clock = { hours: 10.5, night: 0, elevation: 0 };
-const sunDir = new THREE.Vector3();
 const tmpA = new THREE.Color(), tmpB = new THREE.Color();
 const lerpHex = (a, b, t) => tmpA.setHex(a).lerp(tmpB.setHex(b), t);
 const smooth = (x, a, b) => THREE.MathUtils.smoothstep(x, a, b);
@@ -359,14 +421,21 @@ export function setTime(hours) {
   clock.night = night;
 
   sun.position.copy(sunDir).multiplyScalar(320).add(sun.target.position);
-  sun.intensity = 3.0 * day;
   sun.color.copy(lerpHex(0xffb070, 0xfff4e4, warm));
-  hemi.intensity = 0.08 + 0.55 * smooth(elev, -6, 15);
+  sun.intensity = csmHook.lights ? 0 : 4.2 * day;
+  if (csmHook.lights) for (const l of csmHook.lights) { l.intensity = 4.2 * day; l.color.copy(sun.color); }
+  if (water) {
+    water.material.uniforms.sunDirection.value.copy(sunDir);
+    water.material.uniforms.sunColor.value.copy(sun.color).multiplyScalar(0.25 + 0.75 * day);
+    water.material.uniforms.waterColor.value.copy(lerpHex(0x17414d, 0x05090f, night));
+  }
+  clouds.material.color.copy(lerpHex(0xffc9a0, 0xffffff, warm)).lerp(tmpB.setHex(0x161c2a), night);
+  hemi.intensity = 0.06 + 0.38 * smooth(elev, -6, 15);
   hemi.color.copy(lerpHex(0x6d7ea0, 0xcfe3ff, warm));
   hemi.groundColor.copy(lerpHex(0x2a2622, 0x8a7a5a, day));
   moonLight.intensity = 0.32 * night;
 
-  const dayFog = lerpHex(0xf0c8a3, 0xd9e1e8, smooth(elev, 0, 20)).clone();
+  const dayFog = lerpHex(0xf0c8a3, 0xcfdcea, smooth(elev, 0, 20)).clone();
   scene.fog.color.copy(dayFog.lerp(tmpB.setHex(0x0d121b), night));
   scene.background = null;
 
