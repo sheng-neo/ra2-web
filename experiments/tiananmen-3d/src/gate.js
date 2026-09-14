@@ -350,7 +350,15 @@ const beastGeo = (() => {
 })();
 function addRidges(roofMesh, parent, beasts = 5) {
   for (const path of roofMesh.userData.cornerPaths) {
-    parent.add(ridgeTube(path, 0.34));
+    parent.add(ridgeTube(path, 0.42));
+    // 垂兽：脊上转折处的兽头
+    const k = Math.min(path.length - 2, beasts + 1);
+    const head = new THREE.Mesh(beastGeo, mat.glazeDeep);
+    head.scale.set(2.2, 2.2, 2.6);
+    head.position.copy(path[k]); head.position.y += 0.2;
+    head.rotation.y = Math.atan2(path[k + 1].x - path[k].x, path[k + 1].z - path[k].z) + Math.PI / 2;
+    head.castShadow = true;
+    parent.add(head);
     for (let i = 1; i <= beasts; i++) {
       const p = path[i], q2 = path[i + 1] || p;
       const m = new THREE.Mesh(beastGeo, mat.ridgeBeast);

@@ -5,6 +5,9 @@ import * as THREE from 'three';
 import { Sky } from 'three/addons/objects/Sky.js';
 import { Water } from 'three/addons/objects/Water.js';
 import waterNormalsUrl from '../assets/waternormals.jpg';
+import flare0Url from '../assets/lensflare0.png';
+import flare3Url from '../assets/lensflare3.png';
+import { Lensflare, LensflareElement } from 'three/addons/objects/Lensflare.js';
 import { scene, mat, std, C, box, cyl, group, describe, canvasTexture, balustrade, nightOnly, lanternMats, postCapGeo } from './lib.js';
 import { layers, RAMPART, ARCHES } from './gate.js';
 import { lion, huabiao } from './detail.js';
@@ -395,40 +398,51 @@ scene.add(moon);
 
 scene.fog = new THREE.Fog(0xd7dfe6, 320, 760);
 
-// 云层：程序噪声贴图的高空平面，缓慢漂移
-const cloudTex = canvasTexture(512, 512, (g, w, h) => {
-  const img = g.createImageData(w, h);
-  // 简易分形噪声（值噪声叠加）
-  const rnd = (x, y) => { const n = Math.sin(x * 127.1 + y * 311.7) * 43758.5453; return n - Math.floor(n); };
-  const smooth = (t) => t * t * (3 - 2 * t);
-  const noise = (x, y) => {
-    const xi = Math.floor(x), yi = Math.floor(y), xf = x - xi, yf = y - yi;
-    const a = rnd(xi, yi), b = rnd(xi + 1, yi), c = rnd(xi, yi + 1), d = rnd(xi + 1, yi + 1);
-    const u = smooth(xf), v = smooth(yf);
-    return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
-  };
-  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-    let f = 0, amp = 0.5, fr = 4 / w;
-    for (let o = 0; o < 5; o++) { f += amp * noise(x * fr, y * fr); amp *= 0.5; fr *= 2; }
-    const a = Math.min(1, Math.max(0, (f - 0.545) * 4.5));
-    const i = (y * w + x) * 4;
-    img.data[i] = 255; img.data[i + 1] = 255; img.data[i + 2] = 255; img.data[i + 3] = Math.round(a * a * 255);
+// 云层：积云（成团软椭圆）与高空薄云两层，缓慢漂移
+const cumulusTex = canvasTexture(1024, 1024, (g, w, h) => {
+  g.clearRect(0, 0, w, h);
+  const puff = (x, y, r, a) => { const gr = g.createRadialGradient(x, y, 0, x, y, r); gr.addColorStop(0, `rgba(255,255,255,${a})`); gr.addColorStop(0.55, `rgba(255,255,255,${a * 0.7})`); gr.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = gr; g.beginPath(); g.arc(x, y, r, 0, 7); g.fill(); };
+  for (let c = 0; c < 14; c++) {
+    const cx = Math.random() * w, cy = Math.random() * h, n = 10 + Math.floor(Math.random() * 14), sz = 40 + Math.random() * 70;
+    for (let i = 0; i < n; i++) {
+      const a = Math.random() * Math.PI * 2, d = Math.random() * sz * 1.6;
+      puff(cx + Math.cos(a) * d, cy + Math.sin(a) * d * 0.45, sz * (0.5 + Math.random() * 0.7), 0.55 + Math.random() * 0.35);
+    }
   }
-  g.putImageData(img, 0, 0);
 }, [2, 2]);
-export const clouds = new THREE.Mesh(
-  new THREE.PlaneGeometry(5200, 5200),
-  new THREE.MeshBasicMaterial({ map: cloudTex, transparent: true, depthWrite: false, opacity: 0.78, fog: false }),
-);
-clouds.rotation.x = Math.PI / 2;
-clouds.position.y = 2100;
-clouds.renderOrder = -1;
+const cirrusTex = canvasTexture(512, 512, (g, w, h) => {
+  g.clearRect(0, 0, w, h);
+  for (let i = 0; i < 60; i++) {
+    g.strokeStyle = `rgba(255,255,255,${0.05 + Math.random() * 0.12})`; g.lineWidth = 6 + Math.random() * 20; g.lineCap = 'round';
+    const x = Math.random() * w, y = Math.random() * h;
+    g.beginPath(); g.moveTo(x, y); g.bezierCurveTo(x + 80, y - 20, x + 160, y + 20, x + 260 + Math.random() * 120, y);
+    g.stroke();
+  }
+}, [3, 3]);
+export const clouds = new THREE.Group();
+const cumulus = new THREE.Mesh(new THREE.PlaneGeometry(6000, 6000), new THREE.MeshBasicMaterial({ map: cumulusTex, transparent: true, depthWrite: false, opacity: 0.9, fog: false }));
+cumulus.rotation.x = Math.PI / 2; cumulus.position.y = 1500; cumulus.renderOrder = -1;
+const cirrus = new THREE.Mesh(new THREE.PlaneGeometry(9000, 9000), new THREE.MeshBasicMaterial({ map: cirrusTex, transparent: true, depthWrite: false, opacity: 0.7, fog: false }));
+cirrus.rotation.x = Math.PI / 2; cirrus.position.y = 3200; cirrus.renderOrder = -1;
+clouds.add(cumulus, cirrus);
 scene.add(clouds);
+clouds.material = cumulus.material;   // setTime 里按昼夜染色
+
+// 镜头光晕：跟随太阳方向
+const flareTex0 = new THREE.TextureLoader().load(flare0Url), flareTex3 = new THREE.TextureLoader().load(flare3Url);
+export const sunFlare = new Lensflare();
+sunFlare.addElement(new LensflareElement(flareTex0, 420, 0, new THREE.Color(1, 0.95, 0.85)));
+sunFlare.addElement(new LensflareElement(flareTex3, 60, 0.6));
+sunFlare.addElement(new LensflareElement(flareTex3, 70, 0.7));
+sunFlare.addElement(new LensflareElement(flareTex3, 120, 0.9));
+sunFlare.addElement(new LensflareElement(flareTex3, 70, 1.0));
+scene.add(sunFlare);
 
 /** 每帧：水面时间、云层漂移。 */
 export function tickEnv(dt) {
   if (water) water.material.uniforms.time.value += dt * 0.45;
-  cloudTex.offset.x += dt * 0.0016;
+  cumulusTex.offset.x += dt * 0.0012;
+  cirrusTex.offset.x += dt * 0.0006;
 }
 /** 级联阴影接管太阳光时由 main.js 填入。 */
 export const csmHook = { lights: null };
@@ -462,7 +476,10 @@ export function setTime(hours) {
     water.material.uniforms.sunColor.value.copy(sun.color).multiplyScalar(0.25 + 0.75 * day);
     water.material.uniforms.waterColor.value.copy(lerpHex(0x17414d, 0x05090f, night));
   }
-  clouds.material.color.copy(lerpHex(0xffc9a0, 0xffffff, warm)).lerp(tmpB.setHex(0x161c2a), night);
+  const cc = lerpHex(0xffc9a0, 0xffffff, warm).clone().lerp(tmpB.setHex(0x161c2a), night);
+  for (const m of clouds.children) m.material.color.copy(cc);
+  sunFlare.position.copy(sunDir).multiplyScalar(1400);
+  sunFlare.visible = elev > 1;
   hemi.intensity = 0.06 + 0.38 * smooth(elev, -6, 15);
   hemi.color.copy(lerpHex(0x6d7ea0, 0xcfe3ff, warm));
   hemi.groundColor.copy(lerpHex(0x2a2622, 0x8a7a5a, day));
