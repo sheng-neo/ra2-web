@@ -15,6 +15,7 @@ function figureGeometry() {
 
 export function addCrowd({ river, front, count = 420, bridgeY = () => 0 }) {
   const g = group(scene);
+  g.userData.isCrowd = true;
   const geo = figureGeometry();
   const matBody = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.9, envMapIntensity: 0.3 });
   const im = new THREE.InstancedMesh(geo, matBody, count);

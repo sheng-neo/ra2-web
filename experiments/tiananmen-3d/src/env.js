@@ -193,6 +193,7 @@ export let water = null;
 export const flag = {};
 {
   const g = group(scene, 0, 0, RIVER.z1 + 4 + 80);
+  g.userData.far = true;
   cyl(2.2, 2.4, 0.4, mat.marble, 0, 0.2, 0, 8, g);
   cyl(0.18, 0.24, 30, std(0xd8d4cc, { metalness: 0.7, roughness: 0.3 }), 0, 15.2, 0, 10, g);
   const flagTex = canvasTexture(512, 342, (ctx, w, h) => {
@@ -270,6 +271,7 @@ export const flag = {};
 // ---- 远景：人民大会堂（西）、国家博物馆（东）、人民英雄纪念碑，以及两侧公园树带 ----
 {
   const far = group(scene);
+  far.userData.far = true;
   const hall = (x, w, d, h, name, text) => {
     const g = group(far, x, 0, 400);
     box(w, 3, d, mat.marbleShade, 0, 1.5, 0, g);
