@@ -7,16 +7,25 @@ import type { ScaleSpec } from './raster';
 import { fillEllipse, fillRect, line, setPx } from './raster';
 import { blitAt, fillLotRect, groundDiamond, isoBox, lotLine, lotPt, newObjectLot, treeSprite, windows, roofGable, type Lot } from './iso';
 
-/** 树 genTrees(density 1..7, variant 0..3)：n = density + floor(density/3) 棵，按 y 排序后贴图。 */
+/** 每档密度的树数（1..7）：低档稀疏（原版 1–3 档只有零星几棵），5 档起成林。 */
+const TREES_PER_DENSITY: readonly number[] = [1, 2, 3, 4, 6, 8, 10];
+/**
+ * 树 genTrees(density 1..7, variant 0..3)：TREES_PER_DENSITY[d] 棵按 y 排序后贴图；每棵树在右下方投 Forest[0] 椭圆阴影（S 档省略），
+ * ≥ 5 档的阴影更大、彼此连片，让树丛成"簇"而不是散点。
+ */
 export function genTrees(density: number, variant: number, sp: ScaleSpec): IndexedBitmap {
   const d = Math.max(1, Math.min(7, density | 0));
   const lot = newObjectLot(sp, 1);
-  const n = d + Math.floor(d / 3);
+  const n = TREES_PER_DENSITY[d - 1]!;
   const seed = (variant & 3) * 8 + d;
   const pts: [number, number, number][] = [];
-  for (let k = 0; k < n; k++) pts.push([0.14 + 0.72 * hashNoise(seed, k, 1), 0.14 + 0.72 * hashNoise(seed, k, 2), 0.8 + 0.4 * hashNoise(seed, k, 3)]);
+  const spread = d <= 2 ? 0.5 : 0.72;
+  for (let k = 0; k < n; k++) pts.push([0.5 - spread / 2 + spread * hashNoise(seed, k, 1), 0.5 - spread / 2 + spread * hashNoise(seed, k, 2), 0.85 + 0.3 * hashNoise(seed, k, 3)]);
   pts.sort((a, b) => (a[0] + a[1]) - (b[0] + b[1]));
-  for (const [u, v, m] of pts) { const t = treeSprite(sp, seed * 31 + Math.round(u * 97 + v * 53), d >= 5 ? m * 1.05 : m); const [x, y] = lotPt(lot, u, v); blitAt(lot.bmp, t, Math.round(x), Math.round(y)); }
+  // 先铺全部树影（≥ 5 档的影子更大，彼此连成一片林冠底色），再按深度贴树
+  const sprites = pts.map(([u, v, m]) => treeSprite(sp, seed * 31 + Math.round(u * 97 + v * 53), d >= 5 ? m * 1.08 : m));
+  if (sp.scale !== 'S') pts.forEach(([u, v], k) => { const t = sprites[k]!; const [x, y] = lotPt(lot, u, v); fillEllipse(lot.bmp, x + Math.round(2 * sp.k), y, Math.max(1, t.w * (d >= 5 ? 0.6 : 0.4)), Math.max(1, t.w * (d >= 5 ? 0.3 : 0.16)), ci(Ramp.Forest, 0)); });
+  pts.forEach(([u, v], k) => { const [x, y] = lotPt(lot, u, v); blitAt(lot.bmp, sprites[k]!, Math.round(x), Math.round(y)); });
   return lot.bmp;
 }
 
@@ -118,17 +127,25 @@ export function genAbandoned(size: 1 | 2 | 3, variant: number, sp: ScaleSpec): I
   return lot.bmp;
 }
 
-/** 分区地面（显示 Zones 时的叠加）：菱形描边 2 px（密区 3 px）+ 内部 rows 抖动 25%。 */
+/**
+ * 分区地面（显示 Zones 时的叠加）：1 px 菱形描边 + 内部 1/8 点阵；密区再加一圈内缩约 3 px（L）的虚线菱形。
+ * 原来的 2–3 px 实线在相邻格之间叠成 4–6 px 的粗格网，整片分区像铁丝网（INT-C 实测）；原版是细线 + 点阵的淡色菱形。
+ */
 export function zoneTint(lot: Lot, colorIdx: number, dense: boolean): void {
   const sp = lot.sp;
   const b = lot.bmp;
-  const lw = Math.max(1, Math.round((dense ? 3 : 2) * sp.k));
-  for (let k = 0; k < lw; k++) {
-    const ins = k / (sp.W / 2) * 1.0;
-    lotLine(lot, 0.5, ins, 0, 1 - ins, 0.5, 0, colorIdx); lotLine(lot, 1 - ins, 0.5, 0, 0.5, 1 - ins, 0, colorIdx);
-    lotLine(lot, 0.5, 1 - ins, 0, ins, 0.5, 0, colorIdx); lotLine(lot, ins, 0.5, 0, 0.5, ins, 0, colorIdx);
-  }
-  // 内部 25% 抖动（每 2 行、每 2 列一点）
-  const inside = (x: number, y: number): boolean => { const dx = Math.abs(x + 0.5 - sp.W / 2) / (sp.W / 2), dy = Math.abs(y + 0.5 - (lot.baseY + sp.H / 2)) / (sp.H / 2); return dx + dy <= 1; };
-  for (let y = lot.baseY; y < lot.baseY + sp.H; y++) for (let x = 0; x < sp.W; x++) if (inside(x, y) && ((y & 1) === 0) && ((x + (y >> 1)) & 3) === 0 && b.data[y * b.w + x] === 0) b.data[y * b.w + x] = colorIdx;
+  const ring = (ins: number, dashed: boolean): void => {
+    const pts = [[0.5, ins], [1 - ins, 0.5], [0.5, 1 - ins], [ins, 0.5]] as const;
+    for (let k = 0; k < 4; k++) {
+      const [ua, va] = pts[k]!, [ub, vb] = pts[(k + 1) & 3]!;
+      if (!dashed) { lotLine(lot, ua, va, 0, ub, vb, 0, colorIdx); continue; }
+      const segs = Math.max(2, Math.round(sp.W / 8));
+      for (let s = 0; s < segs; s += 2) { const t0 = s / segs, t1 = (s + 1) / segs; lotLine(lot, ua + (ub - ua) * t0, va + (vb - va) * t0, 0, ua + (ub - ua) * t1, va + (vb - va) * t1, 0, colorIdx); }
+    }
+  };
+  ring(0, false);
+  if (dense) ring(Math.max(2, Math.round(3 * sp.k)) / (sp.W / 2), true);
+  // 内部点阵（每 2 行、每 4 列一点，行间错开）
+  const inside = (x: number, y: number): boolean => { const dx = Math.abs(x + 0.5 - sp.W / 2) / (sp.W / 2), dy = Math.abs(y + 0.5 - (lot.baseY + sp.H / 2)) / (sp.H / 2); return dx + dy <= 0.9; };
+  if (sp.scale !== 'S') for (let y = lot.baseY; y < lot.baseY + sp.H; y++) for (let x = 0; x < sp.W; x++) if (inside(x, y) && ((y & 1) === 0) && ((x + (y >> 1)) & 3) === 0 && b.data[y * b.w + x] === 0) b.data[y * b.w + x] = colorIdx;
 }

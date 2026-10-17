@@ -262,7 +262,10 @@ export function door(lot: Lot, box: BoxFaces, face: 'left' | 'right', t: number,
   fillRect(lot.bmp, Math.round(bx - w / 2), Math.round(by - h), w, h, idx);
 }
 
-/** 独立树精灵：树干 Earth[1] 2×4 + 两层树冠（Forest[2] 12×8 / Forest[4] 10×7）+ 高光 Forest[6]（L 档尺寸）。锚点 = 树根。 */
+/**
+ * 独立树精灵：树干 Earth[1] 2×4 + 下冠 Forest[1|2] 12×8 / 上冠 Forest[2|3] 10×7 + 高光 Forest[4]（L 档尺寸）。锚点 = 树根。
+ * 树冠整体比平地 Grass[3..5] 暗（INT-C：树比草亮时大片树林像绿色噪点；原版的树是落在草地上的深绿团块）。
+ */
 export function treeSprite(sp: ScaleSpec, seed = 0, sizeMul = 1): IndexedBitmap {
   const w = Math.max(3, Math.round(14 * sp.k * sizeMul)), h = Math.max(4, Math.round(16 * sp.k * sizeMul));
   const b = newBitmap(w, h, w >> 1, h - 1);
@@ -271,9 +274,10 @@ export function treeSprite(sp: ScaleSpec, seed = 0, sizeMul = 1): IndexedBitmap 
   const r1x = Math.max(1, 6 * sp.k * sizeMul), r1y = Math.max(1, 4 * sp.k * sizeMul);
   const cy1 = h - trunkH - r1y * 0.9;
   const shade = hashNoise(seed, 7, 3) > 0.5 ? 0 : 1;
-  fillEllipse(b, cx, cy1, r1x, r1y, ci(Ramp.Forest, 2 + shade));
-  fillEllipse(b, cx - 0.5 * sp.k * sizeMul, cy1 - r1y * 0.55, r1x * 0.82, r1y * 0.85, ci(Ramp.Forest, 4 + shade));
-  if (sp.scale !== 'S') fillEllipse(b, cx - r1x * 0.35, cy1 - r1y * 0.9, Math.max(1, r1x * 0.25), Math.max(1, r1y * 0.3), ci(Ramp.Forest, 6));
+  fillEllipse(b, cx, cy1, r1x, r1y, ci(Ramp.Forest, 1 + shade));
+  fillEllipse(b, cx - 0.5 * sp.k * sizeMul, cy1 - r1y * 0.55, r1x * 0.82, r1y * 0.85, ci(Ramp.Forest, 2 + shade));
+  if (sp.scale === 'L') fillEllipse(b, cx - r1x * 0.35, cy1 - r1y * 0.9, Math.max(1, r1x * 0.25), Math.max(1, r1y * 0.3), ci(Ramp.Forest, 4));
+  else if (sp.scale === 'M' && shade === 1) setPx(b, Math.round(cx - r1x * 0.35), Math.round(cy1 - r1y * 0.9), ci(Ramp.Forest, 4));
   return b;
 }
 /** 小型柏树 / 灌木（公园、庭院点缀）。 */

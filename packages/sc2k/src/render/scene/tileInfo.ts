@@ -36,10 +36,15 @@ export function waterSpriteOf(xter: number, rot: Rotation): number {
 /** 平地色海拔分带 0..altBands−1（spec:ui-art §3.6.2）。 */
 export const altBandOf = (alt: number, t: SceneTuning): number => Math.max(0, Math.min(t.altBands - 1, Math.floor(alt / t.altBandDiv)));
 
-/** 水面项的基准海拔：水下 0x1X 画在 waterLevel；岸边 / 浅水 / 溪流 / 瀑布画在 alt（tuning.waterSurfaceAtLevel 可切到 waterLevel）。 */
+/**
+ * 水面项的基准海拔：水下 0x1X 画在 waterLevel；岸边 0x2X 默认也画在 waterLevel（tuning.shoreAtWaterLevel，与相邻水面齐平，坡面露出水线以上的部分）；
+ * 浅水 / 溪流 / 瀑布画在 alt（tuning.waterSurfaceAtLevel 可切到 waterLevel）。
+ */
 export function waterHeightOf(xter: number, alt: number, waterLevel: number, t: SceneTuning): number {
   const level = Math.max(alt, waterLevel);
-  if (xterClassOf(xter) === XterClass.Submerged) return level;
+  const cls = xterClassOf(xter);
+  if (cls === XterClass.Submerged) return level;
+  if (cls === XterClass.Shore) return t.shoreAtWaterLevel ? level : alt;
   return t.waterSurfaceAtLevel ? level : alt;
 }
 /** 水深带 = min(waterLevel − alt, waterDepthBands − 1)，下限 0。 */

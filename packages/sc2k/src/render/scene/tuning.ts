@@ -15,8 +15,13 @@ export interface SceneTuning {
   undergroundVariant: number;
   /** 水深分带数：water variant = min(waterLevel − alt, waterDepthBands − 1)。 */
   waterDepthBands: number;
-  /** 岸边 / 浅水 / 溪流 / 瀑布项画在 alt（false）还是 waterLevel（true）；水下 0x1X 恒画在 waterLevel（ARCHITECTURE §6.3）。 */
+  /** 浅水 / 溪流 / 瀑布项画在 alt（false）还是 waterLevel（true）；水下 0x1X 恒画在 waterLevel（ARCHITECTURE §6.3）。 */
   waterSurfaceAtLevel: boolean;
+  /**
+   * 岸边 0x2X 的水面画在 waterLevel（= alt + 1，spec:terrain §2.6.2"高角正好在水面"）而不是 alt：相邻水下格的水面在 waterLevel，
+   * 岸边若画在 alt 会比湖面低一级，整条岸线出现台阶（INT-C 实测）。false 回到 spec:ui-art §3.7.2 原字面（画在 alt）。
+   */
+  shoreAtWaterLevel: boolean;
   /** 动画节拍频率（Hz）：frame = floor(animTick · fps / animTickHz) mod frames。24 可被 2/3/4/6/8 整除。 */
   animTickHz: number;
   /** 覆盖物帧数 / fps（spec:ui-art §3.9.1）。 */
@@ -41,6 +46,7 @@ export const DEFAULT_SCENE_TUNING: SceneTuning = {
   undergroundVariant: 0x80,
   waterDepthBands: 4,
   waterSurfaceAtLevel: false,
+  shoreAtWaterLevel: true,
   animTickHz: 24,
   anim: {
     fire: { frames: 4, fps: 8 },

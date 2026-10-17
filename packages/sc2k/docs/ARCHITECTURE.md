@@ -384,7 +384,7 @@ compileTile(snap, i, out):                       // 每格 ≤ 5 项；全图 �
 - `ZOOM_TABLE`（契约）：XS 8×4/3、S 16×8/6、M 32×16/12、L 64×32/24、XL 128×64/48。`S = tileW/2`；`(ox, oy) = mapOrigin(zoom) = (128·S, MAX_ALT·LEVEL)`（契约 `render.ts`）：旋转后 (0,0)@31 级的顶点落在 `y = 0`，旋转后 (0,127) 的左顶点落在 `x = 0`，地图像素画布 = `128·tileW × (MAX_ALT·LEVEL + 128·tileH)`。
 - 像素锚点约定 `[决定]`：`SceneCompiler.worldToScreen(x,y,h)` 返回旋转后地块的**顶点 c00'** `= [ox + (rx − ry)·S, oy + (rx + ry)·S/2 − h·LEVEL]`；`SceneItem.x/y` = 该项锚格在基准海拔处的**底顶点 c11'** `= worldToScreen + [0, tileH]`，位图的 `(anchorX, anchorY)` 贴到此点（procedural 锚点 `(W/2, H)`，DAT 锚点 `(w/2, h−1)` 由 provider 自行给出）；`RendererApi.screenOf` = 地图像素 + 相机偏移（`worldRoot` 整数位置），`pick` 先减同一偏移。`CpuCompositor.render(items, …, rect)` 的 `rect` 与 DOM 标牌、`thumbnail` 都在这一地图像素系里。
 - **数据永不旋转**：`rotateTile(x,y) = (y, 127−x)`；坡面 `SLOPE_ROT_CCW`、溪流 `XTER_STREAM_ROT_CCW`、网络环 / 隧道口 / 交叉件 / 高速 / 地铁↔铁路 / `0xC6↔0xC7` 的 `rotateXbld`、`rotateXund`、匝道的朝向元组反查、`drawFlip = ((xbit & Flipped) != 0) XOR (rotation & 1)`——**全部只存在于 `contracts/rotation.ts`**，terrain 模块 re-export，渲染 / 拾取 / 路网 / 预览一律 import。
-- 水面高度：水下 `0x1X` 画在 `h = waterLevel`；岸边 / 浅水 / 溪流 / 瀑布画在 `alt`（常量 `WATER_SURFACE_AT_LEVEL` 可切）。
+- 水面高度：水下 `0x1X` 与岸边 `0x2X` 画在 `h = waterLevel`（岸边的高角正好在水面，与湖面齐平；`SceneTuning.shoreAtWaterLevel` 可切回 `alt`）；浅水 / 溪流 / 瀑布画在 `alt`（`SceneTuning.waterSurfaceAtLevel` 可切）。
 - 拾取：从 31 级向 0 级逆投影 + 四边形点内测试，只按地面；`pick` 是 `SceneCompiler` 的纯函数，Pixi 不做命中测试。`picking.test` 的往返用例以**地块中心** `worldToScreen(t) + [0, tileH/2]` 为输入断言 `pick == t`（顶点与共享边上的点不作断言）。
 - 边缘岩壁：旋转后 `rx == 127 || ry == 127`。
 

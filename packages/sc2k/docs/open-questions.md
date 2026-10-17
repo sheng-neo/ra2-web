@@ -124,3 +124,4 @@
 | 30 | 调色板 192–255 规格留空，WP9 用作 4×4×4 杂色立方（车辆 / 集装箱 / 旗帜）；DAT 导入时不用我方调色板，无冲突 | `art/palette.ts IDX.MiscBase / misc()` | WP9、WP14 | — | 备忘 |
 | 31 | 边缘岩壁位图锚点：EdgeWallL 画布宽 W/2、锚点 (W/2, H/2)（落在地块底顶点 c11）；EdgeWallR 锚点 (0, H/2)。渲染器把 EdgeWall 项像其它项一样贴到 c11 即可 | `art/terrain.ts genEdgeWall` | WP10 | compiler / compositor 像素用例 | 待认可 |
 | 32 | v1 全部精灵静帧（frameCount 1 / fps 0）；水面 / 洪水 / 瀑布在 M、L 档含循环组索引（`cycling = true`），S 档不含；建筑不含循环索引，避免进入 animPage | `art/provider.ts`、`art/water.ts` | WP11 | — | 备忘 |
+| 33 | （INT-C 美术打磨）岸边 0x2X 的水面若按 spec:ui-art §3.7.2 / ARCHITECTURE §6.3 画在 `alt`，会比相邻水下格（画在 `waterLevel = alt + 1`）低一级，整条岸线出现台阶；坡面着色表的 +x 面 −2 阶加等高线 / 脊线在真实地图上像等高线图 | 岸边改画在 `waterLevel`（`render/scene/tuning.ts shoreAtWaterLevel = true`，false 回到原字面）；`art/terrain.ts SLOPE_SHADE` 收敛为 ±1 / ±1½（半阶用棋盘抖动），不再画等高线与脊线（bedrock 岩壁线保留）；树冠改为比草地暗的 Forest[1..3] 并带阴影，分区底色改 1 px 线 + 点阵 | WP9 art、WP10 render | 真渲染截图（`scratchpad/int-c/before|after`）、`e2e/output/smoke.png` | 已实现（spec 字面待 Lead 同步） |
