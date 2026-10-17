@@ -63,8 +63,11 @@ export function nullSystem(id: SystemId, profile: StubProfile = 'realistic'): Sy
   const sys: System = {
     id,
     stub: true,
-    init: (ctx) => { bind(ctx); },
-    postLoad: (ctx) => { bind(ctx); },   // 任一读档路径后重新绑定（state 对象可能被替换）；不消费 PRNG、不改图层
+    // economy 桩：开局经费率 100%（contract-rfc WP6-1：桩下 funding 全零等于"交通预算 0%"，transport 的衰败会在一个月内把路网全变废墟）。
+    // 三档桩都在 init 写 100、查询读原值（transport/decay.test 在各档下都要求 setFunding 的值原样可读），不在读取时改写；
+    // .SC2 路径桩无经费率落点（真 economy 才读写 MISC），postLoad('sc2') 同样回到 100 以保 hash('sc2') 往返；快照路径沿用快照值。
+    init: (ctx) => { bind(ctx); if (id === 'economy') ctx.state.economy.funding.fill(100); },
+    postLoad: (ctx, source) => { bind(ctx); if (id === 'economy' && source === 'sc2') ctx.state.economy.funding.fill(100); },   // 任一读档路径后重新绑定（state 对象可能被替换）；不消费 PRNG、不改图层
   };
   if (Object.keys(queries).length > 0) (sys as { queries?: Partial<Queries> }).queries = queries;
   if (Object.keys(actions).length > 0) (sys as { actions?: Partial<Actions> }).actions = actions;

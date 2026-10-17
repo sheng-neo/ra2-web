@@ -3,7 +3,8 @@
 //  - 每天开始前（phaseCursor == 0、未挂起）派发该 age 下 phaseCursor == 0 的日志命令，再 stepDay()；
 //  - 遇挂起（modalPause > 0）：派发该 (age, phaseCursor) 的命令（通常是 modalAnswer / 预算改动）再 modalClosed()，续跑当天剩余阶段 + endOfDay；
 //  - 不可达的游标（本次没在该处挂起）的条目在 age 前进后作废跳过；日志里的 setSpeed 不影响推进（stepDay 不看速度档）。
-//  - 不跑物件 / 灾害 tick（它们按真实时间节奏，日志不含时间信息——见返回报告的集成注意事项）。
+//  - 物件 / 灾害 tick 按日边界的确定性约定跑（internals.settleTicks：pending → 一次物件 tick 启动灾害；灾害模式 → 逐 tick 到灾害结束），
+//    与 advance 在 runDays / 浏览器下的衔接规则一致；tick 的真实时间节奏不进日志（open-questions #28：灾害中途的命令时序仍是 v2）。
 import type { LoggedCommand } from '../../contracts/commands';
 import type { SimHost } from '../../contracts/host';
 import { sortLog } from './commandLog';
@@ -47,11 +48,14 @@ export function replayInto(host: SimHost, log: readonly LoggedCommand[], untilAg
       host.modalClosed();
     } else {
       if (c.phaseCursor === 0) dispatchAt(c.age, 0);
-      const before = c.age;
-      internals.stepDay(hooks.now);
-      if (c.age !== before) hooks.onDay?.(c.age);
+      if (c.phaseCursor === 0 && internals.settleTicks()) { /* 启动 / 推进了灾害 tick（可能已弹出模态）：回到循环顶 */ }
+      else {
+        const before = c.age;
+        internals.stepDay(hooks.now);
+        if (c.age !== before) hooks.onDay?.(c.age);
+      }
     }
-    if (++guard > guardMax) throw new Error(`replay: 推进停滞（age ${c.age}/${untilAge}，modalPause ${c.modalPause}，phaseCursor ${c.phaseCursor}）`);
+    if (++guard > guardMax) throw new Error(`replay: 推进停滞（age ${c.age}/${untilAge}，mode ${c.mode}，modalPause ${c.modalPause}，phaseCursor ${c.phaseCursor}）`);
   }
   if (c.modalPause === 0 && c.phaseCursor === 0) dispatchAt(c.age, 0);
   return dispatched;

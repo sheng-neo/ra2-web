@@ -1,5 +1,5 @@
 // ===== app/boot.ts =====（ARCHITECTURE §7.3 消息流、§5.9 接线；spec:ui-art §3.11 <TitleScreen>）
-// 标题页（新城表单 / 载入文件 / 导入素材 / 关于）→ wire 装配 → renderer.attach → mountShell → session → EventBus 扇出（goto → renderer.goto、sound → AudioSink；
+// 标题页（新城表单 / 载入文件 / 导入素材 / 关于）→ wire / wireDom 装配 → renderer.attach → mountShell → session → EventBus 扇出（goto → renderer.goto、sound → AudioSink；
 // modal / toolbar / paper / disasterStarted 等由外壳订阅）→ RAF 主循环（每帧 renderer.setActors(q.disasters.things())）。
 // DEV 或 ?debug 时挂 window.__sc2k = { host, renderer, shell, version }（e2e 读取）。文案全部经 strings 表。
 import type { Sc2kDebugHandle } from '../contracts/shell';
@@ -8,7 +8,7 @@ import type { RenderSource } from '../contracts/render';
 import type { SimHost } from '../contracts/host';
 import type { Strings } from '../contracts/strings';
 import { V1_TOOL_IDS } from './v1Tools';
-import { createWiredAssets, createWiredAudio, createWiredHost, createWiredProvider, createWiredRenderer, createWiredStrings, mountWiredShell, sc2Codec } from './wire';
+import { createWiredAssets, createWiredAudio, createWiredHost, createWiredProvider, createWiredRenderer, createWiredStrings, mountWiredShell, sc2Codec } from './wireDom';
 import { SHOW_TITLE_EVENT, shellControlsOf } from '../ui';
 import { h } from '../ui/dom';
 import { tr } from '../ui/theme';

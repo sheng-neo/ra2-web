@@ -53,7 +53,7 @@ export function stubActions(state: CityState): StubActions {
       const h = halfOfTile(tile);
       state.maps.xtrf[h] = Math.min(255, state.maps.xtrf[h]! + Math.max(0, weight | 0));
     },
-    allocMicrosim: () => -1,
+    allocMicrosim: () => 0,     // contract-rfc WP7-1：0 = 该建筑不需要微模拟记录（不是失败）；真 services 满 140 座才返回 −1
     freeMicrosim: () => { /* 桩：无微模拟 */ },
     requestRescan: () => { /* 桩：无电 / 水重扫 */ },
     markAccessDirty: () => { /* 桩：无可达缓存 */ },

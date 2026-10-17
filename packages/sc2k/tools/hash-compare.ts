@@ -9,7 +9,7 @@ import { performance } from 'node:perf_hooks';
 import type { GoldenMiniCityVariant } from '../src/contracts/testkit';
 import { createWiredHost } from '../src/app/wire';
 import { replayInto } from '../src/sim/core';
-import { DAYS_PER_YEAR, goldenMiniCity, runHeadless } from '../src/testkit';
+import { DAYS_PER_YEAR, flattenTerrain, goldenMiniCity, runHeadless } from '../src/testkit';
 import type { YearRecord } from '../src/testkit';
 
 interface Args { years: number; seed?: number; variant: GoldenMiniCityVariant; baseline?: string; replay: boolean; quiet: boolean }
@@ -56,7 +56,7 @@ function main(): number {
   const seed = args.seed ?? script.params.seed;
   const run = (): { host: ReturnType<typeof createWiredHost>; years: YearRecord[] } => {
     const host = createWiredHost();
-    const years = runHeadless(host, script, { years: args.years, seed, invariants: false, now: () => performance.now() });
+    const years = runHeadless(host, script, { years: args.years, seed, invariants: false, now: () => performance.now(), afterNewCity: (h) => flattenTerrain(h.state) });   // 与 tools/headless.ts 同样铺平
     return { host, years };
   };
   const t0 = performance.now();
@@ -67,6 +67,7 @@ function main(): number {
     const log = A.host.commandLog();
     const host = createWiredHost();
     host.newCity({ ...script.params, seed });
+    flattenTerrain(host.state);
     const years: { year: number; hash: number; hashSc2: number }[] = [];
     replayInto(host, log, args.years * DAYS_PER_YEAR, { onDay: (age) => { if (age % DAYS_PER_YEAR === 0) years.push({ year: age / DAYS_PER_YEAR, hash: host.hash('full'), hashSc2: host.hash('sc2') }); } });
     problems.push(...diffYears('重放 vs A', years, A.years));

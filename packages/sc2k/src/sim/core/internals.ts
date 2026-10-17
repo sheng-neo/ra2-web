@@ -10,6 +10,13 @@ export interface SimInternals {
    * modalPause > 0 时抛错（调用方应先 dispatch 该游标的命令再 modalClosed()）。返回 'suspended' 表示本次又挂起。
    */
   stepDay(now?: () => number): 'done' | 'suspended';
+  /**
+   * 日边界的确定性 tick 约定（contract-rfc WP13-6 / open-questions #28；replay / runScript / headless 用，runDays 经 advance 得到同一序列）：
+   *  - 城市模式且 disaster.pending 非空：跑一次物件 tick 让状态机启动灾害（无人消费时视为无事发生）；
+   *  - 灾害模式：连续跑灾害 tick（每次最多 maxTicksPerFrame 个），直到回到城市模式或弹出模态。
+   * 返回 true 表示本次跑了 tick 且调用方应回到循环顶（可能已挂起 / 已切模式），false 表示可以推进日历。modalPause > 0 时恒 false。
+   */
+  settleTicks(): boolean;
   /** 把当前 counts 与 xbld 全量对账；不一致时重算并记 diag，返回是否一致。 */
   reconcileCounts(): boolean;
 }

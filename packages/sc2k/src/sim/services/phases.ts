@@ -8,13 +8,25 @@ import { BudgetLine } from '../../contracts/state';
 import type { PhaseResult, SimContext } from '../../contracts/system';
 import { microsimTypeOf, popCap, recStat, recStat0, recTileId, setStat, setStat0 } from './microsim';
 import { airportRunwayGroups, seaportCranes, structureCounts } from './queries';
-import { ARCO_REWARD_BIT, MICROSIM_RECORDS, MILESTONE_ARCO_LEVEL, MILESTONE_MILITARY_LEVEL, MILESTONE_REWARD_BIT, MicrosimType, Xbld } from './tables';
+import { ARCO_REWARD_BIT, MICROSIM_FIRST_EXCLUSIVE, MICROSIM_RECORDS, MILESTONE_ARCO_LEVEL, MILESTONE_MILITARY_LEVEL, MILESTONE_REWARD_BIT, MicrosimType, Xbld } from './tables';
 import type { ServicesTuning } from './tuning';
 import { idiv } from './runtime';
+
+/** 巨型住区人口 = Σ Arcology 记录的 stat2（spec:services §2.8.3 → MISC 0x1020）；写给 census.arcoPop（zones 的 census / taxable* / citySize 以此为只读输入，contract-rfc WP5-3）。 */
+export function sumArcoPop(ctx: SimContext): number {
+  const xmic = ctx.state.layers.xmic;
+  let sum = 0;
+  for (let r = MICROSIM_FIRST_EXCLUSIVE; r < MICROSIM_RECORDS; r++) {
+    const tileId = recTileId(xmic, r);
+    if (tileId !== 0 && microsimTypeOf(ctx, tileId) === MicrosimType.Arcology) sum += recStat(xmic, r, 2) & 0xffff;
+  }
+  return sum;
+}
 
 // ---------- demographics（v1 简化：有界近似；§2.7 的年龄队列全量为 v2） ----------
 export function runDemographics(ctx: SimContext, t: ServicesTuning): void {
   const d = ctx.state.demographics;
+  ctx.state.census.arcoPop = sumArcoPop(ctx);
   const pop = ctx.state.census.normalPop;
   if (pop <= 0) { d.cohorts.fill(0); d.workforcePct = 0; d.workforceEQ = 0; d.workforceLE = 0; return; }
   const w = t.workforceV1;

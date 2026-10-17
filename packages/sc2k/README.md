@@ -65,7 +65,7 @@ src/
   art/         原创程序化像素精灵（782 张 × S/M/L 三档）与 256 色原创调色板
   render/      scene（纯函数场景编译 / 投影 / 拾取 / 小地图）、cpu（像素验收与 PNG）、pixi（16 条深度带的 WebGL 后端）
   ui/ audio/   Win95 风格 DOM 外壳、窗口与模态、工具控制器与触控、WebAudio 原创音效
-  app/         wire.ts（唯一接线文件）、boot / loop / session
+  app/         wire.ts（DOM-free 的 sim 装配，Node 工具与测试共用）、wireDom.ts（渲染器 / 外壳 / 素材导入装配）、boot / loop / session
 ```
 
 关键约定：

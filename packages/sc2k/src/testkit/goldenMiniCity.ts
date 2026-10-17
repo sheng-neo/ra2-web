@@ -2,11 +2,13 @@
 // 迷你金城命令脚本：煤电 + 电线 + R/C/I 六分区 + 道路 + 水泵管线 + 医院 + 铁路与车站，全部用 CATALOGUE 的真实工具 / 建筑 id。
 // 变体：'noPower' 不铺电线（电厂孤立 → 分区永远无电，24 个月零施工）；'noRoad' 不修路（无可达 → 不长）。
 // 布局（x 向右、y 向下；全部落在平地中部）无任何网络交叉，便于桩与真系统都能派发：
-//   煤电 4×4 @(40,44)        主干电线 y=45: x 44..85；电线立柱 x=85: y 45..56；南电线 y=56: x 46..85
-//   主路 y=50: x 46..83       支路 x=74: y 46..55
-//   北带 y 46..49：R 密 x 46..53 / C 密 x 55..62 / I 密 x 64..72     南带 y 51..55：R 轻 / C 轻 / I 轻（同 x 区间）
+//   煤电 4×4 @(40,44)        主干电线 y=46: x 44..85；电线立柱 x=85: y 46..54；南电线 y=54: x 46..85
+//   主路 y=50: x 46..83       支路 x=74: y 47..53
+//   北带 y 47..49：R 密 x 46..53 / C 密 x 55..62 / I 密 x 64..72     南带 y 51..53：R 轻 / C 轻 / I 轻（同 x 区间）
 //   水泵 1×1 @(44,58)；管线 x=45: y 48..58、y=48: x 45..85、y=53: x 45..85
-//   医院 3×3 @(76,57)（紧贴南电线）；铁路 x=87: y 44..66；火车站 2×2 @(88,58)
+//   医院 3×3 @(76,55)（紧贴南电线）；铁路 x=87: y 44..66；火车站 2×2 @(88,58)
+// 分区带各 3 行、夹在电线与主路之间：spec:power-water §2.2 空分区地不导电（hasPower = 自身或 4 邻 POWERED），而 hasAccess 只认距路 ≤ 3 的 24 偏移；
+// 第一波的 4 / 5 行带曾让"有电的行够不着路、够着路的行没电"而永不生长（INT-A 集成验证，open-questions #32）。
 // 系统全是桩时这些命令返回 notImplemented（不入日志）也算跑通；真系统合入后它就是集成烟测的脚本。
 import type { Command, LoggedCommand } from '../contracts/commands';
 import { ZoneCode, tileIndex } from '../contracts/grid';
@@ -41,15 +43,15 @@ export interface GoldenRect { zone: ZoneCode; x0: number; y0: number; x1: number
 export const GOLDEN_LAYOUT = {
   coal: { x: 40, y: 44 },
   pump: { x: 44, y: 58 },
-  hospital: { x: 76, y: 57 },
+  hospital: { x: 76, y: 55 },
   railDepot: { x: 88, y: 58 },
-  wires: [{ from: [44, 45], to: [85, 45] }, { from: [85, 45], to: [85, 56] }, { from: [85, 56], to: [46, 56] }] as ReadonlyArray<{ from: readonly [number, number]; to: readonly [number, number] }>,
-  roads: [{ from: [46, 50], to: [83, 50] }, { from: [74, 46], to: [74, 55] }] as ReadonlyArray<{ from: readonly [number, number]; to: readonly [number, number] }>,
+  wires: [{ from: [44, 46], to: [85, 46] }, { from: [85, 46], to: [85, 54] }, { from: [85, 54], to: [46, 54] }] as ReadonlyArray<{ from: readonly [number, number]; to: readonly [number, number] }>,
+  roads: [{ from: [46, 50], to: [83, 50] }, { from: [74, 47], to: [74, 53] }] as ReadonlyArray<{ from: readonly [number, number]; to: readonly [number, number] }>,
   pipes: [{ from: [45, 58], to: [45, 48] }, { from: [45, 48], to: [85, 48] }, { from: [45, 53], to: [85, 53] }] as ReadonlyArray<{ from: readonly [number, number]; to: readonly [number, number] }>,
   rail: { from: [87, 44], to: [87, 66] } as { from: readonly [number, number]; to: readonly [number, number] },
   zones: [
-    { zone: ZoneCode.DenseR, x0: 46, y0: 46, x1: 53, y1: 49 }, { zone: ZoneCode.DenseC, x0: 55, y0: 46, x1: 62, y1: 49 }, { zone: ZoneCode.DenseI, x0: 64, y0: 46, x1: 72, y1: 49 },
-    { zone: ZoneCode.LightR, x0: 46, y0: 51, x1: 53, y1: 55 }, { zone: ZoneCode.LightC, x0: 55, y0: 51, x1: 62, y1: 55 }, { zone: ZoneCode.LightI, x0: 64, y0: 51, x1: 72, y1: 55 },
+    { zone: ZoneCode.DenseR, x0: 46, y0: 47, x1: 53, y1: 49 }, { zone: ZoneCode.DenseC, x0: 55, y0: 47, x1: 62, y1: 49 }, { zone: ZoneCode.DenseI, x0: 64, y0: 47, x1: 72, y1: 49 },
+    { zone: ZoneCode.LightR, x0: 46, y0: 51, x1: 53, y1: 53 }, { zone: ZoneCode.LightC, x0: 55, y0: 51, x1: 62, y1: 53 }, { zone: ZoneCode.LightI, x0: 64, y0: 51, x1: 72, y1: 53 },
   ] as readonly GoldenRect[],
 } as const;
 

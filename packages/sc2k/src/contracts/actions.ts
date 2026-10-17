@@ -16,7 +16,8 @@ export interface Actions {
   // events（桩：整栋 → 瓦砾 0x01..0x04 + 角标清 + 分区保留；news 空操作）
   destroyStructure(x: number, y: number, cause: DestroyCause): void; news(type: number, value: number): void;
   // services
-  addTraffic(tile: number, weight: number): void; allocMicrosim(tileId: number): number /*slot 或 −1*/; freeMicrosim(slot: number): void;
+  // allocMicrosim 返回约定（contract-rfc WP7-1）：≥ 1 = 记录号（共享 1..9 / 独占 10..149）；0 = 该建筑不需要微模拟记录（不是失败）；−1 = 独占记录用尽（140 座）。放置者只对 < 0 判 microsimFull。
+  addTraffic(tile: number, weight: number): void; allocMicrosim(tileId: number): number; freeMicrosim(slot: number): void;
   // utilities（桩：空操作）
   requestRescan(kind: 'power' | 'water'): void;
   // transport（桩：空操作）
