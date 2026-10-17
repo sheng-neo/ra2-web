@@ -6,7 +6,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const PORT = 5174;
+const PORT = Number(process.env['SC2K_E2E_PORT'] ?? 5174);   // 并行 worktree 下用 SC2K_E2E_PORT 指定私有端口
 const CHROMIUM = process.env['SC2K_CHROMIUM'] ?? '/opt/pw-browsers/chromium';
 
 export default defineConfig({
