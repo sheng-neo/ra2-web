@@ -99,3 +99,12 @@
 | 30 | 经费线"数量"以 `counts.tile ÷ 占地²` 推出为准（spec:economy §4.13"不等时以 tileCounts 为准"），`q.services.structureCounts()` 只在 `exportTo` 对账并记 `economy.structureCountMismatch` 诊断 | economy 不依赖 services 的计数真伪 | WP7 / WP8 | `settle.test`（经费）、`save.test` | 开放 |
 | 31 | `fedRateRaw`、`impeached` 没有原版 `MISC` 落点：借用税线 R / C 块的索引 2（"未明"槽，spec:economy Q12）；导入原版存档时该槽若非法（超出 `fedMin..fedMax` / 非魔数）则回退 XGRP / 初值 | 自洽往返；若要完全不碰原版未明槽，需把两字段翻成 `hash:'full'` | WP8 / WP2 | `save.test` | 开放 |
 | 32 | 预算模态：`autoBudget` 默认 false，真 economy 合入后每年 1 月第 0 天发 `modal budget` 并挂起，UI 必须 `dispatch(modalAnswer)` + `host.modalClosed()` 才能续跑；`gameOver` 同理 | 测试 / `runDays` 自动关模态；app 壳由 WP12 处理 | WP12 | `budgetWindow.test`、e2e 冒烟 24 个月 | 开放 |
+| 28 | 翻转族桥件（0x51–0x5C）"未翻转"精灵的轴向 | `PlacementTuning.bridgeSpriteAxis = 'TB'`：沿 L–R 铺桥时置 `XBit.Flipped`（键名 suspStartB/EndT 暗示默认竖向） | WP3 placement、WP9 art、WP10 render | art 出图后对照 | 待认可 |
+| 29 | 水电 0xC6 / 0xC7 哪个对应 T–B 流向 | `resolveHydroId`：T/B 邻格更高 → 0xC6（hydroA），否则 0xC7 | WP3、WP9 | 精灵朝向对照 | 开放 |
+| 30 | 网络件（0x0E–0x6F）的 XZON 高 nibble | placement 一律写 0xF0 并清分区码（与 spec:transport §2.8"高速段角标全置"一致；地下族不动 XZON） | WP3、WP5 角标重建、WP2 导入 | 原版存档对照 | 待认可 |
+| 31 | `rewards.stadiumTeams` 的编码 | 位掩码：`teamPick` 答案 k → `stadiumTeams \|= 1 << k` | WP3、WP7 services、WP12b | — | 待认可 |
+| 32 | 微模拟槽位满时是否拒绝放置 | `PlacementTuning.microsimFullRejects` 默认 false（桩恒 −1）；services 合入后 app 翻 true 即原版"140 座"限制 | WP3、WP7 | — | 待接线 |
+| 33 | 推土机拆建筑是否留瓦砾 | 留（spec:terrain §2.11.1 / spec:zones §2.2 表）：平地 → 0x01..0x04（每格 1×1 角标 0xF0、分区码保留），坡面 / 水面 → 空地；再推一次 $1 清空。开关 `rubbleOnDemolish` | WP3、WP5 | 原版实测 | 待认可 |
+| 34 | 桥头岸格"alt ≥ 水面"的读法 | 岸格最高点 ≥ 水面：`alt + (坡面 ? 1 : 0) ≥ waterLevel(相邻水格)`，坡面须沿桥向；v1 不自动改地形 | WP3、WP2 | 生成地图上实际能否架桥 | 待认可 |
+| 35 | 在已划区格上改划异类 | 允许，按新类型价计费，格上分区建筑整栋变瓦砾（spec:zones §2.2 表）；同码免费跳过 | WP3、WP5 | — | 待认可 |
+| 36 | `src/app/wire.test.ts` 断言"非 core 全为桩"与"placeBuilding → notImplemented" | 任一真系统合入即失效（WP3 分支上该文件 2 例失败，未改动 app/**）；建议 Lead 改为"`stub` 的系统 ⊆ `WIRE_STUB_ALLOWLIST`"并换用仍为桩的命令（如 `requestDisaster`） | Lead | 合并列车 | 待 Lead 处理 |
