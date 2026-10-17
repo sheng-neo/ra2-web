@@ -91,3 +91,6 @@
 | 30 | 车流覆盖物 `TrafficLight / TrafficHeavy` 没有路形 variant（契约 key 只有 id + frame），WP9 只能画通用车流；v2 可加 `variant = 旋转后道路片段偏移 0..14` | `compiler.ts` 第 7 步 | art / render | — | v2 |
 | 31 | 高速 2×2 块（0x61–0x6B，FOOTPRINT 2）按多格件处理：只有 `anchorOf` 能找到 TL 角标时才在 `renderAnchor` 格画一次（Structure），否则退化为每格各画一次（Ground）。需要 transport / placement 写高速块时置 XZON 角标 | `compiler.ts` 第 6 步 | transport / placement / render | 合并后目视 | 开放 |
 | 32 | 小地图 Health / Education 图层（spec:ui-art §2.5.1 [M]：由服务模块提供 32² 图）v1 由建筑位置派生：医院 0xD1 / 教育 0xD4 0xD6 0xD9 0xF5 按 Chebyshev 半径（12 / 10 格）线性衰减 | `minimap.ts` `coverageField`、`tuning.ts minimapHealthRadius / minimapEducationRadius` | services / render | services 提供真图后替换 | 开放 |
+| 28 | 真 events 下 `runDays` / `replay` 以 `advance(0)` 推进，灾害模式零 tick → 随机灾害一出现长跑即 stall；且 `advance` 在同帧 thingsTick 切到灾害模式后仍推进日历 | events 测试自带 `sim/events/fixtures.runTicks`（传 `DISASTER_TICK_MS`）；core / testkit 待改（contract-rfc #6） | WP1 | `longrun.test` 50 年 | 开放 |
+| 29 | 报纸选项（订阅 / 号外）与灾害原点的存档落点；`XTHG`（调度单位 / 龙卷风 / 怪兽）v1 不写档，灾害中导出 `.SC2` 再导入物件丢失（标记 / 状态机保留） | 选项暂存 `rawMisc` 0x1004 / 0x1008（contract-rfc #3）；原点灾害结束复位 (64,64)（#4）；XTHG 读写归 WP13 [v2] | WP13 / WP8 / Lead | `shadow.test` 的 sc2 往返 | 开放 |
+| 30 | 报纸文案键 `news.<NewsType>` 只预置 14 / 20 类；号外头条 = 触发故事（spec §3.6 `headline = thisStory`），订阅版头条 = 池中最高分 | 缺键 UI 回退显示键名（contract-rfc #2） | WP13 / Lead | `news.test` | 开放 |
