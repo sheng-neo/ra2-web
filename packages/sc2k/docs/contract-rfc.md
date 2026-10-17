@@ -9,3 +9,6 @@
 | 0b | WP0 Reconcile | Lead | `TechKey` 改名 `arcoPioneer / arcoCanopy / arcoDusk / arcoSkyward`；`NewsType.OpinionGuest / AdviceColumn`；`SimEvent 'arcoExodus'` | 裁定 7：代码内不得出现原版 Arcology / 专栏名 | 不涉及（数值与槽序不变） | 已合并（冻结前） |
 | 0c | WP0 Reconcile | Lead | `snapshot.ts` 新增 `STRING_FIELD_HASH / stringFieldHash`（mayorName → 'full'） | `.SC2` 无市长名字段，往返会破坏 hash('sc2') 不变量 | 不涉及 | 已合并（冻结前） |
 | 1 | | | | | | 待议 |
+| 2 | WP3 | placement | `Actions` 新增 `refund(amount: number): void`（或明确 `charge(cost < 0)` = 退款并写账） | `neighborConnection` 拒绝 / 资金不足回滚边缘格时要退还铺设费（WORKPLAN WP3"回滚并退费"）；现契约 `charge(cost ≤ 0)` 恒 true 且桩不改资金，placement 暂时直接 `state.economy.funds += fee`（`sim/placement/commands.ts` rollbackEdgeTile 处有注释） | 三套桩：`funds += amount`（不 emit） | 待议 |
+| 3 | WP3 | placement | app/wire：`createWiredHost({ tuning: { placement: { v1Tools: V1_TOOL_IDS } } })`；services 合入后再加 `microsimFullRejects: true` | `availability` 的 notImplemented 只认 tuning 注入的白名单（null = 全部可用）；`microsimFull` 依赖 `allocMicrosim` 返回 −1 的语义（桩恒 −1，故默认不拒绝） | 不涉及契约 | 待 Lead 接线 |
+| 4 | WP3 | placement | 命令结果型模态 payload 形状（供 WP12b）：`bridgeType → { from, to, length, options: BridgeKind[] }`；`neighborConnect → { at, kind: NetFamily\|'highway', cost }`；`teamPick → { at }`（`modalAnswer.answer` = 球队索引 0..30，写 `rewards.stadiumTeams` 位掩码） | 契约只写了 bridgeType 的 payload，另外两个由实现约定 | 不涉及契约 | 备忘 |

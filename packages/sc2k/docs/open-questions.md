@@ -38,3 +38,12 @@
 | 25 | `createTestContext` 在改动夹具后调用一次 `postLoad(ctx, 'snapshot')` 让 `nullSystem` 重绑定；若桩改为注册时即可用，这一行可删 | 保留 | WP1 | `createSim.test` | 备忘 |
 | 26 | `economy.funds` 桩下为 0（无人发起始资金），冒烟观感「资金: 0」 | 属 WP8，不是缺陷 | WP8 | e2e 截图 | 备忘 |
 | 27 | `counts.zone` 由 `setXbld` 维护（已建 R/C/I 建筑格，spec:zones Q9 口径），不是 `setXzon` | core 口径；zones 的 census 全量重算须用同一口径 | WP4 zones | `tileWriter.test` 计数恒等 | 待认可 |
+| 28 | 翻转族桥件（0x51–0x5C）"未翻转"精灵的轴向 | `PlacementTuning.bridgeSpriteAxis = 'TB'`：沿 L–R 铺桥时置 `XBit.Flipped`（键名 suspStartB/EndT 暗示默认竖向） | WP3 placement、WP9 art、WP10 render | art 出图后对照 | 待认可 |
+| 29 | 水电 0xC6 / 0xC7 哪个对应 T–B 流向 | `resolveHydroId`：T/B 邻格更高 → 0xC6（hydroA），否则 0xC7 | WP3、WP9 | 精灵朝向对照 | 开放 |
+| 30 | 网络件（0x0E–0x6F）的 XZON 高 nibble | placement 一律写 0xF0 并清分区码（与 spec:transport §2.8"高速段角标全置"一致；地下族不动 XZON） | WP3、WP5 角标重建、WP2 导入 | 原版存档对照 | 待认可 |
+| 31 | `rewards.stadiumTeams` 的编码 | 位掩码：`teamPick` 答案 k → `stadiumTeams \|= 1 << k` | WP3、WP7 services、WP12b | — | 待认可 |
+| 32 | 微模拟槽位满时是否拒绝放置 | `PlacementTuning.microsimFullRejects` 默认 false（桩恒 −1）；services 合入后 app 翻 true 即原版"140 座"限制 | WP3、WP7 | — | 待接线 |
+| 33 | 推土机拆建筑是否留瓦砾 | 留（spec:terrain §2.11.1 / spec:zones §2.2 表）：平地 → 0x01..0x04（每格 1×1 角标 0xF0、分区码保留），坡面 / 水面 → 空地；再推一次 $1 清空。开关 `rubbleOnDemolish` | WP3、WP5 | 原版实测 | 待认可 |
+| 34 | 桥头岸格"alt ≥ 水面"的读法 | 岸格最高点 ≥ 水面：`alt + (坡面 ? 1 : 0) ≥ waterLevel(相邻水格)`，坡面须沿桥向；v1 不自动改地形 | WP3、WP2 | 生成地图上实际能否架桥 | 待认可 |
+| 35 | 在已划区格上改划异类 | 允许，按新类型价计费，格上分区建筑整栋变瓦砾（spec:zones §2.2 表）；同码免费跳过 | WP3、WP5 | — | 待认可 |
+| 36 | `src/app/wire.test.ts` 断言"非 core 全为桩"与"placeBuilding → notImplemented" | 任一真系统合入即失效（WP3 分支上该文件 2 例失败，未改动 app/**）；建议 Lead 改为"`stub` 的系统 ⊆ `WIRE_STUB_ALLOWLIST`"并换用仍为桩的命令（如 `requestDisaster`） | Lead | 合并列车 | 待 Lead 处理 |
