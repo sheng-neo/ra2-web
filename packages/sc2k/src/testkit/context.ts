@@ -1,7 +1,7 @@
 // ===== testkit/context.ts =====（CONTRACTS §U：createTestContext / runDays）
 // 空城 ctx：真实 TileWriter + DirtyTracker + 桩 Queries/Actions；opts.systems 给出的系统覆盖对应桩；
 // 内部 createSim({ …, snapshot: opts.snapshot ?? snapshotCodec }) —— 与 app/wire.ts 同一注入点。
-import { SYSTEM_ORDER } from '../contracts/clock';
+import { DISASTER_TICK_MS, SYSTEM_ORDER } from '../contracts/clock';
 import { CityMode, XBit } from '../contracts/grid';
 import type { SimHost } from '../contracts/host';
 import type { CityState } from '../contracts/state';
@@ -9,7 +9,7 @@ import type { NewCityParams, System, SystemId } from '../contracts/system';
 import type { CreateTestContextFn, RunDaysFn, TestContext } from '../contracts/testkit';
 import { CATALOGUE } from '../data';
 import { snapshotCodec } from '../io/snapshot';
-import { createCoreSystem, createSim, simContextOf } from '../sim/core';
+import { DEFAULT_CORE_TUNING, createCoreSystem, createSim, simContextOf } from '../sim/core';
 import { nullSystem } from '../app/stubs/null';
 
 /** 测试默认新城参数（名字为原创占位，不是原版文本）。 */
@@ -54,7 +54,14 @@ export const createTestContext: CreateTestContextFn = (opts = {}): TestContext =
   return { ctx, host, state };
 };
 
-/** 无预算限制地推进 days 天（speed 临时设为 5，不经 dispatch，所以不写 commandLog；结束后恢复原速度）；遇挂起自动 modalClosed。 */
+/** runDays 在灾害模式下每次 advance 折入的真实时间：按 speed 5 的 tick 节奏一次跑满 maxTicksPerFrame 个灾害 tick。 */
+const DISASTER_STEP_MS = DISASTER_TICK_MS[5] * DEFAULT_CORE_TUNING.maxTicksPerFrame;
+
+/**
+ * 无预算限制地推进 days 天（speed 临时设为 5，不经 dispatch，所以不写 commandLog；结束后恢复原速度）；遇挂起自动 modalClosed。
+ * 灾害（contract-rfc WP13-6）：城市模式下 advance(0) 在 pending 置位时会自行先跑一次物件 tick 启动灾害；灾害模式下 advance 不推进日历，
+ * 这里按 DISASTER_TICK_MS 折入足够的真实时间逐 tick 推进，直到灾害自然结束再继续日历——与 replay 的 settleTicks 约定得到同一 tick 序列。
+ */
 export const runDays: RunDaysFn = (host, days) => {
   const clock = host.state.clock;
   const target = clock.age + Math.max(0, days | 0);
@@ -64,6 +71,7 @@ export const runDays: RunDaysFn = (host, days) => {
   try {
     while (clock.age < target) {
       if (clock.modalPause > 0) { host.modalClosed(); }
+      else if (clock.mode === CityMode.Disaster) { host.advance(DISASTER_STEP_MS, () => 0, { budgetMs: Infinity }); }
       else {
         const r = host.advance(0, () => 0, { budgetMs: Infinity, maxDaysPerFrame: Math.min(10, target - clock.age) });
         if (r.suspended) host.modalClosed();

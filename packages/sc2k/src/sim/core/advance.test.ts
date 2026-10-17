@@ -168,4 +168,45 @@ describe('advance: 物件 / 灾害 tick', () => {
     expect(n.disaster).toBeLessThan(13);                          // 预算提前停下
     expect(state.clock.disasterTicks).toBe(n.disaster);
   });
+  it('灾害与日历的衔接（contract-rfc WP13-6）：物件 tick 切到灾害模式后本帧不推进日历；灾害结束的那个 tick 之后余下 tick 不再跑', () => {
+    let endAfter = 0;
+    const events: System = {
+      ...nullSystem('events'),
+      thingsTick(ctx) { if (ctx.state.disaster.pending !== 0) { ctx.state.disaster.pending = 0; ctx.state.clock.mode = CityMode.Disaster; } },
+      disasterTick(ctx) { if (--endAfter <= 0) ctx.state.clock.mode = CityMode.City; },
+    };
+    const { host, state } = createTestContext({ systems: [events] });
+    state.clock.speed = 3;                                        // tick 100 ms、天 160 ms
+    state.disaster.pending = 1;
+    expect(host.advance(160 * 5, () => 0, { budgetMs: Infinity })).toEqual({ daysRun: 0, suspended: false });   // 首个物件 tick 进入灾害模式 → 不推进日历
+    expect(state.clock.mode).toBe(CityMode.Disaster); expect(state.clock.age).toBe(0);
+    endAfter = 3;
+    expect(host.advance(100 * 10, () => 0, { budgetMs: Infinity })).toEqual({ daysRun: 0, suspended: false });
+    expect(state.clock.disasterTicks).toBe(3); expect(state.clock.mode).toBe(CityMode.City);                       // 第 3 个 tick 结束灾害即停
+    expect(host.advance(160, () => 0, { budgetMs: Infinity }).daysRun).toBe(1);                                   // 日历继续
+  });
+  it('某日掷出灾害（pending 新置位）：当帧余下天数折回；下一帧 advance(0) 不等 tick 节拍先跑一次物件 tick 启动它', () => {
+    const trace: string[] = [];
+    const events: System = {
+      ...nullSystem('events'),
+      phases: { weatherAndDisaster: (ctx) => { if (ctx.state.clock.age === 24) ctx.state.disaster.pending = 1; return 'done'; } },   // 第 24 天（月末阶段）掷出
+      thingsTick(ctx) { trace.push(`tick@${ctx.state.clock.age}`); if (ctx.state.disaster.pending !== 0) { ctx.state.disaster.pending = 0; ctx.state.clock.mode = CityMode.Disaster; } },
+    };
+    const { host, state } = createTestContext({ systems: [events] });
+    runDays(host, 20);
+    state.clock.speed = 5;
+    expect(host.advance(0, () => 0, { budgetMs: Infinity, maxDaysPerFrame: 10 })).toEqual({ daysRun: 5, suspended: false });   // 第 24 天置位 → 第 25 天起折回
+    expect(state.clock.age).toBe(25); expect(state.disaster.pending).toBe(1); expect(trace).toEqual([]);
+    expect(host.advance(0, () => 0, { budgetMs: Infinity, maxDaysPerFrame: 10 })).toEqual({ daysRun: 0, suspended: false });
+    expect(trace).toEqual(['tick@25']); expect(state.clock.mode).toBe(CityMode.Disaster); expect(state.clock.age).toBe(25);
+    state.clock.mode = CityMode.City;
+    expect(host.advance(0, () => 0, { budgetMs: Infinity, maxDaysPerFrame: 10 }).daysRun).toBe(10);                       // 无 pending 时 dt=0 不跑 tick
+    expect(trace).toEqual(['tick@25']);
+    // 无人消费 pending（events 为桩）时不会卡住：advance 每帧多跑一次空 tick，日历照常推进
+    const plain = createTestContext();
+    plain.state.clock.speed = 5; plain.state.disaster.pending = 1;
+    expect(plain.host.advance(0, () => 0, { budgetMs: Infinity, maxDaysPerFrame: 10 }).daysRun).toBe(10);
+    runDays(plain.host, 300);
+    expect(plain.state.clock.age).toBe(310);
+  });
 });

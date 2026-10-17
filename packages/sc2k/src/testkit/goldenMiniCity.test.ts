@@ -94,9 +94,9 @@ describe('testkit: pngOf / 不变量 / runHeadless', () => {
     state.layers.xbit[5] = XBit.Mark;
     expect(checkInvariants(state, host.catalogue).some((m) => m.includes('Mark'))).toBe(true);
     state.layers.xbit[5] = 0;
-    state.layers.xtxt[6] = 0x3d;                                                           // 指向 XMIC 槽 0，但记录 tileId 为 0
+    state.layers.xtxt[6] = 0x3d;                                                           // 指向 XMIC 记录 10（标签 = 0x33 + 记录号），但记录 tileId 为 0
     expect(checkInvariants(state, host.catalogue).some((m) => m.includes('XTXT'))).toBe(true);
-    state.layers.xmic[0] = 1;
+    state.layers.xmic[10 * 8] = 1;
     expect(checkInvariants(state, host.catalogue)).toEqual([]);
     state.layers.xtxt[6] = 0;
     const bump = (id: number, d: number): void => { state.counts.tile[id] = state.counts.tile[id]! + d; };

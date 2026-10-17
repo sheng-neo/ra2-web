@@ -9,7 +9,7 @@ import { DAY_PHASES, DEFAULT_BUDGET_MS, DISASTER_TICK_MS, END_OF_DAY_IO, MAX_DAY
 import type { Command, CommandResult } from '../../contracts/commands';
 import { COMMAND_OWNER, NOT_IMPLEMENTED_RESULT } from '../../contracts/commands';
 import { createDirtyTracker } from '../../contracts/dirty';
-import { CityMode } from '../../contracts/grid';
+import { CityMode, DisasterKind } from '../../contracts/grid';
 import type { AdvanceOptions, CreateSimFn, ReplayFn, SimHost } from '../../contracts/host';
 import type { Sc2Document, Sc2ExportOptions } from '../../contracts/io';
 import { createPrng } from '../../contracts/prng';
@@ -211,7 +211,17 @@ export const createSim: CreateSimFn = (opts: CreateSimOptions): SimHost => {
     if (disaster) state.clock.disasterTicks++;
   }
 
-  /** ARCHITECTURE §5.2 伪码的逐行实现：预算切片、余量带帧、硬顶、挂起即停；灾害 / 物件 tick 计入同一预算。 */
+  /** 灾害待启动：城市模式下 disaster.pending 非空（下一次物件 tick 由状态机消费）。 */
+  const disasterPending = (): boolean => state.clock.mode === CityMode.City && state.disaster.pending !== DisasterKind.None;
+  /** 经函数读取模式（tick 内会被 events 改写，直接比较会被 TS 的控制流收窄误判为恒假）。 */
+  const inDisaster = (): boolean => state.clock.mode === CityMode.Disaster;
+
+  /**
+   * ARCHITECTURE §5.2 伪码的逐行实现：预算切片、余量带帧、硬顶、挂起即停；灾害 / 物件 tick 计入同一预算。
+   * 灾害与日历的衔接（contract-rfc WP13-6）：灾害模式只跑 tick、不推进日历，灾害结束（回到城市模式）或 tick 内弹出模态即停；
+   * 城市模式下物件 tick 把模式切到灾害 / 弹出模态后本帧不再推进日历；某日掷出随机灾害（pending 新置位）后余下天数折回，
+   * 下一帧不等 tick 节拍先跑一次物件 tick 启动它——于是 pending 的消费点恰在"置位日之后、下一日之前"，与 replay 的 settleTicks 约定一致。
+   */
   function advance(dtMs: number, now: () => number, o?: AdvanceOptions): { daysRun: number; suspended: boolean } {
     const c = state.clock;
     if (c.modalPause > 0) return { daysRun: 0, suspended: true };
@@ -226,19 +236,28 @@ export const createSim: CreateSimFn = (opts: CreateSimOptions): SimHost => {
       const ticks = planTicks(disasterAccum, dt, tickMs, tune.maxTicksPerFrame);
       for (let k = 0; k < ticks; k++) {
         runTick(true);
+        if (c.mode !== CityMode.Disaster || c.modalPause > 0) { disasterAccum.ms = 0; break; }
         if (now() - t0 >= budgetMs) { disasterAccum.ms = Math.min(disasterAccum.ms + (ticks - k - 1) * tickMs, tickMs); break; }
       }
-      return { daysRun: 0, suspended: false };
+      return { daysRun: 0, suspended: c.modalPause > 0 };
     }
-    // 城市（与地形编辑）模式：物件 tick 与日历并行推进（物件按 DISASTER_TICK_MS 节奏）
-    const ticks = planTicks(thingsAccum, dt, tickMs, tune.maxTicksPerFrame);
-    for (let k = 0; k < ticks; k++) runTick(false);
+    // 城市（与地形编辑）模式：物件 tick 与日历并行推进（物件按 DISASTER_TICK_MS 节奏；待启动的灾害不等节拍）
+    let ticks = planTicks(thingsAccum, dt, tickMs, tune.maxTicksPerFrame);
+    if (ticks === 0 && disasterPending()) ticks = 1;
+    for (let k = 0; k < ticks; k++) {
+      runTick(false);
+      if (inDisaster() || c.modalPause > 0) { thingsAccum.ms = 0; break; }   // tick 内切到灾害模式 / 弹出模态：本帧不推进日历
+    }
+    if (c.modalPause > 0) return { daysRun: 0, suspended: true };
+    if (inDisaster()) return { daysRun: 0, suspended: false };
     let pending = planDays(c, dt, maxDays);
     let daysRun = 0;
     while (pending > 0) {
+      const wasPending = disasterPending();
       const r = advanceDay(); pending--;
       if (r === 'suspended') { carryBack(c, pending, maxDays); return { daysRun, suspended: true }; }
       daysRun++;
+      if (!wasPending && disasterPending()) break;     // 本日掷出灾害：余下天数折回，下一帧先启动灾害
       if (now() - t0 >= budgetMs) break;
     }
     carryBack(c, pending, maxDays);
@@ -305,6 +324,17 @@ export const createSim: CreateSimFn = (opts: CreateSimOptions): SimHost => {
       if (state.clock.modalPause > 0) throw new Error('stepDay: 挂起中（modalPause > 0），请先 modalClosed()');
       if (now) nowFn = now;
       return advanceDay();
+    },
+    settleTicks(): boolean {
+      const c = state.clock;
+      if (c.modalPause > 0) return false;
+      if (c.mode === CityMode.Disaster) {
+        for (let k = 0; k < tune.maxTicksPerFrame; k++) { runTick(true); if (c.mode !== CityMode.Disaster || c.modalPause > 0) break; }
+        return true;
+      }
+      if (!disasterPending()) return false;
+      runTick(false);
+      return c.mode !== CityMode.City || c.modalPause > 0;   // 无人消费 pending（events 为桩 / 前置不满足）→ 照常推进日历
     },
     reconcileCounts: () => reconcileCounts(state, opts.catalogue, diag, 'reconcileCounts'),
   };

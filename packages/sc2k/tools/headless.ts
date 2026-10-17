@@ -2,6 +2,7 @@
 // ===== tools/headless.ts =====（ARCHITECTURE §10.4 / §10.5 / §10.6；WORKPLAN §7 第 4 条）
 // 无头长跑：用 app/wire.ts 的 createWiredHost()（DOM-free 半边；tools/ 是允许 import app 的唯一地方）跑金城脚本 N 年，每年输出
 //   { year, hash, pop, funds, phaseMsP95, growthDayMsP95, runTrips }，不变量违规计入退出码；可选 CPU 合成缩略图（e2e 降级路径）。
+// 金城脚本假设全平地（GOLDEN_LAYOUT 的电线 / 道路不能落在坡面上）：与 longrun.test 一样在 newCity 后 flattenTerrain（hills 0 的生成器仍有两级起伏，spec:terrain §3）。
 // 用法：tsx tools/headless.ts --years N [--script golden-mini-city] [--variant full|noPower|noRoad] [--seed S] [--out file.json]
 //                             [--thumbnail out.png] [--quiet] [--strict-wire]
 // 退出码：0 全部通过；1 不变量违规 / 缩略图单色；2 参数错误 / 严格接线检查失败（WIRE_STUB_ALLOWLIST 非空，open-questions #24）。
@@ -13,7 +14,7 @@ import { mapCanvasSize } from '../src/contracts/render';
 import type { GoldenMiniCityVariant } from '../src/contracts/testkit';
 import { WIRE_STUB_ALLOWLIST, createWiredHost, createWiredProvider } from '../src/app/wire';
 import { sceneCompiler } from '../src/render/scene';
-import { goldenMiniCity, isMonochrome, pngOf, runHeadless, simContextOf } from '../src/testkit';
+import { flattenTerrain, goldenMiniCity, isMonochrome, pngOf, runHeadless, simContextOf } from '../src/testkit';
 import type { YearRecord } from '../src/testkit';
 import { cpuCompositor } from '../src/render/cpu';   // 直接取纯函数层（不经 render/index 拉入 Pixi）
 
@@ -79,7 +80,7 @@ function main(): number {
   const stubs = host.systems.filter((s) => s.stub).map((s) => s.id);
   if (!args.quiet) console.log(`headless: script ${args.script} variant ${args.variant} seed ${args.seed ?? script.params.seed} years ${args.years}; 桩系统：${stubs.length ? stubs.join(', ') : '无'}`);
   const t0 = performance.now();
-  const records = runHeadless(host, script, { years: args.years, seed: args.seed, now: () => performance.now(), onYear: args.quiet ? undefined : printYear });
+  const records = runHeadless(host, script, { years: args.years, seed: args.seed, now: () => performance.now(), onYear: args.quiet ? undefined : printYear, afterNewCity: (h) => flattenTerrain(h.state) });
   const elapsed = performance.now() - t0;
   const failures = records.flatMap((r) => r.invariants.map((v) => `year ${r.year}: ${v}`));
   const diag = simContextOf(host).diag.slice(-50);   // 最近 50 条诊断（core.countsMismatch / 桩忽略的模态回答等）
@@ -91,7 +92,7 @@ function main(): number {
     if (!args.quiet) console.log(`headless: 缩略图 → ${resolve(args.thumbnail)}（${thumb.png.length} B，${thumb.monochrome ? '单色!' : '非单色'}）`);
   }
   const report = {
-    meta: { script: args.script, variant: args.variant, seed: args.seed ?? script.params.seed, years: args.years, stubs, elapsedMs: Math.round(elapsed), commandsDispatched: host.commandLog().length },
+    meta: { script: args.script, variant: args.variant, seed: args.seed ?? script.params.seed, years: args.years, flat: true, stubs, elapsedMs: Math.round(elapsed), commandsDispatched: host.commandLog().length },
     years: records.map((r) => ({ year: r.year, age: r.age, hash: r.hash, hashSc2: r.hashSc2, pop: r.pop, funds: r.funds, phaseMsP95: r.phaseMsP95, growthDayMsP95: r.growthDayMsP95, runTrips: r.runTrips })),
     invariantFailures: failures,
     thumbnailMonochrome: thumb?.monochrome ?? null,
