@@ -119,3 +119,8 @@
 | 30 | 城市模式 Level 是否连带拆除结构物并计入 $25（spec [M]） | v1 不拆（`levelDemolishes = false`），触及任何 XBLD ≥ 0x0E 或隧道格即 `obstructed` | WP2 / WP3 | 原版实测 | 开放 |
 | 31 | 溪流在等高平地上的走向：原版 [M] 允许转弯视觉断开；本实现同高时优先延续上一方向，连续平地 > 12 步以池塘收尾（`streamPlateauMax`） | 设计值 | WP2 | 目测 | 备忘 |
 | 32 | `app/wire.test.ts`「非 core 全为桩」断言在任一真系统合入后必然失败（WP2 合入即如此），同时 `WIRE_STUB_ALLOWLIST` 需删去该 id | 集成者在合并列车上改为「若 `s.stub` 则必须在 allowlist 内」并收缩 allowlist；WP 不得改 `src/app/**` | Lead | `wire.test` | 待处理 |
+| 28 | 程序化美术：桥件 / 高架电线 / 跑道 / 栈桥 / 起重机等翻转族"未翻转"轴向取 L–R（沿世界 +x），T–B 由渲染器 `drawFlip` 水平镜像得到 | `art/network.ts genBridge` 与 `buildings.ts` 0xDD/0xDF/0xE0 只画 L–R 向 | WP9 art、WP10 render、WP6 transport（写 Flipped 位时的口径） | 与原版存档对照栈桥朝向 | 开放 |
+| 29 | 水面岸形 1–12 的"陆地角"部分画成透明（露出其下地形 / 坡面），而非 spec:ui-art §3.7.2 写的地形色；岸线为 1 px Sand[5] + 水侧浪线 | `art/water.ts shoreWaterPolygon` | WP9、WP10（Water 层叠在 Terrain 层之上即可） | 目测 | 备忘 |
+| 30 | 调色板 192–255 规格留空，WP9 用作 4×4×4 杂色立方（车辆 / 集装箱 / 旗帜）；DAT 导入时不用我方调色板，无冲突 | `art/palette.ts IDX.MiscBase / misc()` | WP9、WP14 | — | 备忘 |
+| 31 | 边缘岩壁位图锚点：EdgeWallL 画布宽 W/2、锚点 (W/2, H/2)（落在地块底顶点 c11）；EdgeWallR 锚点 (0, H/2)。渲染器把 EdgeWall 项像其它项一样贴到 c11 即可 | `art/terrain.ts genEdgeWall` | WP10 | compiler / compositor 像素用例 | 待认可 |
+| 32 | v1 全部精灵静帧（frameCount 1 / fps 0）；水面 / 洪水 / 瀑布在 M、L 档含循环组索引（`cycling = true`），S 档不含；建筑不含循环索引，避免进入 animPage | `art/provider.ts`、`art/water.ts` | WP11 | — | 备忘 |
