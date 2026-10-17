@@ -47,8 +47,9 @@ export function createWiredHost(opts: WiredHostOptions = {}): SimHost {
     catalogue: CATALOGUE,
     snapshot: snapshotCodec,
     stubAllowlist: WIRE_STUB_ALLOWLIST,
-    // 默认把 v1 工具白名单注入 placement（availability 对白名单外工具返回 notImplemented）；调用方 tuning 可覆盖。
-    tuning: { placement: { v1Tools: V1_TOOL_IDS }, ...(opts.tuning ?? {}) },
+    // 默认把 v1 工具白名单注入 placement（availability 对白名单外工具返回 notImplemented）；真 services 已接线，独占微模拟记录满 140 座时按原版拒绝
+    // （microsimFullRejects，contract-rfc WP3-3 / WP7-1）。调用方 tuning 可覆盖。
+    tuning: { placement: { v1Tools: V1_TOOL_IDS, microsimFullRejects: true }, ...(opts.tuning ?? {}) },
     impeachMonthly: opts.impeachMonthly,
   });
 }

@@ -30,7 +30,8 @@ const ZERO_MARKERS: Readonly<Uint8Array> = new Uint8Array(TILES);
 const EMPTY: readonly never[] = Object.freeze([]) as readonly never[];
 
 /** xter → 坡面码：0x0X/0x1X/0x2X 低 nibble；0x3E 瀑布 → 13；0x3X 浅水按低 nibble；0x4X 溪流 → 0。 */
-const slopeOf = (xter: number): number => (xter === 0x3e ? 13 : xter >= 0x40 ? 0 : xter & 0x0f);
+/** 与 sim/terrain 的 slopeCodeOf 同口径（contract-rfc WP2-2）：0x3E 瀑布 → 13；0x3X 浅水 / 0x4X 水下（低 nibble 是形状码）→ 0；其余 xter & 0x0F（> 13 视为 0）。 */
+const slopeOf = (xter: number): number => (xter === 0x3e ? 13 : xter >= 0x30 ? 0 : (xter & 0x0f) <= 13 ? xter & 0x0f : 0);
 
 const isWaterTile = (s: CityState, i: number): boolean => {
   const xter = s.layers.xter[i]!;

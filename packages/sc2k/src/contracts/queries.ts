@@ -8,7 +8,7 @@ import type { Command, RejectReason, PlacementPreview } from './commands';
 import type { SystemId } from './system';
 
 export interface TerrainQuery {                                   // owner: terrain
-  alt(i: number): number; slope(i: number): number;               // slope: xter & 0x0F（0x3E → 13，0x4X → 0）
+  alt(i: number): number; slope(i: number): number;               // slope: xter & 0x0F（0x3E 瀑布 → 13；0x3X 浅水 / 0x4X 水下的低 nibble 是形状码 → 0；contract-rfc WP2-2）
   xterClass(i: number): XterClass;
   isWater(i: number): boolean; isSalt(i: number): boolean; isFlatDry(i: number): boolean;
   waterDepth(i: number): number;                                  // waterLevel − alt（无水 0）
