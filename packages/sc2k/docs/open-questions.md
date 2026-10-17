@@ -43,3 +43,10 @@
 | 30 | `advance` 的积压封顶：`planDays` 把折算后剩余的 `accumMs` 封顶为 `maxDaysPerFrame × MS_PER_DAY[speed]`（ARCHITECTURE §5.2 伪码只对"没跑完的天数"封顶），后台标签页回到前台最多补一帧硬顶而不是追几千天 | 已实现（`sim/core/advance.ts`），`accumMs` 不入哈希故不影响确定性 | WP1 | `advance.test` 硬顶用例 | 已裁定 |
 | 31 | `ctx.diag` / `ctx.events` 封顶（#21 的落实）：`DEFAULT_CORE_TUNING.diagCap = 512`、`eventCap = 8192`，超出丢弃最旧并记一次 `core.eventOverflow`；可经 `CreateSimOptions.tuning.core` 覆盖 | 已实现（`sim/core/tuning.ts`） | WP1 | `longrun.test` 空城用例 | 已裁定 |
 | 32 | 金城脚本（`testkit.goldenMiniCity`）的布局假设全平地、放置规则按 spec 最小集（水泵不邻水、车站邻铁路、医院靠 24 偏移可达）。真 placement / utilities / zones 合入后若某条命令被拒绝（`ok:false` 不入日志），集成烟测需按实际 `RejectReason` 调整坐标 | 坐标集中在 `GOLDEN_LAYOUT`，单点可改 | WP1 / 集成者 | `longrun.test`、`headless --script golden-mini-city` 的 `commandsDispatched` 应等于脚本条数 | 开放 |
+| 28 | 交通衰减：`XTRF -= XTRF >> 2` 对 1..3 永不衰减，与 spec:services §2.4 文字"值 1..3 衰减为 0"矛盾 | `trafficDecayMin = 1`（非零值至少减 1，3 → 2 → 1 → 0；设 0 即纯移位） | services / 道路轻重交通叠加 | 原版存档中是否残留小值 | 开放 |
+| 29 | `XROG` 整数截断下 127 与 128 都是不动点：新城 0x7F 的格若人口从未变化永远停在 127（dfloer 的"新城默认 0x7F"），变化过的格收敛到 128 | 新城写 `xrogInitial = 0x7F`；显示阈值 `>0x82` 绿 / `<0x7D` 红不受影响 | services / 地图增长图 | — | 备忘 |
+| 30 | `ServicesQuery.airportTiles` 语义契约未写明 | = 机场分区格数（`XZON & 0x0F == 8`），`onTilesChanged('zone')` 失效重数；`airportRunwayGroups = (跑道 + 跑道十字) / 5` | zones 需求 cap | — | 待认可 |
+| 31 | 无水体时的海港诉求映射到哪种报纸类型（spec:disasters 表 #59 `needseaport(sic)` "无水体时的海港诉求" vs #60 `needconnections`） | `NewsType.DemandIndustrialConnection`（#59）+ 状态栏键 `complaint.connection` | services / events | — | 待认可 |
+| 32 | 里程碑进度 4 的军事基地提案模态：v1 UI 窗口清单无 `militaryOffer` | `militaryOfferModal = false`：只 `emit militaryOffer`、不挂起、`MISC 0x0E4C` 保持 0（v2 实现选址后把默认改为 true） | services / ui | — | 开放 |
+| 33 | 状态栏"恶劣天气"诉求（`complaint.weather`，weather ≥ 9）需要天气类型，契约 `WeatherState` 无该字段 | v1 不产出 `complaint.weather`；若 events 把天气类型放进 `WeatherState`（RFC）再接 | services / events | — | 开放 |
+| 34 | `phaseApplies('facilityAnnual')` 为 `m === 0`，新城 age 0 当天也跑一次年度微模拟（写入逮捕 / 监狱加成等） | 按契约保留；测试里先推进 1 天再放设施 | services / core | — | 备忘 |
