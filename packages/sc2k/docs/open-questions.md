@@ -73,3 +73,16 @@
 | 28 | （WP12a 对 #15 的裁定）快捷键冲突：UI 全局键表（`ui/tools/keymap.ts`）优先于 `ToolDef.hotkey`；`1–4` = 速度、`[ ]` = 旋转、`Space / P` = 暂停、`W` = 电力组、`A` = 供水组、`Tab` = 同组下一子工具、`Shift+字母` = 窗口、`Ctrl+S` = 保存（preventDefault） | `ToolDef.hotkey` 在 v1 不被外壳读取；v2 做可配置键位时再合并两表 | WP12a | `toolController.test` 键盘用例 | 已裁定 |
 | 29 | 桩经济下 `funds = 0`（#26）会让 `availability` 对全部付费工具返回 `funds`，工具栏整体置灰（这是正确行为，不是外壳缺陷）；自检 / e2e 在 economy 合入前需经 `window.__sc2k.host.state.economy.funds` 注入资金 | 等 WP8 `init` 写起始资金后自然消失 | WP8 / WP12b e2e | e2e/smoke.spec | 备忘 |
 | 30 | 触控"单指点按"立即执行工具动作，双击缩放在第二次点按时追加（第一次点按的放置不撤销）；若要"延迟 300 ms 以区分双击"需接受所有点按的延迟 | 立即执行（spec:ui-art §3.11 未规定） | WP12a | — | 开放 |
+
+## WP6 transport 实现期裁定（第一波）
+
+| # | 问题 | 当前裁定（默认值 / 位置） | 归属 | 验证手段 | 状态 |
+|---|---|---|---|---|---|
+| WP6-1 | 翻转族桥件（0x51–0x5B、0x5C、0x6A/0x6B）`XBit.Flipped` 清零时的行进轴 | **未翻转 = T–B，置位 = L–R**（`sim/transport/model.ts` `BRIDGE_UNFLIPPED_AXIS`；与吊桥"起始段 B / 末端段 T"命名及匝道"高速 T/B 为基准"一致）。placement 按行进轴写该位、transport 据此判邻接、art / render 的基准精灵画 T–B 向 | WP3 placement / WP6 / WP9 art / WP10 render | `piece.test`"匝道 / 桥段 … 固定轴" | 待认可 |
+| WP6-2 | `connections()` 三个计数的口径 | `commerce` = 道路连接条数；`industry` = 铁路条数 + 高速条数（沿边相邻两格高速合并为一条）；`total` = Σ tiles（高速一条算 2 格，= `MISC 0x1024` 连接格数）。zones 按"边缘格 0xFA 且 isRoad/isRail/isHighway"逐格求和应与 `total` 相等 | WP5 zones / WP6 | `connections.test` | 待认可 |
+| WP6-3 | 0xFA 的写权与陈旧标记 | transport 不写 0xFA（placement 的 `neighborConnection` 写）；只在边缘格不再是任何网络格时清掉旧 0xFA（`onTilesChanged` + `importFrom`）；边缘格变成转弯 / 三岔时保留标记但不计数 | WP3 / WP6 | `connections.test` | 待认可 |
+| WP6-4 | 步行者粗分类区间 0x43–0x50 字面含高速直线段 0x49/0x4A（spec §2.12.4 原文，原版实现者自注存疑） | 字面复刻：WALK 踩到 0x49/0x4A 也按"过桥直行"2 步；`tuning.transport.walkCrossoverAsBridge=false` 改为细分规则 | WP6 | `trip.test` WALK 行 | 开放 |
+| WP6-5 | 汽车可走铁路桥 / 高架电线的原版怪癖（spec §4.7）vs WORKPLAN"电线桥不通行" | 拆成两个开关：`carsCrossRailBridge=true`（复刻）、`carsCrossWireBridge=false`（按 WORKPLAN）；两者都 true 即字面复刻 | WP6 | `trip.test` ROAD 行 | 待认可 |
+| WP6-6 | economy 为桩时 `funding` 恒 0 → 交通一个月内全部衰败 | 见 `contract-rfc.md` WP6-1；临时兜底 `tuning.transport.budgetDecay=false`；真 economy 的 `init` 写开局资金率 100 后自然消失 | WP8 / Lead | `decay.test` | 开放 |
+| WP6-7 | `app/wire.test.ts` 第一条用例断言"非 core 全为桩"（`expect(s.stub).toBe(true)`） | 任何真系统合入后必然失败；该文件归 WP0/Lead，WP6 未改。建议改为 `if (s.stub) expect(WIRE_STUB_ALLOWLIST).toContain(s.id)`，并在合入 WP6 时把 `'transport'` 移出 `WIRE_STUB_ALLOWLIST` | Lead | `wire.test` | 开放 |
+| WP6-8 | 隧道预算衰败（spec §2.15 Tunnel 行）与高速块 / 匝道 / 隧道放置 | v1 未做隧道衰败（`tunnelLevels` 没有写入 action；隧道本身 v2）；高速块（偶数锚点整块）与匝道（按 Highways 单格）的衰败已实现以兼容导入存档 | WP6 v2 | — | 备忘 |
