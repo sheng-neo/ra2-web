@@ -1,0 +1,71 @@
+/* ===== ui/windows/windows.css =====（WP12b：窗口组件的补充样式；基础斜面四色变量 --bevel-* 由 index.html / WP12a theme.css 提供） */
+.sc2k-win-body { font: 13px/1.35 var(--font-ui, system-ui, sans-serif); color: #000; background: var(--bevel-face, #c0c0c0); padding: 8px; box-sizing: border-box; display: flex; flex-direction: column; gap: 6px; max-height: 80vh; overflow: auto; }
+.sc2k-win-body * { box-sizing: border-box; }
+.sc2k-win-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.sc2k-win-columns { display: flex; flex-wrap: wrap; gap: 6px; align-items: flex-start; }
+.sc2k-win-columns > * { flex: 1 1 140px; min-width: 140px; }
+.sc2k-win-field { display: grid; grid-template-columns: minmax(90px, 35%) 1fr; align-items: center; gap: 6px; }
+.sc2k-win-label { opacity: 0.85; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sc2k-win-group { border: 2px groove var(--bevel-light, #fff); margin: 0; padding: 6px 8px; display: flex; flex-direction: column; gap: 4px; }
+.sc2k-win-group > legend { padding: 0 4px; font-weight: bold; }
+.sc2k-win-btn { font: inherit; padding: 2px 10px; min-width: 64px; background: var(--bevel-face, #c0c0c0); color: #000; cursor: pointer;
+  border: 2px solid; border-color: var(--bevel-light, #fff) var(--bevel-dark, #404040) var(--bevel-dark, #404040) var(--bevel-light, #fff); box-shadow: inset -1px -1px 0 var(--bevel-shadow, #808080); }
+.sc2k-win-btn:active, .sc2k-win-btn.sc2k-win-active { border-color: var(--bevel-dark, #404040) var(--bevel-light, #fff) var(--bevel-light, #fff) var(--bevel-dark, #404040); box-shadow: inset 1px 1px 0 var(--bevel-shadow, #808080); }
+.sc2k-win-btn:disabled { color: var(--bevel-shadow, #808080); text-shadow: 1px 1px 0 var(--bevel-light, #fff); cursor: default; }
+.sc2k-win-btn.sc2k-win-primary { font-weight: bold; }
+.sc2k-win-btn.sc2k-win-danger { color: #b00020; }
+.sc2k-win-buttons { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
+.sc2k-win-buttons.sc2k-win-vertical { flex-direction: column; align-items: stretch; }
+.sc2k-win-input, .sc2k-win-body select { font: inherit; padding: 2px 4px; background: #fff; color: #000; border: 2px solid; border-color: var(--bevel-shadow, #808080) var(--bevel-light, #fff) var(--bevel-light, #fff) var(--bevel-shadow, #808080); min-width: 0; width: 100%; }
+.sc2k-win-check { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; user-select: none; }
+.sc2k-win-sliderrow { display: flex; align-items: center; gap: 6px; }
+.sc2k-win-slider { flex: 1 1 auto; min-width: 80px; }
+.sc2k-win-readout { min-width: 3.5em; text-align: right; font-variant-numeric: tabular-nums; }
+.sc2k-win-table { border-collapse: collapse; width: 100%; background: #fff; }
+.sc2k-win-table th, .sc2k-win-table td { border: 1px solid var(--bevel-shadow, #808080); padding: 2px 6px; text-align: right; font-variant-numeric: tabular-nums; }
+.sc2k-win-table th:first-child, .sc2k-win-table td:first-child { text-align: left; }
+.sc2k-win-table tr:last-child td { font-weight: bold; }
+.sc2k-win-ledger { background: #fff; border: 2px solid; border-color: var(--bevel-shadow, #808080) var(--bevel-light, #fff) var(--bevel-light, #fff) var(--bevel-shadow, #808080); padding: 4px; max-height: 240px; overflow: auto; }
+.sc2k-win-summary { display: flex; flex-direction: column; gap: 2px; }
+.sc2k-win-note { min-height: 1.2em; font-size: 12px; }
+.sc2k-win-note[data-level="error"] { color: #b00020; }
+.sc2k-win-muted { opacity: 0.7; font-size: 12px; }
+.sc2k-win-subtitle { font-weight: bold; margin-top: 4px; }
+.sc2k-win-canvas { display: block; background: #101820; border: 2px solid; border-color: var(--bevel-shadow, #808080) var(--bevel-light, #fff) var(--bevel-light, #fff) var(--bevel-shadow, #808080); }
+/* 地图 */
+.sc2k-win-map { flex-direction: row; align-items: flex-start; }
+.sc2k-win-layers { display: flex; flex-direction: column; gap: 2px; }
+.sc2k-win-layers .sc2k-win-btn { min-width: 120px; text-align: left; padding: 1px 6px; font-size: 12px; }
+.sc2k-win-minimap { cursor: crosshair; }
+/* 图表 */
+.sc2k-win-legend { display: grid; grid-template-columns: repeat(4, 1fr); gap: 2px 8px; font-size: 12px; }
+.sc2k-win-swatch { display: inline-block; width: 10px; height: 10px; border: 1px solid #000; }
+/* 邻城 */
+.sc2k-win-neighbors-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; grid-template-rows: auto auto auto; gap: 4px;
+  grid-template-areas: "tl t tr" "l c r" "bl b br"; }
+.sc2k-win-cell { background: #fff; border: 1px solid var(--bevel-shadow, #808080); padding: 4px 6px; min-height: 48px; }
+.sc2k-win-center { background: #fffbe6; text-align: center; }
+.sc2k-win-area-tl { grid-area: tl; } .sc2k-win-area-t { grid-area: t; } .sc2k-win-area-tr { grid-area: tr; }
+.sc2k-win-area-l { grid-area: l; } .sc2k-win-area-c { grid-area: c; } .sc2k-win-area-r { grid-area: r; }
+.sc2k-win-area-bl { grid-area: bl; } .sc2k-win-area-b { grid-area: b; } .sc2k-win-area-br { grid-area: br; }
+.sc2k-win-cityname { font-weight: bold; }
+/* 报纸 */
+.sc2k-win-paper { background: #f6f1e4; color: #1a1a1a; padding: 10px 14px; border: 1px solid #a09a88; font-family: Georgia, 'Times New Roman', serif; }
+.sc2k-win-masthead { font-size: 22px; font-weight: bold; text-align: center; letter-spacing: 1px; border-bottom: 3px double #1a1a1a; padding-bottom: 4px; }
+.sc2k-win-extra { text-align: center; font-weight: bold; color: #b00020; text-transform: uppercase; }
+.sc2k-win-dateline { text-align: center; font-size: 12px; border-bottom: 1px solid #1a1a1a; margin-bottom: 6px; }
+.sc2k-win-headline h2 { margin: 4px 0; font-size: 18px; }
+.sc2k-win-stories { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.sc2k-win-story h3 { margin: 2px 0; font-size: 14px; }
+.sc2k-win-paper p { margin: 2px 0 6px; font-size: 12px; }
+.sc2k-win-weather { border-top: 1px solid #1a1a1a; margin-top: 6px; padding-top: 4px; font-size: 12px; }
+/* 查询 */
+.sc2k-win-queryrows dl { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; margin: 0; }
+.sc2k-win-queryrows dt { opacity: 0.75; }
+.sc2k-win-queryrows dd { margin: 0; font-weight: bold; }
+/* 存档 */
+.sc2k-win-saverow { display: grid; grid-template-columns: 56px 1fr auto; gap: 8px; align-items: center; padding: 4px; border-bottom: 1px solid var(--bevel-face, #c0c0c0); }
+.sc2k-win-thumb { width: 56px; height: 42px; object-fit: cover; background: #101820; border: 1px solid var(--bevel-shadow, #808080); }
+.sc2k-win-saverow .sc2k-win-btn { min-width: 0; padding: 1px 8px; font-size: 12px; }
+/* 模态 */
+.sc2k-win-modal { min-width: 260px; }

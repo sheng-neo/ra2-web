@@ -50,3 +50,6 @@
 | 32 | 里程碑进度 4 的军事基地提案模态：v1 UI 窗口清单无 `militaryOffer` | `militaryOfferModal = false`：只 `emit militaryOffer`、不挂起、`MISC 0x0E4C` 保持 0（v2 实现选址后把默认改为 true） | services / ui | — | 开放 |
 | 33 | 状态栏"恶劣天气"诉求（`complaint.weather`，weather ≥ 9）需要天气类型，契约 `WeatherState` 无该字段 | v1 不产出 `complaint.weather`；若 events 把天气类型放进 `WeatherState`（RFC）再接 | services / events | — | 开放 |
 | 34 | `phaseApplies('facilityAnnual')` 为 `m === 0`，新城 age 0 当天也跑一次年度微模拟（写入逮捕 / 监狱加成等） | 按契约保留；测试里先推进 1 天再放设施 | services / core | — | 备忘 |
+| 28 | Query 窗口的"车站 / 电厂 / 地块"附加面板依赖 `q.transport.stationAt / q.utilities.plantAt / q.zones.lotAt`，桩下恒 null；`q.services.queryStats` 桩下为空 | UI 只在非空时渲染；`e2e/smoke.spec` 的"Query 有数据"断言在 `SC2K_E2E_STRICT=1` 之外仅记 annotation | WP4 / WP5 / WP6 / WP7 | `e2e/smoke.spec` annotations | 开放 |
+| 29 | `e2e/hash.spec` 的 Node 侧在 Playwright 进程内直接 import `src/sim/**`（不经 app/wire，避免拉入渲染 / UI）；基线 `SC2K_HASH_BASELINE` 未建立 | 先比较浏览器与 Node 两端相等；基线由集成列车 #2 后建立并写入 CI 环境变量 | WP12b / Lead | `e2e/output/hash.json` | 开放 |
+| 30 | 存档窗口的 `.SC2` 路径经 `io/sc2` 入口直取（`WindowDeps` 无 `sc2`，RFC #3）；WP0 桩 codec 抛 `notImplemented` 时窗口显示拒绝文案 | 保持；WP2 合入后自动可用 | WP12b / WP2 | `ui/windows/windows.test.ts` ".sc2 优雅失败" | 开放 |
