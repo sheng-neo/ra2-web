@@ -60,6 +60,12 @@ describe('registry: 已接线系统的契约一致', () => {
     expect(systems.map((s) => s.id)).toEqual(SYSTEM_ORDER);
     for (const s of systems) if (s.stub) expect(WIRE_STUB_ALLOWLIST).toContain(s.id);
   });
+  /** WORKPLAN 标为 [v2] 而第一波合入时允许暂缺的阶段（按系统）。合入对应 v2 切片时从这里删除。 */
+  const DEFERRED_PHASES: Partial<Record<SystemId, readonly PhaseId[]>> = {
+    services: ['approvalSurvey'],
+    economy: ['scenario'],
+    zones: ['nationalAnnual.zones'],
+  };
   for (const s of systems) {
     const owned = {
       commands: ownedBy(COMMAND_OWNER, s.id), phases: ownedBy(PHASE_OWNER, s.id), actions: s.id === 'core' ? [] : ownedBy(ACTION_OWNER, s.id),
@@ -80,8 +86,9 @@ describe('registry: 已接线系统的契约一致', () => {
         for (const k of keysOf(s.phases)) expect(PHASE_OWNER[k as PhaseId]).toBe(s.id);
         for (const k of keysOf(s.actions)) expect(ACTION_OWNER[k as keyof Actions]).toBe(s.id);
         expect(keysOf(s.queries)).toEqual(owned.queries);
-        // 真系统应实现归自己的全部阶段（缺一则 WORKPLAN §2.2 违约）
-        expect(keysOf(s.phases)).toEqual(owned.phases);
+        // 真系统应实现归自己的全部阶段；WORKPLAN 明确标为 [v2] 的阶段允许暂缺，但必须登记在 DEFERRED_PHASES（打标 v1-playable 后逐项清空）
+        const deferred = DEFERRED_PHASES[s.id] ?? [];
+        expect(keysOf(s.phases)).toEqual(owned.phases.filter((p) => !deferred.includes(p)));
         // 真系统应提供归自己的全部 actions（core 的 7 个由 TileWriter 提供，不在 System.actions）
         if (s.id !== 'core') expect(keysOf(s.actions)).toEqual(owned.actions);
       });
