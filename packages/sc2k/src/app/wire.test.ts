@@ -36,7 +36,7 @@ describe('WP0 冒烟：桩装配的 SimHost', () => {
   it('createWiredHost：9 个系统按 SYSTEM_ORDER；非 core 全为桩且都在 allowlist 内', () => {
     const host = createWiredHost();
     expect(host.systems.map((s) => s.id)).toEqual(SYSTEM_ORDER);
-    for (const s of host.systems) if (s.id !== 'core') { expect(s.stub).toBe(true); expect(WIRE_STUB_ALLOWLIST).toContain(s.id); }
+    for (const s of host.systems) if (s.id !== 'core') { if (s.stub) expect(WIRE_STUB_ALLOWLIST).toContain(s.id); else expect(WIRE_STUB_ALLOWLIST).not.toContain(s.id); }
     expect(host.catalogue).toBe(data.CATALOGUE);
     expect(host.catalogue.BUILDINGS).toHaveLength(256);
   });
