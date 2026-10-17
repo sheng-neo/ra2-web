@@ -59,3 +59,8 @@
 | 31 | DAT 多帧键（火 4 帧 396–399、爆炸 3 帧 387–389）v1 的 DatSpriteProvider 报 `frameCount 1`（静态）；`sprites/ids.ts` 的 `NOMINAL_FRAMES` 表留给 v2 动画 | v1 静态 | WP14 [v2] | — | 备忘 |
 | 32 | `AssetImporter.onProviderReady(fn)`：订阅时若当前已有生效的 dat provider 会**立即**回调一次（UI 晚于启动序列挂载也能拿到），切回程序化时回调 `null` | 以 WP14 实现为准 | WP14 / WP12 | `import/panel.test`（迟到订阅） | 待认可 |
 | 33 | 面板在导入精灵文件后即解码（即使"使用原版美术"未勾选），以便显示"已启用 / 部分启用（缺 X）"；解码结果缓存进 IndexedDB `decoded`，开关只决定是否 `setProvider` | 接受一次性解码成本（Worker 内） | WP14 | — | 备忘 |
+| 28 | `nationalAnnual.economy` 在建城日（age 0）也生效（契约 `phaseApplies` 只看 `month === 0`），联邦利率开局即随机游走一次并消费 1 次 PRNG；spec:economy §2.3.2 的年初序列只写了 `age > 0` | 按契约实现（economy 不自行加 `age > 0` 条件，避免与 zones 的 `nationalAnnual.zones` 口径不一致） | WP1 / WP5 / WP8 | `settle.test` 以 age 1 为 PRNG 基线 | 待裁定 |
+| 29 | 信用评级分母下限：`EconomyTuning.bonds.ratingTaxFloor = 10000`、`ratingValueFloor = 100000`（[设计]）；不加下限时新城（税收 / 价值为 0）第一张债券即 F，Hard 开局永远无法借款 | 下限为可调参数；评级公式本身即 spec Q5 的 [低] 建议式 | WP8 | `bonds.test` | 开放 |
+| 30 | 经费线"数量"以 `counts.tile ÷ 占地²` 推出为准（spec:economy §4.13"不等时以 tileCounts 为准"），`q.services.structureCounts()` 只在 `exportTo` 对账并记 `economy.structureCountMismatch` 诊断 | economy 不依赖 services 的计数真伪 | WP7 / WP8 | `settle.test`（经费）、`save.test` | 开放 |
+| 31 | `fedRateRaw`、`impeached` 没有原版 `MISC` 落点：借用税线 R / C 块的索引 2（"未明"槽，spec:economy Q12）；导入原版存档时该槽若非法（超出 `fedMin..fedMax` / 非魔数）则回退 XGRP / 初值 | 自洽往返；若要完全不碰原版未明槽，需把两字段翻成 `hash:'full'` | WP8 / WP2 | `save.test` | 开放 |
+| 32 | 预算模态：`autoBudget` 默认 false，真 economy 合入后每年 1 月第 0 天发 `modal budget` 并挂起，UI 必须 `dispatch(modalAnswer)` + `host.modalClosed()` 才能续跑；`gameOver` 同理 | 测试 / `runDays` 自动关模态；app 壳由 WP12 处理 | WP12 | `budgetWindow.test`、e2e 冒烟 24 个月 | 开放 |

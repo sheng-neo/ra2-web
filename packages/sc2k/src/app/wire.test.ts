@@ -33,7 +33,7 @@ import * as testkit from '../testkit';
 const PARAMS: NewCityParams = { name: 'Smoketown', mayor: 'Nobody', difficulty: 1, startYear: 2000, seed: 2024, terrainSeed: 11, terrain: { coast: false, river: false, hills: 12, water: 5, trees: 15 } };
 
 describe('WP0 冒烟：桩装配的 SimHost', () => {
-  it('createWiredHost：9 个系统按 SYSTEM_ORDER；非 core 全为桩且都在 allowlist 内', () => {
+  it('createWiredHost：9 个系统按 SYSTEM_ORDER；仍为桩的系统都在 allowlist 内（真系统逐个合入后不再是桩）', () => {
     const host = createWiredHost();
     expect(host.systems.map((s) => s.id)).toEqual(SYSTEM_ORDER);
     for (const s of host.systems) if (s.id !== 'core') { if (s.stub) expect(WIRE_STUB_ALLOWLIST).toContain(s.id); else expect(WIRE_STUB_ALLOWLIST).not.toContain(s.id); }
