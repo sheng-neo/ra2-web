@@ -38,3 +38,6 @@
 | 25 | `createTestContext` 在改动夹具后调用一次 `postLoad(ctx, 'snapshot')` 让 `nullSystem` 重绑定；若桩改为注册时即可用，这一行可删 | 保留 | WP1 | `createSim.test` | 备忘 |
 | 26 | `economy.funds` 桩下为 0（无人发起始资金），冒烟观感「资金: 0」 | 属 WP8，不是缺陷 | WP8 | e2e 截图 | 备忘 |
 | 27 | `counts.zone` 由 `setXbld` 维护（已建 R/C/I 建筑格，spec:zones Q9 口径），不是 `setXzon` | core 口径；zones 的 census 全量重算须用同一口径 | WP4 zones | `tileWriter.test` 计数恒等 | 待认可 |
+| 28 | （WP12a 对 #15 的裁定）快捷键冲突：UI 全局键表（`ui/tools/keymap.ts`）优先于 `ToolDef.hotkey`；`1–4` = 速度、`[ ]` = 旋转、`Space / P` = 暂停、`W` = 电力组、`A` = 供水组、`Tab` = 同组下一子工具、`Shift+字母` = 窗口、`Ctrl+S` = 保存（preventDefault） | `ToolDef.hotkey` 在 v1 不被外壳读取；v2 做可配置键位时再合并两表 | WP12a | `toolController.test` 键盘用例 | 已裁定 |
+| 29 | 桩经济下 `funds = 0`（#26）会让 `availability` 对全部付费工具返回 `funds`，工具栏整体置灰（这是正确行为，不是外壳缺陷）；自检 / e2e 在 economy 合入前需经 `window.__sc2k.host.state.economy.funds` 注入资金 | 等 WP8 `init` 写起始资金后自然消失 | WP8 / WP12b e2e | e2e/smoke.spec | 备忘 |
+| 30 | 触控"单指点按"立即执行工具动作，双击缩放在第二次点按时追加（第一次点按的放置不撤销）；若要"延迟 300 ms 以区分双击"需接受所有点按的延迟 | 立即执行（spec:ui-art §3.11 未规定） | WP12a | — | 开放 |
