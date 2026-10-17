@@ -1,16 +1,21 @@
-// ===== art/terrain.ts =====（spec:ui-art §3.6.2 坡面着色表、§3.7.1 地形 / 边缘岩壁 / 地下地表；WP9）
+// ===== art/terrain.ts =====（spec:ui-art §3.6.2 坡面着色表、§3.7.1 地形 / 边缘岩壁 / 地下地表；WP9；INT-C 打磨）
 // 坡面码 0..13 的角位来自 contracts/rotation.SLOPE_CORNERS（bit3=c00=上顶点 U，bit2=c10=右 Rt，bit1=c01=左 Lf，bit0=c11=下 D）。
-// 平地色 Grass[i]，i = 3 + altBand；坡面三角按朝向加偏移；地下版用 Earth 色带。
+// 平地色 Grass[i]，i = 3 + altBand；坡面三角只靠明暗面区分（半阶用 50% 抖动合成，S 档四舍五入），不画等高线 / 脊线 —— 整张地图
+// 才不会像"等高线图"（INT-C 实测）；只有 bedrock（13）保留岩壁的地层线。地下版用 Earth 色带、倍率减半。
 import type { IndexedBitmap } from '../contracts/render';
 import { hashNoise } from '../contracts/prng';
 import { SLOPE_CORNERS } from '../contracts/rotation';
 import { Ramp, ci } from './palette';
 import type { ScaleSpec } from './raster';
-import { fillPoly, line, newBitmap, setPx } from './raster';
-import { fillLot, lotLine, lotPt, newTerrainLot, type Lot } from './iso';
+import { ditherFill, fillPoly, line, newBitmap, setPx } from './raster';
+import { fillLot, lotLine, lotPoly, lotPt, newTerrainLot, type Lot } from './iso';
 
-/** 坡面码 → 阶偏移（spec §3.6.2 的倍率四舍五入）：1 朝 +y −1；2 朝 −x +1；3 朝 −y +1；4 朝 +x −2；5–8 低角方向；9–12 高角反方向；13 顶面平。 */
-export const SLOPE_SHADE: readonly number[] = [0, -1, 1, 1, -2, 0, 1, -1, -2, 0, 1, -1, -2, 0];
+/**
+ * 坡面码 → 阶偏移（可为半阶；屏幕左上光源）：1 朝 +y（屏幕左下）−1；2 朝 −x（左上）+1；3 朝 −y（右上）+½；4 朝 +x（右下）−1½；
+ * 5–8 低角方向 / 9–12 高角反方向的对角：(−x,−y) +1、(−x,+y) 0、(+x,−y) −½、(+x,+y) −1½；13 顶面平。
+ * 比 spec §3.6.2 表（+x 为 −2）收敛半阶：Grass 色带相邻两阶亮度差约 0.1，整两阶的背光坡在真实地图里过黑。
+ */
+export const SLOPE_SHADE: readonly number[] = [0, -1, 1, 0.5, -1.5, 0, 1, -0.5, -1.5, 0, 1, -0.5, -1.5, 0];
 /** 角高（单位：级）：[U, Rt, Lf, D]。 */
 export function cornerLevels(nibble: number): [number, number, number, number] {
   const bits = SLOPE_CORNERS[nibble] ?? 0;
@@ -35,33 +40,15 @@ export function triangulate(nibble: number, LEVEL: number): Array<{ uvz: number[
   return [{ uvz: [...P(c), ...P(p), ...P(q)], slope: true }, { uvz: [...P(o), ...P(p), ...P(q)], slope: false }];
 }
 
-/** 等高线段（lot 坐标 + 高度分数），t ∈ (0,1)；平地 / 13 无。 */
-function contourSegments(nibble: number): Array<[number, number, number, number, number]> {
-  const out: Array<[number, number, number, number, number]> = [];
-  for (const t of [0.34, 0.67]) {
-    const c = t;
-    switch (nibble) {
-      case 1: out.push([0, t, 1, t, 1 - t]); break;
-      case 2: out.push([1 - t, 0, 1 - t, 1, 1 - t]); break;
-      case 3: out.push([0, 1 - t, 1, 1 - t, 1 - t]); break;
-      case 4: out.push([t, 0, t, 1, 1 - t]); break;
-      case 5: out.push([0, c, 1 - c, 1, 1 - c]); break;
-      case 6: out.push([0, c, c, 0, c]); break;
-      case 7: out.push([c, 0, 1, 1 - c, 1 - c]); break;
-      case 8: out.push([c, 1, 1, c, c]); break;
-      case 9: out.push([c, 0, 1, 1 - c, c]); break;
-      case 10: out.push([c, 1, 1, c, c]); break;
-      case 11: out.push([0, c, 1 - c, 1, c]); break;
-      case 12: out.push([0, 1 - c, 1 - c, 0, c]); break;
-      default: break;
-    }
-  }
-  return out;
+/** 半阶着色：整阶直接填；半阶在 M / L 用 50% 棋盘抖动合成（S 档四舍五入到整阶）。 */
+function fillShaded(lot: Lot, uvz: readonly number[], ramp: Ramp, i: number, shade: number): void {
+  const lo = Math.floor(shade), hi = Math.ceil(shade);
+  if (lo === hi || lot.sp.scale === 'S') { fillLot(lot, uvz, ci(ramp, i + Math.round(shade))); return; }
+  ditherFill(lot.bmp, lotPoly(lot, uvz), ci(ramp, i + hi), ci(ramp, i + lo), 'checker');
 }
 
 function drawSlopes(lot: Lot, nibble: number, ramp: Ramp, i: number, shadeMul: number, speckleSeed: number, speckles: number): void {
   const sp = lot.sp;
-  const shade = Math.round(SLOPE_SHADE[nibble]! * shadeMul);
   if (nibble === 13) {
     const L = sp.LEVEL;
     fillLot(lot, [0, 0, L, 1, 0, L, 1, 1, L, 0, 1, L], ci(ramp, i));
@@ -69,17 +56,10 @@ function drawSlopes(lot: Lot, nibble: number, ramp: Ramp, i: number, shadeMul: n
     fillLot(lot, [1, 1, 0, 1, 0, 0, 1, 0, L, 1, 1, L], ci(Ramp.Earth, 1));
     if (sp.scale !== 'S') { lotLine(lot, 0, 1, L * 0.5, 1, 1, L * 0.5, ci(Ramp.Earth, 0)); lotLine(lot, 1, 1, L * 0.5, 1, 0, L * 0.5, ci(Ramp.Earth, 0)); lotLine(lot, 0, 1, L, 1, 1, L, ci(ramp, i - 1)); lotLine(lot, 1, 1, L, 1, 0, L, ci(ramp, i - 1)); }
   } else {
-    for (const tri of triangulate(nibble, sp.LEVEL)) fillLot(lot, tri.uvz, ci(ramp, tri.slope ? i + shade : i));
-    if (sp.scale !== 'S' && nibble !== 0) {
-      const dark = ci(ramp, i + shade - 1);
-      for (const [u0, v0, u1, v1, zf] of contourSegments(nibble)) lotLine(lot, u0, v0, zf * sp.LEVEL, u1, v1, zf * sp.LEVEL, dark);
-      // 抬高边的脊线
-      const lv = cornerLevels(nibble);
-      const edges: ReadonlyArray<readonly [number, number]> = [[0, 1], [1, 3], [3, 2], [2, 0]];
-      for (const [a, b] of edges) if (lv[a] === 1 && lv[b] === 1) lotLine(lot, CORNER_UV[a]![0], CORNER_UV[a]![1], sp.LEVEL, CORNER_UV[b]![0], CORNER_UV[b]![1], sp.LEVEL, ci(ramp, i + shade - 1));
-    }
+    const shade = SLOPE_SHADE[nibble]! * shadeMul;
+    for (const tri of triangulate(nibble, sp.LEVEL)) { if (tri.slope) fillShaded(lot, tri.uvz, ramp, i, shade); else fillLot(lot, tri.uvz, ci(ramp, i)); }
   }
-  // 噪点：让大片平地不"塑料"
+  // 噪点：让大片平地不"塑料"（坡面上也落，但只落同阶 ±1，不形成线）
   const n = sp.scale === 'S' ? Math.min(1, speckles) : speckles;
   for (let k = 0; k < n; k++) {
     const u = 0.12 + 0.76 * hashNoise(speckleSeed, k, 1), v = 0.12 + 0.76 * hashNoise(speckleSeed, k, 2);

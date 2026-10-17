@@ -66,7 +66,7 @@ describe('compiler: 项数上限与 zKey', () => {
         const i = it.tile, alt = s.layers.alt[i]!;
         const [sx, sy] = worldToScreen(snap, tileX(i), tileY(i), alt);
         let wantY = sy + tileH;
-        if (it.layer === SceneLayer.Water && (s.layers.xter[i]! & 0xf0) === 0x10) wantY = sy + tileH - (s.layers.waterLevel[i]! - alt) * level;   // 水下画在 waterLevel
+        if (it.layer === SceneLayer.Water && ((s.layers.xter[i]! & 0xf0) === 0x10 || (s.layers.xter[i]! & 0xf0) === 0x20)) wantY = sy + tileH - (s.layers.waterLevel[i]! - alt) * level;   // 水下 / 岸边画在 waterLevel（tuning.shoreAtWaterLevel）
         else if (it.key.kind === 'overlay' && it.key.id === OverlayId.NoPower) { noPower++; wantY = sy + tileH - ((FOOTPRINT[s.layers.xbld[i]!]! - 1) * tileH) / 2; }
         if (it.x !== sx || it.y !== wantY) bad.push(`${i}:${it.layer}`);
       }
@@ -272,7 +272,7 @@ describe('compiler: 状态槽（Marker > NoPower > Traffic）', () => {
 });
 
 describe('compiler: 水面', () => {
-  it('水下 → water 0 @ waterLevel、variant = 水深带；岸边 / 浅水 / 溪流 / 水湾 / 瀑布按旋转置换取 id，画在 alt', () => {
+  it('水下 → water 0 @ waterLevel、variant = 水深带；岸边 / 浅水 / 溪流 / 水湾 / 瀑布按旋转置换取 id；岸边画在 waterLevel（与湖面齐平），其余画在 alt', () => {
     const s = flatState();
     const L = s.layers;
     L.xter[tileIndex(1, 1)] = 0x10; L.waterLevel[tileIndex(1, 1)] = 7;        // 水下深 3
@@ -290,7 +290,7 @@ describe('compiler: 水面', () => {
       expect(w(1).key).toEqual({ kind: 'water', id: 0, variant: 3 });
       expect(w(1).y).toBe(worldToScreen(snap, 1, 1, 7)[1] + 16);
       expect(w(1).anim).toBe('water');
-      expect(w(2).key.id).toBe(shore[rotation]); expect(w(2).key.variant).toBe(1); expect(w(2).y).toBe(worldToScreen(snap, 2, 2, 4)[1] + 16);
+      expect(w(2).key.id).toBe(shore[rotation]); expect(w(2).key.variant).toBe(1); expect(w(2).y).toBe(worldToScreen(snap, 2, 2, 5)[1] + 16);   // 岸边 @ waterLevel 5（tuning.shoreAtWaterLevel）
       expect(w(3).key.id).toBe(shape5[rotation]); expect(w(3).key.variant).toBe(0);
       expect(w(4).key.id).toBe(14);
       expect(w(5).key.id).toBe(stream[rotation]);

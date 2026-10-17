@@ -59,8 +59,8 @@ const RECIPE_LIST: readonly BuildingRecipe[] = [
   P(0xc9, 4, Ramp.WarmGray, 4, 36, 'asphalt'), P(0xca, 4, Ramp.Rust, 3, 44, 'asphalt'), P(0xcb, 4, Ramp.Neutral, 5, 48, 'asphalt'), P(0xcc, 4, Ramp.Glass, 4, 6, 'sand'),
   P(0xcd, 4, Ramp.Neutral, 4, 40, 'asphalt'), P(0xce, 4, Ramp.Violet, 3, 56, 'asphalt'), P(0xcf, 4, Ramp.WarmGray, 2, 40, 'asphalt'),
   // ---- 公共 / 奖励 / 休闲 ----
-  P(0xd0, 3, Ramp.Neutral, 6, 48, 'grass'), P(0xd1, 3, Ramp.Neutral, 6, 56, 'asphalt'), P(0xd2, 3, Ramp.Glass, 3, 36, 'asphalt'), P(0xd3, 3, Ramp.Brick, 4, 30, 'asphalt'),
-  P(0xd4, 3, Ramp.Sand, 6, 44, 'grass'), P(0xd5, 3, Ramp.Grass, 5, 0, 'grass'), P(0xd6, 3, Ramp.Brick, 4, 24, 'grass'), P(0xd7, 4, Ramp.Neutral, 5, 60, 'asphalt'),
+  P(0xd0, 3, Ramp.Neutral, 6, 48, 'grass'), P(0xd1, 3, Ramp.Neutral, 6, 56, 'asphalt'), P(0xd2, 3, Ramp.Water, 3, 36, 'asphalt'), P(0xd3, 3, Ramp.Brick, 4, 30, 'asphalt'),
+  P(0xd4, 3, Ramp.Sand, 6, 44, 'grass'), P(0xd5, 3, Ramp.Grass, 5, 0, 'grass'), P(0xd6, 3, Ramp.Sand, 5, 24, 'grass'), P(0xd7, 4, Ramp.Neutral, 5, 60, 'asphalt'),
   P(0xd8, 4, Ramp.WarmGray, 3, 28, 'asphalt'), P(0xd9, 4, Ramp.Brick, 5, 40, 'grass'), P(0xda, 4, Ramp.Sand, 5, 12, 'grass'), P(0xdb, 1, Ramp.Neutral, 6, 40, 'grass'),
   P(0xdc, 1, Ramp.Water, 4, 14, 'sand'), P(0xdd, 1, Ramp.Asphalt, 2, 0, 'none'), P(0xde, 1, Ramp.Asphalt, 2, 0, 'none'), P(0xdf, 1, Ramp.Rust, 4, 4, 'none'),
   P(0xe0, 1, Ramp.Amber, 5, 50, 'asphalt'), P(0xe1, 1, Ramp.Neutral, 5, 48, 'asphalt'), P(0xe2, 1, Ramp.Olive, 4, 40, 'asphalt'), P(0xe3, 1, Ramp.Olive, 4, 18, 'asphalt'),
@@ -143,7 +143,7 @@ function office(c: Ctx, sil: Silhouette): void {
     if (r.zone?.type === 'C' && n === 1) signPlate(lot, box, 'left', 0.5, Math.round(h * 0.75), 10, 4, r.ramp === Ramp.Violet ? ci(Ramp.Amber, 6) : ci(Ramp.Violet, 5));
     if (r.zone?.type === 'C' && n === 2 && r.id === 0x97) { fillLotRect(lot, n - m + 0.02, 0.2, n - 0.02, 0.6, ci(Ramp.Water, 5)); scatterTrees(lot, 0.05, n - 0.3, 0.4, n - 0.05, 2, c.seed, 0.8); }
     if (r.zone?.type === 'R' && n >= 2) lotLine(lot, m, n - m, h * 0.5, n - m, n - m, h * 0.5, ci(Ramp.Neutral, 6));   // 阳台横线
-    if (r.zone?.type === 'R' && r.zone.tier === 2) fillLotRect(lot, m + 0.15, m + 0.15, n - m - 0.15, n - m - 0.15, ci(Ramp.Forest, 4), h);
+    if (r.zone?.type === 'R' && r.zone.tier === 2) fillLotRect(lot, m + 0.15, m + 0.15, n - m - 0.15, n - m - 0.15, ci(Ramp.Olive, 3), h);   // 屋顶花园（哑光，别让天际线顶着一排荧光绿）
     if (r.zone?.type === 'I') { chimney(lot, n - m - 0.2, m + 0.2, h, 6, Math.round(h * 0.5)); if (n >= 2) chimney(lot, n - m - 0.5, m + 0.2, h, 6, Math.round(h * 0.45)); }
     if (n === 1 && r.id === 0x7e) { fillLot(lot, [m, n - m, 0, n - m, n - m, 0, n - m, n - m, h * 0.5, m, n - m, h * 0.5], ci(Ramp.Glass, 4)); signPlate(lot, box, 'left', 0.5, Math.round(h * 0.85), 12, 4, ci(Ramp.Violet, 5)); }
     if (r.id === 0x99) fillLot(lot, [m, n - m, 0, n - m, n - m, 0, n - m, n - m, h * 0.3, m, n - m, h * 0.3], ci(Ramp.Glass, 5));
@@ -166,7 +166,7 @@ function office(c: Ctx, sil: Silhouette): void {
     if (r.ramp === Ramp.Glass) { lotLine(lot, m + ins * 0.5, n - m - ins * 0.5, 0, m + ins * 0.5, n - m - ins * 0.5, h, ci(Ramp.Glass, 6)); }
     parapet(c, box, 1);
     antenna(lot, n / 2, n / 2, h, 16);
-    if (r.zone?.type === 'R') fillLotRect(lot, m + ins * 0.6, m + ins * 0.6, n - m - ins * 0.6, n - m - ins * 0.6, ci(Ramp.Forest, 4), h);
+    if (r.zone?.type === 'R') fillLotRect(lot, m + ins * 0.6, m + ins * 0.6, n - m - ins * 0.6, n - m - ins * 0.6, ci(Ramp.Olive, 3), h);
     if (n >= 3) scatterTrees(lot, 0.1, n - 0.5, 0.6, n - 0.1, 2, c.seed, 0.8);
   } else if (sil === 'podium') {
     const hb = Math.round(h * 0.18);
@@ -381,11 +381,16 @@ function special(c: Ctx): void {
       parkingLot(lot, 0.4, 2.4, 2.9, 2.95, c.seed, 2, 'u');
       break;
     }
-    case 0xd2: {   // 警察局：基座 + 玻璃上层 + 天线 + 条带 + 停车场
+    case 0xd2: {   // 警察局：浅色基座 + 蓝色上层（白色腰带）+ 蓝灯天线 + 基座蓝条 + 停车场（INT-C：原来的玻璃上层远看像普通写字楼）
       const hb = Math.round(h * 0.4);
-      const base = mainBox(c, 0.4, 0.4, 2.1, 2.1, hb, Ramp.WarmGray, 4); parapet(c, base, 0);
-      isoBox(lot, 0.7, 0.7, 1.8, 1.8, h - hb, Ramp.Glass, 3, { z0: hb }); windows(lot, { u0: 0.7, v0: 0.7, u1: 1.8, v1: 1.8, z0: hb, h: h - hb, ramp: Ramp.Glass, i0: 3, leftW: 1.1 * sp.W / 2, rightW: 1.1 * sp.W / 2 }, { seed: c.seed, lit: LIT, dark: ci(Ramp.Glass, 3) });
-      lotLine(lot, 0.4, 2.1, hb * 0.5, 2.1, 2.1, hb * 0.5, ci(Ramp.Water, 5), pxs(2)); antenna(lot, 1.25, 1.25, h, 18);
+      const base = mainBox(c, 0.4, 0.4, 2.1, 2.1, hb, Ramp.Neutral, 5); parapet(c, base, 0);
+      const up = isoBox(lot, 0.7, 0.7, 1.8, 1.8, h - hb, Ramp.Water, 3, { z0: hb });
+      windows(lot, up, { seed: c.seed, lit: LIT, dark: ci(Ramp.Water, 2) });
+      const zb = hb + Math.round((h - hb) * 0.55);
+      lotLine(lot, 0.7, 1.8, zb, 1.8, 1.8, zb, ci(Ramp.Neutral, 7), pxs(2)); lotLine(lot, 1.8, 1.8, zb, 1.8, 0.7, zb, ci(Ramp.Neutral, 7), pxs(2));
+      lotLine(lot, 0.4, 2.1, hb * 0.5, 2.1, 2.1, hb * 0.5, ci(Ramp.Water, 4), pxs(2)); lotLine(lot, 2.1, 2.1, hb * 0.5, 2.1, 0.4, hb * 0.5, ci(Ramp.Water, 4), pxs(2));
+      antenna(lot, 1.25, 1.25, h, 18, ci(Ramp.Water, 6));
+      door(lot, base, 'left', 0.5, 6, 8, ci(Ramp.Water, 2));
       parkingLot(lot, 2.2, 0.3, 2.9, 2.9, c.seed, 3, 'v');
       break;
     }
@@ -412,11 +417,17 @@ function special(c: Ctx): void {
       for (const [u, v] of [[2.2, 1.3], [1.3, 2.2]] as const) { const [bx, by] = lotPt(lot, u, v); fillRect(lot.bmp, Math.round(bx), Math.round(by) - pxs(2), pxs(4), pxs(2), ci(Ramp.Rust, 2)); }
       break;
     }
-    case 0xd6: {   // 学校：L 形主体 + 操场
-      const a = mainBox(c, 0.3, 0.3, 1.5, 2.6, h, Ramp.Brick, 4); parapet(c, a, 1);
-      const b = mainBox(c, 1.5, 0.3, 2.7, 1.1, h, Ramp.Brick, 4); parapet(c, b, 0);
-      fillLotRect(lot, 1.6, 1.3, 2.9, 2.9, ci(Ramp.Sand, 5));
-      const [cx, cy] = lotPt(lot, 2.25, 2.1); strokeEllipse(lot.bmp, cx, cy, pxs(18), pxs(9), ci(Ramp.Neutral, 7));
+    case 0xd6: {   // 学校：浅沙色 L 形主体 + 砖红檐口 + 钟楼 + 红色跑道操场 + 旗杆（INT-C：原来的红砖体与消防局撞色）
+      const a = mainBox(c, 0.3, 0.3, 1.5, 2.6, h, Ramp.Sand, 5); parapet(c, a, 0);
+      const b = mainBox(c, 1.5, 0.3, 2.7, 1.1, h, Ramp.Sand, 5); parapet(c, b, 0);
+      const zc = h - pxs(2);
+      lotLine(lot, 0.3, 2.6, zc, 1.5, 2.6, zc, ci(Ramp.Brick, 4), pxs(2)); lotLine(lot, 1.5, 2.6, zc, 1.5, 1.1, zc, ci(Ramp.Brick, 4), pxs(2)); lotLine(lot, 1.5, 1.1, zc, 2.7, 1.1, zc, ci(Ramp.Brick, 4), pxs(2));
+      const tz = Math.round(h * 0.55);
+      isoBox(lot, 0.5, 0.5, 0.95, 0.95, tz, Ramp.Sand, 5, { z0: h }); fillLotRect(lot, 0.5, 0.5, 0.95, 0.95, ci(Ramp.Brick, 3), h + tz);
+      const [kx, ky] = lotPt(lot, 0.95, 0.95, h + tz * 0.6); fillEllipse(lot.bmp, kx - pxs(3), ky, pxs(2.5), pxs(2.5), ci(Ramp.Neutral, 7));
+      door(lot, a, 'left', 0.5, 6, 8, ci(Ramp.Brick, 2)); steps(lot, a, 'left', 2, ci(Ramp.Neutral, 5));
+      fillLotRect(lot, 1.6, 1.3, 2.9, 2.9, ci(Ramp.Grass, 5));
+      const [cx, cy] = lotPt(lot, 2.25, 2.1); fillEllipse(lot.bmp, cx, cy, pxs(18), pxs(9), ci(Ramp.Rust, 4)); fillEllipse(lot.bmp, cx, cy, pxs(11), pxs(5.5), ci(Ramp.Grass, 5)); if (sp.scale !== 'S') strokeEllipse(lot.bmp, cx, cy, pxs(18), pxs(9), ci(Ramp.Neutral, 7));
       flag(lot, 2.8, 1.2, 0, 16, ci(Ramp.Water, 5));
       break;
     }
