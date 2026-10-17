@@ -38,3 +38,6 @@
 | 25 | `createTestContext` 在改动夹具后调用一次 `postLoad(ctx, 'snapshot')` 让 `nullSystem` 重绑定；若桩改为注册时即可用，这一行可删 | 保留 | WP1 | `createSim.test` | 备忘 |
 | 26 | `economy.funds` 桩下为 0（无人发起始资金），冒烟观感「资金: 0」 | 属 WP8，不是缺陷 | WP8 | e2e 截图 | 备忘 |
 | 27 | `counts.zone` 由 `setXbld` 维护（已建 R/C/I 建筑格，spec:zones Q9 口径），不是 `setXzon` | core 口径；zones 的 census 全量重算须用同一口径 | WP4 zones | `tileWriter.test` 计数恒等 | 待认可 |
+| 28 | Query 窗口的"车站 / 电厂 / 地块"附加面板依赖 `q.transport.stationAt / q.utilities.plantAt / q.zones.lotAt`，桩下恒 null；`q.services.queryStats` 桩下为空 | UI 只在非空时渲染；`e2e/smoke.spec` 的"Query 有数据"断言在 `SC2K_E2E_STRICT=1` 之外仅记 annotation | WP4 / WP5 / WP6 / WP7 | `e2e/smoke.spec` annotations | 开放 |
+| 29 | `e2e/hash.spec` 的 Node 侧在 Playwright 进程内直接 import `src/sim/**`（不经 app/wire，避免拉入渲染 / UI）；基线 `SC2K_HASH_BASELINE` 未建立 | 先比较浏览器与 Node 两端相等；基线由集成列车 #2 后建立并写入 CI 环境变量 | WP12b / Lead | `e2e/output/hash.json` | 开放 |
+| 30 | 存档窗口的 `.SC2` 路径经 `io/sc2` 入口直取（`WindowDeps` 无 `sc2`，RFC #3）；WP0 桩 codec 抛 `notImplemented` 时窗口显示拒绝文案 | 保持；WP2 合入后自动可用 | WP12b / WP2 | `ui/windows/windows.test.ts` ".sc2 优雅失败" | 开放 |
