@@ -38,3 +38,6 @@
 | 25 | `createTestContext` 在改动夹具后调用一次 `postLoad(ctx, 'snapshot')` 让 `nullSystem` 重绑定；若桩改为注册时即可用，这一行可删 | 保留 | WP1 | `createSim.test` | 备忘 |
 | 26 | `economy.funds` 桩下为 0（无人发起始资金），冒烟观感「资金: 0」 | 属 WP8，不是缺陷 | WP8 | e2e 截图 | 备忘 |
 | 27 | `counts.zone` 由 `setXbld` 维护（已建 R/C/I 建筑格，spec:zones Q9 口径），不是 `setXzon` | core 口径；zones 的 census 全量重算须用同一口径 | WP4 zones | `tileWriter.test` 计数恒等 | 待认可 |
+| 28 | 真 events 下 `runDays` / `replay` 以 `advance(0)` 推进，灾害模式零 tick → 随机灾害一出现长跑即 stall；且 `advance` 在同帧 thingsTick 切到灾害模式后仍推进日历 | events 测试自带 `sim/events/fixtures.runTicks`（传 `DISASTER_TICK_MS`）；core / testkit 待改（contract-rfc #6） | WP1 | `longrun.test` 50 年 | 开放 |
+| 29 | 报纸选项（订阅 / 号外）与灾害原点的存档落点；`XTHG`（调度单位 / 龙卷风 / 怪兽）v1 不写档，灾害中导出 `.SC2` 再导入物件丢失（标记 / 状态机保留） | 选项暂存 `rawMisc` 0x1004 / 0x1008（contract-rfc #3）；原点灾害结束复位 (64,64)（#4）；XTHG 读写归 WP13 [v2] | WP13 / WP8 / Lead | `shadow.test` 的 sc2 往返 | 开放 |
+| 30 | 报纸文案键 `news.<NewsType>` 只预置 14 / 20 类；号外头条 = 触发故事（spec §3.6 `headline = thisStory`），订阅版头条 = 池中最高分 | 缺键 UI 回退显示键名（contract-rfc #2） | WP13 / Lead | `news.test` | 开放 |
