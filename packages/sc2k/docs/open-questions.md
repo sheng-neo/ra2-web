@@ -38,3 +38,10 @@
 | 25 | `createTestContext` 在改动夹具后调用一次 `postLoad(ctx, 'snapshot')` 让 `nullSystem` 重绑定；若桩改为注册时即可用，这一行可删 | 保留 | WP1 | `createSim.test` | 备忘 |
 | 26 | `economy.funds` 桩下为 0（无人发起始资金），冒烟观感「资金: 0」 | 属 WP8，不是缺陷 | WP8 | e2e 截图 | 备忘 |
 | 27 | `counts.zone` 由 `setXbld` 维护（已建 R/C/I 建筑格，spec:zones Q9 口径），不是 `setXzon` | core 口径；zones 的 census 全量重算须用同一口径 | WP4 zones | `tileWriter.test` 计数恒等 | 待认可 |
+| 28 | 交通衰减：`XTRF -= XTRF >> 2` 对 1..3 永不衰减，与 spec:services §2.4 文字"值 1..3 衰减为 0"矛盾 | `trafficDecayMin = 1`（非零值至少减 1，3 → 2 → 1 → 0；设 0 即纯移位） | services / 道路轻重交通叠加 | 原版存档中是否残留小值 | 开放 |
+| 29 | `XROG` 整数截断下 127 与 128 都是不动点：新城 0x7F 的格若人口从未变化永远停在 127（dfloer 的"新城默认 0x7F"），变化过的格收敛到 128 | 新城写 `xrogInitial = 0x7F`；显示阈值 `>0x82` 绿 / `<0x7D` 红不受影响 | services / 地图增长图 | — | 备忘 |
+| 30 | `ServicesQuery.airportTiles` 语义契约未写明 | = 机场分区格数（`XZON & 0x0F == 8`），`onTilesChanged('zone')` 失效重数；`airportRunwayGroups = (跑道 + 跑道十字) / 5` | zones 需求 cap | — | 待认可 |
+| 31 | 无水体时的海港诉求映射到哪种报纸类型（spec:disasters 表 #59 `needseaport(sic)` "无水体时的海港诉求" vs #60 `needconnections`） | `NewsType.DemandIndustrialConnection`（#59）+ 状态栏键 `complaint.connection` | services / events | — | 待认可 |
+| 32 | 里程碑进度 4 的军事基地提案模态：v1 UI 窗口清单无 `militaryOffer` | `militaryOfferModal = false`：只 `emit militaryOffer`、不挂起、`MISC 0x0E4C` 保持 0（v2 实现选址后把默认改为 true） | services / ui | — | 开放 |
+| 33 | 状态栏"恶劣天气"诉求（`complaint.weather`，weather ≥ 9）需要天气类型，契约 `WeatherState` 无该字段 | v1 不产出 `complaint.weather`；若 events 把天气类型放进 `WeatherState`（RFC）再接 | services / events | — | 开放 |
+| 34 | `phaseApplies('facilityAnnual')` 为 `m === 0`，新城 age 0 当天也跑一次年度微模拟（写入逮捕 / 监狱加成等） | 按契约保留；测试里先推进 1 天再放设施 | services / core | — | 备忘 |
