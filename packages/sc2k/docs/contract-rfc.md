@@ -9,3 +9,6 @@
 | 0b | WP0 Reconcile | Lead | `TechKey` 改名 `arcoPioneer / arcoCanopy / arcoDusk / arcoSkyward`；`NewsType.OpinionGuest / AdviceColumn`；`SimEvent 'arcoExodus'` | 裁定 7：代码内不得出现原版 Arcology / 专栏名 | 不涉及（数值与槽序不变） | 已合并（冻结前） |
 | 0c | WP0 Reconcile | Lead | `snapshot.ts` 新增 `STRING_FIELD_HASH / stringFieldHash`（mayorName → 'full'） | `.SC2` 无市长名字段，往返会破坏 hash('sc2') 不变量 | 不涉及 | 已合并（冻结前） |
 | 1 | | | | | | 待议 |
+| 2 | WP14 | WP14 assets | `data/strings.{zh,en}.ts` 新增 `assets.*` 文案键（全表与回退文案见 `src/io/assets/import/labels.ts` 的 `ASSET_LABELS_ZH / ASSET_LABELS_EN`：`assets.title / hint / pick / useOriginal / art.enabled / art.partial / art.disabled / busy / clear / cleared / files / rows / diagnostics / none / status.{stored,saved,rejected} / privacy / err.<错误码>`） | 导入面板文案须走 strings 表；合入前面板用本地回退表（有 Strings 时缺键回退） | 不涉及桩 | 待议 |
+| 3 | WP14 | WP14 assets | `AssetsEntry.createAssetImporter(store, sc2, opts?: { strings?: Strings; spawnWorker?: () => WorkerLike 或 null; now?: () => number })` 第三个可选参数 | 面板需要 Strings 才能用玩家语言显示；测试需要注入假 Worker / 时钟。当前实现已接受该参数（可选，不破坏签名），建议 `app/session.ts` 装配时传入 `strings` | 不涉及桩 | 待议 |
+| 4 | WP14 | WP14 assets | `AssetStore` 新增可选 `clearSaves(): Promise<void>`（WP14 的 `AssetStoreExt` 已实现） | `clearAll` 只清缓存（files / decoded / handles / meta），玩家存档需单独删除入口 | 内存桩：清空 saves Map | 待议 |
