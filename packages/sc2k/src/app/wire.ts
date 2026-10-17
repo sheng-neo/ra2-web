@@ -11,6 +11,7 @@ import type { Strings } from '../contracts/strings';
 import type { AssetImporter, AssetStore } from '../contracts/assets';
 import type { ShellHandle, ShellOptions } from '../contracts/shell';
 
+import { V1_TOOL_IDS } from './v1Tools';
 import { createCoreSystem, createSim } from '../sim/core';
 import { createTerrainSystem } from '../sim/terrain';
 import { createPlacementSystem } from '../sim/placement';
@@ -49,7 +50,8 @@ export function createWiredHost(opts: WiredHostOptions = {}): SimHost {
     catalogue: CATALOGUE,
     snapshot: snapshotCodec,
     stubAllowlist: WIRE_STUB_ALLOWLIST,
-    tuning: opts.tuning,
+    // 默认把 v1 工具白名单注入 placement（availability 对白名单外工具返回 notImplemented）；调用方 tuning 可覆盖。
+    tuning: { placement: { v1Tools: V1_TOOL_IDS }, ...(opts.tuning ?? {}) },
     impeachMonthly: opts.impeachMonthly,
   });
 }
