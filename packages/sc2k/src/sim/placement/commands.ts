@@ -40,18 +40,19 @@ function placeBuilding(ctx: SimContext, cmd: Extract<Command, { type: 'placeBuil
   const def = ctx.catalogue.BUILDINGS[id]!;
   const n = verdict.size, anchor = tileIndex(cmd.x, cmd.y);
   const act = ctx.act, L = ctx.state.layers;
-  // 微模拟记录（services 协议）：独占类型满员 → microsimFull（可调；桩恒 −1 故默认放行）
+  // 微模拟记录（services 协议，contract-rfc WP7-1）：≥ 1 = 记录号（共享 1..9 / 独占 10..149），0 = 无需记录，−1 = 独占满员 →
+  // microsimFull（可调；桩恒 −1 故默认放行）。标签按 WP7-2：占地每格 XTXT = 0x33 + 记录号。
   let slot = -1;
   if (def.microsim) {
     slot = act.allocMicrosim(id);
     if (slot < 0 && !def.microsim.shared && tuning.microsimFullRejects) return reject('microsimFull', verdict.cost);
   }
   if (verdict.cost > 0 && !act.charge(verdict.cost)) {
-    if (slot >= 0 && !def.microsim?.shared) act.freeMicrosim(slot);
+    if (slot >= 1 && !def.microsim?.shared) act.freeMicrosim(slot);
     return reject('funds', verdict.cost);
   }
   const flags = (def.powerable ? XBit.Powerable | XBit.Powered : 0) | (def.piped ? XBit.Piped : 0);   // POWERED 为乐观预置，下次电力扫描修正
-  const label = slot >= 0 && MICROSIM_LABEL_BASE + slot <= MICROSIM_LABEL_MAX ? MICROSIM_LABEL_BASE + slot : 0;
+  const label = slot >= 1 && MICROSIM_LABEL_BASE + slot <= MICROSIM_LABEL_MAX ? MICROSIM_LABEL_BASE + slot : 0;
   const changed: number[] = [];
   forEachLotTile(anchor, n, (i, dx, dy) => {
     act.setXbld(i, id);
@@ -71,7 +72,7 @@ function placeBuilding(ctx: SimContext, cmd: Extract<Command, { type: 'placeBuil
   act.emit({ type: 'sound', id: 'place' });
   if (def.unlock?.once) act.emit({ type: 'toolbar', reason: 'reward' });
   const res: CommandResult = { ok: true, cost: verdict.cost, changed };
-  if (id === STADIUM) res.modal = { id: 'teamPick', payload: { at: anchor } };
+  if (id === STADIUM) res.modal = { id: 'teamPick', payload: label !== 0 ? { at: anchor, slot } : { at: anchor } };   // slot 供 UI 经 rename{slot} 命名球队
   return res;
 }
 

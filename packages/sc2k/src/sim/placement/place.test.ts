@@ -94,6 +94,12 @@ describe.each(['optimistic', 'pessimistic'] as const)('placeBuilding / 拆除 / 
     expect(host.dispatch({ type: 'bulldoze', tiles: [T(11, 11)] }).ok).toBe(true);
     expect(fake.freed).toEqual([12]);
     expect(state.layers.xtxt[T(10, 10)]).toBe(0);
+    // 体育场：模态 payload 带记录号供 UI 命名球队
+    expect(host.dispatch({ type: 'placeBuilding', id: STADIUM, x: 40, y: 40 }).modal).toEqual({ id: 'teamPick', payload: { at: T(40, 40), slot: 12 } });
+    // 返回 0 = 该建筑无需记录（WP7-1 约定）：不是失败、不写标签
+    const none = mk(profile, { systems: [fakeServices(0).sys], tuning: { microsimFullRejects: true } });
+    expect(none.host.dispatch({ type: 'placeBuilding', id: POLICE, x: 10, y: 10 }).ok).toBe(true);
+    expect(none.state.layers.xtxt[T(10, 10)]).toBe(0);
   });
   it('microsimFull：alloc 返回 −1 且 tuning.microsimFullRejects 时拒绝、不写不扣；默认放行', () => {
     const strict = mk(profile, { systems: [fakeServices(-1).sys], tuning: { microsimFullRejects: true } });
