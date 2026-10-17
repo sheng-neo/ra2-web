@@ -38,3 +38,8 @@
 | 25 | `createTestContext` 在改动夹具后调用一次 `postLoad(ctx, 'snapshot')` 让 `nullSystem` 重绑定；若桩改为注册时即可用，这一行可删 | 保留 | WP1 | `createSim.test` | 备忘 |
 | 26 | `economy.funds` 桩下为 0（无人发起始资金），冒烟观感「资金: 0」 | 属 WP8，不是缺陷 | WP8 | e2e 截图 | 备忘 |
 | 27 | `counts.zone` 由 `setXbld` 维护（已建 R/C/I 建筑格，spec:zones Q9 口径），不是 `setXzon` | core 口径；zones 的 census 全量重算须用同一口径 | WP4 zones | `tileWriter.test` 计数恒等 | 待认可 |
+| 28 | 程序化美术：桥件 / 高架电线 / 跑道 / 栈桥 / 起重机等翻转族"未翻转"轴向取 L–R（沿世界 +x），T–B 由渲染器 `drawFlip` 水平镜像得到 | `art/network.ts genBridge` 与 `buildings.ts` 0xDD/0xDF/0xE0 只画 L–R 向 | WP9 art、WP10 render、WP6 transport（写 Flipped 位时的口径） | 与原版存档对照栈桥朝向 | 开放 |
+| 29 | 水面岸形 1–12 的"陆地角"部分画成透明（露出其下地形 / 坡面），而非 spec:ui-art §3.7.2 写的地形色；岸线为 1 px Sand[5] + 水侧浪线 | `art/water.ts shoreWaterPolygon` | WP9、WP10（Water 层叠在 Terrain 层之上即可） | 目测 | 备忘 |
+| 30 | 调色板 192–255 规格留空，WP9 用作 4×4×4 杂色立方（车辆 / 集装箱 / 旗帜）；DAT 导入时不用我方调色板，无冲突 | `art/palette.ts IDX.MiscBase / misc()` | WP9、WP14 | — | 备忘 |
+| 31 | 边缘岩壁位图锚点：EdgeWallL 画布宽 W/2、锚点 (W/2, H/2)（落在地块底顶点 c11）；EdgeWallR 锚点 (0, H/2)。渲染器把 EdgeWall 项像其它项一样贴到 c11 即可 | `art/terrain.ts genEdgeWall` | WP10 | compiler / compositor 像素用例 | 待认可 |
+| 32 | v1 全部精灵静帧（frameCount 1 / fps 0）；水面 / 洪水 / 瀑布在 M、L 档含循环组索引（`cycling = true`），S 档不含；建筑不含循环索引，避免进入 animPage | `art/provider.ts`、`art/water.ts` | WP11 | — | 备忘 |

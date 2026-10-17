@@ -9,3 +9,4 @@
 | 0b | WP0 Reconcile | Lead | `TechKey` 改名 `arcoPioneer / arcoCanopy / arcoDusk / arcoSkyward`；`NewsType.OpinionGuest / AdviceColumn`；`SimEvent 'arcoExodus'` | 裁定 7：代码内不得出现原版 Arcology / 专栏名 | 不涉及（数值与槽序不变） | 已合并（冻结前） |
 | 0c | WP0 Reconcile | Lead | `snapshot.ts` 新增 `STRING_FIELD_HASH / stringFieldHash`（mayorName → 'full'） | `.SC2` 无市长名字段，往返会破坏 hash('sc2') 不变量 | 不涉及 | 已合并（冻结前） |
 | 1 | | | | | | 待议 |
+| 1a | WP9 art | H (WP9) | 约定（不改契约）：SceneCompiler 为 xbld 0x01–0x0D（瓦砾 / 树 / 小公园）可选传 `variant` 0..3（建议 `hashNoise(tile, 0, 0) * 4`），provider 用它选 4 个变体；不传则为 0。`terrain` 的 `variant = altBand*4 + noise`、`water` 的 `variant = depthBand` 按契约注释。Map 图层 LUT 的字节语义在 `art/minimap.ts`（`MinimapClass / TransportClass / PowerClass / WaterClass`，热力模式原值 0..255，growth 原值），WP10 `minimap.ts` 直接 import 这些枚举 | 让大片树林 / 瓦砾不重复；LUT 口径两边一致 | 不涉及桩 | 待议 |
