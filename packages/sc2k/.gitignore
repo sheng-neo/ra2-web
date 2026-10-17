@@ -1,0 +1,6 @@
+# Playwright 截图 / 测试产物
+e2e/output/
+# art:sheet 的 contact sheet 预览
+docs/art-preview/
+# CI 产物（headless JSON、stats）
+ci/

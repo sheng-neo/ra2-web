@@ -500,7 +500,7 @@ UI 从不读 `MISC`、不写图层；拖动预览调用 `q.placement.preview(cmd
 | Parks | `parks.small` `parks.big` `parks.zoo` `parks.stadium` `parks.marina` |
 | Other | `signs.place` `query` `center` |
 
-共 54 个。`[v2]` 仅余：`roads.highway` `roads.tunnel` `roads.onramp`、`rail.subway` `rail.subStation` `rail.subToRail`、`ports.seaport` `ports.airport`、`rewards.arcoPlymouth / arcoForest / arcoDarco / arcoLaunch`、`dispatch.military`（需军事基地）。工具栏对不在集合中的工具隐藏；`PlacementQuery.availability(toolId)` 对未实现工具返回 `{ enabled: false, reason: 'notImplemented' }`；`e2e/smoke.spec` 的"Query 有数据"用例对火车站（`rail.depot`）与医院（`services.hospital`）各查一次。v2 删除白名单（或置为全集）。
+共 54 个。`[v2]` 仅余：`roads.highway` `roads.tunnel` `roads.onramp`、`rail.subway` `rail.subStation` `rail.subToRail`、`ports.seaport` `ports.airport`、`rewards.arcoPioneer / arcoCanopy / arcoDusk / arcoSkyward`、`dispatch.military`（需军事基地）。工具栏对不在集合中的工具隐藏；`PlacementQuery.availability(toolId)` 对未实现工具返回 `{ enabled: false, reason: 'notImplemented' }`；`e2e/smoke.spec` 的"Query 有数据"用例对火车站（`rail.depot`）与医院（`services.hospital`）各查一次。v2 删除白名单（或置为全集）。
 
 ---
 

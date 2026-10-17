@@ -1,0 +1,30 @@
+{
+  "name": "sc2k",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --port 5174",
+    "build": "vite build",
+    "preview": "vite preview --port 5174",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.sim.json --noEmit",
+    "lint": "tsx tools/strings-scan.ts src e2e index.html && tsx tools/gen-catalogue.ts --check",
+    "gen:catalogue": "tsx tools/gen-catalogue.ts",
+    "strings:scan": "tsx tools/strings-scan.ts",
+    "headless": "tsx tools/headless.ts",
+    "hash:compare": "tsx tools/hash-compare.ts",
+    "art:sheet": "tsx tools/art-sheet.ts",
+    "e2e": "playwright test -c e2e/playwright.config.ts"
+  },
+  "dependencies": {
+    "pixi.js": "^8.6.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.64.1",
+    "@types/node": "^22.10.0",
+    "fake-indexeddb": "^6.0.0",
+    "happy-dom": "^20.0.0",
+    "tsx": "^4.19.0",
+    "vite": "^7.0.0"
+  }
+}

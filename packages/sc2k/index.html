@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
+    <title>sc2k</title>
+    <link rel="icon" href="data:," />
+    <style>
+      :root {
+        /* 斜面窗口四色（原创取值，Win95 风格的灰阶）：亮边 / 面 / 暗边 / 深影 */
+        --bevel-light: #ffffff;
+        --bevel-face: #c0c0c0;
+        --bevel-shadow: #808080;
+        --bevel-dark: #404040;
+        /* 其它通用变量 */
+        --bg: #101820;
+        --fg: #f0f0f0;
+        --accent: #2a5db0;
+        --font-ui: system-ui, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+      }
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        overflow: hidden;
+        background: var(--bg);
+        color: var(--fg);
+        font-family: var(--font-ui);
+      }
+      #app {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        touch-action: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

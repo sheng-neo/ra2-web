@@ -1,0 +1,26 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2022"],
+    "types": []
+  },
+  "include": [
+    "src/contracts",
+    "src/data",
+    "src/sim",
+    "src/art",
+    "src/io/sc2",
+    "src/io/snapshot",
+    "src/io/assets/sprites",
+    "src/io/assets/palette",
+    "src/io/assets/text",
+    "src/render/scene",
+    "src/render/cpu"
+  ],
+  "exclude": [
+    "**/*.test.ts",
+    "src/contracts/rendererApi.ts",
+    "src/contracts/assets.ts",
+    "src/contracts/shell.ts"
+  ]
+}

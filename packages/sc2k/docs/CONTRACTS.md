@@ -3,7 +3,7 @@
 > 本文是 `src/contracts/**` 的落地蓝本：WP0 把每个代码块原样复制为同名文件并补齐 `declare` 的实现体；T+1:30 冻结后只允许加法（见文末 §Z）。每个工作包**只依赖本文**即可独立开工；跨 WP 的一切交汇都经这里的类型 / 常量 / 纯函数。
 > 约定：`i = x*128 + y`（x 主序）；方向 `T = −y, R = +x, B = +y, L = −x`；锚点 = `XZON` 的 TL 位 `0x40`；所有函数纯、同步、无 I/O；`sim` 侧不得出现 DOM / `Math.random` / `Date` / `performance`。
 > 文件一览（全部在 `src/contracts/`，`index.ts` 为桶文件）：`grid.ts rotation.ts footprint.ts net.ts prng.ts state.ts clock.ts system.ts queries.ts actions.ts commands.ts events.ts catalogue.ts io.ts snapshot.ts dirty.ts render.ts host.ts assets.ts audio.ts strings.ts testkit.ts entrypoints.ts`。
-> 终审修订（冻结前已并入正文）：① `CreateSimOptions.snapshot` 必填注入（§H）；② §V 模块入口 `entrypoints.ts`；③ `COMMAND_OWNER / MODAL_OWNER / NOT_IMPLEMENTED_RESULT` 与 `System.onModalAnswer`（§K / §H）；④ `OverlayId / ActorId / UiIconId`（§Q）；⑤ `mapOrigin` 与像素锚点约定（§Q）；⑥ `System.endOfDay` + `END_OF_DAY_IO`（§H / §G）；⑦ 删 `IndustryState.tax`、`CensusSnapshot.workforcePctUsed`（§F）；另为 v1 的灾害 / 报纸 / 桥补 `DisasterKind / DISASTER_MENU`（§A）、`NewsType`（§L）、`NewsQuery`（§I）、`ModalId 'newspaper'`（§K）、`TransportQuery.bridgeOptions / bridgePieces`（§I）。
+> 终审修订（冻结前已并入正文）：① `CreateSimOptions.snapshot` 必填注入（§H）；② §V 模块入口 `entrypoints.ts`；③ `COMMAND_OWNER / MODAL_OWNER / NOT_IMPLEMENTED_RESULT` 与 `System.onModalAnswer`（§K / §H）；④ `OverlayId / ActorId / UiIconId`（§Q）；⑤ `mapOrigin` 与像素锚点约定（§Q）；⑥ `System.endOfDay` + `END_OF_DAY_IO`（§H / §G）；⑦ 删 `IndustryState.tax`；`CensusSnapshot.workforcePctUsed` 保留为只读副本并标 `hash:'none'`（§F；WP0 Reconcile 按正文与「不可协商项」裁定，原「删」字为笔误）；另为 v1 的灾害 / 报纸 / 桥补 `DisasterKind / DISASTER_MENU`（§A）、`NewsType`（§L）、`NewsQuery`（§I）、`ModalId 'newspaper'`（§K）、`TransportQuery.bridgeOptions / bridgePieces`（§I）。
 > 规格引用写作 `spec:<file> §x.y`；本文只给接口与必要语义，数值与公式以规格为准。
 
 ---
@@ -827,7 +827,7 @@ export type SimEvent =
   | { type: 'plantAging'; anchor: number } | { type: 'plantExpired'; anchor: number } | { type: 'plantAutoRebuilt'; anchor: number; cost: number }
   // 服务 / 分区
   | { type: 'citizenDemand'; key: string } | { type: 'milestone'; progression: number } | { type: 'reward'; bit: number } | { type: 'militaryOffer' }
-  | { type: 'approval'; pct: number; gripes: number[] } | { type: 'fundEducation' } | { type: 'fundPrison' } | { type: 'arcoLaunch'; count: number }
+  | { type: 'approval'; pct: number; gripes: number[] } | { type: 'fundEducation' } | { type: 'fundPrison' } | { type: 'arcoExodus'; count: number }
   // 事件 / 灾害 / 科技 / 报纸 / 物件
   | { type: 'weatherChanged'; weather: WeatherState } | { type: 'disasterStarted'; kind: number; x: number; y: number } | { type: 'disasterEnded'; kind: number; deaths: number }
   | { type: 'structureDestroyed'; x: number; y: number; oldId: number; cause: DestroyCause } | { type: 'explosion'; x: number; y: number }
@@ -841,7 +841,7 @@ export const enum NewsType {
   HighCrime, HighTraffic, HighPollution, PoorEducation, PoorHealth, PoorEmployment,
   DisasterFire, DisasterFlood, DisasterPlaneCrash, DisasterHelicopterCrash, DisasterTornado, DisasterEarthquake, DisasterMonster, DisasterMeltdown, DisasterMicrowave, DisasterVolcano,
   DisasterPollution, DisasterChemicalSpill, DisasterHurricane, DisasterRiot,
-  PowerPlantEol, OvercrowdedPrisons, AngryTeachers, BridgeCollapse, AngryBulldozer, Ordinance, OpinionFred, OpinionEditor, Survey, MissSim,
+  PowerPlantEol, OvercrowdedPrisons, AngryTeachers, BridgeCollapse, AngryBulldozer, Ordinance, OpinionGuest, OpinionEditor, Survey, AdviceColumn,
   DemandPower, DemandTransit, DemandPolice, DemandFire, DemandWater, DemandHospital, DemandSchool, DemandSeaport, DemandAirport, DemandZoo, DemandStadium, DemandMarina, DemandPark,
   DemandIndustrialConnection, DemandCommercialConnection, LowCrime, LowTraffic, LowPollution, GoodEducation, GoodHealth, GoodEmployment }
 export const NEWS_TYPE_COUNT = 67;
@@ -859,9 +859,9 @@ export interface EventBus {
 // ===== catalogue.ts =====（spec:building-catalogue §3.1；没有 phase 字段——排期在 app/v1Tools.ts）
 import type { Footprint } from './footprint';
 import type { OrdinanceId } from './state';
-export type TechKey = 'gas' | 'nuclear' | 'solar' | 'wind' | 'microwave' | 'fusion' | 'airport' | 'highways' | 'buses' | 'subways' | 'waterTreatment' | 'desalinization' | 'arcoPlymouth' | 'arcoForest' | 'arcoDarco' | 'arcoLaunch';
+export type TechKey = 'gas' | 'nuclear' | 'solar' | 'wind' | 'microwave' | 'fusion' | 'airport' | 'highways' | 'buses' | 'subways' | 'waterTreatment' | 'desalinization' | 'arcoPioneer' | 'arcoCanopy' | 'arcoDusk' | 'arcoSkyward';
 /** 17 个 MISC 槽位的键顺序（槽 16 未用，为 null）。 */
-export const TECH_SLOT_KEYS: ReadonlyArray<TechKey | null> = ['gas', 'nuclear', 'solar', 'wind', 'microwave', 'fusion', 'airport', 'highways', 'buses', 'subways', 'waterTreatment', 'desalinization', 'arcoPlymouth', 'arcoForest', 'arcoDarco', 'arcoLaunch', null];
+export const TECH_SLOT_KEYS: ReadonlyArray<TechKey | null> = ['gas', 'nuclear', 'solar', 'wind', 'microwave', 'fusion', 'airport', 'highways', 'buses', 'subways', 'waterTreatment', 'desalinization', 'arcoPioneer', 'arcoCanopy', 'arcoDusk', 'arcoSkyward', null];
 export type BuildingCategory = 'ground' | 'rubble' | 'radioactive' | 'tree' | 'park' | 'powerLine' | 'road' | 'rail' | 'tunnel' | 'crossover' | 'highway' | 'highwayCrossover' | 'bridge' | 'onramp' | 'subRail'
   | 'zoneR' | 'zoneC' | 'zoneI' | 'construction' | 'abandoned' | 'powerPlant' | 'civic' | 'recreation' | 'reward' | 'waterFacility' | 'transitStation' | 'airportPart' | 'seaportPart' | 'militaryPart' | 'church' | 'arcology';
 export type OrientMode = 'none' | 'byId' | 'flipBit' | 'byIdAndFlip';
@@ -1057,7 +1057,7 @@ export const enum ActorId { Plane = 0, Helicopter, Ship, Sailboat, Nessie, Train
 export const ACTOR_COUNT = 13;
 /**
  * ui 族 id（kind:'ui'，24×24；spec:ui-art §3.9.2）。固定图标显式枚举；区段：速度 = SpeedBase + (speed−1)；天气 = WeatherBase + 天气类型 0..11；
- * Map 图层 = MapLayerBase + MAP_LAYER_MODES 下标；子工具 = SubToolBase + CATALOGUE.TOOLS 下标（≤ 64，总数 < 256 以适配 spriteKeyHash 的 8 位 id）。
+ * Map 图层 = MapLayerBase + MAP_LAYER_MODES 下标；子工具 = SubToolBase + CATALOGUE.TOOLS 下标（CATALOGUE.TOOLS 为 67 项，SubToolBase 96 + 67 = 163，总数 < 256 以适配 spriteKeyHash 的 8 位 id）。
  */
 export const enum UiIconId {
   Bulldozer = 0, Landscape, Emergency, Roads, Power, Water, Rails, Ports, Residential, Commercial, Industrial, Education, Services, Recreation, Signs, Query, Rewards,
@@ -1316,3 +1316,76 @@ export interface Sc2kDebugHandle { host: SimHost; renderer: RendererApi; shell: 
 1. 只允许**加法**：新增可选字段、新增 `Command / SimEvent / RejectReason / ModalId / SoundId` 成员、新增 `Queries` 方法（三套桩同时给默认实现）、新增 `PRIV_BUDGET_BYTES` 额度（需说明用途）。禁止改名、改语义、删键、改顺序。
 2. 流程：在 `docs/contract-rfc.md` 追加一行（谁 / 要什么 / 为什么 / 三套桩默认值）→ Lead 30 分钟内合并到 `src/contracts/**` 与 `src/app/stubs/**`、`src/testkit/**` → 群通知。等待期间 WP 在自己目录用局部类型先行（不得改契约文件）。
 3. 命名约定：类型 PascalCase；常量表 UPPER_SNAKE；枚举用 `const enum`（`isolatedModules` 下由 WP0 在 `tsconfig` 开启 `preserveConstEnums` 或改用对象字面量 + `as const`，二选一由 WP0 在落地时统一，全仓库一致）；所有坐标参数顺序 `(x, y)`，所有格索引参数名 `i`，半格 `h`，四分格 `q`。
+
+---
+
+## 落地偏差（WP0）
+
+> 本节由 WP0 落地时追加：记录 `src/contracts/**` 与上文代码块的差异及理由。以 `src/contracts/**` 为准，上文代码块为蓝本；下列改动均来自 WP0 统一裁定或落地时发现的蓝本缺陷。
+
+### 1. `nullSystem` 移出 contracts（裁定 1）
+
+- §H 的 `export declare function nullSystem(...)` 删除；实现放在 `src/app/stubs/null.ts`（它需要桩 Queries / Actions，contracts 不得依赖上层）。`system.ts` 留一行注释指向该文件。
+
+### 2. `declare function / declare const` → 同名类型别名（裁定 2）
+
+`declare function` 在运行时不存在，误以值导入会得到 `undefined`，因此"实现体在别处"的声明一律改成类型别名，实现文件以 `satisfies` 对账：
+
+| 蓝本 declare | 落地类型（文件） | 实现体 |
+|---|---|---|
+| host.ts `createSim` | `CreateSimFn`（host.ts） | `src/sim/core/index.ts` |
+| host.ts `replay` | `ReplayFn`（host.ts） | `src/sim/core/index.ts` |
+| testkit.ts `stubQueries` | `StubQueriesFn` | `src/testkit/**` |
+| testkit.ts `stubActions` | `StubActionsFn`（返回 `StubActions`） | 同上 |
+| testkit.ts `createTestContext` | `CreateTestContextFn`（返回 `TestContext`） | 同上 |
+| testkit.ts `runDays` | `RunDaysFn` | 同上 |
+| testkit.ts `hashOf` | `HashOfFn` | 同上 |
+| testkit.ts `goldenMiniCity` | `GoldenMiniCityFn`（返回 `GoldenMiniCity`，参数 `GoldenMiniCityVariant`） | 同上 |
+| testkit.ts `pngOf` | `PngOfFn`（返回 `PngResult`） | 同上 |
+| testkit.ts `BUILTIN_PROCEDURAL_STUB` | `BuiltinProceduralStub`（= `SpriteProvider`） | 同上 |
+
+- 新增聚合接口 `TestkitEntry`（`src/testkit/index.ts` 以 `import * as t; t satisfies TestkitEntry` 对账）。
+- `entrypoints.ts` 的 `SimCoreEntry` 改用 `CreateSimFn / ReplayFn`（蓝本为 `typeof createSim / typeof replay`）。
+- 其余 declare 全部给出真实现：`snapshot.ts` 的 `SNAPSHOT_SCHEMA / SCALAR_FIELDS / HASH_EXCLUDE`、`dirty.ts` 的 `createDirtyTracker`、`strings.ts` 的 `rejectKey`；`grid / rotation / footprint / net / prng / state / system` 中的 declare 由契约第一部分落地。
+
+### 3. DOM 类型隔离：文件拆分（裁定 4）
+
+`tsconfig.sim.json` 没有 DOM lib 而 `src/contracts` 整体在其 include 内，凡引用 `HTMLElement / File / Blob` 的接口单独成文件、不进桶文件、不被 sim 侧代码 import：
+
+| 项 | 蓝本位置 | 落地位置 |
+|---|---|---|
+| `RendererApi` | render.ts | `rendererApi.ts` |
+| `RenderEntry / AssetsEntry / UiEntry / WindowId / ShellOptions / ShellHandle / Sc2kDebugHandle` | entrypoints.ts | `shell.ts` |
+| `WorkerLike` | entrypoints.ts | `render.ts`（纯类型，art 目录可 import） |
+| `assets.ts` 全部 | assets.ts | 不变（单独文件） |
+
+- `render.ts` 只保留纯类型与常量（SceneItem、SpriteProvider、SceneCompiler、CpuCompositor、ViewState、RenderSource、ActorSprite、RendererStats、RENDER_BUDGET、PIXI_INIT_OPTIONS、backingScaleFor、WorkerLike 等）。
+- `entrypoints.ts` 只留纯项：`SystemFactory、SimCoreEntry、SimEntries、ArtEntry、Sc2Entry、SnapshotEntry、AudioEntry、DataEntry`。
+- `index.ts` 桶文件只 re-export 纯文件（不含 `rendererApi.ts / assets.ts / shell.ts`）；上层代码直接从这三个文件 import。`tsconfig.sim.json` 的 exclude 另列这三个文件（包文件归 WP0 脚手架）。
+
+### 4. 加法导出（蓝本之外，供编解码器 / 测试使用）
+
+- `io.ts`：`MiscKey`；`MISC_BYTES`（每个 MISC 条目的字节长度，io.test 据此断言条目两两不重叠、全部落在 4800 B 内）；`MISC_ZERO_RANGES`（compat 导出清零区间）。`ReadResult` 的诊断类型改为 `import type { Diagnostic }`（蓝本为内联 `import('./system')`）。
+- `snapshot.ts`：`HashTag`（`HashScope | 'none'`）与 `inHashScope(tag, scope)`；`parsePath(path)`（路径语法的唯一解析器，语法注释见文件头）；`ScalarField` 接口（`path / hash / bool?`，bool 字段编码 0/1）；`BOND_SLOTS = 50`、`NEIGHBOR_SLOTS = 4`；`STRING_FIELDS`（cityName、mayorName、neighbors[0..3].name）；`PRIV_BUDGET_TOTAL_MAX`。`SNAPSHOT_SCHEMA` 在 `rawMisc` 之后、`scalars` 之前多一组"小型定长 TypedArray"条目：`economy.industryTax / economy.funding / industry.ratio / industry.demand / demographics.cohorts / tech.invented / tech.announced`（这些字段因此不在 `SCALAR_FIELDS`）。
+- `dirty.ts`：`BULK_LAYERS`（固定顺序的整层键表）。
+- `render.ts`：`mapCanvasSize(z)`；`SPRITE_KINDS / SPRITE_KIND_CODE`（见 §5）。
+- `strings.ts`：`REJECT_KEY_PREFIX = 'reject.'`。
+- `commands.ts`：`NOT_IMPLEMENTED_RESULT` 以 `Object.freeze` 冻结（含 `changed`）；删除蓝本中未使用的 `ToolId` 导入。
+- `assets.ts`：`DecodedAssets.diagnostics` / `AssetImporter.onProviderReady` 用 `import type` 替代内联 `import()`。
+
+### 5. 语义修正
+
+- **`spriteKeyHash`**：蓝本以 `kind.charCodeAt(0)` 为高 8 位，但 `'xbld'` 与 `'xund'` 首字母同为 `x`，同 id 的两族会碰撞（例如 xbld 0x21 与 `XUND_PIPE_STUB` 0x21 同哈希）。落地改为 `(SPRITE_KIND_CODE[kind] + 1) << 24`（kind 码 0..6，高字节 1..7，结果恒 > 0），其余三字节不变。render.test 断言七族两两不同。
+- **哈希标注**：`SCALAR_FIELDS` 按裁定标注——`'none'`：`clock.speed / clock.modalPause / clock.accumMs`、`view.*`、`census.workforcePctUsed`（以及 schema 条目 `rawMisc`）；`'full'`：`clock.phaseCursor`、`economy.yearOpeningFunds`（以及 schema 条目 `priv`）；其余 `'sc2'`。此外 **`terrain.rotation` 标 `'none'` 并列入 `HASH_EXCLUDE`**：§K 规定 `setView` "只写 view / terrain.rotation（不入哈希）"，蓝本 §O 的排除表漏列了它。
+- `economy.bondCount` 为虚拟标量（= `bonds.length`），`economy.bonds[0..49].*` 固定 50 槽（缺省 0）；`neighbors[0..3].*` 固定 4 条；布尔字段（`terrain.coast / river`、`economy.autoBudget / impeached`、`disaster.active / noDisasters / autoGoto`、`utilities.water.treatmentSufficient`）标 `bool: true`。
+
+### 6. Reconcile（WP0 收敛）追加的偏差
+
+- **`QUERY_OWNER` 入契约**：`queries.ts` 新增 `export const QUERY_OWNER: Readonly<Record<keyof Queries, SystemId>>`（唯一真源）；`sim/core/createSim.ts` 与 `app/stubs/null.ts` 原各自的一份已删除并改为 import（`sim/core/index.ts` 仍转发导出以兼容）。
+- **原创性改名（裁定 7）**：`TechKey` / `TECH_SLOT_KEYS` 的四个巨型住区键 `arcoPlymouth / arcoForest / arcoDarco / arcoLaunch` → **`arcoPioneer / arcoCanopy / arcoDusk / arcoSkyward`**（槽位顺序不变；`ToolId` 后缀、`BuildingDef.key`、strings 键 `tool.rewards.*` / `tech.*`、`TECH_BASE_YEAR` 同步；`tools/gen-catalogue.ts` 按 ID 0xFB–0xFE 映射规格表的 key 列）。`NewsType` 成员 `OpinionFred / MissSim` → **`OpinionGuest / AdviceColumn`**（数值不变）。`SimEvent` 成员 `{ type: 'arcoLaunch'; count }` → **`'arcoExodus'`**（巨型住区集体离开事件；避开黑名单整词）。`tools/strings-scan.ts` 黑名单补入这些标识符形式，防止回退。上文 §L / §M 代码块已同步改名。
+- **`mayorName` 哈希标注 `'full'`**：`.SC2`（MISC / CNAM）没有市长名字段，按 `'sc2'` 标注会让 `.SC2` 往返改变 `hash('sc2')`。`snapshot.ts` 新增 `STRING_FIELD_HASH = { mayorName: 'full' }` 与 `stringFieldHash(path)`（其余字符串 `'sc2'`）；`io/snapshot/codec.ts` 的哈希遍历对 `strings` 条目逐项过滤（与 `scalars` 同理；条目级 `hash:'sc2'` 为名义值）。`STRING_FIELDS` 的类型与顺序不变。
+- **`CensusSnapshot.workforcePctUsed`**：按 §F 正文与「不可协商项」保留（只读副本，`hash:'none'`）；顶部终审修订 ⑦ 的「删」字已更正。
+- **`UiIconId` 注释**：`CATALOGUE.TOOLS` 为 67 项（spec §2.11 全表，含 v2 工具），`SubToolBase 96 + 67 = 163 < 256`；原注释「≤ 64」已改，`data/catalogue.test` 断言该不等式。
+- **`nullSystem` 绑定前不抛错**（app/stubs/null.ts，C1）：`init / postLoad` 之前的查询回退到桩私有的空城 `createCityState()` 作答（boot 在玩家点「新城」之前就渲染空地图，会先调 `q.disasters.markers()`）；绑定后读 `ctx.state`。
+- **ESLint 依赖方向**：`*.test.ts` 对方向规则整体豁免（`sim/core/*.test.ts` 合法 import `testkit` 与 `io/snapshot`）；新增 `NO_DOM_CONTRACTS`：`tsconfig.sim.json` 覆盖的目录（data / sim/** / io/sc2 / io/snapshot / io/assets/{sprites,palette,text} / art / render/scene / render/cpu）不得 import `contracts/{rendererApi,assets,shell}.ts`（裁定 4 从「只靠注释」升级为规则）。
+- **`pnpm --filter sc2k lint`**：新增脚本串联 `tools/strings-scan.ts src e2e index.html` 与 `tools/gen-catalogue.ts --check`（根 `pnpm lint` 仍只是 `eslint .`，CI 需另调用该脚本）。
