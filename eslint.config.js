@@ -27,7 +27,7 @@ const NO_DOM_CONTRACTS = { regex: '^(\\.\\./)+contracts/(rendererApi|assets|shel
 
 export default tseslint.config(
   {
-    ignores: ['**/dist/**', '**/node_modules/**', 'game-data/**', '**/*.d.ts'],
+    ignores: ['**/dist/**', '**/node_modules/**', 'game-data/**', '**/*.d.ts', '.claude/**'],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,
