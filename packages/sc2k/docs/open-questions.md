@@ -70,3 +70,6 @@
 | 31 | `wire.test.ts` 第一条用例断言"非 core 全为桩"，任何真系统合入都会失败 | WP4 已把断言改为"非 core 的桩都在 allowlist 内"（`src/app/wire.test.ts` 一行，越界最小改动，见 WP4 返回报告） | Lead | `pnpm vitest run packages/sc2k` | 待 Lead 认可 |
 | 32 | priv 中的电厂表只跟踪到期型（4×4）电厂，上限 `maxTrackedPlants = 1024`；风 / 水电不进表（永不到期，`plantAt` 年龄恒 0、负载取当前利用率） | `sim/utilities/priv.ts`；两个脏标志也进 priv（命令后、日末前保存的快照载入后仍会重扫，保证续跑哈希一致） | WP4 | `priv.test.ts` 预算 / 脏标志用例 | 已裁定 |
 | 33 | `utilitiesAnnual` 在 `phaseApplies` 下 age 0 也生效；建城当天不应老化 | `annualUpdate` 在 `age === 0` 直接返回（零 PRNG） | WP4 / WP1 | `priv.test.ts` 年度更新用例 | 已裁定 |
+| 28 | （WP12a 对 #15 的裁定）快捷键冲突：UI 全局键表（`ui/tools/keymap.ts`）优先于 `ToolDef.hotkey`；`1–4` = 速度、`[ ]` = 旋转、`Space / P` = 暂停、`W` = 电力组、`A` = 供水组、`Tab` = 同组下一子工具、`Shift+字母` = 窗口、`Ctrl+S` = 保存（preventDefault） | `ToolDef.hotkey` 在 v1 不被外壳读取；v2 做可配置键位时再合并两表 | WP12a | `toolController.test` 键盘用例 | 已裁定 |
+| 29 | 桩经济下 `funds = 0`（#26）会让 `availability` 对全部付费工具返回 `funds`，工具栏整体置灰（这是正确行为，不是外壳缺陷）；自检 / e2e 在 economy 合入前需经 `window.__sc2k.host.state.economy.funds` 注入资金 | 等 WP8 `init` 写起始资金后自然消失 | WP8 / WP12b e2e | e2e/smoke.spec | 备忘 |
+| 30 | 触控"单指点按"立即执行工具动作，双击缩放在第二次点按时追加（第一次点按的放置不撤销）；若要"延迟 300 ms 以区分双击"需接受所有点按的延迟 | 立即执行（spec:ui-art §3.11 未规定） | WP12a | — | 开放 |
