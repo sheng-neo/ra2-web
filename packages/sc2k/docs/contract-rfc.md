@@ -9,3 +9,4 @@
 | 0b | WP0 Reconcile | Lead | `TechKey` 改名 `arcoPioneer / arcoCanopy / arcoDusk / arcoSkyward`；`NewsType.OpinionGuest / AdviceColumn`；`SimEvent 'arcoExodus'` | 裁定 7：代码内不得出现原版 Arcology / 专栏名 | 不涉及（数值与槽序不变） | 已合并（冻结前） |
 | 0c | WP0 Reconcile | Lead | `snapshot.ts` 新增 `STRING_FIELD_HASH / stringFieldHash`（mayorName → 'full'） | `.SC2` 无市长名字段，往返会破坏 hash('sc2') 不变量 | 不涉及 | 已合并（冻结前） |
 | 1 | | | | | | 待议 |
+| 2 | WP4 | utilities（C） | `queries.ts` `UtilityQuery` 可选新增 `facilityAt(i): { kind: 'pump' \| 'tower' \| 'treatment' \| 'desalinization'; anchor: number; outputTiles: number; charged?: number } \| null`（spec:power-water §3.6 水泵 / 淡化 / 水塔查询窗口需要本月产量与蓄水格数；现契约只有 `plantAt`） | Query 窗口（WP12b）显示水设施产量 / 加仑；目前 WP4 内部已有逐网络汇总（`scan.ts` 的 `WaterNetwork`），缺对外查询面 | 乐观 / 悲观 / 现实：均返回 `null` | 待议（WP4 未加入契约，等 Lead 合并后在 queries.ts 补实现） |

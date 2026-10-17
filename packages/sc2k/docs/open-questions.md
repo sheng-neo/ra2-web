@@ -38,3 +38,14 @@
 | 25 | `createTestContext` 在改动夹具后调用一次 `postLoad(ctx, 'snapshot')` 让 `nullSystem` 重绑定；若桩改为注册时即可用，这一行可删 | 保留 | WP1 | `createSim.test` | 备忘 |
 | 26 | `economy.funds` 桩下为 0（无人发起始资金），冒烟观感「资金: 0」 | 属 WP8，不是缺陷 | WP8 | e2e 截图 | 备忘 |
 | 27 | `counts.zone` 由 `setXbld` 维护（已建 R/C/I 建筑格，spec:zones Q9 口径），不是 `setXzon` | core 口径；zones 的 census 全量重算须用同一口径 | WP4 zones | `tileWriter.test` 计数恒等 | 待认可 |
+
+## WP4 utilities 实现期裁定
+
+| # | 问题 | 当前裁定（默认值 / 位置） | 归属 | 验证手段 | 状态 |
+|---|---|---|---|---|---|
+| 28 | `utilities.power.* / water.*`（hash:'sc2'）在 MISC 无落点（#11） | 不写 MISC；`postLoad('sc2')` 用不消费 PRNG 的重扫重算（`sim/utilities/save.ts`）。往返 `hash('sc2')` 不变的前提：电厂为固定产量（风 / 太阳能在无 PRNG 模式取分布中值，与导出前的随机抽样可能不同）、`weather.humid/wind` 与 `terrain.seaLevel` 由 events / terrain 经 MISC 往返。若集成后 WP1 的 saveload 往返用例含风 / 太阳能，请把这 14 个标量翻成 `'full'` | WP4 / WP1 | `sim/utilities/priv.test.ts` T8（煤电 + 水泵城往返 `hash('sc2')` 相同） | 待集成验证 |
+| 29 | `MISC 0x104C`（spec:power-water §2.8.4 要求写净水厂充足标志；dfloer 标 "Go Disaster"，Q5 未定） | 按 #2 透传 `rawMisc`，`exportTo` **不写**该偏移（避免原版把 1 解读为触发灾害）；充足标志只在 `state.utilities.water.treatmentSufficient` | WP4 | 原版存档对照 | 开放 |
+| 30 | 电力扫描"已 POWERED 则跳过"的原版语义会在容量不足、电厂格未受电时把同一网络再遍历一次（重复计数 generation / consumers，风 / 太阳能重新抽样） | `scan.ts` 用整次扫描内不清零的访问标记代替（每张网络恰处理一次）；断电图样与原版一致，只有重复计数的退化情形不同 | WP4 | `power.test.ts` 多厂合并 / T4–T6 | 已裁定 |
+| 31 | `wire.test.ts` 第一条用例断言"非 core 全为桩"，任何真系统合入都会失败 | WP4 已把断言改为"非 core 的桩都在 allowlist 内"（`src/app/wire.test.ts` 一行，越界最小改动，见 WP4 返回报告） | Lead | `pnpm vitest run packages/sc2k` | 待 Lead 认可 |
+| 32 | priv 中的电厂表只跟踪到期型（4×4）电厂，上限 `maxTrackedPlants = 1024`；风 / 水电不进表（永不到期，`plantAt` 年龄恒 0、负载取当前利用率） | `sim/utilities/priv.ts`；两个脏标志也进 priv（命令后、日末前保存的快照载入后仍会重扫，保证续跑哈希一致） | WP4 | `priv.test.ts` 预算 / 脏标志用例 | 已裁定 |
+| 33 | `utilitiesAnnual` 在 `phaseApplies` 下 age 0 也生效；建城当天不应老化 | `annualUpdate` 在 `age === 0` 直接返回（零 PRNG） | WP4 / WP1 | `priv.test.ts` 年度更新用例 | 已裁定 |
