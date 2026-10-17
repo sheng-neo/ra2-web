@@ -35,7 +35,7 @@ import { mountShell } from '../ui';
  * 打标 v1-playable 时为 []，CI 以 SC2K_STRICT_WIRE=1 断言无桩残留（createSim 在 allowlist 之外发现桩即抛错）。
  */
 export const WIRE_STUB_ALLOWLIST: readonly SystemId[] = [
-  'terrain', ];
+  ];
 
 export interface WiredHostOptions { tuning?: TuningBag; impeachMonthly?: boolean }
 
