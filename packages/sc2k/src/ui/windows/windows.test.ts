@@ -356,15 +356,15 @@ describe('SaveLoad', () => {
     $(w.el, 'saves-delete').click();
     await vi.waitFor(() => expect(w.el.querySelector('[data-testid="saves-empty"]')).not.toBeNull());
   });
-  it('.sc2 在 WP0 桩 codec 下优雅失败（显示拒绝文案，不抛）', async () => {
+  it('.sc2 经真 codec 导出并写入存档库（不抛、不报错）', async () => {
     const h = makeDeps();
     const w = WINDOW_FACTORIES.saveLoad!(h.deps);
     document.body.appendChild(w.el);
     $<HTMLSelectElement>(w.el, 'saves-kind').value = 'sc2';
     $(w.el, 'saves-save').click();
-    await vi.waitFor(() => expect($(w.el, 'saves-note').dataset['level']).toBe('error'));
-    expect($(w.el, 'saves-note').textContent).toContain('Not implemented yet');
-    expect(await h.deps.saves.listSaves()).toHaveLength(0);
+    await vi.waitFor(async () => expect(await h.deps.saves.listSaves()).toHaveLength(1));
+    expect($(w.el, 'saves-note').dataset['level']).not.toBe('error');
+    expect((await h.deps.saves.listSaves())[0]!.kind).toBe('sc2');
   });
   it('detectSaveKind：扩展名 > 魔数 > 默认 .sc2', () => {
     const magic = new TextEncoder().encode('SC2KWEBS....').buffer;
