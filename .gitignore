@@ -13,3 +13,6 @@ coverage/
 # 红警2 原版游戏文件 —— 版权归 EA，绝不提交到仓库
 game-data/*
 !game-data/README.md
+
+# Claude 并行 agent 的临时 git worktree（独立分支，合并后删除）
+.claude/worktrees/
