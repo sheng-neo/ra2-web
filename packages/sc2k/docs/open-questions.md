@@ -38,3 +38,8 @@
 | 25 | `createTestContext` 在改动夹具后调用一次 `postLoad(ctx, 'snapshot')` 让 `nullSystem` 重绑定；若桩改为注册时即可用，这一行可删 | 保留 | WP1 | `createSim.test` | 备忘 |
 | 26 | `economy.funds` 桩下为 0（无人发起始资金），冒烟观感「资金: 0」 | 属 WP8，不是缺陷 | WP8 | e2e 截图 | 备忘 |
 | 27 | `counts.zone` 由 `setXbld` 维护（已建 R/C/I 建筑格，spec:zones Q9 口径），不是 `setXzon` | core 口径；zones 的 census 全量重算须用同一口径 | WP4 zones | `tileWriter.test` 计数恒等 | 待认可 |
+| 28 | 相邻的两个单格池塘按 spec:terrain §2.6.3 角位规则（角点周围任一地块是陆地即「陆地角」）都显示为孤立池塘 0x3D，2×2 才出现内凹码 | 按规格实现（`sim/terrain/field.ts` `surfaceShape` 一处）；若美术觉得两格水洼之间的"地埂"怪，可改为「角点周围任一水块即水」 | WP2 / WP9 | 目测 | 开放 |
+| 29 | 城市模式 Lower / Level 触及深水格是否整次拒绝（spec:terrain §2.10 字面「桥 / 隧道 / 水块则拒绝」） | 放宽为允许（`DEFAULT_TERRAIN_TUNING.cityRejectsWaterForLowerLevel = false`），便于在岸边挖港；Raise 作用于水块恒允许 | WP2 | 原版实测 | 开放 |
+| 30 | 城市模式 Level 是否连带拆除结构物并计入 $25（spec [M]） | v1 不拆（`levelDemolishes = false`），触及任何 XBLD ≥ 0x0E 或隧道格即 `obstructed` | WP2 / WP3 | 原版实测 | 开放 |
+| 31 | 溪流在等高平地上的走向：原版 [M] 允许转弯视觉断开；本实现同高时优先延续上一方向，连续平地 > 12 步以池塘收尾（`streamPlateauMax`） | 设计值 | WP2 | 目测 | 备忘 |
+| 32 | `app/wire.test.ts`「非 core 全为桩」断言在任一真系统合入后必然失败（WP2 合入即如此），同时 `WIRE_STUB_ALLOWLIST` 需删去该 id | 集成者在合并列车上改为「若 `s.stub` 则必须在 allowlist 内」并收缩 allowlist；WP 不得改 `src/app/**` | Lead | `wire.test` | 待处理 |

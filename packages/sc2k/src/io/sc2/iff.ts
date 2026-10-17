@@ -31,7 +31,7 @@ export function parseIff(input: ArrayBuffer | Uint8Array): IffParseResult {
       r = new ByteReader(bytes);
       diagnostics.push({ level: 'info', code: 'sc2.macHeader', message: '检测到 MacBinary 头（128 字节），已跳过' });
     } else if (r.peekU8(0) === 0x00 && r.peekU8(1) === 0x0d && r.peekAscii(CLASSIC_SIGNATURE_AT, CLASSIC_SIGNATURE.length) === CLASSIC_SIGNATURE) {
-      throw new Sc2FormatError('UNSUPPORTED_CLASSIC', '这是 SimCity Classic 存档，不支持');
+      throw new Sc2FormatError('UNSUPPORTED_CLASSIC', '这是前代（Classic 版，CITYMCRP 签名）存档，不支持');
     } else {
       throw new Sc2FormatError('NOT_SC2', '不是 .SC2 文件（缺少 FORM 头）');
     }
