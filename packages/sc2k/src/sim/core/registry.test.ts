@@ -63,7 +63,6 @@ describe('registry: 已接线系统的契约一致', () => {
   /** WORKPLAN 标为 [v2] 而第一波合入时允许暂缺的阶段（按系统）。合入对应 v2 切片时从这里删除。 */
   const DEFERRED_PHASES: Partial<Record<SystemId, readonly PhaseId[]>> = {
     services: ['approvalSurvey'],
-    zones: ['nationalAnnual.zones'],
   };
   for (const s of systems) {
     const owned = {
