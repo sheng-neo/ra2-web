@@ -54,20 +54,38 @@ export function importFromDoc(ctx: SimContext, doc: Sc2Document, diag: Diagnosti
   if (anchors.length > 0) diag.push({ level: 'info', code: 'utilities.plantsImported', message: `重建 ${recs.length} 座电厂记录（${linked} 座从 XMIC 恢复年龄）` });
 }
 
+/** 把电厂表的年龄 / 负载写进 xmic 已链接记录（+1 / +4..5）；返回是否改写了任何字节。 */
+function writePlantRecords(L: { xtxt: Uint8Array; xbld: Uint8Array }, xmic: Uint8Array, p: { plantAnchors: Int32Array; plantAges: Uint8Array; plantLoads: Uint8Array }): boolean {
+  let changed = false;
+  const put = (o: number, v: number): void => { if (xmic[o] !== v) { xmic[o] = v; changed = true; } };
+  for (let k = 0; k < p.plantAnchors.length; k++) {
+    const a = p.plantAnchors[k]!;
+    const off = linkedRecordOffset(L.xtxt, xmic, a, L.xbld[a]!);
+    if (off < 0) continue;
+    put(off + 1, p.plantAges[k]!);
+    const load = p.plantLoads[k]!;
+    put(off + 4, (load >> 8) & 0xff); put(off + 5, load & 0xff);
+  }
+  return changed;
+}
+
+/**
+ * 年度更新后把电厂年龄 / 负载同步进活状态的 XMIC 记录（与 exportTo 写进 doc.xmic 的字节相同）。
+ * 否则活状态 xmic 的这几个字节恒 0、导出文档里却是年龄 / 负载，`.SC2` 往返后 layers.xmic 不等 → hash('sc2') 不变量失败（INT-A 金城 3 年往返实测）。
+ * 改写了字节时 layerChanged('xmic')；不消费 PRNG。
+ */
+export function syncPlantRecords(ctx: SimContext): void {
+  const p = ctx.state.priv.utilities;
+  if (!isUtilitiesPriv(p)) return;
+  if (writePlantRecords(ctx.state.layers, ctx.state.layers.xmic, p)) ctx.act.layerChanged('xmic');
+}
+
 export function exportToDoc(ctx: SimContext, doc: Sc2Document, rt: Runtime): void {
   rt.ctx = ctx;
   stripMark(doc.xbit);
   const p = ctx.state.priv.utilities;
   if (!isUtilitiesPriv(p)) return;
-  const L = ctx.state.layers;
-  for (let k = 0; k < p.plantAnchors.length; k++) {
-    const a = p.plantAnchors[k]!;
-    const off = linkedRecordOffset(L.xtxt, doc.xmic, a, L.xbld[a]!);
-    if (off < 0) continue;
-    doc.xmic[off + 1] = p.plantAges[k]!;
-    const load = p.plantLoads[k]!;
-    doc.xmic[off + 4] = (load >> 8) & 0xff; doc.xmic[off + 5] = load & 0xff;
-  }
+  writePlantRecords(ctx.state.layers, doc.xmic, p);
 }
 
 export function postLoadRt(ctx: SimContext, source: PostLoadSource, rt: Runtime): void {

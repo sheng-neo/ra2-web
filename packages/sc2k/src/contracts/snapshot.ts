@@ -43,7 +43,7 @@ const b = (path: string, hash: HashTag = 'sc2'): ScalarField => ({ path, hash, b
 const NEIGHBOR_LEAVES = ['index', 'population', 'value', 'fame', 'edge', 'connections.road', 'connections.rail', 'connections.highway'] as const;
 const BOND_LEAVES = ['rateRaw', 'issuedYear', 'issuedMonth'] as const;
 const neighborFields = (k: number): ScalarField[] => NEIGHBOR_LEAVES.map((leaf) => f(`neighbors[${k}].${leaf}`));
-const bondFields = (k: number): ScalarField[] => BOND_LEAVES.map((leaf) => f(`economy.bonds[${k}].${leaf}`));
+const bondFields = (k: number): ScalarField[] => BOND_LEAVES.map((leaf) => f(`economy.bonds[${k}].${leaf}`, leaf === 'rateRaw' ? 'sc2' : 'full'));   // .SC2 只存 rateRaw（MISC 0x0610）
 const range = (n: number): number[] => Array.from({ length: n }, (_, k) => k);
 
 /**
@@ -51,13 +51,15 @@ const range = (n: number): number[] => Array.from({ length: n }, (_, k) => k);
  * 不在此表的定长字段（economy.industryTax / funding、industry.ratio / demand、demographics.cohorts、tech.invented / announced）作为 TypedArray 条目放在 SNAPSHOT_SCHEMA；
  * formatVersion 是文件头常量，不是标量。hash 标注：
  *  'none'：clock.speed / modalPause / accumMs、terrain.rotation（setView 写，§K）、view.*、census.workforcePctUsed（demographics.workforcePct 的只读副本）
- *  'full'：clock.phaseCursor（.SC2 要求 0）、economy.yearOpeningFunds
+ *  'full'：clock.phaseCursor（.SC2 要求 0）、economy.yearOpeningFunds；以及 .SC2 无落点、读档后由图层重建而与导出前的缓存值不等的运行期量
+ *         （contract-rfc WP7-3 / WP8-5 / WP13-4 与 open-questions #11，INT-A 按金城 3 年往返实测落实）：clock.disasterTicks、totals.developedTiles / centerX / centerY、
+ *         traffic.total / graph / roadTiles / highwayTiles / bridgeTiles、rewards.mayorApproval、disaster.pointX / pointY、economy.bonds[k].issuedYear / issuedMonth
  *  其余 'sc2'。
  */
 export const SCALAR_FIELDS: readonly ScalarField[] = [
   // clock
   f('clock.age'), f('clock.foundedYear'), f('clock.speed', 'none'), f('clock.mode'), f('clock.modalPause', 'none'), f('clock.phaseCursor', 'full'),
-  f('clock.accumMs', 'none'), f('clock.disasterTicks'), f('clock.prngState'),
+  f('clock.accumMs', 'none'), f('clock.disasterTicks', 'full'), f('clock.prngState'),
   // terrain
   f('terrain.seaLevel'), b('terrain.coast'), b('terrain.river'), f('terrain.rotation', 'none'),
   // economy（industryTax / funding 为 TypedArray 条目）
@@ -79,15 +81,15 @@ export const SCALAR_FIELDS: readonly ScalarField[] = [
   // demographics（cohorts 为 TypedArray 条目）
   f('demographics.workforcePct'), f('demographics.workforceEQ'), f('demographics.workforceLE'),
   // rewards
-  f('rewards.progression'), f('rewards.grantedMask'), f('rewards.militaryBase'), f('rewards.prisonBonus'), f('rewards.oldArrests'), f('rewards.stadiumTeams'), f('rewards.mayorApproval'),
+  f('rewards.progression'), f('rewards.grantedMask'), f('rewards.militaryBase'), f('rewards.prisonBonus'), f('rewards.oldArrests'), f('rewards.stadiumTeams'), f('rewards.mayorApproval', 'full'),
   // totals
-  f('totals.pollution'), f('totals.landValue'), f('totals.crime'), f('totals.developedTiles'), f('totals.centerX'), f('totals.centerY'),
+  f('totals.pollution'), f('totals.landValue'), f('totals.crime'), f('totals.developedTiles', 'full'), f('totals.centerX', 'full'), f('totals.centerY', 'full'),
   // traffic
-  f('traffic.total'), f('traffic.graph'), f('traffic.roadTiles'), f('traffic.highwayTiles'), f('traffic.bridgeTiles'),
+  f('traffic.total', 'full'), f('traffic.graph', 'full'), f('traffic.roadTiles', 'full'), f('traffic.highwayTiles', 'full'), f('traffic.bridgeTiles', 'full'),
   // weather
   f('weather.heat'), f('weather.wind'), f('weather.humid'), f('weather.trend'), f('weather.season'),
   // disaster
-  f('disaster.pending'), f('disaster.current'), b('disaster.active'), f('disaster.pointX'), f('disaster.pointY'), b('disaster.noDisasters'), b('disaster.autoGoto'), f('disaster.windOverride'),
+  f('disaster.pending'), f('disaster.current'), b('disaster.active'), f('disaster.pointX', 'full'), f('disaster.pointY', 'full'), b('disaster.noDisasters'), b('disaster.autoGoto'), f('disaster.windOverride'),
   // tech（invented / announced 为 TypedArray 条目；无标量）
   // utilities
   f('utilities.power.generation'), f('utilities.power.consumers'), f('utilities.power.supplied'), f('utilities.power.usagePct'), f('utilities.power.unpoweredBuildingTiles'),

@@ -8,6 +8,7 @@ import type { PlantRec } from './priv';
 import { readPlants, writePlants } from './priv';
 import type { Runtime } from './runtime';
 import { privOf, scanPowerNow, scanWaterNow, syncPlants, tuningOf } from './runtime';
+import { syncPlantRecords } from './save';
 import type { UtilitiesTuning } from './tuning';
 
 /** 电力事件：supplied < consumers → brownout；利用率 ≥ 阈值（无发电时改看 consumers > 0）→ needPower。报纸 / 顾问侧自行节流。 */
@@ -57,6 +58,7 @@ export function annualUpdate(ctx: SimContext, rt: Runtime): void {
     keep.push(r);
   }
   writePlants(p, keep);
+  syncPlantRecords(ctx);                       // 年龄 / 负载同步进活状态 XMIC（与 exportTo 写进文档的字节一致，保 .SC2 往返 hash('sc2')）
   if (expired) { p.dirtyPower = true; p.dirtyWater = true; }
   void rt;
 }

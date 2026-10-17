@@ -4,10 +4,12 @@
 import { describe, expect, it } from 'vitest';
 import { EXPORT_ORDER, IMPORT_ORDER, POSTLOAD_ORDER } from '../../contracts/clock';
 import { MISC, MISC_ZERO_RANGES, miscGet, miscSet } from '../../contracts/io';
-import { tileIndex } from '../../contracts/grid';
+import { CityMode, DisasterKind, tileIndex } from '../../contracts/grid';
+import type { SimHost } from '../../contracts/host';
 import type { PrivState } from '../../contracts/state';
 import type { System, SystemId } from '../../contracts/system';
-import { createTestContext, nullSystem, runDays, simInternalsOf } from '../../testkit';
+import { createWiredHost } from '../../app/wire';
+import { GOLDEN_PARAMS, checkInvariants, createTestContext, flattenTerrain, goldenMiniCity, nullSystem, runDays, runHeadless, simInternalsOf } from '../../testkit';
 
 interface ServicesPriv extends PrivState { v: number; counter: number; marks: Uint8Array }
 
@@ -142,5 +144,43 @@ describe('saveload: .SC2 往返', () => {
     expect(new Set(IMPORT_ORDER).size).toBe(9);
     const ids: SystemId[] = ['core', 'terrain', 'placement', 'utilities', 'transport', 'zones', 'services', 'economy', 'events'];
     expect([...IMPORT_ORDER].sort()).toEqual([...ids].sort());
+  });
+});
+
+describe('saveload: 真系统（INT-A：金城 3 年 + 一张债券 + 一次火灾 + 月中导出）', () => {
+  /** app/wire 装配的真系统：金城 1 年 → 发债 + 请求火灾 → 再跑 2 年零 10 天（跨过灾害、月中导出）。 */
+  const build = (): SimHost => {
+    const host = createWiredHost();
+    runHeadless(host, goldenMiniCity('full'), { years: 1, invariants: false, afterNewCity: (h) => flattenTerrain(h.state) });
+    expect(host.dispatch({ type: 'issueBond' }).ok).toBe(true);
+    // 火灾原点放在火车站（周围是铁路 / 空地，烧完即灭，城区不受波及）；无消防局的金城若从住宅区起火会整片烧光
+    expect(host.dispatch({ type: 'requestDisaster', kind: DisasterKind.Fire, x: 88, y: 58 }).ok).toBe(true);
+    runDays(host, 2 * 300 + 10);
+    return host;
+  };
+  it('exportSc2 → importSc2：hash(sc2) 相同、无 error 诊断、priv 全部重建、导出不改状态、双方续跑 30 天不变量通过；快照往返 hash(full) 相同且续跑一致', () => {
+    const a = build();
+    expect(a.state.clock.age).toBe(910); expect(a.state.clock.mode).toBe(CityMode.City);
+    expect(a.state.clock.disasterTicks).toBeGreaterThan(0); expect(a.state.economy.bonds).toHaveLength(1);
+    expect(a.state.census.normalPop).toBeGreaterThan(0);
+    expect(checkInvariants(a.state, a.catalogue)).toEqual([]);
+    const sc2 = a.hash('sc2'), full = a.hash('full');
+    const doc = a.exportSc2();
+    expect(a.hash('sc2')).toBe(sc2); expect(a.hash('full')).toBe(full);                      // 导出不改状态
+    const b = createWiredHost(); b.newCity({ ...GOLDEN_PARAMS, name: 'Elsewhere', seed: 1 }); runDays(b, 3);
+    const diag = b.importSc2(doc);
+    expect(diag.filter((d) => d.level === 'error')).toEqual([]);
+    expect(b.hash('sc2')).toBe(sc2);
+    for (const s of a.systems) if (s.privVersion !== undefined) expect(b.state.priv[s.id as Exclude<SystemId, 'core'>], `priv.${s.id}`).toBeDefined();
+    expect(b.state.clock.age).toBe(910); expect(b.state.cityName).toBe(a.state.cityName); expect(b.state.economy.bonds).toHaveLength(1);
+    expect(checkInvariants(b.state, b.catalogue)).toEqual([]);
+    runDays(a, 30); runDays(b, 30);
+    expect(checkInvariants(a.state, a.catalogue)).toEqual([]); expect(checkInvariants(b.state, b.catalogue)).toEqual([]);
+    // 快照（.sc2kweb）无损：hash(full) 相同，续跑一致
+    const c = createWiredHost(); c.newCity({ ...GOLDEN_PARAMS, seed: 2 });
+    expect(c.loadSnapshot(a.saveSnapshot()).filter((d) => d.level !== 'info')).toEqual([]);
+    expect(c.hash('full')).toBe(a.hash('full'));
+    runDays(a, 30); runDays(c, 30);
+    expect(c.hash('full')).toBe(a.hash('full'));
   });
 });

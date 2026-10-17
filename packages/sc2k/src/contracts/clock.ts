@@ -38,7 +38,7 @@ export const PHASE_IO: Readonly<Record<PhaseId, PhaseIo>> = {
   neighborsAnnual: { reads: [], bulk: [], point: [], usesPrng: true, canSuspend: false },
   approvalSurvey: { reads: [], bulk: [], point: [], usesPrng: true, canSuspend: false },
   facilityAnnual: { reads: ['XMIC', 'XBLD'], bulk: ['XMIC'], point: ['XBLD'], usesPrng: true, canSuspend: false },
-  utilitiesAnnual: { reads: ['XBLD'], bulk: [], point: ['XBLD'], usesPrng: true, canSuspend: false },
+  utilitiesAnnual: { reads: ['XBLD'], bulk: [], point: ['XBLD', 'XMIC'], usesPrng: true, canSuspend: false },   // XMIC：电厂年龄 / 负载写进已链接记录（+1 / +4..5），与 exportTo 一致（INT-A）
   budgetWindow: { reads: [], bulk: [], point: [], usesPrng: false, canSuspend: true },
   beginMonth: { reads: [], bulk: [], point: [], usesPrng: false, canSuspend: false },
   powerScan: { reads: ['XBLD', 'XUND', 'XBIT.POWERED'], bulk: ['XBIT.POWERED'], point: [], usesPrng: true, canSuspend: false },

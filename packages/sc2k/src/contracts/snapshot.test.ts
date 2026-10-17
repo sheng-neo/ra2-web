@@ -109,11 +109,20 @@ describe('snapshot: SCALAR_FIELDS', () => {
     expect(resolve(s, 'economy.bonds[49].issuedYear')).toBe(1949);
     expect(resolve(createCityState(), 'economy.bonds[0].rateRaw')).toBeUndefined();   // 空债券表 → 编码器按 0 处理
   });
-  it("'none' 集合 == HASH_EXCLUDE；'full' 标量只有 clock.phaseCursor 与 economy.yearOpeningFunds", () => {
+  it("'none' 集合 == HASH_EXCLUDE；'full' 标量 = clock.phaseCursor、economy.yearOpeningFunds 与 .SC2 无落点的运行期缓存（FULL_ONLY 表）", () => {
     const none = [...SCALAR_FIELDS.filter((f) => f.hash === 'none').map((f) => f.path), ...SNAPSHOT_SCHEMA.filter((e) => e.hash === 'none').map((e) => e.path)];
     expect(none.sort()).toEqual([...HASH_EXCLUDE].sort());
     expect(new Set(HASH_EXCLUDE).size).toBe(HASH_EXCLUDE.length);
-    expect(SCALAR_FIELDS.filter((f) => f.hash === 'full').map((f) => f.path).sort()).toEqual(['clock.phaseCursor', 'economy.yearOpeningFunds']);
+    const FULL_ONLY = [
+      'clock.phaseCursor', 'economy.yearOpeningFunds',
+      // .SC2 无落点的运行期缓存（contract-rfc WP7-3 / WP8-5 / WP13-4；INT-A）
+      'clock.disasterTicks', 'totals.developedTiles', 'totals.centerX', 'totals.centerY',
+      'traffic.total', 'traffic.graph', 'traffic.roadTiles', 'traffic.highwayTiles', 'traffic.bridgeTiles',
+      'rewards.mayorApproval', 'disaster.pointX', 'disaster.pointY',
+      ...Array.from({ length: 50 }, (_, k) => [`economy.bonds[${k}].issuedYear`, `economy.bonds[${k}].issuedMonth`]).flat(),
+    ];
+    expect(SCALAR_FIELDS.filter((f) => f.hash === 'full').map((f) => f.path).sort()).toEqual(FULL_ONLY.sort());
+    expect(SCALAR_FIELDS.filter((f) => f.path.endsWith('.rateRaw')).every((f) => f.hash === 'sc2')).toBe(true);
     for (const p of ['clock.speed', 'clock.modalPause', 'clock.accumMs', 'view.x', 'view.y', 'view.zoom', 'census.workforcePctUsed', 'rawMisc']) expect(HASH_EXCLUDE).toContain(p);
   });
   it('邻城固定 4 条、债券固定 50 槽，字段序稳定（clock 开头、view 结尾）', () => {
