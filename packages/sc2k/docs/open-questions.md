@@ -38,3 +38,8 @@
 | 25 | `createTestContext` 在改动夹具后调用一次 `postLoad(ctx, 'snapshot')` 让 `nullSystem` 重绑定；若桩改为注册时即可用，这一行可删 | 保留 | WP1 | `createSim.test` | 备忘 |
 | 26 | `economy.funds` 桩下为 0（无人发起始资金），冒烟观感「资金: 0」 | 属 WP8，不是缺陷 | WP8 | e2e 截图 | 备忘 |
 | 27 | `counts.zone` 由 `setXbld` 维护（已建 R/C/I 建筑格，spec:zones Q9 口径），不是 `setXzon` | core 口径；zones 的 census 全量重算须用同一口径 | WP4 zones | `tileWriter.test` 计数恒等 | 待认可 |
+| 28 | `pick` 的候选顺序：规格写"31→0 级逆投影"（高处优先），WP10 实现为"深度从前到后、同深度 rx 大者优先 + 带海拔四边形测试"（与画家序一致）。合法地形（相邻角差 ≤ 1）下两者结果相同；bedrock 平台 / 深水面盖住后方格时，WP10 口径返回实际画在最上面的格 | `src/render/scene/picking.ts` `pickP`；水下格按 waterLevel 平面、bedrock 按 alt+1 平台拾取（`pickSurfaceOf`） | render / UI | `picking.test.ts`（深湖 / 悬崖用例） | 待认可 |
+| 29 | 边缘岩壁位图的锚点约定（给 WP9）：EdgeWall 项锚点 = 本格 c11'@alt；建议 R 壁位图 anchor = (0, S/2)（画布 S × (S/2 + levels·LEVEL)），L 壁 anchor = (S, S/2)，壁顶沿 c10'–c11' / c01'–c11' 边、向下 levels·LEVEL | `compiler.ts` 第 2 步；`compositor.test.ts` 的几何 provider 按此约定自测 | art / render | 合并 WP9 后目视 | 开放 |
+| 30 | 车流覆盖物 `TrafficLight / TrafficHeavy` 没有路形 variant（契约 key 只有 id + frame），WP9 只能画通用车流；v2 可加 `variant = 旋转后道路片段偏移 0..14` | `compiler.ts` 第 7 步 | art / render | — | v2 |
+| 31 | 高速 2×2 块（0x61–0x6B，FOOTPRINT 2）按多格件处理：只有 `anchorOf` 能找到 TL 角标时才在 `renderAnchor` 格画一次（Structure），否则退化为每格各画一次（Ground）。需要 transport / placement 写高速块时置 XZON 角标 | `compiler.ts` 第 6 步 | transport / placement / render | 合并后目视 | 开放 |
+| 32 | 小地图 Health / Education 图层（spec:ui-art §2.5.1 [M]：由服务模块提供 32² 图）v1 由建筑位置派生：医院 0xD1 / 教育 0xD4 0xD6 0xD9 0xF5 按 Chebyshev 半径（12 / 10 格）线性衰减 | `minimap.ts` `coverageField`、`tuning.ts minimapHealthRadius / minimapEducationRadius` | services / render | services 提供真图后替换 | 开放 |
