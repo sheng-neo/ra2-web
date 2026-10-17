@@ -1,7 +1,7 @@
 // ===== testkit/invariants.ts =====（ARCHITECTURE §10.4 无头长跑不变量；longrun.test 与 tools/headless.ts 共用）
 // checkInvariants(state, catalogue) 返回违规描述列表（空 = 全部通过）：
 //  不抛错 / 无 NaN（全部标量为有限整数）；counts.tile / counts.zone 与 xbld 全量重数一致；XBIT & 0x08（Mark）== 0；
-//  XZON 角标与 XBLD 占地一致（anchorOf 对全部多格建筑格非 −1）；XTXT 无悬空指针（0x3D..0xC8 → XMIC 记录 tileId != 0；0xC9..0xEF → XTHG 槽存在）；
+//  XZON 角标与 XBLD 占地一致（anchorOf 对全部多格建筑格非 −1）；XTXT 无悬空指针（0x3D..0xC8 → XMIC 记录 (label − 0x33) 的 tileId != 0，spec:file-formats §2.2.7；0xC9..0xEF → XTHG 槽存在）；
 //  Σ XVAL == totals.landValue、Σ XCRM == totals.crime（MISC 0x0028 / 0x002C 的口径）；电 / 水利用率 ∈ [0,100]；funds > −10^6；债券 ≤ 50；时钟字段合法。
 // 人口类断言（第 20 年 normalPop 区间、单月跳变、空城人口恒 0）另给 checkPopulation，由调用方决定是否启用（桩下无意义）。
 import type { CatalogueApi } from '../contracts/catalogue';
@@ -12,8 +12,8 @@ import { createCityState } from '../contracts/state';
 import type { CityState } from '../contracts/state';
 import { recountFromLayers } from '../sim/core';
 
-/** XTXT 指针区间（spec:disasters §2.5.1 / spec:services 微模拟；ARCHITECTURE §10.4）。 */
-export const XTXT_MICROSIM_FIRST = 0x3d, XTXT_MICROSIM_LAST = 0xc8, XTXT_THING_FIRST = 0xc9, XTXT_THING_LAST = 0xef;
+/** XTXT 指针区间（spec:disasters §2.5.1 / spec:services 微模拟；ARCHITECTURE §10.4）。微模拟记录 r 的标签 = XTXT_MICROSIM_LABEL_BASE + r（r = 10..149 为独占记录 0x3D..0xC8）。 */
+export const XTXT_MICROSIM_LABEL_BASE = 0x33, XTXT_MICROSIM_FIRST = 0x3d, XTXT_MICROSIM_LAST = 0xc8, XTXT_THING_FIRST = 0xc9, XTXT_THING_LAST = 0xef;
 export const XMIC_RECORD_BYTES = 8, XTHG_RECORD_BYTES = 12;
 export const MIN_FUNDS = -1_000_000;
 
@@ -50,7 +50,7 @@ export function checkInvariants(state: CityState, catalogue: CatalogueApi): stri
     if (anchorBad < 0 && id >= 0x0e && FOOTPRINT[id]! > 1 && anchorOf(L, i) < 0) anchorBad = i;
     const t = L.xtxt[i]!;
     if (xtxtBad < 0) {
-      if (t >= XTXT_MICROSIM_FIRST && t <= XTXT_MICROSIM_LAST) { if (L.xmic[(t - XTXT_MICROSIM_FIRST) * XMIC_RECORD_BYTES] === 0) xtxtBad = i; }
+      if (t >= XTXT_MICROSIM_FIRST && t <= XTXT_MICROSIM_LAST) { if (L.xmic[(t - XTXT_MICROSIM_LABEL_BASE) * XMIC_RECORD_BYTES] === 0) xtxtBad = i; }
       else if (t >= XTXT_THING_FIRST && t <= XTXT_THING_LAST) { if (L.xthg[(t - XTXT_THING_FIRST) * XTHG_RECORD_BYTES] === 0) xtxtBad = i; }
     }
   }

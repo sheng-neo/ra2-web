@@ -1,5 +1,8 @@
 // ===== app/wire.test.ts =====（WORKPLAN §1.1 第 11 条：唯一的 WP0 冒烟）
 // 桩装配的 SimHost：新城 → 25 天 → 哈希确定性 → 快照往返 → 桩命令 notImplemented 且日志为空 → 各目录 index.ts 的类型层对账。
+// 另断言 wire.ts 保持 DOM-free（不 import render / ui / io/assets；那半边在 wireDom.ts），否则 tools/headless.ts 在 Node 下会因 ui 的 CSS import 启动失败。
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { COMMAND_OWNER, NOT_IMPLEMENTED_RESULT } from '../contracts/commands';
 import type { Command } from '../contracts/commands';
@@ -10,7 +13,8 @@ import type { AssetsEntry, RenderEntry, UiEntry } from '../contracts/shell';
 import type { NewCityParams } from '../contracts/system';
 import type { TestkitEntry } from '../contracts/testkit';
 import { runDays } from '../testkit';
-import { WIRE_STUB_ALLOWLIST, createWiredHost } from './wire';
+import { WIRE_STUB_ALLOWLIST, createWiredAudio, createWiredHost, createWiredProvider, createWiredStrings } from './wire';
+import * as wireDom from './wireDom';
 import { V1_TOOL_COUNT, V1_TOOL_IDS } from './v1Tools';
 
 import * as simCore from '../sim/core';
@@ -120,5 +124,19 @@ describe('WP0 冒烟：桩装配的 SimHost', () => {
     expect(typeof sc2.sc2Codec.newDocument).toBe('function');
     const s = createWiredHost().state;
     expect(testkit.hashOf(s)).toBe(snapshot.snapshotCodec.hash(s, 'full'));          // testkit 与 wire 同一注入的编解码器
+  });
+  it('wire.ts 是 DOM-free 半边：源码不 import render / ui / io/assets；wireDom.ts 提供 createWiredRenderer / createWiredAssets / mountWiredShell 并转发 wire 的导出', () => {
+    const src = readFileSync(fileURLToPath(new URL('./wire.ts', import.meta.url)), 'utf8');
+    const specifiers = [...src.matchAll(/from '([^']+)'/g)].map((m) => m[1]!);
+    for (const spec of specifiers) expect(spec, `wire.ts import ${spec}`).not.toMatch(/^(\.\.\/)+(render|ui|io\/assets)(\/|$)/);
+    expect(typeof wireDom.createWiredRenderer).toBe('function');
+    expect(typeof wireDom.createWiredAssets).toBe('function');
+    expect(typeof wireDom.mountWiredShell).toBe('function');
+    expect(wireDom.createWiredHost).toBe(createWiredHost);
+    expect(wireDom.WIRE_STUB_ALLOWLIST).toBe(WIRE_STUB_ALLOWLIST);
+    // DOM-free 半边在 Node 下可直接调用：程序化 provider、静默音频、字符串表
+    expect(createWiredProvider().name).toBe('procedural');
+    expect(() => createWiredAudio().play('click')).not.toThrow();
+    expect(createWiredStrings('en').t('ui.newCity')).not.toBe('');
   });
 });

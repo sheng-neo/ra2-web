@@ -1,6 +1,6 @@
 /// <reference types="node" />
 // ===== tools/headless.ts =====（ARCHITECTURE §10.4 / §10.5 / §10.6；WORKPLAN §7 第 4 条）
-// 无头长跑：用 app/wire.ts 的 createWiredHost()（tools/ 是允许 import app 的唯一地方）跑金城脚本 N 年，每年输出
+// 无头长跑：用 app/wire.ts 的 createWiredHost()（DOM-free 半边；tools/ 是允许 import app 的唯一地方）跑金城脚本 N 年，每年输出
 //   { year, hash, pop, funds, phaseMsP95, growthDayMsP95, runTrips }，不变量违规计入退出码；可选 CPU 合成缩略图（e2e 降级路径）。
 // 用法：tsx tools/headless.ts --years N [--script golden-mini-city] [--variant full|noPower|noRoad] [--seed S] [--out file.json]
 //                             [--thumbnail out.png] [--quiet] [--strict-wire]
@@ -12,10 +12,10 @@ import type { RenderSnapshot } from '../src/contracts/render';
 import { mapCanvasSize } from '../src/contracts/render';
 import type { GoldenMiniCityVariant } from '../src/contracts/testkit';
 import { WIRE_STUB_ALLOWLIST, createWiredHost, createWiredProvider } from '../src/app/wire';
-import { sceneCompiler } from '../src/render';
+import { sceneCompiler } from '../src/render/scene';
 import { goldenMiniCity, isMonochrome, pngOf, runHeadless, simContextOf } from '../src/testkit';
 import type { YearRecord } from '../src/testkit';
-import { cpuCompositor } from '../src/render';
+import { cpuCompositor } from '../src/render/cpu';   // 直接取纯函数层（不经 render/index 拉入 Pixi）
 
 interface Args { years: number; script: string; variant: GoldenMiniCityVariant; seed?: number; out?: string; thumbnail?: string; quiet: boolean; strictWire: boolean }
 

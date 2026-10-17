@@ -338,6 +338,7 @@ host.advance(dtMs, now, budgetMs = 6):                 // app/loop 每帧调用�
 - `wire.ts` 从 WP0 起 import 全部 9 个系统目录的 `index.ts`、`render/index.ts`、`ui/index.ts`、`art/index.ts`、`io/{sc2,snapshot,assets}/index.ts`、`audio/index.ts`、`data/index.ts`（名字见 `CONTRACTS.md §V`），调用 `createSim({ systems, catalogue: CATALOGUE, snapshot: snapshotCodec, stubAllowlist: WIRE_STUB_ALLOWLIST })`。
 - 桩系统带 `stub: true`；`createSim` 在 `stubAllowlist` 之外发现桩即抛错。冻结时 `WIRE_STUB_ALLOWLIST` 为 8 个非 core 系统全集，随各 WP 合入逐个收缩；打标 `v1-playable` 时为**空数组**（events 的 `[v1]` 切片在第一波交付），CI 以 `SC2K_STRICT_WIRE=1` 断言没有任何桩残留。这是 `wire.ts` 在日内唯一允许的改动。
 - 跨模块修补：优先在对方 WP 的分支上提 patch；若对方不在线，Lead 可在 `src/app/patches/<systemId>.ts` 写**适配层**（包装对方 `create<Id>System()` 返回值，覆盖个别 `queries/commands`，不得改动 `COMMAND_OWNER` 归属），`wire.ts` 不变、对方目录不变；每个 patch 文件头部写明到期删除条件。
+- 集成阶段（INT-A）把接线文件拆成两半：`wire.ts` 是 **DOM-free 半边**（`createWiredHost / createWiredProvider / createWiredStrings / createWiredAudio` 与 `CATALOGUE / sc2Codec / snapshotCodec`），必须能在 Node 下加载（`tools/headless.ts`、`tools/hash-compare.ts`、`registry.test` 都经它装配，ESLint 禁止它 import `render` / `ui` / `io/assets`）；`wireDom.ts` 是 **DOM / 渲染半边**（`createWiredRenderer / createWiredAssets / mountWiredShell`，并转发 `wire.ts` 的全部导出），只有 `app/boot.ts` import 它。
 
 ---
 

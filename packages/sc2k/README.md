@@ -34,7 +34,7 @@ src/
   art/               程序化精灵
   render/{scene,cpu,pixi}/    场景编译（纯函数）、CPU 合成（像素验收）、Pixi 后端
   ui/  audio/        DOM 外壳、音效
-  app/               wire.ts（唯一接线文件）、boot.ts、v1Tools.ts、stubs/（WP0 桩）、patches/
+  app/               wire.ts（唯一接线文件，DOM-free 半边）、wireDom.ts（渲染 / 外壳 / 素材库半边，仅 boot 用）、boot.ts、v1Tools.ts、stubs/（WP0 桩）、patches/
 tools/               gen-catalogue / strings-scan / headless / hash-compare / art-sheet
 e2e/                 Playwright 冒烟
 docs/                ARCHITECTURE / CONTRACTS / WORKPLAN / spec/ / contract-rfc / open-questions

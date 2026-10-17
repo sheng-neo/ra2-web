@@ -180,6 +180,12 @@ export default tseslint.config(
   restrictImports([`${SC2K}/ui/**/*.ts`, `${SC2K}/audio/**/*.ts`], [
     { regex: upInto(['sim', 'app', 'testkit']), message: 'ui/audio 不得 import sim/app（只经 SimHost / Queries / 事件交互）' },
   ], [`${SC2K}/ui/index.ts`, `${SC2K}/audio/index.ts`]),
+  // app/wire.ts：接线文件的 DOM-free 半边，必须能在 Node 下加载（tools/headless、hash-compare、registry.test 经它装配）：
+  // 不得 import render（Pixi）/ ui（CSS）/ io/assets（IndexedDB、导入面板）——这些在 app/wireDom.ts。
+  restrictImports([`${SC2K}/app/wire.ts`], [
+    { regex: upInto(['render', 'ui']), message: 'app/wire.ts 是 DOM-free 接线：render / ui 的装配放 app/wireDom.ts' },
+    { regex: '^(\\.\\./)+io/assets(/|$)', message: 'app/wire.ts 是 DOM-free 接线：io/assets 的装配放 app/wireDom.ts' },
+  ]),
   // app/stubs：不得 import sim/** 之外的上层实现（只认 contracts / data / sim / 自身；桩不得反向依赖 io/art/render/ui/audio 的真实现）。
   restrictImports([`${SC2K}/app/stubs/**/*.ts`], [
     { regex: upInto(['io', 'art', 'render', 'ui', 'audio', 'testkit']), message: 'app/stubs 只能依赖 contracts / data / sim 与自身（桩不得反向依赖真实现）' },
