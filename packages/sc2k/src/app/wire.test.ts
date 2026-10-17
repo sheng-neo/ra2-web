@@ -1,7 +1,9 @@
 // ===== app/wire.test.ts =====（WORKPLAN §1.1 第 11 条：唯一的 WP0 冒烟）
 // 桩装配的 SimHost：新城 → 25 天 → 哈希确定性 → 快照往返 → 桩命令 notImplemented 且日志为空 → 各目录 index.ts 的类型层对账。
 import { describe, expect, it } from 'vitest';
-import { NOT_IMPLEMENTED_RESULT } from '../contracts/commands';
+import { COMMAND_OWNER, NOT_IMPLEMENTED_RESULT } from '../contracts/commands';
+import type { Command } from '../contracts/commands';
+import { tileIndex } from '../contracts/grid';
 import { SYSTEM_ORDER } from '../contracts/clock';
 import type { ArtEntry, AudioEntry, DataEntry, Sc2Entry, SimCoreEntry, SimEntries, SnapshotEntry } from '../contracts/entrypoints';
 import type { AssetsEntry, RenderEntry, UiEntry } from '../contracts/shell';
@@ -66,13 +68,26 @@ describe('WP0 冒烟：桩装配的 SimHost', () => {
   it('对桩系统 dispatch placeBuilding → reason notImplemented、NOT_IMPLEMENTED_RESULT 同一对象、commandLog 为空、不消费 PRNG', () => {
     const host = createWiredHost(); host.newCity(PARAMS); runDays(host, 25);
     const prng = host.state.clock.prngState;
-    const r = host.dispatch({ type: 'placeBuilding', id: 0xdd, x: 10, y: 10 });
-    expect(r.reason).toBe('notImplemented'); expect(r.ok).toBe(false); expect(r).toBe(NOT_IMPLEMENTED_RESULT);
-    expect(host.dispatch({ type: 'zoneRect', zone: 1, x0: 0, y0: 0, x1: 3, y1: 3 }).reason).toBe('notImplemented');
-    expect(host.dispatch({ type: 'requestDisaster', kind: 1 }).reason).toBe('notImplemented');
-    expect(host.commandLog()).toEqual([]);
-    expect(host.state.clock.prngState).toBe(prng);
-    expect(host.drainEvents().filter((e) => e.type === 'message')).toEqual([]);
+    // 只对 owner 仍为桩的命令断言 NOT_IMPLEMENTED_RESULT；真系统合入后该命令自然跳过（各真系统有自己的命令测试）。
+    const samples: Command[] = [
+      { type: 'placeBuilding', id: 0xdd, x: 10, y: 10 },
+      { type: 'zoneRect', zone: 1, x0: 0, y0: 0, x1: 3, y1: 3 },
+      { type: 'requestDisaster', kind: 1 },
+      { type: 'terrainTool', tool: 'raise', path: [tileIndex(5, 5)] },
+      { type: 'setTax', rates: { r: 7, c: 7, i: 7 } },
+    ];
+    let asserted = 0;
+    for (const cmd of samples) {
+      if (!WIRE_STUB_ALLOWLIST.includes(COMMAND_OWNER[cmd.type])) continue;
+      const r = host.dispatch(cmd);
+      expect(r.reason).toBe('notImplemented'); expect(r.ok).toBe(false); expect(r).toBe(NOT_IMPLEMENTED_RESULT);
+      asserted++;
+    }
+    if (asserted > 0) {
+      expect(host.commandLog()).toEqual([]);
+      expect(host.state.clock.prngState).toBe(prng);
+      expect(host.drainEvents().filter((e) => e.type === 'message')).toEqual([]);
+    }
   });
   it('core 命令可用：setSpeed 写 clock.speed 并入日志；terrainDone 进入城市模式', () => {
     const host = createWiredHost(); host.newCity(PARAMS);
