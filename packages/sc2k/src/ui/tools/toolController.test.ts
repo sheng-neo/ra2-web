@@ -83,6 +83,42 @@ function rig(): Rig {
 }
 const T = (x: number, y: number): number => tileIndex(x, y);
 
+describe('视图元素不在页面 (0,0)（菜单栏下方）时的落格（INT-B 回归：局部坐标不得再减一次 rect）', () => {
+  const OFF = { left: 10, top: 24 };
+  let R: Rig;
+  beforeEach(() => {
+    R = rig();
+    R.target.getBoundingClientRect = () => ({ left: OFF.left, top: OFF.top, x: OFF.left, y: OFF.top, width: 800, height: 600, right: OFF.left + 800, bottom: OFF.top + 600, toJSON: () => ({}) });
+  });
+  afterEach(() => { R.ctl.destroy(); R.target.remove(); });
+  const client = (tx: number, ty: number): [number, number] => [OFF.left + tx * TILE_PX + 5, OFF.top + ty * TILE_PX + 5];
+  it('Query 点按 / 右键查询 / 长按 命中指针所在格', () => {
+    R.ctl.setTool('query');
+    R.down(...client(5, 3)); R.up(...client(5, 3));
+    expect(R.picked.at(-1)).toEqual([5, 3]);
+    R.ctl.setTool('roads.road');
+    R.down(...client(7, 9), { button: 2 }); R.up(...client(7, 9), { button: 2 });
+    expect(R.picked.at(-1)).toEqual([7, 9]);
+    vi.useFakeTimers();
+    try {
+      R.down(...client(2, 6), { kind: 'touch' }); vi.advanceTimersByTime(GESTURE.longPressMs + 10);
+      expect(R.picked.at(-1)).toEqual([2, 6]);
+      R.up(...client(2, 6), { kind: 'touch' });
+    } finally { vi.useRealTimers(); }
+  });
+  it('Line 的起点 / Paint 的首格 = 按下时的指针格', () => {
+    R.ctl.setTool('roads.road');
+    R.down(...client(4, 4)); R.move(...client(9, 4)); R.up(...client(9, 4));
+    const net = R.cmds.find((c) => c.type === 'network');
+    expect(net && net.type === 'network' ? [net.from, net.to] : null).toEqual([tileIndex(4, 4), tileIndex(9, 4)]);
+    R.ctl.setTool('bulldozer.demolish');
+    R.cmds.length = 0;
+    R.down(...client(6, 2)); R.up(...client(6, 2));
+    const bd = R.cmds.find((c) => c.type === 'bulldoze');
+    expect(bd && bd.type === 'bulldoze' ? bd.tiles : null).toEqual([tileIndex(6, 2)]);
+  });
+});
+
 describe('modeOf：十种操作模式各有代表工具（spec:ui-art §2.8）', () => {
   const cases: Array<[string, ToolMode]> = [
     ['power.wind', 'Click'], ['bulldozer.raise', 'Click'], ['parks.small', 'Click'], ['water.pump', 'Click'],

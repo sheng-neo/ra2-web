@@ -96,7 +96,7 @@ export async function boot(root: HTMLElement): Promise<Sc2kDebugHandle> {
   const host = createWiredHost();
   const renderer = createWiredRenderer();
   const audio = createWiredAudio();
-  const { store, importer } = createWiredAssets();
+  const { store, importer } = createWiredAssets(strings);
   const procedural = createWiredProvider();
 
   // 视图容器先于外壳创建并 attach（外壳采用同一元素）
@@ -130,7 +130,7 @@ export async function boot(root: HTMLElement): Promise<Sc2kDebugHandle> {
     newCity: () => { host.dispatch({ type: 'setSpeed', speed: 1 }); titlePage.show(); },
     exit: () => { host.dispatch({ type: 'setSpeed', speed: 1 }); audio.stopMusic(); titlePage.show(); },
     loadCity: () => pickFile('.sc2,.scn,.sc2kweb', (f) => { void loadFile(f); }),
-    saveCity: () => { void session.saveToStore().then(() => controls.message(`${tr(strings, 'ui.save')} ✓`)).catch((e: unknown) => controls.message(String(e), 'reject')); },
+    saveCity: () => { void session.saveToStore().then(() => controls.message(tr(strings, 'ui.saved', 'ui.save'))).catch((e: unknown) => controls.message(String(e), 'reject')); },
     saveCityAs: () => { try { const ext = session.downloadCity('sc2'); controls.message(`${tr(strings, 'ui.download')} ${ext}`); } catch (e) { controls.message(String(e), 'reject'); } },
   };
   root.addEventListener(SHOW_TITLE_EVENT, () => controls.fileActions.exit?.());

@@ -283,9 +283,11 @@ describe('strings', () => {
     for (const g of new Set(TOOLS.map((t) => t.group))) expect(zh.has(`group.${g}`), g).toBe(true);
     for (const c of new Set(CATEGORY)) expect(zh.has(`category.${c}`), c).toBe(true);
   });
-  it('报纸骨架 ≤ 20 条且 headline / body 成对', () => {
+  it('报纸骨架不超过 NewsType 总数（67）且 headline / body 成对', () => {
+    // WP0 预置 ≤ 20 条；INT-B 按 contract-rfc（WP13）补齐月检 / 需求 / 全部灾害号外后为 37 条，上限改为 NEWS_TYPE_COUNT
     const heads = Object.keys(STRINGS_ZH).filter((k) => /^news\.\d+\.headline$/.test(k));
-    expect(heads.length).toBeGreaterThan(0); expect(heads.length).toBeLessThanOrEqual(20);
+    expect(heads.length).toBeGreaterThan(0); expect(heads.length).toBeLessThanOrEqual(67);
+    for (const h of heads) expect(Number(h.split('.')[1])).toBeLessThan(67);
     for (const h of heads) expect(STRINGS_ZH[h.replace('.headline', '.body') as keyof typeof STRINGS_ZH]).toBeDefined();
   });
   it('createStrings：占位替换、缺键回退键名、has()、lang', () => {

@@ -5,6 +5,7 @@
 import type { RendererApi } from '../contracts/rendererApi';
 import type { AssetImporter, AssetStore } from '../contracts/assets';
 import type { ShellHandle, ShellOptions } from '../contracts/shell';
+import type { Strings } from '../contracts/strings';
 import { createRenderer } from '../render';
 import { createAssetStore, createAssetImporter } from '../io/assets';
 import { mountShell } from '../ui';
@@ -13,8 +14,9 @@ import { sc2Codec } from './wire';
 export * from './wire';
 
 export function createWiredRenderer(): RendererApi { return createRenderer(); }
-export function createWiredAssets(): { store: AssetStore; importer: AssetImporter } {
+/** strings 可选：传入后导入面板用玩家语言显示（contract-rfc WP14-3）；不传则面板用自带回退表。 */
+export function createWiredAssets(strings?: Strings): { store: AssetStore; importer: AssetImporter } {
   const store = createAssetStore();
-  return { store, importer: createAssetImporter(store, sc2Codec) };
+  return { store, importer: createAssetImporter(store, sc2Codec, strings ? { strings } : {}) };
 }
 export function mountWiredShell(opts: ShellOptions): ShellHandle { return mountShell(opts); }

@@ -240,7 +240,9 @@ describe('Neighbors', () => {
     const w = WINDOW_FACTORIES.neighbors!(deps);
     document.body.appendChild(w.el);
     for (let k = 0; k < 4; k++) {
-      expect($(w.el, `neighbor-${k}`).textContent).toContain(names[k]);
+      // 显示名：strings 有 neighbor.name.<index>（contract-rfc WP5-4，INT-B 并入）时用本地化名，否则用 state.name
+      const key = `neighbor.name.${s.neighbors[k]!.index}`;
+      expect($(w.el, `neighbor-${k}`).textContent).toContain(deps.strings.has(key) ? deps.strings.t(key) : names[k]);
       expect($(w.el, `neighbor-${k}`).textContent).toContain(thousands(1000 * (k + 1)));
       expect($(w.el, `neighbor-conn-${k}`).textContent).toContain(`Road ${k}`);
     }

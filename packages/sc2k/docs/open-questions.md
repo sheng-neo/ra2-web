@@ -134,3 +134,22 @@
 | INT-A-2 | `.SC2` 导入后约一个月内 `totals.developedTiles` 为 0（services 要到下个 `dataMaps` 才重算），图表 `graphCurrent` 的分母短暂偏小；zones 的 lot 计时器等 priv 也按规格归零——导入后续跑与导出方不逐位相同（快照路径无此问题） | 接受（`.SC2` 本就是有损格式）；若 UI 觉得图表跳变明显，可在 `postLoadServices('sc2')` 用 xbld / xzon 重数 developedTiles | services / UI | `saveload.test` 真系统用例只断言导入时 hash('sc2') 相同与续跑不变量 | 备忘 |
 | INT-A-3 | 金城无消防局：从住宅区起火会整片烧光（`saveload.test` 的火灾因此放在火车站）；`checkPopulation` 的第 20 年区间断言在随机灾害后不再成立 | `longrun.test` 的 50 年人口区间断言仅在 `SC2K_LONGRUN=1` 下启用，集成者评估长跑时以首次灾害前的平台为准，或用 `tuning.events.monthlyChance` 关闭随机灾害 | 集成者 | `SC2K_LONGRUN=1 pnpm vitest run packages/sc2k/src/sim/core/longrun.test.ts` | 备忘 |
 | INT-A-4 | 浏览器主循环下随机灾害的启动时点现与测试驱动器一致（pending 置位日之后、下一日之前），但灾害进行中玩家派发的命令（调度 / 推土）在日志里只有 (age, 0) 游标，重放时会在灾害开始前派发 | v2：core 把 tick 计数写进日志条目（见 #28） | WP1 / WP13 [v2] | `disasterRun.test` 只覆盖无命令的灾害 | 开放 |
+
+## INT-B（浏览器玩测 + 外壳打磨）发现
+
+> 环境：Chromium 1194 headless + SwiftShader WebGL（`--disable-gpu`）、vite preview 构建、4 核共享容器。玩测脚本经 Playwright 真鼠标 / 键盘 / CDP 触控事件驱动，`?debug` 句柄只用于读状态与断言。
+
+| # | 问题 | 处理 / 当前裁定 | 归属 | 验证手段 | 状态 |
+|---|---|---|---|---|---|
+| B1 | 视图元素不在页面 (0,0)（菜单栏下方 24 px）时，所有"按下 / 抬起"路径的落格偏移 1–2 格：`toolController` 把已是局部坐标的 `Ptr.x/y`、`lx/ly` 再交给 `tileAt(clientX, clientY)` 减了一次 rect（Line / Rect 起点、Paint 首格、点按放置、右键 / 长按查询、双击都受影响；只有悬停预览正确，所以肉眼看是"预览在这儿、建在那儿"） | 改为 `tileAtLocal`；新增回归用例（`toolController.test` "视图元素不在页面 (0,0)"，旧实现下必失败） | ui（INT-B 已修） | 单测 + 玩测：电厂 / 电线 / 分区 / 道路 / 铁路 / 车站落格与指针格一致 | 已修 |
+| B2 | 工具栏子工具条每 100 ms 的节流 `refresh()` 调 `renderPopup()` 整体 `replaceChildren`，行节点不断被替换：真点击经常落在已脱离 DOM 的节点上（Playwright 要等 30 s 才能点到，玩家也会遇到点击无效 / 悬停高亮闪烁） | 行只在打开时创建一次，`updatePopup()` 原地改类 / title / 费用 | ui（INT-B 已修） | 玩测：子工具行点击 1 次即选中 | 已修 |
+| B3 | 预算模态 / 账目 / 顾问 / 图表 / 存档 / 邻城等窗口显示裸键名（`budget.taxes`、`advice.*`、`advisor.*`、`graph.*`、`ui.saves.*` …），`message.disasterUnavailable` 的 `{name}` 会代入 `disaster.fire` 这样的键 | 219 个新键并入 `strings.zh/en`（见 contract-rfc 各行状态）；`ui/windows/text.ts` 回退表删除；外壳对 `message` 事件 args 中的 strings 键先本地化 | data / ui（INT-B 已修） | `catalogue.test` 键集合一致；e2e `smoke.spec` 对每个窗口扫描裸键名 | 已修 |
+| B4 | 命令结果型模态（选桥型 / 邻城连接）按 Esc 时外壳 `closeTop(0)`：对 bridgeType 等于"选第一种桥并付费" | `closeTop()` 缺省答案按路径：结果型 −1（取消）、其余 0 | ui（INT-B 已修） | `modalHost.test` | 已修 |
+| B5 | gameOver 模态的"主菜单"（answer 1）只关闭模态，不回标题页 | `openFromEvent` 接受 `onAnswer`，外壳对 gameOver 的 1 调 `showTitle()` | ui（INT-B 已修） | 代码审查 | 已修 |
+| B6 | 工具栏 / 子工具条 / 状态栏 / Map 图层按钮用字形占位 | 改用 WP9 `UiIconId` 24×24 位图（`ui/icons.ts`：provider.bitmap → canvas → data URL，模块级缓存；无 2D 上下文 / 无位图时回退字形）；开关行 12 px（整数缩半）、天气 / goto 24 px（状态栏首行加高到 26 px） | ui（INT-B 已做） | 截图 | 已做；开关行 5 个 12 px 按钮仍偏挤（v2 可改两行） |
+| B7 | 软件渲染下主循环只有 ~5 fps：28k 精灵 / 15 drawCalls，`renderer.stats().frameMs` 仅 0.3 ms、`host.advance` 每帧 ~1 ms，时间都在 WebGL 提交 / 合成（空白 WebGL 页同环境 60 fps）。真 GPU 上未测 | 记录；e2e 把 `smoke.spec` 超时放宽到 600 s、每次真点击约 2–5 s | render（WP11） | `requestAnimationFrame` 间隔 ~180 ms；PerformanceObserver longtask ~100 ms/帧 | 开放 |
+| B8 | 公交站（`roads.busDepot`）在 1900 年开局不可用 | 科技 `buses` 基准年 1920，为预期行为（子工具条灰显并给出 `reject.notInvented`） | — | 玩测 | 非问题 |
+| B9 | 工具组按钮的可访问名是角标数字（img alt 为空、title 不计入） | 加 `aria-label` | ui（INT-B 已修） | Playwright 快照 | 已修 |
+| B11 | 菜单栏同样的问题：打开的菜单每 100 ms 被 `refresh()` 整体重建，菜单项点击经常落空（Playwright 记录 "element was detached from the DOM" 32 次） | `render()` 按项签名（kind / label / checked / disabled / hint）判断，只有变化时才重建；新增 `menubar.test` | ui（INT-B 已修） | 单测 + e2e Windows 菜单真点击 | 已修 |
+| B12 | 跑年后 `census.citySize` / `normalPop` 为 0 而分区建筑已生长（smoke 26 个月） | 记为 e2e `needs-real-sim` annotation；归 zones / services 的人口口径 | sim | e2e annotation | 待 sim 确认 |
+| B10 | `.SC2` 导出 → 导入后 `hash('sc2')` 是否保持 | 由 contract-rfc WP7-3 / WP8-5 / WP13-4 的 `'sc2'` 标注字段决定；`smoke.spec` 以 `needs-real-sim` annotation 记录而不硬断言 | sim | e2e annotation | 待 sim 收口 |

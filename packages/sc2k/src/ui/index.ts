@@ -243,13 +243,13 @@ export const mountShell = ((opts: ShellOptions): ShellHandle => {
     if (!titled || !titled.title) return;
     e.preventDefault(); e.stopPropagation();
     const r = root.getBoundingClientRect();
-    showBubble(titled.title, e.clientX - r.left, e.clientY - r.top);
+    showBubble(`${tr(strings, 'ui.help.bubble', 'ui.help')}${titled.title}`, e.clientX - r.left, e.clientY - r.top);
   };
   root.addEventListener('click', helpClick, true);
 
   // ---- 键盘：模态 > 菜单 > 工具控制器 ----
   const onKey = (e: KeyboardEvent): void => {
-    if (modals.depth() > 0) { if (e.key === 'Escape') { modals.closeTop(0); e.preventDefault(); } return; }
+    if (modals.depth() > 0) { if (e.key === 'Escape') { modals.closeTop(); e.preventDefault(); } return; }   // 缺省答案：命令结果型 −1（取消桥 / 不接受连接），其余 0
     if (e.key === 'Escape' && menuBar.closeAll()) { e.preventDefault(); return; }
     controller.handleKey(e);
   };
@@ -257,11 +257,18 @@ export const mountShell = ((opts: ShellOptions): ShellHandle => {
 
   // ---- EventBus 订阅（ARCHITECTURE §7.3；goto / sound 由 boot 处理） ----
   const on = <K extends SimEvent['type']>(type: K, fn: (e: Extract<SimEvent, { type: K }>) => void): void => { offs.push(bus.on(type, fn)); };
-  on('modal', (e) => modals.openFromEvent(e.id, e.payload));
+  on('modal', (e) => modals.openFromEvent(e.id, e.payload, e.id === 'gameOver' ? (n) => { if (n === 1) showTitle(); } : undefined));   // gameOver：1 = 回主菜单（MODAL_ANSWER）
   on('toolbar', () => { availDirty = true; });
   on('techInvented', (e) => { availDirty = true; const key = TECH_SLOT_KEYS[e.slot]; message(t('message.techInvented', { name: key ? t(`tech.${key}`) : String(e.slot) })); });
   on('reward', (e) => { availDirty = true; const tool = host.catalogue.TOOLS.find((d) => d.unlock?.rewardBit === e.bit); message(t('message.rewardOffer', { name: tool ? t(tool.label) : String(e.bit) })); });
-  on('message', (e) => statusBar.setMessage({ text: t(e.key, e.args), level: e.level === 'reject' ? 'reject' : 'alert' }));
+  /** 事件 args 里形如 strings 键的字符串值（例如 message.disasterUnavailable 的 name = 'disaster.fire'）先本地化再代入。 */
+  const localizeArgs = (args?: Record<string, string | number>): Record<string, string | number> | undefined => {
+    if (!args) return args;
+    const out: Record<string, string | number> = {};
+    for (const [k, v] of Object.entries(args)) out[k] = typeof v === 'string' && strings.has(v) ? t(v) : v;
+    return out;
+  };
+  on('message', (e) => statusBar.setMessage({ text: t(e.key, localizeArgs(e.args)), level: e.level === 'reject' ? 'reject' : 'alert' }));
   on('complaint', (e) => statusBar.setComplaint(e.key));
   on('insufficientFunds', (e) => { statusBar.flashFunds(); statusBar.setMessage({ text: t('message.insufficientFunds', { value: fmtMoney(e.cost) }), level: 'reject' }); });
   on('disasterStarted', (e) => {

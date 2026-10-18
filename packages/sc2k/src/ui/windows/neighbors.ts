@@ -17,6 +17,12 @@ export const neighborsWindow: WindowFactory = (deps) => {
   const el = h('div', { cls: 'sc2k-win-body sc2k-win-neighbors' }, grid);
 
   const neighborAt = (edge: 0 | 1 | 2 | 3): NeighborCity | undefined => deps.host.state.neighbors.find((n) => n.edge === edge) ?? deps.host.state.neighbors[edge];
+  /** 邻城名：已初始化（name 非空）时优先取本地化键 neighbor.name.<index>（contract-rfc WP5-4），否则用 state 里的原创英文名。 */
+  const nameOf = (n: NeighborCity | undefined): string => {
+    if (!n || !n.name) return t('ui.neighbors.unnamed');
+    const key = `neighbor.name.${n.index}`;
+    return deps.strings.has(key) ? t(key) : n.name;
+  };
 
   function refresh(): void {
     const s = deps.host.state;
@@ -24,7 +30,7 @@ export const neighborsWindow: WindowFactory = (deps) => {
     for (const edge of [0, 1, 2, 3] as const) {
       const n = neighborAt(edge);
       cells.push(h('div', { cls: `sc2k-win-cell sc2k-win-corner sc2k-win-area-${CORNER_AREA[edge]}`, testid: `neighbor-${edge}` },
-        h('div', { cls: 'sc2k-win-cityname', text: n?.name || t('ui.neighbors.unnamed') }),
+        h('div', { cls: 'sc2k-win-cityname', text: nameOf(n) }),
         h('div', { cls: 'sc2k-win-muted', text: `${t('ui.population')} ${thousands(n?.population ?? 0)}` })));
       const c = n?.connections ?? { road: 0, rail: 0, highway: 0 };
       cells.push(h('div', { cls: `sc2k-win-cell sc2k-win-edge sc2k-win-area-${EDGE_AREA[edge]}`, testid: `neighbor-conn-${edge}` },

@@ -23,7 +23,7 @@
   --font-ui: system-ui, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
   --font-mono: ui-monospace, Menlo, Consolas, monospace;
   --menubar-h: 24px;
-  --statusbar-h: 42px;
+  --statusbar-h: 48px;
 }
 
 .sc2k-shell { position: absolute; inset: 0; overflow: hidden; font: 12px/1.3 var(--font-ui); color: var(--text); user-select: none; -webkit-user-select: none; }
@@ -89,8 +89,8 @@
 .sc2k-toolbtn .dot { position: absolute; right: 3px; bottom: 2px; width: 6px; height: 6px; border-radius: 1px; }
 .sc2k-toolbtn .badge { position: absolute; right: 2px; bottom: 1px; font-size: 8px; line-height: 1; padding: 1px 2px; background: var(--select-bg); color: var(--select-fg); border-radius: 1px; }
 .sc2k-toolbtn.empty { visibility: hidden; }
-.sc2k-toggles { display: grid; grid-template-columns: repeat(5, 1fr); gap: 1px; margin-top: 3px; }
-.sc2k-toggle { height: 18px; min-width: 0; padding: 0; font-size: 10px; }
+.sc2k-toggles { display: grid; grid-template-columns: repeat(5, 1fr); gap: 0; margin-top: 3px; }
+.sc2k-toggle { height: 16px; min-width: 0; padding: 0; font-size: 10px; overflow: hidden; }
 .sc2k-toggle.active { background: var(--face-dim); }
 .sc2k-rci { display: flex; justify-content: space-around; align-items: center; height: 44px; margin: 3px 1px 1px; padding: 0 4px; position: relative; cursor: pointer; }
 .sc2k-rci::before { content: ''; position: absolute; left: 4px; right: 4px; top: 50%; border-top: 1px solid var(--bevel-dark); }
@@ -101,7 +101,7 @@
 .sc2k-rci-bar.i { background: var(--rci-i); }
 .sc2k-rci-label { position: absolute; bottom: -1px; left: 0; right: 0; text-align: center; font-size: 9px; color: var(--text-dim); }
 .sc2k-subtools { position: absolute; z-index: 26; display: flex; flex-direction: column; min-width: 160px; padding: 3px; }
-.sc2k-subtool { display: flex; align-items: center; gap: 6px; height: 24px; padding: 0 6px; cursor: pointer; white-space: nowrap; }
+.sc2k-subtool { display: flex; align-items: center; gap: 6px; height: 26px; padding: 0 6px; cursor: pointer; white-space: nowrap; }
 .sc2k-subtool .cost { margin-left: auto; color: var(--text-dim); font-family: var(--font-mono); font-size: 11px; }
 .sc2k-subtool:hover:not(.disabled) { background: var(--select-bg); color: var(--select-fg); }
 .sc2k-subtool:hover:not(.disabled) .cost { color: var(--select-fg); }
@@ -109,16 +109,24 @@
 .sc2k-subtool.disabled { color: var(--text-disabled); cursor: default; }
 .sc2k-subtool .ico { width: 14px; height: 14px; border: 1px solid var(--bevel-dark); }
 
+/* ---- 位图图标（ui/icons.ts：UiIconId 24×24，像素风缩放；禁用态灰化） ---- */
+.sc2k-ico { display: block; image-rendering: pixelated; flex: none; pointer-events: none; }
+.sc2k-toolbtn .sc2k-ico { margin: 0 auto; }
+.sc2k-toggle .sc2k-ico { margin: 0 auto; }
+.sc2k-btn:disabled .sc2k-ico, .sc2k-btn.disabled .sc2k-ico, .sc2k-subtool.disabled .sc2k-ico { filter: grayscale(1); opacity: 0.45; }
+.sc2k-weather .sc2k-ico, .sc2k-goto .sc2k-ico { width: 24px; height: 24px; }
+.sc2k-win-layers .sc2k-ico { display: inline-block; vertical-align: -4px; margin-right: 4px; }
+
 /* ---- 状态栏 ---- */
 .sc2k-statusbar { position: absolute; left: 0; right: 0; bottom: 0; height: var(--statusbar-h); z-index: 30; padding: 2px 4px 1px; display: flex; flex-direction: column; gap: 1px; }
-.sc2k-status-row { display: flex; align-items: center; gap: 4px; height: 20px; }
+.sc2k-status-row { display: flex; align-items: center; gap: 4px; height: 26px; }
 .sc2k-status-row.second { height: 16px; }
-.sc2k-weather, .sc2k-goto { width: 24px; height: 18px; display: flex; align-items: center; justify-content: center; font-size: 13px; }
+.sc2k-weather, .sc2k-goto { width: 28px; height: 26px; display: flex; align-items: center; justify-content: center; font-size: 13px; padding: 0; }
 .sc2k-goto { color: #fff; background: var(--danger); cursor: pointer; font-weight: 700; }
-.sc2k-message { flex: 1; height: 18px; padding: 0 6px; display: flex; align-items: center; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.sc2k-message { flex: 1; height: 22px; padding: 0 6px; display: flex; align-items: center; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .sc2k-message.reject { color: var(--danger); font-weight: 600; }
 .sc2k-message.alert { color: var(--title-active-a); font-weight: 600; }
-.sc2k-date, .sc2k-funds { height: 18px; padding: 0 8px; display: flex; align-items: center; font-family: var(--font-mono); white-space: nowrap; }
+.sc2k-date, .sc2k-funds { height: 22px; padding: 0 8px; display: flex; align-items: center; font-family: var(--font-mono); white-space: nowrap; }
 .sc2k-date { min-width: 110px; }
 .sc2k-funds { min-width: 96px; justify-content: flex-end; }
 .sc2k-funds.negative { color: var(--danger); }

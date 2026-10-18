@@ -20,6 +20,8 @@ import { btn, downloadBytes, field, h, noteLine, replace } from './wdom';
 export const CITY_LOADED_EVENT = 'sc2k:cityLoaded';
 export const CITY_SAVED_EVENT = 'sc2k:citySaved';
 export const THUMB_W = 96, THUMB_H = 72;
+/** app/session 每游戏年写入的自动存档记录名（列表里显示为 ui.autosave）。 */
+export const AUTOSAVE_NAME = 'autosave';
 const EXT: Readonly<Record<SaveKind, string>> = { sc2: '.sc2', sc2kweb: '.sc2kweb' };
 
 /** 识别文件格式：扩展名优先，其次快照魔数，否则按 .SC2。 */
@@ -146,7 +148,7 @@ export const saveLoadWindow: WindowFactory = (deps) => {
       return h('div', { cls: 'sc2k-win-saverow', testid: 'saves-row', attrs: { 'data-id': String(m.id) } },
         thumb ?? h('div', { cls: 'sc2k-win-thumb sc2k-win-thumb-empty' }),
         h('div', { cls: 'sc2k-win-savemeta' },
-          h('div', { cls: 'sc2k-win-cityname', text: m.name }),
+          h('div', { cls: 'sc2k-win-cityname', text: m.name === AUTOSAVE_NAME ? t('ui.autosave') : m.name }),
           h('div', { cls: 'sc2k-win-muted', text: `${m.cityName} · ${m.year} · ${t('ui.population')} ${thousands(m.population)} · ${t(`ui.saves.kind.${m.kind}`)}` }),
           h('div', { cls: 'sc2k-win-muted', text: `${t('ui.saves.savedAt')} ${timestampLabel(m.savedAt)}` })),
         h('div', { cls: 'sc2k-win-buttons sc2k-win-vertical' },
