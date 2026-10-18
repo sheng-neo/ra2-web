@@ -113,6 +113,7 @@ export function createToolController(deps: ToolControllerDeps): ToolController {
     const p = renderer.pick(px, py);
     return p && inMap(p.x, p.y) ? { x: p.x, y: p.y } : null;
   };
+  /** 只接受 client 坐标（PointerEvent.clientX/Y）；Ptr / lx,ly 已是局部坐标，必须用 tileAtLocal——否则视图不在 (0,0)（菜单栏下方）时会把 rect 偏移减两次（INT-B 修复：点击落点偏移 1–2 格）。 */
   const tileAt = (clientX: number, clientY: number): Tile | null => { const [px, py] = local(clientX, clientY); return tileAtLocal(px, py); };
   /** 以 (px,py) 为锚换档：锚点下的世界点在换档后仍在锚点下（只按平面几何，忽略海拔）。 */
   function setZoom(z: number, anchor?: { px: number; py: number }): void {
@@ -335,7 +336,7 @@ export function createToolController(deps: ToolControllerDeps): ToolController {
   const startPan = (p: Ptr, rightClick: boolean): void => { drag = { kind: 'pan', id: p.id, x: p.x, y: p.y, rightClick }; target.classList.add('panning'); };
   /** 从（起点，当前点）开始工具拖动：Line / Rect 以起点格为 from，Paint 刷起点与当前格。 */
   const startToolDrag = (p: Ptr): void => {
-    const from = tileAt(p.x0, p.y0), cur = tileAt(p.x, p.y);
+    const from = tileAtLocal(p.x0, p.y0), cur = tileAtLocal(p.x, p.y);     // Ptr 坐标已是视图局部坐标
     if (mode === 'Line' && from) { drag = { kind: 'line', id: p.id, from, to: cur ?? from }; updateLine(drag); }
     else if (mode === 'Rect' && from) { drag = { kind: 'rect', id: p.id, from, to: cur ?? from }; updateRect(drag); }
     else if (mode === 'Paint') { const d: Extract<Drag, { kind: 'paint' }> = { kind: 'paint', id: p.id, visited: new Set() }; drag = d; paintAt(d, from); paintAt(d, cur); }
@@ -353,7 +354,7 @@ export function createToolController(deps: ToolControllerDeps): ToolController {
     if (!drag || drag.kind !== 'pending' || drag.id !== id || !p || movedFar(p)) return;
     drag.timer = null; drag = null;
     p.dead = true;
-    const tile = tileAt(p.x, p.y);
+    const tile = tileAtLocal(p.x, p.y);
     if (tile) pickQuery(tile.x, tile.y);
   };
 
@@ -430,17 +431,17 @@ export function createToolController(deps: ToolControllerDeps): ToolController {
       case 'pending': {
         clearTimer(d); drag = null;
         if (cancelled || p.moved) return;
-        const tile = tileAt(lx, ly);
+        const tile = tileAtLocal(lx, ly);
         const tnow = now();
         if (lastTap && tnow - lastTap.t <= GESTURE.doubleTapMs && dist(lastTap.x, lastTap.y, lx, ly) <= GESTURE.doubleTapPx) { lastTap = null; doubleTap(tile); return; }
         lastTap = { t: tnow, x: lx, y: ly };
         tapAt(tile, lx, ly);
         return;
       }
-      case 'press': { drag = null; if (!cancelled && !p.moved) tapAt(tileAt(lx, ly), lx, ly); else updateHover(tileAtLocal(lx, ly)); return; }
+      case 'press': { drag = null; if (!cancelled && !p.moved) tapAt(tileAtLocal(lx, ly), lx, ly); else updateHover(tileAtLocal(lx, ly)); return; }
       case 'pan': {
         drag = null; target.classList.remove('panning');
-        if (!cancelled && d.rightClick && !p.moved) { const tile = tileAt(lx, ly); if (tile) pickQuery(tile.x, tile.y); }
+        if (!cancelled && d.rightClick && !p.moved) { const tile = tileAtLocal(lx, ly); if (tile) pickQuery(tile.x, tile.y); }
         return;
       }
       case 'line': { drag = null; if (cancelled) { setPreview(null); toolHint(baseCost()); } else commit(lineCmd(d.from, d.to)); return; }

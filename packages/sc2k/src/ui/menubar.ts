@@ -1,6 +1,6 @@
 // ===== ui/menubar.ts =====（spec:ui-art §2.2 菜单栏）
 // File / Speed / Options / Disasters（DISASTER_MENU 8 项 + No Disasters；V1_DISASTERS 之外灰掉）/ Windows / Newspaper / Help。
-// 菜单项在每次打开时重建，勾选 / 单选状态直接读 host.state（UI 不维护第二份真源；音效 / 音乐 / 工具栏显隐由外壳本地持有）。
+// 菜单项在每次打开时重建，之后的节流刷新只在签名（勾选 / 禁用 / 文案）变化时重建；勾选 / 单选状态直接读 host.state（UI 不维护第二份真源；音效 / 音乐 / 工具栏显隐由外壳本地持有）。
 import type { SimHost } from '../contracts/host';
 import type { Strings } from '../contracts/strings';
 import type { WindowId } from '../contracts/shell';
@@ -99,11 +99,17 @@ export function createMenuBar(o: MenuBarOptions): MenuBar {
   const el = h('div', { class: 'sc2k-menubar', dataset: { testid: 'menubar' } });
   const rightEl = h('span', { class: 'sc2k-menubar-right' });
   let openId: string | null = null;
-  const menus = new Map<string, { root: HTMLElement; popup: HTMLElement; def: MenuDef }>();
+  const menus = new Map<string, { root: HTMLElement; popup: HTMLElement; def: MenuDef; sig: string }>();
 
-  const render = (m: { popup: HTMLElement; def: MenuDef }): void => {
+  /** 菜单项签名：每 100 ms 的节流 refresh 只在勾选 / 禁用 / 文案真的变了时才重建行（否则行节点不断被替换，点击会落在已脱离 DOM 的节点上）。 */
+  const signature = (items: MenuItemDef[]): string => items.map((it) => `${it.kind ?? 'a'}|${it.label}|${it.checked ? 1 : 0}|${it.disabled ? 1 : 0}|${it.hint ?? ''}`).join('\n');
+  const render = (m: { popup: HTMLElement; def: MenuDef; sig: string }, force = false): void => {
+    const items = m.def.items();
+    const sig = signature(items);
+    if (!force && sig === m.sig) return;
+    m.sig = sig;
     m.popup.replaceChildren();
-    for (const it of m.def.items()) {
+    for (const it of items) {
       if (it.kind === 'sep') { m.popup.appendChild(h('div', { class: 'sc2k-menu-sep' })); continue; }
       const mark = it.kind === 'check' ? (it.checked ? '✓' : '') : it.kind === 'radio' ? (it.checked ? '●' : '') : '';
       const row = h('div', { class: `sc2k-menu-item${it.disabled ? ' disabled' : ''}`, dataset: it.testid ? { testid: it.testid } : undefined, attrs: { role: 'menuitem', 'aria-disabled': !!it.disabled, 'aria-checked': !!it.checked } },
@@ -117,7 +123,7 @@ export function createMenuBar(o: MenuBarOptions): MenuBar {
     if (!m) return;
     if (openId && openId !== id) menus.get(openId)?.root.classList.remove('open');
     openId = id;
-    render(m);
+    render(m, true);
     m.root.classList.add('open');
   };
   const closeAll = (): boolean => {
@@ -132,7 +138,7 @@ export function createMenuBar(o: MenuBarOptions): MenuBar {
     const mroot = h('div', { class: 'sc2k-menu' }, title, popup);
     title.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); if (openId === def.id) closeAll(); else open(def.id); });
     title.addEventListener('pointerenter', () => { if (openId && openId !== def.id) open(def.id); });
-    menus.set(def.id, { root: mroot, popup, def });
+    menus.set(def.id, { root: mroot, popup, def, sig: '' });
     el.appendChild(mroot);
   }
   el.appendChild(rightEl);

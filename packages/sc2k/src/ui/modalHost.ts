@@ -30,12 +30,13 @@ export interface ModalHostOptions {
   onChange?(depth: number): void;
 }
 export interface ModalHost {
-  openFromEvent(id: ModalId, payload: unknown): void;
+  /** onAnswer：外壳需要按答案做事时传入（例如 gameOver 的 1 = 回主菜单）。 */
+  openFromEvent(id: ModalId, payload: unknown, onAnswer?: (n: number) => void): void;
   openFromResult(modal: { id: ModalId; payload: unknown }, onAnswer: (n: number) => void): void;
   openUi(id: ModalId | string, payload: unknown, onAnswer?: (n: number) => void, title?: string): void;
   /** 纯 UI 模态，内容由调用方给出（导入素材面板 / 关于）。 */
   openCustom(id: string, content: ModalContent, onClose?: (n: number) => void): void;
-  /** 关闭最上层模态（视为 answer(n)）；返回是否有模态被关闭。 */
+  /** 关闭最上层模态（视为 answer(n)）；answer 缺省 = 该模态的"安全"答案：命令结果型 −1（取消），其余 0。返回是否有模态被关闭。 */
   closeTop(answer?: number): boolean;
   depth(): number;
   isOpen(id: ModalId | string): boolean;
@@ -126,11 +127,11 @@ export function createModalHost(o: ModalHostOptions): ModalHost {
     o.onChange?.(stack.length);
   }
   return {
-    openFromEvent: (id, payload) => push(id, 'event', payload),
+    openFromEvent: (id, payload, onAnswer) => push(id, 'event', payload, onAnswer),
     openFromResult: (modal, onAnswer) => push(modal.id, 'result', modal.payload, onAnswer),
     openUi: (id, payload, onAnswer, title) => push(id, 'ui', payload, onAnswer, title),
     openCustom: (id, content, onClose) => push(id, 'ui', null, onClose, content.title, content),
-    closeTop: (answer = 0) => { const top = stack[stack.length - 1]; if (!top) return false; finish(top, answer); return true; },
+    closeTop: (answer) => { const top = stack[stack.length - 1]; if (!top) return false; finish(top, answer ?? (top.path === 'result' ? -1 : 0)); return true; },
     depth: () => stack.length,
     isOpen: (id) => stack.some((e) => e.id === id),
     refreshAll: () => { for (const e of stack) e.content.refresh?.(); },

@@ -1,5 +1,6 @@
 // ===== ui/toolbar.ts =====（spec:ui-art §2.3 工具栏：两列按钮 + 子工具弹出条 + 显示开关 + RCI 指示器；ARCHITECTURE §7.6 v1 白名单）
-// 浮动可拖动；按钮行序为本项目固定值（§2.3 表）。不在 V1_TOOL_IDS 的工具隐藏；q.placement.availability 为 false 的置灰并给出原因（UI 不自行判断）；
+// 浮动可拖动；按钮行序为本项目固定值（§2.3 表）。按钮图标优先用 WP9 的 UiIconId 位图（ui/icons.ts），不可用时回退字形占位。
+// 子工具条的行 DOM 只在打开时创建一次，refresh 原地更新可用性 / 选中态（每 100 ms 的节流刷新不再重建行，否则点击会落在被替换的节点上）。不在 V1_TOOL_IDS 的工具隐藏；q.placement.availability 为 false 的置灰并给出原因（UI 不自行判断）；
 // 灾害模式下仅 Bulldozer / Emergency / Query / Signs / 视图可用。RCI 柱高 = |demand| / 2000 × 半幅（zones §2.8.7），数据只来自 state.demand。
 import type { SimHost } from '../contracts/host';
 import type { RendererApi } from '../contracts/rendererApi';
@@ -12,6 +13,7 @@ import { CityMode } from '../contracts/grid';
 import { rejectKey } from '../contracts/strings';
 import { classIf, fmtMoney, h, readJson, writeJson } from './dom';
 import { GROUP_COLOR, GROUP_GLYPH, glyph, swatch, tr } from './theme';
+import { GROUP_ICON, ICON_PX, TOGGLE_ICON, VIEW_ICON, WINDOW_ICON, iconEl, subToolIconId } from './icons';
 import { makeDraggable } from './windowManager';
 import { DISASTER_MODE_GROUPS, HELP_TOOL } from './tools/modes';
 
@@ -106,7 +108,7 @@ export function createToolbar(o: ToolbarOptions): Toolbar {
   };
 
   // ---- DOM ----
-  const grip = h('div', { class: 'sc2k-toolbar-grip', title: tr(strings, 'menu.options.showToolbar') });
+  const grip = h('div', { class: 'sc2k-toolbar-grip', title: tr(strings, 'ui.toolbar', 'menu.options.showToolbar') });
   const grid = h('div', { class: 'sc2k-toolgrid' });
   const el = h('div', { class: 'sc2k-toolbar sc2k-out', dataset: { testid: 'toolbar' } }, grip, grid);
   const popup = h('div', { class: 'sc2k-subtools sc2k-out', dataset: { testid: 'subtools' } });
@@ -114,8 +116,9 @@ export function createToolbar(o: ToolbarOptions): Toolbar {
 
   const groupButton = (group: ToolGroup): HTMLButtonElement => {
     const label = t(`group.${group}`);
-    const btn = h('button', { class: 'sc2k-btn sc2k-toolbtn', type: 'button', title: label, dataset: { group, testid: `tool-group-${group}` } },
-      glyph(GROUP_GLYPH[group], undefined, /^[^A-Za-z]$/.test(GROUP_GLYPH[group])), h('span', { class: 'dot', style: { background: GROUP_COLOR[group] } }), h('span', { class: 'badge' }));
+    const ico = iconEl(GROUP_ICON[group]);
+    const btn = h('button', { class: 'sc2k-btn sc2k-toolbtn', type: 'button', title: label, attrs: { 'aria-label': label }, dataset: { group, testid: `tool-group-${group}` } },
+      ico ?? glyph(GROUP_GLYPH[group], undefined, /^[^A-Za-z]$/.test(GROUP_GLYPH[group])), ico ? null : h('span', { class: 'dot', style: { background: GROUP_COLOR[group] } }), h('span', { class: 'badge' }));
     btn.addEventListener('click', (e) => { e.stopPropagation(); onGroupClick(group); });
     groupBtns.set(group, btn);
     return btn;
@@ -131,11 +134,12 @@ export function createToolbar(o: ToolbarOptions): Toolbar {
       }
       refresh();
     } },
-  }, glyph(VIEW_GLYPH[id], undefined, true));
+  }, iconEl(VIEW_ICON[id]) ?? glyph(VIEW_GLYPH[id], undefined, true));
   const windowButton = (id: WindowId): HTMLButtonElement => {
     const label = t(`window.${id}`);
+    const iconId = WINDOW_ICON[id];
     return h('button', { class: 'sc2k-btn sc2k-toolbtn', type: 'button', title: label, dataset: { win: id, testid: `tool-window-${id}` }, on: { click: () => { closePopup(); o.openWindow(id); } } },
-      glyph(/[㐀-鿿]/.test(label) ? label.slice(0, 1) : label.slice(0, 2)));
+      (iconId !== undefined ? iconEl(iconId) : null) ?? glyph(/[㐀-鿿]/.test(label) ? label.slice(0, 1) : label.slice(0, 2)));
   };
   for (const [a, b] of TOOLBAR_ROWS) {
     for (const cell of [a, b]) {
@@ -151,8 +155,9 @@ export function createToolbar(o: ToolbarOptions): Toolbar {
   // 第 16 行：显示开关
   const toggles = h('div', { class: 'sc2k-toggles' });
   for (const tg of TOGGLES) {
-    const btn = h('button', { class: 'sc2k-btn sc2k-toggle', type: 'button', title: tr(strings, tg.label), text: tg.glyph, dataset: { toggle: tg.key, testid: `tool-toggle-${tg.key}` },
-      on: { click: () => { if (tg.key === 'underground') o.setUnderground(!o.renderer.getView().underground); else o.toggleShow(tg.key); refresh(); } } });
+    const btn = h('button', { class: 'sc2k-btn sc2k-toggle', type: 'button', title: tr(strings, tg.label), dataset: { toggle: tg.key, testid: `tool-toggle-${tg.key}` },
+      on: { click: () => { if (tg.key === 'underground') o.setUnderground(!o.renderer.getView().underground); else o.toggleShow(tg.key); refresh(); } } },
+      iconEl(TOGGLE_ICON[tg.key], 12) ?? tg.glyph);                   // 12 px = 24 px 位图整数缩半，开关按钮只有 ~12 px 宽
     toggleBtns.push(btn);
     toggles.appendChild(btn);
   }
@@ -185,17 +190,38 @@ export function createToolbar(o: ToolbarOptions): Toolbar {
     const fitsRight = right + popup.offsetWidth <= (root.clientWidth || Infinity);
     popup.style.left = `${fitsRight ? right : Math.max(0, el.offsetLeft - popup.offsetWidth - 2)}px`;
   }
+  const popupRows = new Map<ToolId, { row: HTMLElement; cost: HTMLElement }>();
+  /** 打开子工具条时创建行（每行一次）；之后只走 updatePopup 原地刷新。 */
   function renderPopup(): void {
     popup.replaceChildren();
+    popupRows.clear();
+    if (!popupGroup) return;
+    for (const d of groupTools.get(popupGroup) ?? []) {
+      const cost = h('span', { class: 'cost' });
+      const row = h('div', { class: 'sc2k-subtool', dataset: { tool: d.id, testid: `subtool-${d.id}` } },
+        iconEl(subToolIconId(cat, d.id), ICON_PX, 'sub') ?? swatch(GROUP_COLOR[d.group]), h('span', { text: t(d.label) }), cost);
+      row.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (!availabilityOf(d.id).enabled) return;
+        lastSub.set(d.group, d.id); o.setTool(d.id); closePopup(); refresh();
+      });
+      popupRows.set(d.id, { row, cost });
+      popup.appendChild(row);
+    }
+    updatePopup();
+  }
+  function updatePopup(): void {
     if (!popupGroup) return;
     const cur = o.getTool();
-    for (const d of groupTools.get(popupGroup) ?? []) {
-      const a = availabilityOf(d.id);
-      const cost = host.q.economy.costOf(d.id, 1);
-      const row = h('div', { class: `sc2k-subtool${a.enabled ? '' : ' disabled'}${cur === d.id ? ' active' : ''}`, title: a.enabled ? '' : reasonText(a), dataset: { tool: d.id, testid: `subtool-${d.id}` }, attrs: { 'aria-disabled': !a.enabled } },
-        swatch(GROUP_COLOR[d.group]), h('span', { text: t(d.label) }), h('span', { class: 'cost', text: cost > 0 ? fmtMoney(cost) : '' }));
-      if (a.enabled) row.addEventListener('click', (e) => { e.stopPropagation(); lastSub.set(d.group, d.id); o.setTool(d.id); closePopup(); refresh(); });
-      popup.appendChild(row);
+    for (const [id, { row, cost }] of popupRows) {
+      const a = availabilityOf(id);
+      classIf(row, 'disabled', !a.enabled); classIf(row, 'active', cur === id);
+      const title = a.enabled ? '' : reasonText(a);
+      if (row.title !== title) row.title = title;
+      row.setAttribute('aria-disabled', String(!a.enabled));
+      const c = host.q.economy.costOf(id, 1);
+      const txt = c > 0 ? fmtMoney(c) : '';
+      if (cost.textContent !== txt) cost.textContent = txt;
     }
   }
   const openPopup = (group: ToolGroup): void => { popupGroup = group; renderPopup(); popup.style.display = ''; positionPopup(); };
@@ -239,7 +265,7 @@ export function createToolbar(o: ToolbarOptions): Toolbar {
     };
     setBar(bars.r, d.r); setBar(bars.c, d.c); setBar(bars.i, d.i);
     rci.title = `${t('ui.rci.r')} ${d.r} · ${t('ui.rci.c')} ${d.c} · ${t('ui.rci.i')} ${d.i}`;
-    if (popupGroup) renderPopup();
+    if (popupGroup) updatePopup();
   }
   refreshAvailability();
 

@@ -7,6 +7,7 @@ import type { MapLayerMode } from '../../contracts/render';
 import type { WindowFactory } from '../windowTypes';
 import { bindText } from './text';
 import { btn, h } from './wdom';
+import { iconEl, mapLayerIconId } from '../icons';
 
 export const MINIMAP_SIZE = 128, MINIMAP_SCALE = 2;
 /** 视口矩形的半边长（格），按缩放档近似（渲染器 API 不暴露视口像素尺寸）。 */
@@ -24,6 +25,8 @@ export const mapWindow: WindowFactory = (deps) => {
   const buttons = new Map<MapLayerMode, HTMLButtonElement>();
   const column = h('div', { cls: 'sc2k-win-layers' }, ...MAP_LAYER_MODES.map((m) => {
     const b = btn(t(`layer.${m}`), () => { mode = m; draw(); }, { testid: `map-layer-${m}` });
+    const ico = iconEl(mapLayerIconId(m), 12);            // WP9 Map 图层图标（MapLayerBase + 下标，24 px 整数缩半）；无位图时纯文字
+    if (ico) b.prepend(ico);
     buttons.set(m, b);
     return b;
   }));

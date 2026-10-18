@@ -60,9 +60,10 @@ export function createWiredRenderer(): RendererApi { return createRenderer(); }
 export function createWiredProvider(): SpriteProvider { return createProceduralProvider(); }
 export function createWiredAudio(): AudioSink { return createAudioSink(); }
 export function createWiredStrings(lang: 'zh' | 'en' = 'zh'): Strings { return createStrings(lang); }
-export function createWiredAssets(): { store: AssetStore; importer: AssetImporter } {
+/** strings 可选：传入后导入面板用玩家语言显示（contract-rfc WP14-3）；不传则面板用自带回退表。 */
+export function createWiredAssets(strings?: Strings): { store: AssetStore; importer: AssetImporter } {
   const store = createAssetStore();
-  return { store, importer: createAssetImporter(store, sc2Codec) };
+  return { store, importer: createAssetImporter(store, sc2Codec, strings ? { strings } : {}) };
 }
 export function mountWiredShell(opts: ShellOptions): ShellHandle { return mountShell(opts); }
 

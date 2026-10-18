@@ -24,6 +24,7 @@ export default defineConfig({
     viewport: { width: 1280, height: 800 },
     launchOptions: { executablePath: CHROMIUM, args: ['--no-sandbox', '--disable-gpu'] },
     trace: 'retain-on-failure',
+    actionTimeout: 30_000,                                   // 软件渲染下单次真点击 2–5 s；卡住的点击 30 s 内暴露为失败而不是等到用例超时
   },
   webServer: {
     command: `pnpm exec vite --port ${PORT} --strictPort --host 127.0.0.1`,
