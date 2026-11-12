@@ -3,7 +3,7 @@
  * 全部在顶点着色器里按时间循环运动(零 CPU 开销)，整张地图一个 draw call。
  */
 import * as THREE from 'three';
-import { Rng, SHARED } from '../materials';
+import { GLSL_ADDITIVE, GLSL_OUTPUT_FRAGMENT, Rng, SHARED } from '../materials';
 import type { QualitySettings } from '../engine/quality';
 import type { RGB } from './geo';
 
@@ -57,6 +57,9 @@ void main() {
 `;
 
 const FRAGMENT = /* glsl */ `
+#include <common>
+#include <fog_pars_fragment>
+${GLSL_ADDITIVE}
 varying vec3 vColor;
 varying float vAlpha;
 void main() {
@@ -66,7 +69,8 @@ void main() {
   // 亮核 + 柔和光晕
   float a = (1.0 - r);
   a = a * a * 0.6 + smoothstep(0.35, 0.0, r) * 0.9;
-  gl_FragColor = vec4(vColor * a * vAlpha * 1.6, 1.0);
+  gl_FragColor = vec4(kitAdditive(vColor * a * vAlpha * 1.6), 1.0);
+  ${GLSL_OUTPUT_FRAGMENT}
 }
 `;
 

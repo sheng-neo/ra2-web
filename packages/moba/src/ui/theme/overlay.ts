@@ -16,6 +16,26 @@ export function hasOpenDialog(): boolean {
   return openDialogs > 0;
 }
 
+/**
+ * 当前是否有「键盘聚焦中的按钮」：有的话回车/空格应交给它，界面级快捷键让路。
+ * 鼠标点过的按钮虽然也持有焦点，但没有可见焦点环，不算。
+ */
+export function isButtonKeyFocused(within?: HTMLElement): boolean {
+  const el = document.activeElement;
+  if (!(el instanceof HTMLButtonElement)) return false;
+  if (within && !within.contains(el)) return false;
+  return focusVisible(el);
+}
+
+/** 旧浏览器不认识 :focus-visible 选择器时 matches 会抛错：那就一律当作「键盘聚焦」，行为退回到最保守 */
+function focusVisible(el: Element): boolean {
+  try {
+    return el.matches(':focus-visible');
+  } catch {
+    return true;
+  }
+}
+
 export interface DialogOptions {
   title: string;
   content: Child | Child[];
@@ -40,7 +60,10 @@ export interface Dialog {
 export function openDialog(root: HTMLElement, o: DialogOptions): Dialog {
   const closable = o.closable !== false;
   let closed = false;
-  const prevFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  // 只有键盘操作(焦点环可见)打开的对话框，关闭后才把焦点还回去；
+  // 鼠标/触控点开的不还，否则之后按回车会再次触发那个按钮
+  const active = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  const prevFocus = active && focusVisible(active) ? active : null;
 
   const title = h('h2', 'sf-dialog__title sf-metal', o.title);
   const closeBtn = closable ? h('button', 'sf-iconbtn sf-iconbtn--quiet', icon(CLOSE_SVG)) : null;
@@ -66,9 +89,11 @@ export function openDialog(root: HTMLElement, o: DialogOptions): Dialog {
     closed = true;
     openDialogs = Math.max(0, openDialogs - 1);
     window.removeEventListener('keydown', onKey, true);
+    document.removeEventListener('focusin', onFocusIn);
     scrim.classList.add('is-leaving');
     window.setTimeout(() => scrim.remove(), 180);
     if (prevFocus && prevFocus.isConnected) prevFocus.focus({ preventScroll: true });
+    else if (document.activeElement instanceof HTMLElement && scrim.contains(document.activeElement)) document.activeElement.blur();
     o.onClose?.();
   };
   const onKey = (ev: KeyboardEvent): void => {
@@ -78,11 +103,19 @@ export function openDialog(root: HTMLElement, o: DialogOptions): Dialog {
     ev.preventDefault();
     close();
   };
+  // 焦点陷阱：Tab 走到对话框外面时拉回来，键盘用户不会「掉」到遮罩后面的界面上
+  const onFocusIn = (ev: FocusEvent): void => {
+    if (closed || !scrim.isConnected) return;
+    // 只有最上层的对话框负责拉回焦点
+    if (scrim.nextElementSibling?.classList.contains('sf-dialog-scrim')) return;
+    if (ev.target instanceof Node && !scrim.contains(ev.target)) panel.focus({ preventScroll: true });
+  };
   scrim.addEventListener('pointerdown', (ev) => {
     if (ev.target === scrim && closable) close();
   });
   closeBtn?.addEventListener('click', close);
   window.addEventListener('keydown', onKey, true);
+  document.addEventListener('focusin', onFocusIn);
 
   openDialogs++;
   root.appendChild(scrim);
@@ -95,6 +128,20 @@ export function openDialog(root: HTMLElement, o: DialogOptions): Dialog {
 let tipEl: HTMLDivElement | null = null;
 let tipOwner: HTMLElement | null = null;
 let tipTimer = 0;
+let tipDocBound = false;
+
+/** 全局只挂一个监听：点到提示目标以外的地方就收起（触控时没有 pointerleave 可依赖） */
+function bindTipDismiss(): void {
+  if (tipDocBound) return;
+  tipDocBound = true;
+  document.addEventListener(
+    'pointerdown',
+    (ev) => {
+      if (tipOwner && ev.target instanceof Node && !tipOwner.contains(ev.target)) hideTip();
+    },
+    true,
+  );
+}
 
 function hideTip(): void {
   window.clearTimeout(tipTimer);
@@ -199,15 +246,12 @@ export function attachTooltip(target: HTMLElement, content: () => string | Node,
   };
   const onCancel = (): void => window.clearTimeout(pressTimer);
   const onFocus = (): void => {
-    if (target.matches(':focus-visible')) open();
+    if (focusVisible(target)) open();
   };
   const onBlur = (): void => {
     if (tipOwner === target) hideTip();
   };
-  // 触控时点到别处收起
-  const onDocDown = (ev: PointerEvent): void => {
-    if (tipOwner === target && ev.target instanceof Node && !target.contains(ev.target)) hideTip();
-  };
+  bindTipDismiss();
 
   target.addEventListener('pointerenter', onEnter);
   target.addEventListener('pointerleave', onLeave);
@@ -217,7 +261,6 @@ export function attachTooltip(target: HTMLElement, content: () => string | Node,
   target.addEventListener('pointercancel', onCancel);
   target.addEventListener('focus', onFocus);
   target.addEventListener('blur', onBlur);
-  document.addEventListener('pointerdown', onDocDown, true);
 
   return () => {
     window.clearTimeout(pressTimer);
@@ -230,11 +273,30 @@ export function attachTooltip(target: HTMLElement, content: () => string | Node,
     target.removeEventListener('pointercancel', onCancel);
     target.removeEventListener('focus', onFocus);
     target.removeEventListener('blur', onBlur);
-    document.removeEventListener('pointerdown', onDocDown, true);
   };
 }
 
 /** 立即收起当前提示浮层（切屏/销毁界面时调用） */
 export function dismissTooltip(): void {
   hideTip();
+}
+
+/**
+ * 以编程方式在 target 旁显示提示浮层：给手势自定义的控件用（如 HUD 技能键的长按——它的按下/拖动另有含义，
+ * 不能直接套 attachTooltip）。autoHideMs > 0 时到时自动收起；点到 target 以外同样会收起。
+ */
+export function showTooltip(target: HTMLElement, content: string | Node, autoHideMs = 0): void {
+  bindTipDismiss();
+  window.clearTimeout(tipTimer);
+  showTip(target, content);
+  if (autoHideMs > 0) {
+    tipTimer = window.setTimeout(() => {
+      if (tipOwner === target) hideTip();
+    }, autoHideMs);
+  }
+}
+
+/** 当前提示浮层是否挂在 target 上（用于「再点一次收起」之类的切换） */
+export function isTooltipOpenFor(target: HTMLElement): boolean {
+  return tipOwner === target && !!tipEl && tipEl.classList.contains('is-open');
 }

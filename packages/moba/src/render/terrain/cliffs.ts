@@ -105,14 +105,14 @@ export function buildCliff(b: MeshBuilder, poly: Polygon, seed: number): CliffIn
       case 0: // 崖脚：与碰撞轮廓重合
         d = 0;
         y = -0.05;
-        color = scaleRgb(ROCK_DARK, 0.7);
-        ao = 0.55;
+        color = mixRgb(ROCK_DARK, ROCK, 0.2);
+        ao = 0.7;
         break;
       case 1:
         d = 0.07 + j * 0.6 + c * 0.14;
         y = ledgeY[i] - 0.1;
-        color = mixRgb(ROCK_DARK, ROCK, 0.6 - c * 0.3);
-        ao = 0.8;
+        color = mixRgb(ROCK_DARK, ROCK, 0.65 - c * 0.3);
+        ao = 0.9;
         break;
       case 2: // 窄石台(朝上的小面，接住高光)
         d = 0.27 + j + c * 0.12;
@@ -145,7 +145,9 @@ export function buildCliff(b: MeshBuilder, poly: Polygon, seed: number): CliffIn
       }
     }
     const de = Math.min(d, r.maxD);
-    return { t: de * r.k, y, color: scaleRgb(color, tone[i]), ao };
+    // 岩面叠满岩石肌理，草顶只留一点点
+    const tex = k <= 5 ? 1 : k === 6 ? 0.5 : 0.1;
+    return { t: de * r.k, y, color: scaleRgb(color, tone[i]), ao, tex };
   });
   return {
     poly,

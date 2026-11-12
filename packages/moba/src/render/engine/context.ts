@@ -15,6 +15,15 @@
  *   };
  *
  * 模块之间通过 ctx.unitQuery / ctx.terrain / ctx.getModule(name) 协作，不直接互相 import 实现。
+ *
+ * 约定：
+ * - 坐标：模拟 (x, y) → 世界 (x, 高度, z = y)；朝向 facing = atan2(y, x)，模型 +x 朝前时绕 y 轴旋转 -facing。
+ * - 透明物体的 renderOrder：水面 1，瀑布 2，地形贴地纹样 3，单位脚下光环 4，技能地面贴花/预警圈 5，
+ *   环境粒子 6，特效粒子/拖尾 ≥ 7。贴地透明物一律 depthWrite=false，并略高于地面(y ≥ 0.03)或开 polygonOffset。
+ * - 受光物体用 materials.ts 的 createToonMaterial；需要投影的网格设 castShadow=true(阴影相机自动贴合镜头)。
+ * - 灯光数量固定(主光 + 半球光 + 点光池)，不要往场景里增删灯：灯数变化会让所有受光 shader 重编译。
+ *   需要技能闪光用 ctx.lights.pulse(...)。
+ * - 每帧热路径不要分配对象；静态物体设 matrixAutoUpdate=false。
  */
 import type * as THREE from 'three';
 import type { GameEvent, GameState, MapData, PlayerTeam, Vec2 } from '../../core/types';

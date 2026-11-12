@@ -2,7 +2,7 @@
  * 区域效果：持续存在一段时间的地面/跟随效果（预警圈、减速场、持续伤害区…）。
  * 引擎只负责计时、跟随、周期回调与事件；具体效果由回调里的技能脚本决定。
  */
-import type { SimArea, SimUnit } from './internal';
+import { hideFields, type SimArea, type SimUnit } from './internal';
 import type { AreaVisual, TeamId, Vec2 } from './types';
 import type { Sim } from './world';
 
@@ -35,6 +35,7 @@ export function spawnArea(sim: Sim, o: AreaOpts): SimArea {
     tickInterval: interval, tickLeft: o.firstTick ?? interval, dead: false, endWithFollow: o.endWithFollow !== false,
     onTick: o.onTick ?? null, onEnd: o.onEnd ?? null,
   };
+  hideFields(a, 'onTick', 'onEnd');
   sim.areas.push(a);
   sim.emit({ type: 'areaSpawn', id: a.id, visual: a.visual, pos: { x: a.pos.x, y: a.pos.y }, radius: a.radius, duration: a.duration });
   return a;

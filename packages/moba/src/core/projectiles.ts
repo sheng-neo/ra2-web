@@ -3,7 +3,7 @@
  * 事件：projectileSpawn → projectileHit(可多次) → projectileEnd。
  */
 import { isTargetable } from './entity';
-import type { SimProjectile, SimUnit, UnitFilter } from './internal';
+import { hideFields, type SimProjectile, type SimUnit, type UnitFilter } from './internal';
 import type { ProjectileVisual, TeamId, Vec2 } from './types';
 import { distSqToSegment, projectT } from './vec';
 import type { Sim } from './world';
@@ -52,6 +52,7 @@ function make(sim: Sim, visual: ProjectileVisual, owner: SimUnit, from: Vec2, te
     homing: false, pierce: false, dead: false, filter: null, hitIds: [], onHit: null, onEnd: null,
     basic: false, ad: 0, dtype: 'physical', vsStructure: 1, vsMinion: 1,
   };
+  hideFields(p, 'filter', 'onHit', 'onEnd', 'hitIds');
   sim.projectiles.push(p);
   sim.emit({ type: 'projectileSpawn', id: p.id, visual, pos: { x: from.x, y: from.y }, ownerId: owner.id });
   return p;

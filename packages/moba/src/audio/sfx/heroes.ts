@@ -351,10 +351,11 @@ export const HEROES_SFX = {
   }, { ...FX, loud: -18, len: 0.6, rev: 0.24 }),
   fx_yeque_ult_strike: def('技能特效', '夜阙·处决斩击', (p) => {
     const dr = p.drive(3);
-    p.osc({ f: 112, f1: 35, ft: 0.12, a: 0.003, d: 0.42, g: 0.6, to: dr });
-    // 两记交叉斩
-    p.noise({ flt: 'bandpass', fc: 4000, q: 1, a: 0.001, d: 0.05, g: 0.9, to: dr });
-    p.noise({ flt: 'bandpass', fc: 4600, q: 1, t: 0.07, a: 0.001, d: 0.06, g: 0.9, to: dr });
+    p.osc({ f: 112, f1: 35, ft: 0.12, a: 0.003, d: 0.3, g: 0.55, to: dr });
+    // 两记交叉斩 + 一道向上撕开的刃鸣
+    p.noise({ flt: 'bandpass', fc: 4000, q: 1, a: 0.001, d: 0.09, g: 0.9, to: dr });
+    p.noise({ flt: 'bandpass', fc: 4600, q: 1, t: 0.07, a: 0.001, d: 0.1, g: 0.9, to: dr });
+    p.noise({ flt: 'bandpass', fc: 3000, fc1: 7000, q: 2, t: 0.02, a: 0.01, d: 0.16, g: 0.45 });
     p.ring(2300, DAGGER, { a: 0.001, d: 0.5, g: 0.2 });
     p.ring(2750, DAGGER, { t: 0.07, a: 0.001, d: 0.5, g: 0.16 });
     // 低沉的三全音和弦刺入

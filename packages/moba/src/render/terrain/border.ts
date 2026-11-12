@@ -14,14 +14,15 @@ import { MeshBuilder, type OutlinePoint, type RGB, type SceneryBatcher, extrudeR
 import type { PropLibrary } from './models';
 import { type ScatterResult, trs } from './scatter';
 
-const ROCK_DARK = rgb(0x5a5f70);
-const ROCK = rgb(0x828898);
-const ROCK_LIGHT = rgb(0xb2b8c6);
+const ROCK_DARK = rgb(PALETTE.env.rockDark);
+const ROCK = rgb(PALETTE.env.rock);
+const ROCK_LIGHT = rgb(PALETTE.env.rockLight);
 const ROCK_WARM = rgb(0xcdc7b6);
 const MOSS = rgb(0x4d9259);
-const FOREST_FLOOR = rgb(0x4f9552);
-const FOREST_FLOOR_LIGHT = rgb(0x7db457);
+const FOREST_FLOOR = rgb(0x2f6a40);
+const FOREST_FLOOR_LIGHT = rgb(0x4c8c46);
 const DEEP = rgb(0x4b5878);
+const EARTH = rgb(0x6f6a44);
 
 /** 崖顶基准高度 */
 const BAND_H = 2.7;
@@ -85,7 +86,8 @@ function borderLoop(bound: number, step: number): { pts: Vec2[]; sideStart: numb
 
 const RING_COUNT = 18;
 
-export function buildBorder(field: MapField, info: BorderInfo, root: THREE.Object3D, material: THREE.Material): void {
+export function buildBorder(field: MapField, info: BorderInfo, root: THREE.Object3D, material: THREE.Material): THREE.Mesh[] {
+  const meshes: THREE.Mesh[] = [];
   const bound = field.map.bound;
   const { pts, sideStart } = borderLoop(bound, 1.25);
   const outline = outlineNormals(pts, true);
@@ -95,7 +97,7 @@ export function buildBorder(field: MapField, info: BorderInfo, root: THREE.Objec
   const redStone = rgb(0x5a4c55);
   const redStoneDark = rgb(PALETTE.red.stoneDark);
 
-  const ring = (p: OutlinePoint, i: number, k: number): { t: number; y: number; color: RGB; ao?: number } => {
+  const ring = (p: OutlinePoint, i: number, k: number): { t: number; y: number; color: RGB; ao?: number; tex?: number } => {
     const sw = info.southWeight(p.x, p.z);
     const seedI = i * 13 + 7;
     const j = (hash2(seedI, k, 5) - 0.5) * 0.1;
@@ -137,13 +139,13 @@ export function buildBorder(field: MapField, info: BorderInfo, root: THREE.Objec
       const inBaseK = inBase ? 0.25 : 1;
       t = lerp(hi[k][0] * (inBase && k < 5 ? inBaseK * 0.6 + 0.4 : 1), lo[k][0], sw);
       y = lerp(hi[k][1], lo[k][1], sw);
-      const rockCols: RGB[] = [scaleRgb(ROCK_DARK, 0.7), mixRgb(ROCK_DARK, ROCK, 0.6 - crack * 0.3), mixRgb(ROCK_LIGHT, MOSS, hash2(i, 5, 51) * 0.4), ROCK, mixRgb(ROCK, ROCK_LIGHT, 0.55), mixRgb(ROCK_LIGHT, ROCK_WARM, 0.6)];
+      const rockCols: RGB[] = [mixRgb(ROCK_DARK, ROCK, 0.2), mixRgb(ROCK_DARK, ROCK, 0.65 - crack * 0.3), mixRgb(ROCK_LIGHT, MOSS, hash2(i, 5, 51) * 0.4), ROCK, mixRgb(ROCK, ROCK_LIGHT, 0.55), mixRgb(ROCK_LIGHT, ROCK_WARM, 0.6)];
       const stoneCols: RGB[] = [scaleRgb(stoneDark, 0.75), mixRgb(stoneDark, stone, 0.5), stone, mixRgb(stoneDark, stone, 0.7), stone, scaleRgb(stone, 1.05)];
       const lowCols: RGB[] = [scaleRgb(ROCK, 0.8), ROCK_LIGHT, mixRgb(ROCK_LIGHT, ROCK_WARM, 0.7), ROCK_LIGHT, ROCK, ROCK_DARK];
       const hiCol = inBase ? stoneCols[k] : rockCols[k];
       const loCol = inBase ? stoneCols[Math.min(5, k + 1)] : lowCols[k];
       color = mixRgb(hiCol, loCol, sw);
-      if (k === 0) ao = 0.6;
+      if (k === 0) ao = 0.72;
       // 西北角出水口：崖沿压低一点、染成湿石色
       const spring = river * (1 - sw);
       if (spring > 0 && k >= 3) {
@@ -160,7 +162,11 @@ export function buildBorder(field: MapField, info: BorderInfo, root: THREE.Objec
         const pz = p.z + p.nz * t * p.miter;
         y = info.heightAt(px, pz);
         const g = fbm2(px * 0.16, pz * 0.16, 3, 33);
+        const patch = fbm2(px * 0.05 + 4, pz * 0.05, 2, 71);
+        // 林地：深浅草色 + 成片的落叶土；南侧低台整体压暗一些，把视线留给对局区
         let c = mixRgb(FOREST_FLOOR, FOREST_FLOOR_LIGHT, g);
+        c = mixRgb(c, EARTH, smoothstep(0.55, 0.75, patch) * 0.6);
+        c = scaleRgb(c, lerp(1, 0.78, sw));
         if (k === 6) c = mixRgb(mixRgb(ROCK_LIGHT, MOSS, 0.6 + sw * 0.3), c, 0.4);
         if (k === 13) c = mixRgb(ROCK_LIGHT, ROCK_WARM, 0.5);
         if (inBase && k === 6) c = mixRgb(stone, c, 0.3);
@@ -179,7 +185,8 @@ export function buildBorder(field: MapField, info: BorderInfo, root: THREE.Objec
         color = [ROCK, mixRgb(ROCK, ROCK_DARK, 0.6), mixRgb(ROCK_DARK, DEEP, 0.5), DEEP][k - 14];
       }
     }
-    return { t: t * p.miter, y, color: scaleRgb(color, tone), ao };
+    const tex = k <= 5 || k >= 13 ? 1 : k === 6 ? 0.5 : 0.1;
+    return { t: t * p.miter, y, color: scaleRgb(color, tone), ao, tex };
   };
 
   // 每条边一个网格(含两端的拐角点)，便于视锥剔除
@@ -201,7 +208,9 @@ export function buildBorder(field: MapField, info: BorderInfo, root: THREE.Objec
     mesh.receiveShadow = true;
     mesh.matrixAutoUpdate = false;
     root.add(mesh);
+    meshes.push(mesh);
   }
+  return meshes;
 }
 
 /** 装饰带上的林木、山石与巨型星晶 */
@@ -209,7 +218,7 @@ export function scatterBorder(batch: SceneryBatcher, lib: PropLibrary, field: Ma
   const bound = field.map.bound;
   const rng = new Rng(31415);
   const ext = bound + 26;
-  const step = 2.7;
+  const step = 2.8;
   const placed: [number, number, number][] = [];
   for (let z = -ext; z <= ext; z += step) {
     for (let x = -ext; x <= ext; x += step) {
@@ -230,11 +239,11 @@ export function scatterBorder(batch: SceneryBatcher, lib: PropLibrary, field: Ma
       const y = info.heightAt(px, pz);
       const roll = rng.next();
       const dens = 0.5 + fbm2(px * 0.05, pz * 0.05, 2, 12) * 0.5;
-      if (roll < 0.62 * dens + 0.12) {
+      if (roll < (0.62 * dens + 0.16) * (t < 9 ? 1.3 : 1)) {
         let ok = true;
         for (let i = placed.length - 1; i >= Math.max(0, placed.length - 60); i--) {
           const q = placed[i];
-          if (Math.hypot(q[0] - px, q[1] - pz) < 1.9) ok = false;
+          if (Math.hypot(q[0] - px, q[1] - pz) < 1.7) ok = false;
         }
         if (!ok) continue;
         placed.push([px, pz, 1]);
@@ -246,8 +255,9 @@ export function scatterBorder(batch: SceneryBatcher, lib: PropLibrary, field: Ma
           const sc = rng.range(0.85, 1.35) * (sw > 0.5 ? 0.8 : 1);
           batch.add(rng.pick(lib.pines), trs(px, y - 0.1, pz, rng.range(0, 6.28), sc, sc * rng.range(0.9, 1.2)), { tint });
         } else {
+          // 紧邻对局区的第一排用精细树，其余用低面数的远景树
           const sc = rng.range(1.0, 1.55) * (sw > 0.5 ? 0.8 : 1);
-          batch.add(rng.pick(lib.trees), trs(px, y - 0.1, pz, rng.range(0, 6.28), sc, sc * rng.range(0.95, 1.15)), { tint });
+          batch.add(rng.pick(t < 4.5 ? lib.trees : lib.farTrees), trs(px, y - 0.1, pz, rng.range(0, 6.28), sc, sc * rng.range(0.95, 1.15)), { tint });
         }
       } else if (roll < 0.74) {
         const sc = rng.range(0.7, 1.9);
@@ -263,6 +273,23 @@ export function scatterBorder(batch: SceneryBatcher, lib: PropLibrary, field: Ma
       } else if (roll < 0.83 && sw < 0.5) {
         batch.add(rng.pick(lib.tallPillars), trs(px, y - 0.1, pz, rng.range(0, 6.28), rng.range(1.2, 1.7), rng.range(1.2, 1.9), rng.range(-0.08, 0.08), rng.range(-0.08, 0.08)), { tint: [0.95, 0.95, 0.92], glow: 0.9 });
       }
+    }
+  }
+  // 林下的矮草与野花：打破大片纯色的林地
+  const r2 = new Rng(27182);
+  const fine = 1.7;
+  const flowerTints: RGB[] = [rgb(0xffffff), rgb(0xffe07a), rgb(0xff9ec4), rgb(0x9fd0ff)];
+  for (let z = -ext; z <= ext; z += fine) {
+    for (let x = -ext; x <= ext; x += fine) {
+      const px = x + r2.range(-0.5, 0.5) * fine;
+      const pz = z + r2.range(-0.5, 0.5) * fine;
+      const t = Math.max(Math.abs(px), Math.abs(pz)) - bound;
+      if (t < 1.2 || t > info.edgeDist(px, pz) - 1.2) continue;
+      if (field.riverDist(px, pz) < 1.2) continue;
+      if (!r2.chance(0.7)) continue;
+      const y = info.heightAt(px, pz) - 0.04;
+      if (r2.chance(0.14)) batch.add(r2.pick(lib.flowers), trs(px, y, pz, r2.range(0, 6.28), r2.range(1.4, 2.2)), { tint: r2.pick(flowerTints), shadow: false, maskedTint: true });
+      else batch.add(r2.pick(lib.tufts), trs(px, y, pz, r2.range(0, 6.28), r2.range(1.5, 2.6)), { shadow: false, tint: [0.8, 0.95, 0.75] });
     }
   }
 }
@@ -288,15 +315,17 @@ uniform sampler2D tNoise;
 uniform float uTime;
 varying vec2 vUv;
 void main() {
-  // u: 横向 0..1；v: 沿水流方向的米数
+  // u: 横向 0..1；v: 沿水流方向的米数。几股粗细不一的水柱 + 快速下泻的白沫
   float t = uTime;
-  float n1 = texture2D(tNoise, vec2(vUv.x * 0.9, vUv.y * 0.11 - t * 0.42)).g;
-  float n2 = texture2D(tNoise, vec2(vUv.x * 2.1 + 0.3, vUv.y * 0.23 - t * 0.71)).b;
-  float streak = smoothstep(0.35, 0.75, n1 * 0.6 + n2 * 0.4);
-  float edge = smoothstep(0.0, 0.14, vUv.x) * smoothstep(1.0, 0.86, vUv.x);
-  vec3 col = mix(vec3(0.34, 0.74, 0.9), vec3(1.0), streak);
-  float a = edge * (0.62 + 0.38 * streak);
-  gl_FragColor = vec4(col * 0.92, a);
+  float n1 = texture2D(tNoise, vec2(vUv.x * 0.7, vUv.y * 0.09 - t * 0.5)).g;
+  float n2 = texture2D(tNoise, vec2(vUv.x * 1.9 + 0.3, vUv.y * 0.2 - t * 0.85)).b;
+  float cols = texture2D(tNoise, vec2(vUv.x * 0.45 + 0.2, 0.37)).g;
+  float streak = smoothstep(0.42, 0.72, n1 * 0.55 + n2 * 0.45);
+  float body = smoothstep(0.3, 0.55, cols + streak * 0.25);
+  float edge = smoothstep(0.0, 0.2, vUv.x) * smoothstep(1.0, 0.8, vUv.x);
+  vec3 col = mix(vec3(0.16, 0.56, 0.86), vec3(0.95, 1.0, 1.0), streak);
+  float a = edge * mix(0.3, 0.92, body) * (0.55 + 0.45 * streak);
+  gl_FragColor = vec4(col, a);
   ${GLSL_OUTPUT_FRAGMENT}
 }
 `;
@@ -314,10 +343,10 @@ export function createWaterfalls(field: MapField, info: BorderInfo, noise: THREE
   const b = field.map.bound;
   const strips: FallStrip[] = [];
   const V = (x: number, y: number, z: number): THREE.Vector3 => new THREE.Vector3(x, y, z);
-  const topY = BAND_H - 0.55;
+  const topY = BAND_H - 1.0;
   // 西北：北崖面(朝南，镜头正对)与西崖面各一道
-  strips.push({ top: [V(-b + 1.2, topY, -b - 0.5), V(-b + 4.6, topY, -b - 0.5)], bottom: [V(-b + 0.9, WATER_LEVEL, -b + 0.1), V(-b + 4.9, WATER_LEVEL, -b + 0.1)], bulge: V(0, 0, 0.3) });
-  strips.push({ top: [V(-b - 0.5, topY, -b + 4.4), V(-b - 0.5, topY, -b + 1.6)], bottom: [V(-b + 0.1, WATER_LEVEL, -b + 4.7), V(-b + 0.1, WATER_LEVEL, -b + 1.3)], bulge: V(0.3, 0, 0) });
+  strips.push({ top: [V(-b + 1.5, topY, -b - 0.42), V(-b + 4.3, topY, -b - 0.42)], bottom: [V(-b + 1.1, WATER_LEVEL, -b + 0.25), V(-b + 4.7, WATER_LEVEL, -b + 0.25)], bulge: V(0, 0, 0.22) });
+  strips.push({ top: [V(-b - 0.42, topY, -b + 4.2), V(-b - 0.42, topY, -b + 1.8)], bottom: [V(-b + 0.25, WATER_LEVEL, -b + 4.6), V(-b + 0.25, WATER_LEVEL, -b + 1.4)], bulge: V(0.22, 0, 0) });
   out.glows.push({ x: -b + 2.9, z: -b + 0.8, y: WATER_LEVEL + 0.03, r: 2.6, color: [0.8, 0.95, 1] });
   out.glows.push({ x: -b + 0.8, z: -b + 3.0, y: WATER_LEVEL + 0.03, r: 2.2, color: [0.8, 0.95, 1] });
   // 东南：越过南侧石沿跌到低台

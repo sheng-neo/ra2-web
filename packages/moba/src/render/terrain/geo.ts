@@ -330,6 +330,8 @@ export interface RingVertex {
   color: RGB;
   ao?: number;
   glow?: number;
+  /** 写入 aFx.z：配合材质的 mapMask 选项表示「岩石肌理强度」 */
+  tex?: number;
 }
 
 /**
@@ -344,7 +346,7 @@ export function extrudeRings(b: MeshBuilder, outline: OutlinePoint[], closed: bo
     for (let i = 0; i < n; i++) {
       const p = outline[i];
       const rv = ring(p, i, k);
-      row.push(b.vertex(p.x + p.nx * rv.t, rv.y, p.z + p.nz * rv.t, rv.color, 0, 1, 0, 0, rv.glow ?? 0, 0, rv.ao ?? 1));
+      row.push(b.vertex(p.x + p.nx * rv.t, rv.y, p.z + p.nz * rv.t, rv.color, 0, 1, 0, 0, rv.glow ?? 0, rv.tex ?? 0, rv.ao ?? 1));
     }
     idx.push(row);
   }

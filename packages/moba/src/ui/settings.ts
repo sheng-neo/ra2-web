@@ -82,10 +82,10 @@ const QUALITY_HINT: Record<Quality, string> = {
 };
 
 const CSS = sfCss(`
-.sf-settings { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, max(250px, 300u)), 1fr)); gap: 6u 36u; }
+.sf-settings { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, max(250px, 300u)), 1fr)); gap: 16u 36u; }
 .sf-settings__group { display: flex; flex-direction: column; gap: 2u; min-width: 0; }
 .sf-settings__group > .sf-heading { margin-bottom: 6u; }
-.sf-settings .sf-field { grid-template-columns: max-content 1fr; }
+.sf-settings .sf-field { grid-template-columns: minmax(max(92px, 104u), max-content) 1fr; }
 .sf-settings__row { cursor: pointer; border-radius: 6u; }
 .sf-settings__quality { margin-top: 2u; }
 .sf-settings__foot { display: flex; align-items: center; gap: 12u; width: 100%; }
@@ -230,6 +230,8 @@ export function createSettingsPanel(o: SettingsPanelOptions): SettingsPanel {
 }
 
 export interface SettingsDialogOptions extends SettingsPanelOptions {
+  /** 对话框标题；缺省：对局内「游戏暂停」，菜单内「设置」 */
+  title?: string;
   /** 对话框以任何方式关闭后调用（对局内可在此恢复游戏） */
   onClose?(): void;
 }
@@ -252,7 +254,7 @@ export function openSettingsDialog(root: HTMLElement, o: SettingsDialogOptions):
     },
   });
   const dialog = openDialog(root, {
-    title: o.mode === 'match' ? '游戏暂停' : '设置',
+    title: o.title ?? (o.mode === 'match' ? '游戏暂停' : '设置'),
     content: panel.el,
     footer: panel.footer,
     width: u(780),

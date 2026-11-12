@@ -26,9 +26,12 @@ function pathsOf(view: BotView): Record<LaneId, LanePath> {
 
 const edgeDist = (a: Vec2, u: Unit): number => Math.hypot(u.pos.x - a.x, u.pos.y - a.y) - u.radius;
 
+/** 这个时间之后全员抱团推中路，保证对局能分出胜负 */
+const GROUP_TIME = 9 * 60;
+
 export class FallbackBot implements BotController {
   readonly interval = 0.25;
-  private readonly lane: LaneId;
+  private lane: LaneId;
   /** 沿兵线前进方向：蓝 +1，红 -1 */
   private readonly dir: 1 | -1;
   private retreating = false;
@@ -51,6 +54,7 @@ export class FallbackBot implements BotController {
     const me = v.hero;
     this.shop(v);
     if (!me.alive || v.state.over) return;
+    if (v.time >= GROUP_TIME) this.lane = 'mid';
     const hpRatio = me.hp / me.stats.maxHp;
     const fountain = v.map.bases[v.team].fountain;
     const toFountain = Math.hypot(me.pos.x - fountain.x, me.pos.y - fountain.y);
@@ -68,8 +72,13 @@ export class FallbackBot implements BotController {
       let threatened = v.enemyStructureCovering(me.pos, 1) !== null;
       for (const e of v.enemies()) if (edgeDist(me.pos, e) < 11) threatened = true;
       if (!threatened && toFountain > 25) {
-        if (!channeling && v.skillReady('recall')) v.command({ type: 'cast', slot: 'recall' });
-        if (channeling || v.skillReady('recall')) return;
+        // 安全且离家远：原地回城（引导期间不能再下移动命令，否则会打断）
+        if (channeling) return;
+        if (v.skillReady('recall')) {
+          v.command({ type: 'cast', slot: 'recall' });
+          this.lastGoal.x = 1e9;
+          return;
+        }
       }
       this.moveTo(v, fountain);
       return;

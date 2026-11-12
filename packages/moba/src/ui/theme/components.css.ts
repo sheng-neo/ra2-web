@@ -155,14 +155,13 @@ const BODY = sfCss(`
 .sf-btn--sm { --sf-btn-h: max(36px, 36u); --sf-btn-cut: 6u; padding: 0 14u; font-size: var(--sf-fs-sm); letter-spacing: 0.08em; }
 .sf-btn--lg { --sf-btn-h: max(48px, 60u); --sf-btn-cut: 13u; padding: 0 40u; font-size: max(17px, 23u); font-weight: 800; letter-spacing: 0.28em; }
 .sf-btn--block { display: flex; width: 100%; }
-/* 主按钮呼吸光：用于每屏唯一的主行动 */
-.sf-btn--pulse { animation: sf-btn-pulse 2.4s ease-in-out infinite; }
-@keyframes sf-btn-pulse {
-  0%, 100% { filter: drop-shadow(0 0 4u rgba(255, 214, 130, 0.25)); }
-  50% { filter: drop-shadow(0 0 16u rgba(255, 214, 130, 0.7)); }
+/* 主按钮呼吸光：用于每屏唯一的主行动。只动 opacity（合成层动画），不逐帧重算滤镜 */
+.sf-btn__glow {
+  position: absolute; inset: -12u -16u; z-index: -2; pointer-events: none; border-radius: 50%;
+  background: radial-gradient(closest-side, rgba(255, 214, 130, 0.75), rgba(255, 214, 130, 0.28) 55%, rgba(255, 214, 130, 0));
+  animation: sf-btn-pulse 2.4s ease-in-out infinite;
 }
-@media (hover: hover) { .sf-btn--pulse:hover { animation: none; } }
-.sf-btn--pulse:active { animation: none; }
+@keyframes sf-btn-pulse { 0%, 100% { opacity: 0.25; } 50% { opacity: 1; } }
 
 /* 图标按钮 */
 .sf-iconbtn {
@@ -373,6 +372,7 @@ button.sf-slot:active { transform: scale(0.94); }
   display: flex; flex-direction: column; width: min(100%, max(300px, var(--sf-dialog-w))); max-height: 100%; min-height: 0;
   animation: sf-pop-in 0.3s var(--sf-ease-out) both;
 }
+.sf-root .sf-dialog:focus, .sf-root .sf-dialog:focus-visible { outline: none; }
 .sf-dialog-scrim.is-leaving .sf-dialog { animation: sf-pop-out 0.18s var(--sf-ease-in) both; }
 .sf-dialog__head { display: flex; align-items: center; gap: 12u; flex: none; padding: 12u 12u 10u 24u; box-shadow: inset 0 -1px 0 var(--sf-c-line); }
 .sf-dialog__title { flex: 1; margin: 0; font-weight: 800; font-size: var(--sf-fs-xl); line-height: 1.3; letter-spacing: 0.2em; }
@@ -384,7 +384,7 @@ button.sf-slot:active { transform: scale(0.94); }
   position: fixed; left: 0; top: 0; z-index: var(--sf-z-tooltip); width: max-content; max-width: min(max(230px, 300u), calc(100vw - 16px));
   padding: 10u 13u 11u; border-radius: 7u; pointer-events: none;
   font-family: var(--sf-font); font-size: var(--sf-fs-sm); line-height: 1.55; color: var(--sf-c-text-2); text-align: left; white-space: normal;
-  background: linear-gradient(180deg, rgba(20, 34, 72, 0.98), rgba(8, 13, 31, 0.98));
+  background: linear-gradient(180deg, #16254f, #0a1128);
   box-shadow: 0 0 0 1px var(--sf-c-gold-line), inset 0 1px 0 rgba(143, 233, 255, 0.16), var(--sf-shadow-2);
   opacity: 0; transform: translateY(4u) scale(0.98); transition: opacity 0.12s linear, transform 0.16s var(--sf-ease-out);
 }

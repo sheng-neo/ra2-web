@@ -87,6 +87,8 @@ interface BlobOpts {
   ao?: number;
   /** 实例色偏蒙版(1 = 该部件吃实例色偏；配合 SceneryBatcher 的 maskedTint) */
   team?: number;
+  /** 丢弃单位球上 y 低于该值的三角形(俯视镜头看不到的底面)，省面数 */
+  cutBelow?: number;
 }
 
 /** 椭球团块：树冠/灌木/岩石/蘑菇伞的基本形体 */
@@ -162,7 +164,11 @@ function addBlob(b: MeshBuilder, cx: number, cy: number, cz: number, rx: number,
   } else {
     const base = b.vertexCount;
     for (let i = 0; i < pts.length; i++) b.vertex(pts[i][0], pts[i][1], pts[i][2], colorAt(i), nrm[i][0], nrm[i][1], nrm[i][2], swayAt(i), o.glow ?? 0, o.team ?? 0, o.ao ?? 1);
-    for (const [a, bb, c] of ico.tris) b.tri(base + a, base + bb, base + c);
+    const cut = o.cutBelow ?? -2;
+    for (const [a, bb, c] of ico.tris) {
+      if (ico.verts[a][1] < cut && ico.verts[bb][1] < cut && ico.verts[c][1] < cut) continue;
+      b.tri(base + a, base + bb, base + c);
+    }
   }
 }
 
@@ -299,7 +305,8 @@ function finish(b: MeshBuilder): THREE.BufferGeometry {
 
 const E = PALETTE.env;
 
-function makeTree(seed: number): THREE.BufferGeometry {
+/** 阔叶树。colors 省略为青绿树冠；传入则是点缀用的异色树(花树/金叶树) */
+function makeTree(seed: number, colors?: { dark: number; mid: number; light: number }): THREE.BufferGeometry {
   const rng = new Rng(seed);
   const b = new MeshBuilder();
   const h = rng.range(1.5, 2.1);
@@ -315,16 +322,16 @@ function makeTree(seed: number): THREE.BufferGeometry {
       [lean * 0.8, h * 0.75, lean2 * 0.8, 0.15],
       [lean, h, lean2, 0.11],
     ],
-    { sides: 6, c0: trunkDark, c1: trunk, sway0: 0, sway1: 0.15 },
+    { sides: 5, c0: trunkDark, c1: trunk, sway0: 0, sway1: 0.15 },
   );
   // 树冠：一个主团 + 几个错落的副团，法线朝树冠中心外推，读成一个蓬松的整体
   const cy = h + 0.55;
   const center: [number, number, number] = [lean, cy - 0.45, lean2];
-  const dark = rgb(E.canopyDark);
-  const mid = rgb(E.canopy);
-  const light = rgb(E.canopyLight);
+  const dark = rgb(colors?.dark ?? E.canopyDark);
+  const mid = rgb(colors?.mid ?? E.canopy);
+  const light = rgb(colors?.light ?? E.canopyLight);
   const mainR = rng.range(1.05, 1.3);
-  addBlob(b, lean, cy, lean2, mainR, mainR * 0.8, mainR, { detail: 1, bump: 0.06, seed, bottom: dark, top: mixRgb(mid, light, 0.3), swayBottom: 0.25, swayTop: 0.6, puffCenter: center, puff: 0.4 });
+  addBlob(b, lean, cy, lean2, mainR, mainR * 0.8, mainR, { detail: 1, bump: 0.06, seed, bottom: dark, top: mixRgb(mid, light, 0.42), swayBottom: 0.25, swayTop: 0.6, puffCenter: center, puff: 0.4, cutBelow: -0.4 });
   const blobs = 3 + rng.int(2);
   for (let i = 0; i < blobs; i++) {
     const a = (i / blobs) * TAU + rng.range(-0.4, 0.4);
@@ -341,6 +348,7 @@ function makeTree(seed: number): THREE.BufferGeometry {
       swayTop: 0.7,
       puffCenter: center,
       puff: 0.55,
+      cutBelow: -0.3,
     });
   }
   // 顶部亮团：受光的树梢
@@ -348,13 +356,30 @@ function makeTree(seed: number): THREE.BufferGeometry {
     detail: 1,
     bump: 0.07,
     seed: seed + 99,
-    bottom: mid,
-    top: mixRgb(mid, light, 0.85),
+    bottom: mixRgb(mid, light, 0.25),
+    top: mixRgb(mid, light, 0.7),
     swayBottom: 0.5,
     swayTop: 0.8,
     puffCenter: center,
     puff: 0.5,
+    cutBelow: -0.2,
   });
+  return finish(b);
+}
+
+/** 远景用的简化阔叶树(装饰带上成片种植)：低面数的两团树冠 */
+function makeFarTree(seed: number): THREE.BufferGeometry {
+  const rng = new Rng(seed);
+  const b = new MeshBuilder();
+  const h = rng.range(1.6, 2.3);
+  addTube(b, [[0, -0.2, 0, 0.26], [0, h, 0, 0.12]], { sides: 4, c0: rgb(0x4d3530), c1: rgb(E.trunk) });
+  const dark = rgb(E.canopyDark);
+  const mid = rgb(E.canopy);
+  const light = rgb(E.canopyLight);
+  const r = rng.range(1.15, 1.45);
+  const center: [number, number, number] = [0, h, 0];
+  addBlob(b, 0, h + 0.5, 0, r, r * 0.8, r, { detail: 1, bump: 0.1, seed, bottom: dark, top: mixRgb(mid, light, 0.35), swayBottom: 0.25, swayTop: 0.6, puffCenter: center, puff: 0.3, cutBelow: -0.3 });
+  addBlob(b, rng.range(-0.5, 0.5), h + 0.5 + r * 0.55, rng.range(-0.5, 0.5), r * 0.6, r * 0.45, r * 0.6, { detail: 0, bump: 0.1, seed: seed + 3, bottom: mid, top: mixRgb(mid, light, 0.8), swayBottom: 0.5, swayTop: 0.8, puffCenter: center, puff: 0.4 });
   return finish(b);
 }
 
@@ -398,7 +423,7 @@ function makeShrub(seed: number): THREE.BufferGeometry {
     const a = rng.range(0, TAU);
     const d = i === 0 ? 0 : rng.range(0.3, 0.55);
     const r = i === 0 ? rng.range(0.5, 0.68) : rng.range(0.32, 0.48);
-    addBlob(b, Math.cos(a) * d, r * 0.62, Math.sin(a) * d, r, r * 0.78, r, { detail: 1, bump: 0.08, seed: seed + i, bottom: dark, top: light, swayBottom: 0.05, swayTop: 0.35, puffCenter: center, puff: 0.45 });
+    addBlob(b, Math.cos(a) * d, r * 0.62, Math.sin(a) * d, r, r * 0.78, r, { detail: i === 0 ? 1 : 0, bump: 0.08, seed: seed + i, bottom: dark, top: light, swayBottom: 0.05, swayTop: 0.35, puffCenter: center, puff: 0.45, cutBelow: -0.45 });
   }
   return finish(b);
 }
@@ -414,7 +439,7 @@ function makeRock(seed: number, big: boolean): THREE.BufferGeometry {
     const a = rng.range(0, TAU);
     const d = i === 0 ? 0 : rng.range(0.7, 1.0);
     addBlob(b, Math.cos(a) * d, r * rng.range(0.25, 0.45), Math.sin(a) * d, r * rng.range(0.85, 1.15), r * rng.range(0.6, 0.95), r * rng.range(0.8, 1.1), {
-      detail: big ? 1 : 0,
+      detail: big && i === 0 ? 1 : 0,
       bump: big ? 0.16 : 0.22,
       seed: seed + i * 7,
       bottom: mixRgb(dark, light, 0.25),
@@ -685,6 +710,9 @@ function makeLilyPad(seed: number): THREE.BufferGeometry {
 
 export interface PropLibrary {
   trees: THREE.BufferGeometry[];
+  /** 点缀用的异色树：[粉白花树, 金叶树] */
+  accentTrees: THREE.BufferGeometry[];
+  farTrees: THREE.BufferGeometry[];
   pines: THREE.BufferGeometry[];
   shrubs: THREE.BufferGeometry[];
   rocks: THREE.BufferGeometry[];
@@ -708,7 +736,9 @@ export interface PropLibrary {
 export function createPropLibrary(): PropLibrary {
   const many = (n: number, f: (seed: number) => THREE.BufferGeometry, seed0: number): THREE.BufferGeometry[] => Array.from({ length: n }, (_, i) => f(seed0 + i * 101));
   const lib = {
-    trees: many(4, makeTree, 11),
+    trees: many(4, (sd) => makeTree(sd), 11),
+    accentTrees: [makeTree(211, { dark: 0xc2608f, mid: 0xf09abc, light: 0xffe0ec }), makeTree(223, { dark: 0xa8742a, mid: 0xe0aa3e, light: 0xffe28a })],
+    farTrees: many(3, makeFarTree, 17),
     pines: many(3, makePine, 23),
     shrubs: many(3, makeShrub, 37),
     rocks: many(4, (s) => makeRock(s, false), 41),

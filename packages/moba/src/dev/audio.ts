@@ -7,13 +7,15 @@
  */
 import { createAudioWithDebug } from '../audio';
 import type { MusicTrack, UiSound } from '../audio/api';
-import { checkAllSfx, checkLimiter, checkMusic, checkStress } from '../audio/offline';
-import type { LimiterRow, MusicRow, SfxRow, StressRow } from '../audio/offline';
+import { checkAllScores, checkAllSfx, checkLimiter, checkMix, checkMusic, checkStress, renderGame } from '../audio/offline';
+import type { GameRow, LimiterRow, MixRow, MusicRow, ScoreRow, SfxRow, StressRow } from '../audio/offline';
 import { SFX, SFX_KEYS } from '../audio/sfx';
 import type { SfxCat } from '../audio/sfx';
 import { HERO_IDS } from '../core/data/heroes';
 import { createMockState } from '../core/mock';
-import type { AbilitySlot, AnnounceKey, AreaVisual, FxKey, GameEvent, ProjectileVisual, SkillSlot, Unit, Vec2 } from '../core/types';
+import { TICK_DT } from '../core/types';
+import type { AbilitySlot, AnnounceKey, AreaVisual, FxKey, GameEvent, HeroId, ProjectileVisual, SkillSlot, Unit, Vec2 } from '../core/types';
+import { createWorld } from '../core/world';
 
 interface AudioReport {
   done: boolean;
@@ -23,6 +25,12 @@ interface AudioReport {
   music: Omit<MusicRow, 'spec'>[];
   stress: StressRow | null;
   limiter: LimiterRow | null;
+  /** 配乐混音表(?check=mix 时才生成) */
+  mix: MixRow[];
+  /** 真实对局片段的离线混音(?check=match 时才生成) */
+  match: (GameRow & { name: string; intensity: number[] })[];
+  /** 主旋律自动听写：调度器奏出的音与乐谱是否一致 */
+  score: ScoreRow[];
   trimTable: string;
 }
 
@@ -364,7 +372,7 @@ reportSec.append(
 );
 app.append(reportSec);
 
-function spark(env: number[], w = 96, hgt = 18, color = '#6fe3ff'): HTMLCanvasElement {
+function spark(env: number[], w = 144, hgt = 20, color = '#6fe3ff'): HTMLCanvasElement {
   const c = h('canvas', { width: String(w), height: String(hgt) });
   const g = c.getContext('2d');
   if (!g) return c;
@@ -373,7 +381,8 @@ function spark(env: number[], w = 96, hgt = 18, color = '#6fe3ff'): HTMLCanvasEl
   g.fillStyle = color;
   const bw = w / env.length;
   for (let i = 0; i < env.length; i++) {
-    const v = Math.min(1, env[i]) * hgt;
+    // 开方刻度：小幅度的尾音也看得见
+    const v = Math.sqrt(Math.min(1, env[i])) * hgt;
     g.fillRect(i * bw, (hgt - v) / 2, Math.max(1, bw - 0.5), Math.max(0.5, v));
   }
   return c;
@@ -386,7 +395,7 @@ function bands(low: number, mid: number, high: number): HTMLElement {
   return b;
 }
 
-function specCanvas(m: MusicRow, w = 340, hgt = 96): HTMLCanvasElement {
+function specCanvas(m: MusicRow, w = 700, hgt = 200): HTMLCanvasElement {
   const c = h('canvas', { width: String(w), height: String(hgt) });
   const g = c.getContext('2d');
   if (!g) return c;
@@ -434,7 +443,7 @@ function renderReport(r: AudioReport, music: MusicRow[]): void {
   if (r.limiter) pill(`总线小信号增益 ${r.limiter.smallGain.toFixed(3)} · 最大输出 ${r.limiter.maxOut.toFixed(3)}`, r.limiter.maxOut <= 1 ? 'ok' : 'bad');
   reportBody.append(sum);
 
-  if (music.length || r.stress || r.limiter) {
+  if (music.length || r.stress || r.limiter || r.match.length) {
     const cards = h('div', { class: 'cards' });
     for (const m of music) {
       const card = h('div', { class: 'card' });
@@ -442,8 +451,28 @@ function renderReport(r: AudioReport, music: MusicRow[]): void {
         h('h3', {}, m.name, h('span', { style: `color:${m.issues.length ? '#ff6b6b' : '#6fe3a0'}` }, m.issues.length ? m.issues.join('，') : '通过')),
         specCanvas(m),
         h('p', {}, '峰值 ', h('b', {}, m.peak.toFixed(3)), ' · RMS ', h('b', {}, `${m.rmsDb.toFixed(1)} dB`), ' · 每秒 RMS ', h('b', {}, `${m.minSecDb.toFixed(1)} ~ ${m.maxSecDb.toFixed(1)} dB`)),
-        h('p', {}, '最长静音 ', h('b', {}, `${m.silence.toFixed(2)} s`), ' · 最大采样差 ', h('b', {}, m.maxStep.toFixed(3)), ' · 频段 ', bands(m.low, m.mid, m.high)),
+        h('p', {}, '最长静音 ', h('b', {}, `${m.silence.toFixed(2)} s`), ' · 最大采样差 ', h('b', {}, m.maxStep.toFixed(3)), ' · 左右差 ', h('b', {}, `${m.balance.toFixed(1)} dB`), ' · 单声道合并 ', h('b', {}, `${m.monoDb.toFixed(1)} dB`), ' · 频段 ', bands(m.low, m.mid, m.high)),
       );
+      cards.append(card);
+    }
+    for (const g of r.match) {
+      const card = h('div', { class: 'card' });
+      card.append(
+        h('h3', {}, `真实对局 · ${g.name}`, h('span', { style: `color:${g.issues.length ? '#ff6b6b' : '#6fe3a0'}` }, g.issues.length ? g.issues.join('，') : '通过')),
+        spark(g.env, 700, 80, '#6fe3a0'),
+        h('p', {}, '峰值 ', h('b', {}, g.peak.toFixed(3)), ' · RMS ', h('b', {}, `${g.rmsDb.toFixed(1)} dB`), ' · 频段 ', bands(g.low, g.mid, g.high), ' · 发声 ', h('b', {}, String(g.played)), ' · 限流 ', h('b', {}, String(g.throttled)), ' · 超限 ', h('b', {}, String(g.capped)), ' · 让位 ', h('b', {}, String(g.stolen)), ' · 同时发声峰值 ', h('b', {}, String(g.peakVoices))),
+        spark(g.intensity, 700, 24, '#e6c988'),
+        h('p', {}, '↑ 配乐强度(每秒采样) · 最常播放：', g.byKey.slice(0, 12).map(([k, n]) => `${SFX[k as keyof typeof SFX]?.label ?? k}×${n}`).join('，')),
+      );
+      cards.append(card);
+    }
+    if (r.score.length) {
+      const card = h('div', { class: 'card' });
+      const bad = r.score.some((x) => x.matched < x.notes);
+      card.append(h('h3', {}, '主旋律自动听写(单独渲染旋律通道 → 逐音检测音高 → 对照乐谱)', h('span', { style: `color:${bad ? '#ff6b6b' : '#6fe3a0'}` }, bad ? '有出入' : '全部一致')));
+      for (const x of r.score) {
+        card.append(h('p', {}, `${x.name}：`, h('b', {}, `${x.matched}/${x.notes}`), x.misses.length ? ` · 不一致(步/期望/实测)：${x.misses.map((m) => m.join('/')).join('，')}` : ''));
+      }
       cards.append(card);
     }
     if (r.stress) {
@@ -451,9 +480,9 @@ function renderReport(r: AudioReport, music: MusicRow[]): void {
       const card = h('div', { class: 'card' });
       card.append(
         h('h3', {}, `模拟团战 ${st.seconds}s(${st.events} 事件 + 满强度配乐)`, h('span', { style: `color:${st.issues.length ? '#ff6b6b' : '#6fe3a0'}` }, st.issues.length ? st.issues.join('，') : '通过')),
-        spark(st.env, 340, 60, '#e6c988'),
+        spark(st.env, 700, 80, '#e6c988'),
         h('p', {}, '压限后峰值 ', h('b', {}, st.peak.toFixed(3)), ' · RMS ', h('b', {}, `${st.rmsDb.toFixed(1)} dB`)),
-        h('p', {}, '发声 ', h('b', {}, String(st.played)), ' · 限流 ', h('b', {}, String(st.throttled)), ' · 超限丢弃 ', h('b', {}, String(st.capped)), ' · 让位 ', h('b', {}, String(st.stolen)), ' · 同时发声峰值 ', h('b', {}, String(st.peakVoices))),
+        h('p', {}, '发声 ', h('b', {}, String(st.played)), ' · 限流 ', h('b', {}, String(st.throttled)), ' · 超限丢弃 ', h('b', {}, String(st.capped)), ' · 让位 ', h('b', {}, String(st.stolen)), ' · 同时发声峰值 ', h('b', {}, String(st.peakVoices)), ' · 存活节点组峰值 ', h('b', {}, String(st.maxLive)), ' · 结束残留 ', h('b', {}, String(st.endLive)), ' · 渲染耗时 ', h('b', {}, `${(st.renderMs / 1000).toFixed(2)}s / ${(st.seconds + 2.5).toFixed(1)}s 音频`)),
       );
       cards.append(card);
     }
@@ -497,7 +526,7 @@ function renderReport(r: AudioReport, music: MusicRow[]): void {
 
 async function runCheck(): Promise<AudioReport> {
   const which = new Set((params.get('check') ?? 'sfx,music,stress,limiter').split(','));
-  const report: AudioReport = { done: false, progress: '开始', summary: {}, sfx: [], music: [], stress: null, limiter: null, trimTable: '' };
+  const report: AudioReport = { done: false, progress: '开始', summary: {}, sfx: [], music: [], stress: null, limiter: null, mix: [], match: [], score: [], trimTable: '' };
   window.__audioReport = report;
   const music: MusicRow[] = [];
   const say = (s: string): void => {
@@ -535,6 +564,25 @@ async function runCheck(): Promise<AudioReport> {
         const { spec: _spec, ...rest } = m;
         return rest;
       });
+      say('配乐：主旋律自动听写');
+      report.score = await checkAllScores();
+    }
+    if (which.has('mix')) {
+      const jobs: [MusicTrack, number, number, number][] = [['menu', 60, 0, 0], ['battle', 38, 0, 0], ['battle', 38, 1, 0.5], ['victory', 14, 0, 0], ['defeat', 14, 0, 0]];
+      for (const j of jobs) {
+        say(`混音表：${j[0]} 强度 ${j[2]}`);
+        const rows = await checkMix(j[0], j[1], j[2], j[3]);
+        for (const r of rows) report.mix.push({ ...r, chan: `${r.chan}${j[2] ? ' @战斗' : ''}` });
+      }
+    }
+    if (which.has('match')) {
+      // 真实模拟内核跑全 AI 对局，把事件流按默认音量原样渲染：验证事件映射、限流与整体电平
+      const jobs: [string, HeroId, number, number][] = [['开局对线 0:05~1:05 (赤烬)', 'chijin', 5, 60], ['中期 4:30~5:30 (星璃)', 'xingli', 270, 60], ['中期 7:00~8:00 (磐岳)', 'panyue', 420, 60]];
+      for (const j of jobs) {
+        say(`真实对局：${j[0]}`);
+        report.match.push({ name: j[0], ...(await checkMatch(j[1], j[2], j[3])) });
+        renderReport(report, music);
+      }
     }
     if (which.has('stress')) {
       say('模拟团战…');
@@ -550,6 +598,8 @@ async function runCheck(): Promise<AudioReport> {
       musicTotal: music.length,
       musicBad,
       musicMaxPeak: Math.max(0, ...music.map((x) => x.peak)),
+      scoreNotes: report.score.reduce((a, x) => a + x.notes, 0),
+      scoreMatched: report.score.reduce((a, x) => a + x.matched, 0),
       stressPeak: report.stress?.peak ?? 0,
       stressIssues: report.stress?.issues.join(',') ?? '',
       limiterSmallGain: report.limiter?.smallGain ?? 0,
@@ -565,6 +615,36 @@ async function runCheck(): Promise<AudioReport> {
   renderReport(report, music);
   report.done = true;
   return report;
+}
+
+/** 用真实模拟内核跑一局全 AI 对局：快进到 startAt，再把随后 seconds 秒的事件流离线渲染成混音 */
+async function checkMatch(hero: HeroId, startAt: number, seconds: number): Promise<GameRow & { intensity: number[] }> {
+  const world = createWorld({ seed: 20261112, playerHero: hero, difficulty: 'normal', autoPlay: true });
+  while (world.state.time < startAt && !world.state.over) {
+    world.step();
+    world.drainEvents();
+  }
+  const eng = createAudioWithDebug();
+  eng.setMusic('battle');
+  // 每秒采样一次配乐强度：用来核对「打起来变强、打完慢慢回落」
+  const intensity: number[] = [];
+  let n = 0;
+  try {
+    const row = await renderGame(
+      seconds,
+      TICK_DT,
+      (ctx, clock) => eng.attachOffline(ctx, clock),
+      () => {
+        world.step();
+        eng.handleEvents(world.drainEvents(), world.state);
+        eng.update(world.state, TICK_DT);
+        if (n++ % 30 === 0) intensity.push(Math.round(eng.debug.stats().intensity * 100) / 100);
+      },
+    );
+    return { ...row, intensity };
+  } finally {
+    eng.dispose();
+  }
 }
 
 // ───────────────────────── 实时冒烟测试 ─────────────────────────
@@ -643,14 +723,25 @@ async function runRealtime(): Promise<void> {
     if (s.voices > 2) throw new Error(`仍有 ${s.voices} 个音效发声未回收`);
     return stat();
   });
-  await step('配乐长跑 6s：音符数应稳定', async () => {
-    const a = engine.debug.stats().notes;
-    await sleep(3000);
-    const b = engine.debug.stats().notes;
-    await sleep(3000);
-    const c = engine.debug.stats().notes;
-    if (c > Math.max(a, b) * 2 + 40) throw new Error(`音符节点持续增长 ${a} → ${b} → ${c}`);
-    return `notes ${a} → ${b} → ${c}`;
+  await step('满强度战斗配乐 + 持续事件长跑 24s：节点数应稳定不增长', async () => {
+    engine.debug.override(1, 0.6);
+    runFight(24, 0.5);
+    const voices: number[] = [];
+    const notes: number[] = [];
+    for (let i = 0; i < 24; i++) {
+      await sleep(1000);
+      const s = engine.debug.stats();
+      voices.push(s.voices);
+      notes.push(s.notes);
+    }
+    engine.debug.override(null, null);
+    const avg = (a: number[]): number => a.reduce((x, y) => x + y, 0) / a.length;
+    const n1 = avg(notes.slice(0, 12));
+    const n2 = avg(notes.slice(12));
+    const v1 = avg(voices.slice(0, 12));
+    const v2 = avg(voices.slice(12));
+    if (n2 > n1 * 1.5 + 10 || v2 > v1 * 1.5 + 6) throw new Error(`节点数在增长：音符 ${n1.toFixed(1)} → ${n2.toFixed(1)}，发声 ${v1.toFixed(1)} → ${v2.toFixed(1)}`);
+    return `音符 前半均 ${n1.toFixed(1)} / 后半均 ${n2.toFixed(1)} / 最大 ${Math.max(...notes)} · 发声 前半均 ${v1.toFixed(1)} / 后半均 ${v2.toFixed(1)} / 最大 ${Math.max(...voices)}`;
   });
   await step('页面隐藏 → 挂起，恢复 → 继续', async () => {
     const setHidden = (v: boolean): void => {

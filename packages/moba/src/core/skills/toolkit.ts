@@ -13,7 +13,7 @@ import { removeArea, spawnArea, type AreaOpts } from '../areas';
 import {
   addBuff, buffStacks, findBuff, hasBuff, isCcImmune, removeBuff, removeBuffInstance, type BuffOpts,
 } from '../buffs';
-import { dealDamage, heal as healUnit, reveal } from '../combat';
+import { cancelWindup, dealDamage, heal as healUnit, reveal } from '../combat';
 import { isStructure, isTargetable } from '../entity';
 import type { SimArea, SimBuff, SimHero, SimProjectile, SimUnit, UnitFilter } from '../internal';
 import {
@@ -197,6 +197,20 @@ export function restoreMana(target: SimUnit, amount: number): number {
   return target.mana - before;
 }
 
+/**
+ * 按 data/heroes.ts 的伤害约定算数值：values[baseKey] + adRatio×当前物攻 + apRatio×当前法强 + hpRatio×自身最大生命。
+ * ratios 里写的是 values 的键名，只会累加你列出来的项。
+ * 例：scaled(ctx, 'damage', { ad: 'adRatio' })；scaled(ctx, 'shield', { hp: 'hpRatio' })
+ */
+export function scaled(ctx: CastContext, baseKey: string, ratios: { ad?: string; ap?: string; hp?: string } = {}): number {
+  const s = ctx.caster.stats;
+  let v = ctx.val(baseKey);
+  if (ratios.ad) v += ctx.val(ratios.ad) * s.ad;
+  if (ratios.ap) v += ctx.val(ratios.ap) * s.ap;
+  if (ratios.hp) v += ctx.val(ratios.hp) * s.maxHp;
+  return v;
+}
+
 // ───────────────────────── Buff / 控制 / 护盾 ─────────────────────────
 
 export { addBuff, removeBuff, removeBuffInstance, hasBuff, findBuff, buffStacks, isCcImmune };
@@ -340,6 +354,13 @@ export function stopAnim(unit: SimUnit, anim?: UnitAnim): void {
 export function lockAction(sim: Sim, unit: SimUnit, seconds: number): void {
   const until = sim.state.time + seconds;
   if (until > unit.rt.lockUntil) unit.rt.lockUntil = until;
+}
+
+/** 缴械：seconds 秒内不能开始普攻（可以移动/施法）。正在进行的前摇会被取消 */
+export function disarm(sim: Sim, unit: SimUnit, seconds: number): void {
+  const until = sim.state.time + seconds;
+  if (until > unit.rt.disarmUntil) unit.rt.disarmUntil = until;
+  cancelWindup(unit);
 }
 
 export function faceDir(unit: SimUnit, dir: Vec2): void {

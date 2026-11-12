@@ -94,6 +94,11 @@ const GLYPHS = {
 
 export type UiIconName = keyof typeof GLYPHS | 'gold';
 
+/** 字形的原始路径片段（供图标库内部把字形嵌进徽章底板，如增益图标） */
+export const uiGlyph = (name: keyof typeof GLYPHS): string => GLYPHS[name];
+export const GLYPH_FILL = FILL;
+export const glyphLine = LINE;
+
 /** 金币：唯一的彩色通用图标（星纹金币） */
 function goldCoin(): string {
   return wrap(

@@ -40,7 +40,15 @@ export class RenderEngine {
   private fpsAccum = 0;
   private fpsFrames = 0;
   private disposed = false;
-  private onContextLost = (e: Event): void => e.preventDefault();
+  /**
+   * 自适应分辨率：帧率持续低于约 26fps 时逐级降低渲染分辨率(最低到档位上限的 0.6 倍)，只降不升，
+   * 切换画质时复位。自动化测试(navigator.webdriver)下关闭，保证截图分辨率稳定。
+   */
+  adaptiveResolution = typeof navigator !== 'undefined' && !navigator.webdriver;
+  private resScale = 1;
+  private slowTime = 0;
+  private slowFrames = 0;
+  private slowWindows = 0;
 
   constructor(container: HTMLElement, quality: Quality) {
     this.container = container;
@@ -62,7 +70,6 @@ export class RenderEngine {
     st.display = 'block';
     st.touchAction = 'none';
     container.appendChild(this.canvas);
-    this.canvas.addEventListener('webglcontextlost', this.onContextLost);
 
     this.scene = new THREE.Scene();
     // 轻雾：对局镜头内(≤50m)几乎无感，只给远处山石/云海拉开层次
@@ -119,6 +126,8 @@ export class RenderEngine {
   setQuality(q: Quality): void {
     if (q === this.quality) return;
     this.quality = q;
+    this.resScale = 1;
+    this.slowWindows = 0;
     this.applyQuality();
     this.resize();
     this.onQualityChanged?.(this.settings);
@@ -137,7 +146,7 @@ export class RenderEngine {
   resize(): void {
     const w = Math.max(1, this.container.clientWidth || window.innerWidth);
     const h = Math.max(1, this.container.clientHeight || window.innerHeight);
-    const dpr = Math.min(window.devicePixelRatio || 1, this.settings.dprCap);
+    const dpr = Math.max(0.5, Math.min(window.devicePixelRatio || 1, this.settings.dprCap) * this.resScale);
     const vp = this.viewport;
     vp.width = w;
     vp.height = h;
@@ -161,6 +170,11 @@ export class RenderEngine {
     tickShared(dt);
     this.lights.update(dt);
     this.lights.fitShadow(this.rig.camera);
+    // 调试俯瞰/自由视角距离很远：把雾推开，否则全图一片白
+    const fog = this.scene.fog as THREE.Fog;
+    const debugView = this.rig.isDebugView;
+    fog.near = debugView ? 600 : 42;
+    fog.far = debugView ? 3000 : 520;
     const r = this.renderer;
     r.info.reset();
     if (this.post) this.post.render(dt);
@@ -172,11 +186,29 @@ export class RenderEngine {
     this.stats.triangles = r.info.render.triangles;
     this.fpsAccum += dt;
     this.fpsFrames++;
+    if (this.adaptiveResolution) this.trackPerformance(dt);
     if (this.fpsAccum >= 0.5) {
       this.stats.fps = Math.round(this.fpsFrames / this.fpsAccum);
       this.fpsAccum = 0;
       this.fpsFrames = 0;
     }
+  }
+
+  /** 每 1.5 秒评估一次平均帧时间；连续 3 个窗口都过慢才降分辨率，避免被偶发卡顿误触发 */
+  private trackPerformance(dt: number): void {
+    this.slowTime += dt;
+    this.slowFrames++;
+    if (this.slowTime < 1.5) return;
+    const avg = this.slowTime / this.slowFrames;
+    this.slowTime = 0;
+    this.slowFrames = 0;
+    if (avg > 1 / 26 && this.resScale > 0.61) {
+      if (++this.slowWindows >= 3) {
+        this.slowWindows = 0;
+        this.resScale = Math.max(0.6, this.resScale * 0.85);
+        this.resize();
+      }
+    } else this.slowWindows = 0;
   }
 
   getStats(): RendererStats {
@@ -219,7 +251,6 @@ export class RenderEngine {
     this.post = null;
     this.lights.dispose();
     this.scene.clear();
-    this.canvas.removeEventListener('webglcontextlost', this.onContextLost);
     this.renderer.dispose();
     this.renderer.forceContextLoss();
     this.canvas.remove();

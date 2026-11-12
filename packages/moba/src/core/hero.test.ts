@@ -6,9 +6,11 @@ import { ITEMS } from './data/items';
 import { ECONOMY, respawnTime, xpToNext } from './data/units';
 import { isWalkableTerrain } from './map';
 import { grantXp } from './rewards';
-import { registerSkill, type CastContext } from './skills/registry';
+import { getSkill, registerSkill, type CastContext } from './skills/registry';
 import { eventsOf, freezeUnit, heroOf, levelTo, place, quietWorld, spawnMinionAt, stepFor } from './testkit';
-import { TICK_DT } from './types';
+import { TICK_DT, type CastSpec } from './types';
+
+const rangeOf = (spec: CastSpec): number => ('range' in spec ? spec.range : 0);
 
 describe('移动指令', () => {
   it('move：按移速沿方向移动，零向量停止；动画 move/idle', () => {
@@ -91,6 +93,21 @@ describe('普攻指令', () => {
     expect(h.targetId).toBe(enemy.id);
   });
 
+  it('智能选目标：残血小兵 > 塔 > 满血小兵', () => {
+    const sim = quietWorld();
+    const h = heroOf(sim, 0, 'fengling');
+    const tower = sim.towers[1].mid[0];
+    if (!tower) throw new Error('no tower');
+    place(sim, h, tower.pos.x - 5, tower.pos.y + 5);
+    const healthy = spawnMinionAt(sim, 1, 'melee', tower.pos.x - 3, tower.pos.y + 6, 'mid', 3000);
+    freezeUnit(healthy);
+    sim.command(h.id, { type: 'attack' });
+    expect(h.targetId).toBe(tower.id);
+    healthy.hp = 600;
+    sim.command(h.id, { type: 'attack' });
+    expect(h.targetId).toBe(healthy.id);
+  });
+
   it('射程外的显式目标：走过去打', () => {
     const sim = quietWorld();
     const h = heroOf(sim, 0, 'chijin');
@@ -138,7 +155,7 @@ describe('施法管线', () => {
     expect(cast[0]).toMatchObject({ unitId: h.id, heroId: 'chijin', slot: 's1', targetId: -1 });
     expect(cast[0].dir.x).toBeCloseTo(0, 6);
     expect(cast[0].dir.y).toBeCloseTo(-1, 6);
-    expect(cast[0].targetPos.y).toBeCloseTo(-HEROES.chijin.skills.s1.cast.range, 6);
+    expect(cast[0].targetPos.y).toBeCloseTo(-rangeOf(HEROES.chijin.skills.s1.cast), 6);
     expect(h.mana).toBe(mana0 - HEROES.chijin.skills.s1.manaCost[0]);
     expect(h.skills.s1.cd).toBeCloseTo(HEROES.chijin.skills.s1.cooldown[0], 6);
     expect(h.facing).toBeCloseTo(-Math.PI / 2, 6);
@@ -187,6 +204,7 @@ describe('施法管线', () => {
     place(sim, h, 0, 0, 0);
     stepFor(sim, 2.2);
     const calls: CastContext[] = [];
+    const original = getSkill('xingli', 's1');
     registerSkill('xingli', 's1', { cast: (ctx) => { calls.push(ctx); } });
     try {
       // 没有任何敌人：朝面向
@@ -218,7 +236,7 @@ describe('施法管线', () => {
       sim.command(h.id, { type: 'cast', slot: 's1', targetId: e1.id });
       expect(calls[3].dir.x).toBeCloseTo(-1, 5);
     } finally {
-      registerSkill('xingli', 's1', { cast: () => undefined });
+      registerSkill('xingli', 's1', original);
     }
   });
 
@@ -229,9 +247,10 @@ describe('施法管线', () => {
     stepFor(sim, 2.2);
     levelTo(sim, h, 2);
     const calls: CastContext[] = [];
+    const original = getSkill('xingli', 's2');
     registerSkill('xingli', 's2', { aimLead: 0.6, cast: (ctx) => { calls.push(ctx); } });
     try {
-      const range = HEROES.xingli.skills.s2.cast.range;
+      const range = rangeOf(HEROES.xingli.skills.s2.cast);
       sim.command(h.id, { type: 'cast', slot: 's2', pos: { x: 30, y: 0 } });
       expect(calls[0].targetPos.x).toBeCloseTo(range, 6);
       // 敌人向 +y 移动：落点在他前方
@@ -245,7 +264,7 @@ describe('施法管线', () => {
       expect(calls[1].targetPos.x).toBeCloseTo(6, 3);
       expect(calls[1].targetPos.y).toBeCloseTo(e.pos.y + e.stats.moveSpeed * 0.6, 3);
     } finally {
-      registerSkill('xingli', 's2', { cast: () => undefined });
+      registerSkill('xingli', 's2', original);
     }
   });
 

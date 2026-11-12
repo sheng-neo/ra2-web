@@ -9,7 +9,9 @@
  */
 import { SUMMONER } from '../data/heroes';
 import type { HeroHooks, SimHero, SimUnit } from '../internal';
-import type { AbilitySlot, CastSpec, GameEvent, HeroId, ItemDef, ItemPassiveId, SkillDef, SkillSlot, SummonerSlot, Vec2 } from '../types';
+import type {
+  AbilitySlot, CastSpec, GameEvent, HeroId, ItemDef, ItemId, ItemPassiveId, SkillDef, SkillSlot, SummonerSlot, Vec2,
+} from '../types';
 import type { Sim } from '../world';
 
 export type { HeroHooks } from '../internal';
@@ -36,6 +38,13 @@ export interface CastContext {
   targetPos: Vec2;
   /** target 型的目标单位；其余类型为 null */
   target: SimUnit | null;
+  /** 技能的施放方式（data/heroes.ts 的 cast；召唤师技能见 SUMMONER_CAST） */
+  spec: CastSpec;
+  /** 从 spec 里取出的常用几何量，该类型没有的为 0：射程 / 影响半径 / 判定宽度 / 扇形全角(弧度) */
+  range: number;
+  radius: number;
+  width: number;
+  angle: number;
   /** 读取当前技能等级的数值：等价于 skillValue(def, key, level) */
   val(key: string): number;
 }
@@ -68,6 +77,7 @@ const NOOP: SkillImpl = { cast: () => undefined };
 const skills = new Map<string, SkillImpl>();
 const heroHooks = new Map<HeroId, HeroHooks>();
 const itemPassives = new Map<ItemPassiveId, (item: ItemDef) => HeroHooks>();
+const itemHookCache = new Map<ItemId, HeroHooks>();
 
 /** 注册英雄主动技能脚本（重复注册会覆盖） */
 export function registerSkill(heroId: HeroId, slot: AbilitySlot, impl: SkillImpl): void {
@@ -99,10 +109,20 @@ export function getHeroHooks(heroId: HeroId): HeroHooks | undefined {
  */
 export function registerItemPassive(id: ItemPassiveId, factory: (item: ItemDef) => HeroHooks): void {
   itemPassives.set(id, factory);
+  itemHookCache.clear();
 }
 
-export function getItemPassive(id: ItemPassiveId): ((item: ItemDef) => HeroHooks) | undefined {
-  return itemPassives.get(id);
+/** 取某件装备的被动钩子组（无被动/未注册返回 undefined）。按装备缓存，钩子本身应是无状态的 */
+export function getItemHooks(item: ItemDef): HeroHooks | undefined {
+  if (!item.passive) return undefined;
+  let hooks = itemHookCache.get(item.id);
+  if (!hooks) {
+    const factory = itemPassives.get(item.passive.id);
+    if (!factory) return undefined;
+    hooks = factory(item);
+    itemHookCache.set(item.id, hooks);
+  }
+  return hooks;
 }
 
 /** 召唤师技能的施放方式（英雄技能的在 data/heroes.ts） */

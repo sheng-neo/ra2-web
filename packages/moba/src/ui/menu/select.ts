@@ -10,7 +10,7 @@ import type { MatchChoice, MenuHost } from '../api';
 import { LANE_NAMES, itemIcon, laneIcon, roleIcon, skillIcon, summonerIcon, uiIcon } from '../icons';
 import type { HeroIconSlot } from '../icons';
 import { openSettingsDialog } from '../settings';
-import { attachTooltip, createBadge, createButton, createIconButton, createSegmented, createSlot, h, hasOpenDialog, icon, injectStyle, sfCss } from '../theme';
+import { attachTooltip, createBadge, createButton, createIconButton, createSegmented, createSlot, h, hasOpenDialog, icon, injectStyle, isButtonKeyFocused, sfCss } from '../theme';
 import { DIFFICULTIES, DIFFICULTY_META, HERO_ORDER, HERO_RATINGS, RATING_KEYS, RATING_LABELS, ROLE_COLOR, createPortrait, createStars, escapeHtml } from './shared';
 import type { MenuScreen } from './title';
 
@@ -77,6 +77,13 @@ const CSS = sfCss(`
 /* ── 立绘舞台 ── */
 .sf-select__stage { grid-area: stage; position: relative; min-height: 0; min-width: 0; }
 .sf-select__glow { position: absolute; left: 8%; right: 8%; bottom: 2%; height: 34%; border-radius: 50%; background: radial-gradient(ellipse at center, color-mix(in srgb, var(--hero) 46%, transparent), transparent 68%); filter: blur(6u); opacity: 0.8; transition: background 0.4s linear; pointer-events: none; }
+/* 立绘背后的星轨环（立绘画布透明时可见）：只做 transform 动画 */
+.sf-select__rings { position: absolute; inset: 0 0 6% 0; display: grid; place-items: center; pointer-events: none; }
+.sf-select__ring { grid-area: 1 / 1; height: min(82%, 96vw); aspect-ratio: 1; border-radius: 50%; opacity: 0.6;
+  background: conic-gradient(from 0deg, color-mix(in srgb, var(--hero) 80%, transparent) 0deg, transparent 70deg, transparent 180deg, color-mix(in srgb, var(--hero) 55%, transparent) 200deg, transparent 290deg, color-mix(in srgb, var(--hero) 80%, transparent) 360deg);
+  -webkit-mask: radial-gradient(closest-side, transparent calc(100% - 2px), #000 calc(100% - 1.5px)); mask: radial-gradient(closest-side, transparent calc(100% - 2px), #000 calc(100% - 1.5px));
+  animation: sf-spin 48s linear infinite; }
+.sf-select__ring--in { height: min(62%, 72vw); opacity: 0.4; animation-duration: 36s; animation-direction: reverse; }
 .sf-select__canvas {
   position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none;
   -webkit-mask-image: radial-gradient(ellipse 72% 78% at 50% 50%, #000 62%, transparent 100%);
@@ -119,11 +126,11 @@ const CSS = sfCss(`
 .sf-select__lore { margin: 0; padding-left: 10u; font-size: var(--sf-fs-sm); line-height: 1.65; color: var(--sf-c-text-2); box-shadow: inset max(2px, 2u) 0 0 color-mix(in srgb, var(--hero) 70%, transparent); }
 .sf-select__tips { margin: 0; display: flex; gap: 8u; padding: 7u 10u; font-size: var(--sf-fs-sm); line-height: 1.6; color: var(--sf-c-text); }
 .sf-select__tips .sf-i { flex: none; margin-top: 0.2em; color: var(--sf-c-gold-300); }
-.sf-select__abil { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4u 14u; align-items: center; }
+.sf-select__abil { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 4u 14u; }
 .sf-radar { width: max(140px, 158u); margin: -4u 0 -6u; }
 .sf-radar svg { display: block; width: 100%; height: auto; overflow: visible; }
 .sf-radar text { font-family: var(--sf-font); font-size: 12.5px; font-weight: 600; fill: var(--sf-c-text-2); }
-.sf-statlist { display: grid; grid-template-columns: 1fr 1fr; gap: 3u 12u; margin: 0; }
+.sf-statlist { flex: 1 1 max(126px, 160u); min-width: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 3u 10u; margin: 0; }
 .sf-statlist div { display: flex; align-items: baseline; justify-content: space-between; gap: 6u; padding-bottom: 2u; font-size: var(--sf-fs-xs); box-shadow: inset 0 -1px 0 var(--sf-c-line); white-space: nowrap; }
 .sf-statlist dt { color: var(--sf-c-text-3); }
 .sf-statlist dd { margin: 0; font-size: var(--sf-fs-sm); color: var(--sf-c-text); }
@@ -146,7 +153,7 @@ const CSS = sfCss(`
 .sf-skilldesc__text i[data-k='ad'] { color: #ffa066; }
 .sf-skilldesc__text i[data-k='ap'] { color: #9cb4ff; }
 .sf-skilldesc__text i[data-k='hp'] { color: #7fe6a0; }
-.sf-build { display: flex; align-items: center; gap: max(6px, 9u); }
+.sf-build { display: flex; flex-wrap: wrap; align-items: center; gap: max(5px, 8u); }
 .sf-build .sf-slot { --sf-slot: max(38px, 46u); cursor: help; }
 .sf-build__cost { margin-left: auto; display: inline-flex; align-items: center; gap: 4u; font-size: var(--sf-fs-sm); color: var(--sf-c-gold-200); white-space: nowrap; }
 
@@ -168,6 +175,22 @@ const CSS = sfCss(`
   .sf-select__go .sf-btn--lg { grid-area: btn; --sf-btn-h: max(40px, 50u); padding: 0 18u; font-size: max(15px, 20u); letter-spacing: 0.14em; }
   .sf-select__detail-body { padding: 12u 14u; gap: 10u; }
   .sf-select__hint { display: none; }
+}
+
+/* ── 小横屏（如 667×375）：英雄卡只留头像与名字，给立绘和详情腾地方 ── */
+@media (max-height: 520px) and (orientation: landscape) and (max-width: 780px) {
+  .sf-select__main { grid-template-columns: max(60px, 78u) minmax(0, 1fr) clamp(250px, 39vw, 300px); }
+  .sf-select__roster { gap: 4px; }
+  .sf-hcard { flex-direction: column; justify-content: center; gap: 1px; padding: 2px; text-align: center; }
+  .sf-hcard__pic-wrap { height: auto; flex: 0 1 auto; min-height: 0; }
+  .sf-hcard__pic { height: max(30px, 38u); }
+  .sf-hcard__role { display: none; }
+  .sf-hcard__info { flex: none; align-items: center; }
+  .sf-hcard__name { font-size: var(--sf-fs-sm); letter-spacing: 0.04em; }
+  .sf-hcard__meta { display: none; }
+  .sf-select__go .sf-seg__opt { padding: 0 2u; letter-spacing: 0.02em; }
+  .sf-select__go .sf-btn--lg { padding: 0 12u; letter-spacing: 0.06em; }
+  .sf-select__nav .sf-iconbtn { width: 36px; height: 36px; }
 }
 
 /* ── 竖屏：纵向堆叠 ── */
@@ -192,6 +215,7 @@ const CSS = sfCss(`
   .sf-hcard__name { font-size: var(--sf-fs-md); }
   .sf-hcard__name small, .sf-hcard__meta { display: none; }
   .sf-select__name { font-size: max(28px, 48u); }
+  .sf-select__nav { top: auto; bottom: 2u; transform: none; }
   .sf-select__go { flex-direction: column; gap: 9u; padding: 10u; }
   .sf-select__diff-head .sf-seg { max-width: none; }
   .sf-select__go .sf-btn--lg { align-self: stretch; }
@@ -374,6 +398,7 @@ export function createSelectScreen(o: SelectOptions): MenuScreen {
     'div',
     'sf-select__stage',
     h('div', 'sf-select__glow'),
+    h('div', 'sf-select__rings', h('div', 'sf-select__ring'), h('div', 'sf-select__ring sf-select__ring--in')),
     canvas,
     plate,
     h('div', 'sf-select__nav sf-select__nav--prev', createIconButton({ icon: uiIcon('chevron_left'), label: '上一位英雄', sound: 'select', onClick: () => step(-1) })),
@@ -600,8 +625,8 @@ export function createSelectScreen(o: SelectOptions): MenuScreen {
         step(1);
         break;
       case 'Enter':
-        // 焦点在别的按钮上时让按钮自己响应（英雄卡除外：回车直接开始）
-        if (tag === 'BUTTON' && !(document.activeElement as HTMLElement).classList.contains('sf-hcard')) return;
+        // 键盘聚焦在别的按钮上时让按钮自己响应（英雄卡除外：回车直接开始）
+        if (isButtonKeyFocused(el) && !(document.activeElement as HTMLElement).classList.contains('sf-hcard')) return;
         if (ev.repeat) return;
         ev.preventDefault();
         host.audio.ui('ready');
@@ -620,9 +645,10 @@ export function createSelectScreen(o: SelectOptions): MenuScreen {
   // ── 立绘：等元素进了文档、有了尺寸再创建 ──
   const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(() => preview?.resize()) : null;
   const onResize = (): void => preview?.resize();
-  let previewRaf = requestAnimationFrame(function init() {
+  let previewRaf = 0;
+  const initPreview = (): void => {
     if (!canvas.isConnected || canvas.clientWidth === 0) {
-      previewRaf = requestAnimationFrame(init);
+      previewRaf = requestAnimationFrame(initPreview);
       return;
     }
     try {
@@ -633,7 +659,11 @@ export function createSelectScreen(o: SelectOptions): MenuScreen {
     }
     ro?.observe(stage);
     window.addEventListener('resize', onResize);
-  });
+  };
+  // 建模/编译着色器可能卡一下主线程：等进场动画基本播完再创建，转场才顺
+  const previewTimer = window.setTimeout(() => {
+    previewRaf = requestAnimationFrame(initPreview);
+  }, 280);
 
   // 允许横向滑动舞台切换英雄（触控）
   let swipeX: number | null = null;
@@ -661,6 +691,7 @@ export function createSelectScreen(o: SelectOptions): MenuScreen {
       confirmed = true;
     },
     dispose: () => {
+      window.clearTimeout(previewTimer);
       cancelAnimationFrame(previewRaf);
       window.removeEventListener('keydown', onKey);
       window.removeEventListener('resize', onResize);

@@ -9,6 +9,7 @@ import { WAVES } from './data/units';
 import { canTarget, createMinion } from './entity';
 import { HELP_WINDOW, MINION_AGGRO, type SimMinion, type SimUnit } from './internal';
 import { moveToward, stepToward, updateDash } from './movement';
+import { recomputeStats } from './stats';
 import type { LaneId, MinionType, PlayerTeam, Vec2 } from './types';
 import type { Sim } from './world';
 
@@ -39,6 +40,8 @@ function spawnMinion(sim: Sim, team: PlayerTeam, lane: LaneId, type: MinionType,
   const m = createMinion(sim, team, lane, type, pos);
   m.m.offset = offset;
   m.facing = Math.atan2(path.ty * m.m.dir, path.tx * m.m.dir);
+  // 星陨祝福期间出生的小兵直接带上加成
+  if (sim.state.teams[team].blessingLeft > 0) recomputeStats(sim, m);
   sim.addUnit(m);
   minionThink(sim, m);
   m.rt.thinkAt = sim.state.time + THINK_INTERVAL;

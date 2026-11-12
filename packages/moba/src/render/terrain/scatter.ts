@@ -28,7 +28,7 @@ export function trs(x: number, y: number, z: number, rotY: number, scale: number
 }
 
 const CRYSTAL = rgb(PALETTE.env.crystal);
-const CRYSTAL_DEEP = rgb(0x7f8cff);
+const CRYSTAL_DEEP = rgb(PALETTE.env.crystalDeep);
 const FROST = rgb(PALETTE.env.frost);
 const EMBER = rgb(0xff8a4a);
 const ABYSS = rgb(PALETTE.env.abyss);
@@ -104,7 +104,10 @@ export function scatterWallTops(batch: SceneryBatcher, lib: PropLibrary, field: 
           for (const t of treeSpots) if (Math.hypot(t[0] - px, t[1] - pz) < t[2] + 1.0) ok = false;
           if (ok) {
             const sc = (big ? rng.range(0.92, 1.3) : rng.range(0.62, 0.8)) * Math.min(1.1, 0.7 + d * 0.12);
-            batch.add(rng.pick(lib.trees), trs(px, ty, pz, rng.range(0, 6.28), sc, sc * rng.range(0.95, 1.12)), { tint: canopyTint(px, pz, rng) });
+            // 偶尔一株花树/金叶树做色彩点缀
+            const accent = rng.next();
+            if (accent < 0.11) batch.add(lib.accentTrees[accent < 0.06 ? 0 : 1], trs(px, ty, pz, rng.range(0, 6.28), sc, sc * rng.range(0.95, 1.12)), { tint: scaleRgb([1, 1, 1], rng.range(0.92, 1.05)) });
+            else batch.add(rng.pick(lib.trees), trs(px, ty, pz, rng.range(0, 6.28), sc, sc * rng.range(0.95, 1.12)), { tint: canopyTint(px, pz, rng) });
             treeSpots.push([px, pz, sc]);
             continue;
           }

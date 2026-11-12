@@ -107,6 +107,11 @@ export class CameraRig {
     return this.topView;
   }
 
+  /** 是否处于调试视角(俯瞰或自由视角) */
+  get isDebugView(): boolean {
+    return this.topView || this.override !== null;
+  }
+
   /** 调试：自定义俯角(度)/距离/方位角(度，0=朝北)/FOV。传 null 恢复 */
   setOverride(o: { pitch: number; distance: number; yaw?: number; fov?: number } | null): void {
     this.override = o ? { pitch: o.pitch, distance: o.distance, yaw: o.yaw ?? 0, fov: o.fov ?? BASE_FOV } : null;

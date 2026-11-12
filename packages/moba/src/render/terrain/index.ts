@@ -28,12 +28,37 @@ import { type ScatterResult, scatterGround, scatterWallTops } from './scatter';
 import { createSky } from './sky';
 import { createWater } from './water';
 
-export function createTerrainModule(ctx: RenderContext): RenderModule {
+interface CulledCell {
+  mesh: THREE.Mesh;
+  box: THREE.Box3;
+}
+
+/** 投影最长能伸出多远(米)：最高的树冠约 7 米，太阳仰角约 50° */
+const SHADOW_REACH = 7;
+
+const _frustum = new THREE.Frustum();
+const _projView = new THREE.Matrix4();
+
+/** 地形模块：在 RenderModule 之外附带各构建阶段的耗时(毫秒)，供调试/加载进度参考 */
+export interface TerrainModule extends RenderModule {
+  readonly timings: Record<string, number>;
+}
+
+export function createTerrainModule(ctx: RenderContext): TerrainModule {
+  const timings: Record<string, number> = {};
+  let mark = performance.now();
+  const lap = (name: string): void => {
+    const now = performance.now();
+    timings[name] = Math.round(now - mark);
+    mark = now;
+  };
   const map = ctx.map;
   const field = new MapField(map);
   const maxAniso = ctx.renderer.capabilities.getMaxAnisotropy();
-  const splat = bakeSplat(field, 1024);
+  const splat = bakeSplat(field, 768);
+  lap('splat');
   const noise = makeNoiseTexture(256, 7);
+  lap('noise');
   const root = ctx.layers.terrain;
   const q = ctx.settings;
 
@@ -41,11 +66,12 @@ export function createTerrainModule(ctx: RenderContext): RenderModule {
   const ground = createGround(field, splat, noise, q, maxAniso);
   root.add(ground.mesh);
   root.add(createWater(field, splat, noise));
+  lap('ground');
 
   // ── 材质：岩体(按面着色 + 三向投影岩石肌理) / 实体景物 / 贴地小物 ──
   const rockTex = getRockTexture();
-  const cliffMat = createToonMaterial({ vertexColors: true, flat: true, steps: 2, softness: 0.14, map: rockTex, triplanar: 0.3, mapGain: 1.75, rim: 0.08, shadeTint: 0xd0d8f4 });
-  const sceneryMat = createToonMaterial({ vertexColors: true, steps: 2, softness: 0.2, rim: 0.16, rimPower: 2.6, wind: 0.42, glowBoost: 1.7 });
+  const cliffMat = createToonMaterial({ vertexColors: true, flat: true, steps: 2, softness: 0.14, map: rockTex, triplanar: 0.3, mapGain: 1.75, mapMask: true, rim: 0.08, shadeTint: 0xf4eef2 });
+  const sceneryMat = createToonMaterial({ vertexColors: true, steps: 3, softness: 0.34, rim: 0.14, rimPower: 2.6, wind: 0.42, glowBoost: 1.7 });
   const clutterMat = createToonMaterial({ vertexColors: true, steps: 1, rim: 0, wind: 0.3, glowBoost: 1.5, side: THREE.DoubleSide });
 
   // ── 墙体断崖(按 32 米分块合并) ──
@@ -57,17 +83,34 @@ export function createTerrainModule(ctx: RenderContext): RenderModule {
   const cliffRoot = new THREE.Group();
   cliffRoot.name = 'cliffs';
   root.add(cliffRoot);
-  cliffBatch.build(cliffMat, cliffMat, cliffRoot, 'cliff', true);
+  const cells: CulledCell[] = [];
+  const track = (meshes: THREE.Mesh[]): void => {
+    for (const mesh of meshes) {
+      mesh.frustumCulled = false;
+      const box = (mesh.geometry.boundingBox as THREE.Box3).clone();
+      if (mesh.castShadow) {
+        // 主光来自西南：物体的影子落向东北，所以把包围盒朝 +x / -z 方向外扩，保证画面外的投影者仍在阴影通道里
+        box.max.x += SHADOW_REACH;
+        box.min.z -= SHADOW_REACH;
+      }
+      box.expandByScalar(0.8);
+      cells.push({ mesh, box });
+    }
+  };
+  track(cliffBatch.build(cliffMat, cliffMat, cliffRoot, 'cliff', true));
+  lap('cliffs');
 
   // ── 边界外装饰带 ──
   const border = createBorderInfo(field);
   const borderRoot = new THREE.Group();
   borderRoot.name = 'border';
   root.add(borderRoot);
-  buildBorder(field, border, borderRoot, cliffMat);
+  track(buildBorder(field, border, borderRoot, cliffMat));
+  lap('border');
 
   // ── 点缀物 ──
   const lib = createPropLibrary();
+  lap('props');
   const batch = new SceneryBatcher(32);
   const scatter: ScatterResult = { glows: [] };
   const moteSources: MoteSource[] = [];
@@ -75,12 +118,14 @@ export function createTerrainModule(ctx: RenderContext): RenderModule {
   scatterGround(batch, lib, field, 1, scatter);
   scatterBorder(batch, lib, field, border, scatter);
   decorateBases(batch, lib, field, border, cliffs, scatter, moteSources);
+  lap('scatter');
   const sceneryRoot = new THREE.Group();
   sceneryRoot.name = 'scenery';
   root.add(sceneryRoot);
-  batch.build(sceneryMat, clutterMat, sceneryRoot, 'scenery');
+  track(batch.build(sceneryMat, clutterMat, sceneryRoot, 'scenery'));
   lib.dispose();
   root.add(createWaterfalls(field, border, noise, scatter));
+  lap('merge');
 
   // ── 贴地纹样：固定纹样 + 发光体脚下的光晕 ──
   const decals: DecalSpec[] = mapDecals(field);
@@ -90,6 +135,7 @@ export function createTerrainModule(ctx: RenderContext): RenderModule {
   // ── 草丛 ──
   const bushes = createBushes(field, q);
   root.add(bushes.group);
+  lap('bushes');
 
   // ── 环境粒子 ──
   for (const g of scatter.glows) {
@@ -119,6 +165,7 @@ export function createTerrainModule(ctx: RenderContext): RenderModule {
 
   // ── 远景 ──
   root.add(createSky(cliffMat));
+  lap('misc');
 
   const query: TerrainQuery = {
     heightAt: (x, y) => field.heightAt(x, y),
@@ -134,7 +181,13 @@ export function createTerrainModule(ctx: RenderContext): RenderModule {
 
   return {
     name: 'terrain',
+    timings,
     update(frame) {
+      // 分块网格用包围盒(而非包围球)做视锥剔除：更紧，阴影通道也跟着省
+      _projView.multiplyMatrices(ctx.camera.projectionMatrix, ctx.camera.matrixWorldInverse);
+      _frustum.setFromProjectionMatrix(_projView);
+      for (const c of cells) c.mesh.visible = _frustum.intersectsBox(c.box);
+
       // 草丛里的可见单位把草拨开；玩家自己所在的草丛再额外变通透
       const st = frame.state;
       let n = 0;

@@ -15,11 +15,11 @@ import type { AudioEngine } from '../audio/api';
 import { HEROES, HERO_IDS } from '../core/data/heroes';
 import { ITEM_LIST } from '../core/data/items';
 import { createMockState } from '../core/mock';
-import type { Difficulty, HeroId, HeroRole, PlayerTeam, RoleLane, SummonerSlot } from '../core/types';
+import type { BuffId, Difficulty, HeroId, HeroRole, PlayerTeam, RoleLane, SummonerSlot } from '../core/types';
 import type { HeroPreview } from '../render/api';
 import type { MatchChoice, MenuHost, Settings } from '../ui/api';
 import {
-  LANE_NAMES, UI_ICON_NAMES, attachTooltip, bindUiSounds, createBackdrop, createBadge, createButton, createIconButton, createProgress, createSegmented, createSlider,
+  BUFF_META, LANE_NAMES, UI_ICON_NAMES, attachTooltip, bindUiSounds, buffIcon, createBackdrop, createBadge, createButton, createIconButton, createProgress, createSegmented, createSlider,
   createSlot, createTabs, createToggle, ensureTheme, h, icon, injectStyle, itemIcon, laneIcon, loadSettings, openDialog, openHowToDialog, openSettingsDialog, roleIcon,
   saveSettings, sfCss, showLoading, showMainMenu, showResult, skillIcon, summonerIcon, u, uiIcon,
 } from '../ui/index';
@@ -398,6 +398,7 @@ function showIcons(): void {
   const SUMMONER_NAMES: Record<SummonerSlot, string> = { recall: '回城', heal: '恢复', flash: '闪现' };
   section('召唤师技能', (['recall', 'heal', 'flash'] as SummonerSlot[]).map((s) => badgeCell(() => summonerIcon(s), SUMMONER_NAMES[s], s)));
   section('装备', ITEM_LIST.map((it) => badgeCell(() => itemIcon(it.id), it.name, it.id)));
+  section('状态', (Object.keys(BUFF_META) as BuffId[]).map((b) => badgeCell(() => buffIcon(b), BUFF_META[b].name, `${b} · ${BUFF_META[b].kind}`)));
   section('通用图标', UI_ICON_NAMES.map((n) => glyphCell(uiIcon(n), n)));
   section('定位', (Object.keys(ROLE_NAMES) as HeroRole[]).map((r) => glyphCell(roleIcon(r), ROLE_NAMES[r])));
   section('分路', (Object.keys(LANE_NAMES) as RoleLane[]).map((l) => glyphCell(laneIcon(l), LANE_NAMES[l])));

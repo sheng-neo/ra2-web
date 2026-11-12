@@ -14,10 +14,14 @@ const REPLAN_DIST = 0.6;
 const REPLAN_INTERVAL = 0.25;
 /** 走不动多久后强制用 A* 重新寻路 */
 const STUCK_TIME = 0.35;
+/** 目标不可达时，额外推迟重新规划的时间 */
+const UNREACHABLE_PENALTY = 1;
 /** 软分离：允许的重叠比例、刚度、每 tick 最大推移 */
 const SEP_TIGHTNESS = 0.85;
 const SEP_STIFFNESS = 0.5;
 const SEP_MAX_PUSH = 0.12;
+/** 瞬移/跃击落点不可走时，搜索最近可走点的最大距离 */
+const FAR_SEARCH = 24;
 
 export function faceTo(u: SimUnit, x: number, y: number): void {
   const dx = x - u.pos.x;
@@ -56,6 +60,8 @@ function planPath(sim: Sim, u: SimUnit, x: number, y: number, forceSearch: boole
   }
   const p = nav.findPath(u.pos.x, u.pos.y, x, y, rt.navR);
   rt.path = p && p.length > 0 ? p : [{ x, y }];
+  // 目标走不到(只有部分路径)：推迟下一次重新规划，免得对着够不着的目标每 0.25 秒白跑一次全图搜索
+  if (!p || nav.lastPathPartial) rt.pathTime += UNREACHABLE_PENALTY;
 }
 
 /** 点地板寻路移动 */
@@ -140,7 +146,11 @@ export function moveToward(sim: Sim, u: SimUnit, x: number, y: number, dt: numbe
   const gdy = y - rt.goalY;
   const age = time - rt.pathTime;
   const path = rt.path;
-  if (path === null || age > 2 || (age >= REPLAN_INTERVAL && gdx * gdx + gdy * gdy > REPLAN_DIST * REPLAN_DIST)) {
+  if (path === null) {
+    // 刚规划过(或刚发现目标不可达)又走完了：等一会儿再规划，保证每个单位的寻路频率有上限
+    if (age < REPLAN_INTERVAL) return;
+    planPath(sim, u, x, y, false);
+  } else if (age > 2 || (age >= REPLAN_INTERVAL && gdx * gdx + gdy * gdy > REPLAN_DIST * REPLAN_DIST)) {
     planPath(sim, u, x, y, false);
   } else if (path.length === 1 && rt.pathIdx === 0) {
     // 直线可达的情况下每 tick 直接跟住目标，不必等重新规划
@@ -176,9 +186,8 @@ export function stepToward(sim: Sim, u: SimUnit, x: number, y: number, dt: numbe
  */
 export function teleport(sim: Sim, u: SimUnit, x: number, y: number): Vec2 {
   const rt = u.rt;
-  if (!sim.nav.nearestFree(x, y, rt.navR, u.pos)) {
-    // 极端情况（落点周围大片不可走）：留在原地
-  }
+  // 落点周围大片不可走(瞄到了图外很远)时 nearestFree 不改写位置：留在原地
+  sim.nav.nearestFree(x, y, rt.navR, u.pos, FAR_SEARCH);
   u.prevPos.x = u.pos.x;
   u.prevPos.y = u.pos.y;
   rt.path = null;
@@ -259,8 +268,9 @@ export function startLeap(sim: Sim, u: SimUnit, toX: number, toY: number, durati
   const rt = u.rt;
   if (rt.dash) cancelDash(sim, u, 'interrupted');
   cancelWindup(u);
-  const dest = { x: toX, y: toY };
-  sim.nav.nearestFree(toX, toY, rt.navR, dest);
+  const dest = { x: u.pos.x, y: u.pos.y };
+  // 落点周围找不到可走点(瞄到了图外很远)就原地起跳
+  sim.nav.nearestFree(toX, toY, rt.navR, dest, FAR_SEARCH);
   const d = newDash(sim, 'leap');
   d.fromX = u.pos.x;
   d.fromY = u.pos.y;
@@ -303,7 +313,7 @@ function finishDash(sim: Sim, u: SimUnit, d: DashState, reason: DashEndReason): 
   if (rt.dash !== d) return;
   rt.dash = null;
   if (d.ignoreWalls && !sim.nav.isFree(u.pos.x, u.pos.y, rt.navR - 0.05)) {
-    sim.nav.nearestFree(u.pos.x, u.pos.y, rt.navR, u.pos);
+    sim.nav.nearestFree(u.pos.x, u.pos.y, rt.navR, u.pos, FAR_SEARCH);
   }
   if (d.onEnd) d.onEnd(reason);
 }

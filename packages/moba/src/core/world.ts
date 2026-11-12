@@ -4,11 +4,26 @@
  * Sim 是整个模拟层的中心对象：持有 GameState(对外契约) 与全部内部运行时数据，各玩法模块都是
  * 「以 sim 为第一个参数的函数」。Sim.step() 按固定顺序推进一个 30Hz tick：
  *
- *   调度器(延迟回调) → 出兵/刷野 → Bot 决策 → 重建空间网格 → 各单位(buff → 行动) →
- *   弹道 → 区域 → 软分离 → 泉水 → 视野(每 0.2s) → 动画状态 → 移除死亡单位
+ *   调度器(延迟回调) → 出兵/刷野/祝福计时 → 重建空间网格 → Bot 决策 → 各单位(buff → 行动) →
+ *   重建空间网格 → 弹道 → 区域 → 软分离 → 泉水 → 视野(每 0.2s) → 动画状态 → 移除死亡单位
  *
- * 确定性：只用 sim.rng(种子 PRNG)；遍历顺序固定(单位按创建顺序)；不读真实时间。
+ * 确定性：只用 sim.rng(种子 PRNG)；不读真实时间；单位按创建顺序遍历，每 tick 由 rng 决定正序还是倒序
+ * (否则先创建的蓝方永远先手)。同种子 + 同命令序列 → 逐 tick 完全相同的状态(见 hash.ts)。
  * 对局结束(state.over)后 step() 只推进 time/tick(供渲染层继续播放结束动画)，世界不再变化、命令被忽略。
+ *
+ * 模块地图(都在 core/ 下)：
+ *   internal.ts   内部类型：SimUnit(=契约单位+rt 运行时字段)、SimBuff、HeroHooks、DamageInfo…
+ *   entity.ts     单位创建与基础判定(canTarget / isTargetable / isStructure)
+ *   nav.ts        距离场网格、A*、碰撞移动            spatial.ts  单位空间哈希
+ *   movement.ts   行走/追击/冲刺/跃击/被迫位移/瞬移/软分离
+ *   combat.ts     伤害、治疗、死亡、普攻循环           rewards.ts  金币/经验/击杀结算
+ *   buffs.ts      buff 增删合并、控制、护盾            stats.ts    属性重算
+ *   projectiles.ts / areas.ts   投射物与区域效果       anim.ts     动作状态机
+ *   hero.ts       命令处理、施法管线、智能目标、装备、复活
+ *   minions.ts / structures.ts / monsters.ts / vision.ts
+ *   skills/       registry(注册表) toolkit(技能工具箱) summoner(召唤师技能) heroes(英雄技能占位)
+ *   passives.ts   装备被动                             ai/         Bot 接口、公平视图、兜底 AI
+ *   headless.ts   无头跑完整对局                       testkit.ts  测试辅助
  */
 import { createBot } from './ai/index';
 import type { BotFactory, LastSeen } from './ai/types';
@@ -102,7 +117,9 @@ export class Sim implements World {
   private readonly views = new Map<number, SimBotView>();
 
   constructor(config: MatchConfig, opts: SimOptions = {}) {
-    this.config = { ...config };
+    // 防御：外部传入了不存在的英雄 id 时退回第一个英雄，而不是在建英雄时崩掉
+    const playerHero = HERO_IDS.includes(config.playerHero) ? config.playerHero : HERO_IDS[0];
+    this.config = { ...config, playerHero };
     this.opts = opts;
     this.map = createMap();
     this.nav = new NavGrid(this.map);
@@ -132,7 +149,7 @@ export class Sim implements World {
     this.lastSeen = [seen(), seen()];
 
     // 英雄：玩家选的英雄排第一位，其余按固定顺序；红方镜像同样的顺序
-    const order: HeroId[] = [config.playerHero, ...HERO_IDS.filter((h) => h !== config.playerHero)];
+    const order: HeroId[] = [playerHero, ...HERO_IDS.filter((h) => h !== playerHero)];
     for (const team of [0, 1] as PlayerTeam[]) {
       order.forEach((heroId, i) => {
         const hero = createHero(this, team * 5 + i, team, heroId, team === 0 && i === 0);
@@ -161,21 +178,13 @@ export class Sim implements World {
 
     for (const hero of this.heroes) initHero(this, hero);
 
-    // Bot：除玩家外的 9 个英雄；autoPlay 时玩家英雄也交给 AI
-    if (!opts.noBots) {
-      const factory = opts.botFactory ?? createBot;
-      const botRng = new Rng((config.seed ^ 0x5bd1e995) >>> 0);
-      for (const hero of this.heroes) {
-        const rng = botRng.fork();
-        if (hero.isPlayer && !config.autoPlay) continue;
-        // 难度只影响红方；蓝方队友固定 normal
-        const difficulty = hero.team === 1 ? config.difficulty : 'normal';
-        const view = new SimBotView(this, hero, difficulty, rng);
-        hero.h.controller = factory(view);
-        this.views.set(hero.id, view);
-        // 错峰：同队的 Bot 不在同一个 tick 思考；双方同位置的 Bot 在同一个 tick 思考(公平)
-        hero.h.nextThink = 0.5 + (hero.h.index % 5) * 0.04;
-      }
+    // 每个英雄一个「公平视图」(各自独立的随机流)；除玩家外的 9 个英雄由 Bot 控制，autoPlay 时玩家英雄也交给 AI
+    const botRng = new Rng((config.seed ^ 0x5bd1e995) >>> 0);
+    for (const hero of this.heroes) {
+      // 难度只影响红方；蓝方队友固定 normal
+      const difficulty = hero.team === 1 ? config.difficulty : 'normal';
+      this.views.set(hero.id, new SimBotView(this, hero, difficulty, botRng.fork()));
+      if (!opts.noBots && (!hero.isPlayer || config.autoPlay)) this.setBotControl(hero.id, true);
     }
 
     this.grid.rebuild(this.units);
@@ -201,8 +210,15 @@ export class Sim implements World {
     updateCamps(this);
     this.updateBlessing(dt);
 
+    // 每 tick 用随机数决定本 tick 的遍历方向(单位更新 / Bot 决策各用一位)。
+    // 蓝方单位总是先创建：若永远正序更新，镜像对拼时蓝方永远先出手，平局全归蓝方；
+    // 按 tick 奇偶交替也不行 —— 兵线每 900 tick 一波，每波交战时的奇偶性相同，会让同一侧每波都占 1 tick 先手。
+    const coin = this.rng.next();
+    const forward = coin < 0.5;
+    const botsForward = ((coin * 4) | 0) % 2 === 0;
+
     this.grid.rebuild(units);
-    this.runBots();
+    this.runBots(botsForward);
 
     // 单位：先记下上一 tick 位置，再推进 buff 与行动。本 tick 新生成的单位从下一 tick 开始行动
     const count = units.length;
@@ -212,9 +228,6 @@ export class Sim implements World {
       u.prevPos.y = u.pos.y;
       u.rt.moved = false;
     }
-    // 奇偶 tick 交替遍历方向：蓝方单位总是先创建，若永远正序更新，镜像对拼时蓝方永远先出手、
-    // 平局全归蓝方，会系统性地偏向一侧
-    const forward = (st.tick & 1) === 0;
     for (let k = 0; k < count; k++) {
       const u = units[forward ? k : count - 1 - k];
       if (u.alive) tickBuffs(this, u, dt);
@@ -288,16 +301,31 @@ export class Sim implements World {
     this.grid.insert(u);
   }
 
-  /** 英雄对应的 Bot 视图（没有控制器的英雄返回 undefined）。调试/测试用 */
+  /** 英雄对应的 Bot 视图（每个英雄都有，不论当前是否由 AI 控制）。调试/测试用 */
   botView(heroUnitId: number): SimBotView | undefined {
     return this.views.get(heroUnitId);
   }
 
-  private runBots(): void {
+  /**
+   * 把某个英雄交给 AI / 收回手动控制（托管、演示模式用）。
+   * 开启时用 SimOptions.botFactory(缺省为 ai/index.ts 的默认工厂)新建一个控制器。
+   */
+  setBotControl(heroUnitId: number, enabled: boolean): void {
+    const hero = this.byId.get(heroUnitId);
+    const view = this.views.get(heroUnitId);
+    if (!hero || hero.kind !== 'hero' || !view) return;
+    if (!enabled) {
+      hero.h.controller = null;
+      return;
+    }
+    hero.h.controller = (this.opts.botFactory ?? createBot)(view);
+    // 错峰：同队的 Bot 不在同一个 tick 思考；双方同位置的 Bot 在同一个 tick 思考(公平)
+    hero.h.nextThink = Math.max(0.5, this.state.time) + (hero.h.index % 5) * 0.04;
+  }
+
+  private runBots(forward: boolean): void {
     const time = this.state.time;
     const heroes = this.heroes;
-    // 与单位更新同理：交替遍历方向，避免某一方的 Bot 总是先下命令
-    const forward = (this.state.tick & 1) === 0;
     for (let k = 0; k < heroes.length; k++) {
       const h = heroes[forward ? k : heroes.length - 1 - k];
       const c = h.h.controller;

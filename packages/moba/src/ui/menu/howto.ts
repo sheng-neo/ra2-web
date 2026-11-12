@@ -98,7 +98,7 @@ function keyboardPane(): HTMLElement {
 function touchPane(): HTMLElement {
   const fig = h('div', 'sf-touchfig');
   const mark = (x: number, y: number, n: string, color: string): string =>
-    `<circle cx="${x}" cy="${y}" r="9" fill="${color}"/><text x="${x}" y="${y + 4.5}" text-anchor="middle" font-size="12" fill="#08101f">${n}</text>`;
+    `<circle cx="${x}" cy="${y}" r="10.5" fill="${color}" stroke="#08101f" stroke-width="1.5"/><text x="${x}" y="${y + 5}" text-anchor="middle" font-size="14" fill="#08101f">${n}</text>`;
   const btn = (x: number, y: number, r: number, color: string): string =>
     `<circle cx="${x}" cy="${y}" r="${r}" fill="${color}" fill-opacity=".22" stroke="${color}" stroke-width="1.600"/>`;
   fig.innerHTML =
@@ -122,8 +122,8 @@ function touchPane(): HTMLElement {
     btn(232, 174, 11, '#6fe3a1') + btn(246, 140, 11, '#6fe3a1') + btn(264, 80, 11, '#6fe3a1') +
     '<rect x="22" y="88" width="34" height="18" rx="6" fill="#b9a2ff" fill-opacity=".2" stroke="#b9a2ff" stroke-width="1.400"/>' +
     // 拖动瞄准示意
-    '<path d="M292 112L250 62" stroke="#f3cf85" stroke-width="1.600" stroke-dasharray="3 3"/><path d="M250 62l1 9.500 6.500-5.500z" fill="#f3cf85"/>' +
-    mark(74, 140, '1', '#5cd6f7') + mark(340, 150, '2', '#ff8a7a') + mark(292, 112, '3', '#f3cf85') + mark(246, 140, '4', '#6fe3a1') + mark(49, 49, '5', '#b9a2ff') + mark(39, 97, '6', '#b9a2ff') +
+    '<path d="M340 86L306 52" stroke="#f3cf85" stroke-width="1.800" stroke-dasharray="3.500 3"/><path d="M301 47l2.500 10 7.500-7.500z" fill="#f3cf85"/>' +
+    mark(74, 140, '1', '#5cd6f7') + mark(340, 150, '2', '#ff8a7a') + mark(340, 86, '3', '#f3cf85') + mark(246, 140, '4', '#6fe3a1') + mark(49, 49, '5', '#b9a2ff') + mark(39, 97, '6', '#b9a2ff') +
     '</svg>';
   const list = h(
     'ul',

@@ -95,6 +95,16 @@ const CSS = sfCss(`
   .sf-loading__foot { gap: 5u; }
   .sf-loading__tip { min-height: 1.5em; font-size: var(--sf-fs-sm); }
 }
+@media (max-height: 520px) and (orientation: landscape) and (max-width: 780px) {
+  .sf-loading { padding-left: max(16u, var(--sf-safe-l)); padding-right: max(16u, var(--sf-safe-r)); }
+  .sf-loading__mode { letter-spacing: 0.08em; }
+  .sf-loading__vs { width: 56px; }
+  .sf-lcard { aspect-ratio: 10 / 18; }
+  .sf-lcard__lane { display: none; }
+  .sf-lcard__tag { top: 3px; }
+  .sf-lcard__tag .sf-badge { height: 15px; padding: 0 4px; font-size: 10px; }
+  .sf-lcard__name { font-size: 12px; letter-spacing: 0.04em; margin-right: 0; }
+}
 @media (orientation: portrait) {
   .sf-loading { padding-left: max(12u, var(--sf-safe-l)); padding-right: max(12u, var(--sf-safe-r)); }
   .sf-loading__versus { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto auto; align-content: center; gap: 6u; }

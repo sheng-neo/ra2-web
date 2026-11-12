@@ -5,7 +5,7 @@ import { ITEMS } from '../../core/data/items';
 import type { GameState, HeroUnit, PlayerTeam } from '../../core/types';
 import type { MenuHost } from '../api';
 import { itemIcon, uiIcon } from '../icons';
-import { attachTooltip, bindUiSounds, createBadge, createButton, createSlot, dismissTooltip, ensureTheme, h, hasOpenDialog, icon, injectStyle, sfCss } from '../theme';
+import { attachTooltip, bindUiSounds, createBadge, createButton, createSlot, dismissTooltip, ensureTheme, h, hasOpenDialog, icon, injectStyle, isButtonKeyFocused, sfCss } from '../theme';
 import { createBackdrop } from './backdrop';
 import { itemTooltipHtml } from './select';
 import { createPortrait, fmtClock, fmtK } from './shared';
@@ -67,7 +67,7 @@ const CSS = sfCss(`
 
 /* ── 标题横幅 ── */
 .sf-result__banner { position: relative; display: flex; flex-direction: column; align-items: center; gap: 2u; padding-top: 2u; isolation: isolate; }
-.sf-result__rays { position: absolute; left: 50%; top: 46%; width: max(380px, 760u); height: max(380px, 760u); translate: -50% -50%; z-index: -1; border-radius: 50%; pointer-events: none;
+.sf-result__rays { --r: max(190px, 380u); position: absolute; left: calc(50% - var(--r)); top: calc(46% - var(--r)); width: calc(var(--r) * 2); height: calc(var(--r) * 2); z-index: -1; border-radius: 50%; pointer-events: none;
   background: repeating-conic-gradient(from 0deg, rgba(var(--tone-rgb), 0.2) 0deg 5deg, rgba(var(--tone-rgb), 0) 5deg 15deg);
   -webkit-mask-image: radial-gradient(circle, #000 0, rgba(0, 0, 0, 0.5) 22%, transparent 62%); mask-image: radial-gradient(circle, #000 0, rgba(0, 0, 0, 0.5) 22%, transparent 62%);
   animation: sf-spin 60s linear infinite; }
@@ -117,8 +117,8 @@ const CSS = sfCss(`
 .sf-rt__pic-wrap { position: relative; flex: none; }
 .sf-rt__pic { width: max(28px, 31u); height: max(28px, 31u); border-radius: 6u; box-shadow: 0 0 0 1px rgba(8, 13, 31, 0.9), 0 0 0 max(1.5px, 2u) rgba(var(--team-rgb), 0.8); }
 .sf-rt__lv { position: absolute; right: -5u; bottom: -4u; min-width: max(15px, 17u); height: max(15px, 17u); padding: 0 3u; display: grid; place-items: center; border-radius: 99px; font-family: var(--sf-font-num); font-weight: 700; font-size: max(10px, 11u); line-height: 1; color: var(--sf-c-gold-100); background: #0a1128; box-shadow: 0 0 0 1px var(--sf-c-gold-500); }
-.sf-rt__name { font-weight: 700; font-size: var(--sf-fs-md); letter-spacing: 0.08em; color: var(--sf-c-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.sf-rt__badges { display: flex; align-items: center; gap: 4u; flex: none; }
+.sf-rt__name { flex: none; font-weight: 700; font-size: var(--sf-fs-md); letter-spacing: 0.08em; color: var(--sf-c-text); white-space: nowrap; }
+.sf-rt__badges { display: flex; align-items: center; gap: 4u; min-width: 0; overflow: hidden; }
 .sf-rt__cell { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2u; min-width: 0; text-align: center; }
 .sf-rt__lab { display: none; font-size: var(--sf-fs-xs); color: var(--sf-c-text-3); letter-spacing: 0.06em; }
 .sf-rt__val { font-family: var(--sf-font-num); font-variant-numeric: tabular-nums; font-size: var(--sf-fs-md); color: var(--sf-c-text); white-space: nowrap; }
@@ -150,14 +150,25 @@ const CSS = sfCss(`
   .sf-rt__h-full { display: none; }
   .sf-rt__h-short { display: inline; }
   .sf-result__summary { margin-top: 0; }
-  .sf-result__rays { top: 50%; }
+  .sf-result__rays { top: calc(50% - var(--r)); }
   .sf-rt { --cols: minmax(0, 1.5fr) 92u 46u 66u minmax(0, 1fr) minmax(0, 0.85fr) 62u auto 54u; }
   .sf-rt__head, .sf-rt__row { column-gap: 7u; padding: 0 8u; }
   .sf-result__actions .sf-btn { --sf-btn-h: max(40px, 46u); }
 }
 
-/* ── 窄屏/竖屏：每位英雄一张卡片 ── */
-@media (orientation: portrait), (max-width: 640px) {
+/* ── 小横屏（如 667×375）：去掉补刀与推塔两列，保持一行一人 ── */
+@media (orientation: landscape) and (max-width: 780px) {
+  .sf-rt { --cols: minmax(0, 1.5fr) 84u minmax(0, 0.8fr) minmax(0, 1fr) minmax(0, 0.9fr) auto 50u; }
+  .sf-rt__cell[data-c='cs'], .sf-rt__cell[data-c='tower'], .sf-rt__head > [data-c='cs'], .sf-rt__head > [data-c='tower'] { display: none; }
+  .sf-rt__items { gap: 2px; }
+  .sf-rt__items .sf-slot { --sf-slot: 22px; }
+  .sf-rt__items-h { width: 142px; }
+  .sf-rt__badges .sf-badge { padding: 0 4u; }
+  .sf-result__chip:last-child { display: none; }
+}
+
+/* ── 竖屏：每位英雄一张卡片 ── */
+@media (orientation: portrait) {
   .sf-result { padding-left: max(10u, var(--sf-safe-l)); padding-right: max(10u, var(--sf-safe-r)); }
   .sf-result__sub { display: block; }
   .sf-result__summary { flex-wrap: wrap; justify-content: center; gap: 6u 16u; margin-top: 6u; }
@@ -186,6 +197,12 @@ const CSS = sfCss(`
 `);
 
 // ───────────────────────── 构建 ─────────────────────────
+
+function headCell(label: string, col: string): HTMLElement {
+  const el = h('span', 'sf-rt__c', label);
+  el.dataset.c = col;
+  return el;
+}
 
 function statCell(col: string, label: string, value: string, extra?: HTMLElement | null, valCls?: string): HTMLElement {
   const cell = h('span', 'sf-rt__cell', h('span', 'sf-rt__lab', label), h('span', `sf-rt__val${valCls ? ` ${valCls}` : ''}`, value), extra);
@@ -251,11 +268,11 @@ export function showResult(root: HTMLElement, state: GameState, host: MenuHost):
       'sf-rt__head',
       h('span', null, '英雄'),
       h('span', 'sf-rt__c', h('span', 'sf-rt__h-full', '击杀 / 死亡 / 助攻'), h('span', 'sf-rt__h-short', '战绩')),
-      h('span', 'sf-rt__c', '补刀'),
+      headCell('补刀', 'cs'),
       h('span', 'sf-rt__c', '经济'),
       h('span', 'sf-rt__c', '对英雄伤害'),
       h('span', 'sf-rt__c', '承受伤害'),
-      h('span', 'sf-rt__c', '推塔伤害'),
+      headCell('推塔伤害', 'tower'),
       h('span', 'sf-rt__items-h', '装备'),
       h('span', 'sf-rt__c', '评分'),
     ),
@@ -356,7 +373,7 @@ export function showResult(root: HTMLElement, state: GameState, host: MenuHost):
     };
     const onKey = (ev: KeyboardEvent): void => {
       if (hasOpenDialog() || ev.repeat) return;
-      if (document.activeElement instanceof HTMLButtonElement && shell.contains(document.activeElement) && ev.key === 'Enter') return;
+      if (ev.key === 'Enter' && isButtonKeyFocused(shell)) return;
       if (ev.key === 'Enter') {
         ev.preventDefault();
         host.audio.ui('confirm');

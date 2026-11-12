@@ -6,7 +6,8 @@
  */
 import type { MusicTrack } from './api';
 import { Mixer } from './mixer';
-import { MusicEngine } from './music';
+import { MusicEngine, SCORE } from './music';
+import type { ScorePart } from './music';
 import { SFX, SFX_KEYS, trimOf } from './sfx';
 import type { SfxKey } from './sfx';
 
@@ -115,7 +116,7 @@ function countClicks(x: Float32Array): number {
   return clicks;
 }
 
-export function analyze(buf: AudioBuffer, envPoints = 64): Analysis {
+export function analyze(buf: AudioBuffer, envPoints = 64, envActiveOnly = false): Analysis {
   const L = buf.getChannelData(0);
   const R = buf.numberOfChannels > 1 ? buf.getChannelData(1) : L;
   const n = buf.length;
@@ -139,8 +140,10 @@ export function analyze(buf: AudioBuffer, envPoints = 64): Analysis {
       if (first < 0) first = i;
       last = i;
     }
-    const ei = Math.min(envPoints - 1, Math.floor((i / n) * envPoints));
-    if (a > env[ei]) env[ei] = a;
+    if (!envActiveOnly) {
+      const ei = Math.min(envPoints - 1, Math.floor((i / n) * envPoints));
+      if (a > env[ei]) env[ei] = a;
+    }
     if (i > 0) {
       const d = Math.abs(l - L[i - 1]);
       if (d > maxStep) maxStep = d;
@@ -148,6 +151,14 @@ export function analyze(buf: AudioBuffer, envPoints = 64): Analysis {
   }
   if (first < 0) first = last = 0;
   const len = last - first + 1;
+  if (envActiveOnly) {
+    // 单个音效：包络只画有效段，缩略图才能看清形状
+    for (let i = first; i <= last; i++) {
+      const a = Math.max(Math.abs(L[i]), Math.abs(R[i]));
+      const ei = Math.min(envPoints - 1, Math.floor(((i - first) / len) * envPoints));
+      if (a > env[ei]) env[ei] = a;
+    }
+  }
   let sq = 0;
   let sum = 0;
   for (let i = first; i <= last; i++) {
@@ -249,7 +260,7 @@ export interface SfxRow extends Analysis {
 
 export async function checkSfx(key: SfxKey, v = 0, variant = ''): Promise<SfxRow> {
   const def = SFX[key];
-  const a = analyze(await renderSfx(key, v));
+  const a = analyze(await renderSfx(key, v), 96, true);
   const trim = trimOf(key);
   // 把 A 计权响度拉到目标值；同时不让未计权响度超出目标 7dB(低频为主的声音)、峰值不超过 0.89
   let suggest = trim * Math.pow(10, (def.loud - a.loudA) / 20);
@@ -305,13 +316,16 @@ export interface MusicRow {
   maxSecDb: number;
   /** 最长静音段(50ms 窗 RMS < -55dB，秒) */
   silence: number;
+  /** 左右声道 RMS 之差(dB，正 = 偏左)；以及左右相加成单声道后相对立体声的电平变化(dB，手机单喇叭兼容性) */
+  balance: number;
+  monoDb: number;
   /** 对数频率声谱：frames × bands，值 0..1 */
   spec: number[][];
   env: number[];
   issues: string[];
 }
 
-function spectrogram(buf: AudioBuffer, bands = 56): number[][] {
+function spectrogram(buf: AudioBuffer, bands = 96): number[][] {
   const L = buf.getChannelData(0);
   const R = buf.numberOfChannels > 1 ? buf.getChannelData(1) : L;
   const n = buf.length;
@@ -319,7 +333,7 @@ function spectrogram(buf: AudioBuffer, bands = 56): number[][] {
   const out: number[][] = [];
   const re = new Float64Array(FFT_N);
   const im = new Float64Array(FFT_N);
-  const hop = Math.floor(sr * 0.08);
+  const hop = Math.floor(sr * 0.05);
   const fMin = 40;
   const fMax = 14000;
   for (let s = 0; s + FFT_N <= n; s += hop) {
@@ -335,33 +349,70 @@ function spectrogram(buf: AudioBuffer, bands = 56): number[][] {
       const k = Math.floor((Math.log(f / fMin) / Math.log(fMax / fMin)) * bands);
       row[k] += re[b] * re[b] + im[b] * im[b];
     }
-    for (let k = 0; k < bands; k++) {
-      const d = 10 * Math.log10(row[k] / (FFT_N * FFT_N) + 1e-12);
-      row[k] = Math.max(0, Math.min(1, (d + 95) / 60));
-    }
+    for (let k = 0; k < bands; k++) row[k] = 10 * Math.log10(row[k] + 1e-9);
     out.push(row);
   }
+  // 以全图最强处为 0dB，向下取 50dB 动态范围
+  let top = -Infinity;
+  for (const row of out) for (const v of row) if (v > top) top = v;
+  for (const row of out) for (let k = 0; k < bands; k++) row[k] = Math.max(0, Math.min(1, (row[k] - top + 50) / 50));
   return out;
+}
+
+/**
+ * 分段离线渲染：每 step 秒暂停一次，推进虚拟时钟、排下一段的音符、回收已结束的节点，再继续。
+ * 这样节点数与实时运行时一样保持在很小的规模(一次排完整段会让渲染时间随节点数平方增长)，
+ * 同时也让离线自检覆盖到「调度 + 回收」这条实时路径。
+ */
+function renderChunked(ctx: OfflineAudioContext, seconds: number, step: number, onChunk: (t: number) => void): Promise<AudioBuffer> {
+  for (let i = 1; i * step < seconds - 0.01; i++) {
+    const t = i * step;
+    void ctx.suspend(t).then(() => {
+      onChunk(t);
+      void ctx.resume();
+    });
+  }
+  onChunk(0);
+  return ctx.startRendering();
 }
 
 /** 渲染一段配乐(完整总线链：压限 + 软削波，音量全开)并统计 */
 export async function checkMusic(name: string, track: MusicTrack, seconds: number, intensity = 0, tension = 0): Promise<MusicRow> {
   const ctx = new OfflineAudioContext(2, Math.ceil(seconds * SR), SR);
-  const mixer = new Mixer(ctx, { clock: () => 0 });
+  let now = 0;
+  const mixer = new Mixer(ctx, { clock: () => now });
   const music = new MusicEngine(mixer);
   music.setMood(intensity, tension);
   music.setTrack(track);
-  music.tick(seconds);
-  const buf = await ctx.startRendering();
+  const step = 0.25;
+  const buf = await renderChunked(ctx, seconds, step, (t) => {
+    now = t;
+    mixer.sweep();
+    music.tick(step + 0.1);
+  });
   const a = analyze(buf, 200);
   const L = buf.getChannelData(0);
   const R = buf.getChannelData(1);
+  const issues0: string[] = [];
   const secDb: number[] = [];
   for (let s = 0; s + SR <= buf.length; s += SR) {
     let w = 0;
     for (let i = s; i < s + SR; i++) w += (L[i] * L[i] + R[i] * R[i]) / 2;
     secDb.push(db(Math.sqrt(w / SR)));
   }
+  let sl = 0;
+  let sr = 0;
+  let sm = 0;
+  for (let i = 0; i < buf.length; i++) {
+    sl += L[i] * L[i];
+    sr += R[i] * R[i];
+    const m = (L[i] + R[i]) / 2;
+    sm += m * m;
+  }
+  const balance = db(Math.sqrt(sl)) - db(Math.sqrt(sr));
+  const monoDb = db(Math.sqrt(sm)) - db(Math.sqrt((sl + sr) / 2));
+  if (Math.abs(balance) > 2) issues0.push(`左右不平衡 ${balance.toFixed(1)}dB`);
+  if (monoDb < -4) issues0.push(`单声道相消 ${monoDb.toFixed(1)}dB`);
   const body = secDb.slice(1);
   const minSecDb = Math.min(...body);
   const maxSecDb = Math.max(...body);
@@ -376,7 +427,7 @@ export async function checkMusic(name: string, track: MusicTrack, seconds: numbe
       if (run > silence) silence = run;
     } else run = 0;
   }
-  const issues: string[] = [];
+  const issues: string[] = issues0;
   if (a.nan) issues.push('含 NaN');
   if (a.peak > 1.0) issues.push('削波');
   if (a.peak < 0.05) issues.push('近乎静音');
@@ -386,8 +437,226 @@ export async function checkMusic(name: string, track: MusicTrack, seconds: numbe
   return {
     name, track, intensity, tension, seconds,
     peak: a.peak, rmsDb: a.rmsDb, nan: a.nan, clicks: a.clicks, maxStep: a.maxStep, low: a.low, mid: a.mid, high: a.high,
-    secDb, minSecDb, maxSecDb, silence, spec: spectrogram(buf), env: a.env, issues,
+    secDb, minSecDb, maxSecDb, silence, balance, monoDb, spec: spectrogram(buf), env: a.env, issues,
   };
+}
+
+export interface MixRow {
+  track: MusicTrack;
+  chan: string;
+  peak: number;
+  /** 整段 RMS / 只统计有声的 100ms 窗的 RMS(稀疏声部看这个) */
+  rmsDb: number;
+  activeDb: number;
+  low: number;
+  mid: number;
+  high: number;
+}
+
+/**
+ * 混音表：把某首曲子的每个通道单独渲染(旁路压限)，量出各自的电平与频段，
+ * 用数据而不是耳朵来平衡各声部。chan = '(全部)' 的一行是未压限的总和。
+ */
+export async function checkMix(track: MusicTrack, seconds: number, intensity = 0, tension = 0): Promise<MixRow[]> {
+  const rows: MixRow[] = [];
+  const render = async (solo: string | null): Promise<string[]> => {
+    MusicEngine.solo = solo;
+    try {
+      const ctx = new OfflineAudioContext(2, Math.ceil(seconds * SR), SR);
+      let now = 0;
+      const mixer = new Mixer(ctx, { dynamics: false, clock: () => now });
+      const music = new MusicEngine(mixer);
+      music.setMood(intensity, tension);
+      music.setTrack(track);
+      const names = music.channels;
+      const buf = await renderChunked(ctx, seconds, 0.25, (t) => {
+        now = t;
+        mixer.sweep();
+        music.tick(0.35);
+      });
+      const a = analyze(buf, 8);
+      const L = buf.getChannelData(0);
+      const R = buf.getChannelData(1);
+      const win = Math.floor(SR * 0.1);
+      let sq = 0;
+      let cnt = 0;
+      for (let s0 = 0; s0 + win <= buf.length; s0 += win) {
+        let w = 0;
+        for (let i = s0; i < s0 + win; i++) w += (L[i] * L[i] + R[i] * R[i]) / 2;
+        if (Math.sqrt(w / win) > 0.0018) {
+          sq += w;
+          cnt += win;
+        }
+      }
+      rows.push({ track, chan: solo ?? '(全部)', peak: a.peak, rmsDb: a.rmsDb, activeDb: cnt ? db(Math.sqrt(sq / cnt)) : -180, low: a.low, mid: a.mid, high: a.high });
+      return names;
+    } finally {
+      MusicEngine.solo = null;
+    }
+  };
+  const names = await render(null);
+  for (const n of names) await render(n);
+  return rows;
+}
+
+export interface GameRow {
+  seconds: number;
+  peak: number;
+  rmsDb: number;
+  /** 每秒 RMS(dBFS) */
+  secDb: number[];
+  nan: boolean;
+  clicks: number;
+  low: number;
+  mid: number;
+  high: number;
+  played: number;
+  throttled: number;
+  capped: number;
+  stolen: number;
+  peakVoices: number;
+  endLive: number;
+  /** 各键播放次数，降序 */
+  byKey: [string, number][];
+  env: number[];
+  issues: string[];
+}
+
+/**
+ * 把一段「真实对局」渲染成波形：调用方提供 attach(挂接引擎) 与 tick(推进一个模拟步并把事件喂给引擎)，
+ * 这里负责分段渲染、推进虚拟时钟并统计。用完整总线链(压限 + 软削波)。
+ */
+export async function renderGame(
+  seconds: number,
+  dt: number,
+  attach: (ctx: OfflineAudioContext, clock: () => number) => Mixer,
+  tick: (t: number) => void,
+): Promise<GameRow> {
+  const ctx = new OfflineAudioContext(2, Math.ceil(seconds * SR), SR);
+  let now = 0;
+  const mixer = attach(ctx, () => now);
+  const buf = await renderChunked(ctx, seconds, dt, (t) => {
+    now = t;
+    tick(t);
+  });
+  const a = analyze(buf, 240);
+  const L = buf.getChannelData(0);
+  const R = buf.getChannelData(1);
+  const secDb: number[] = [];
+  for (let s0 = 0; s0 + SR <= buf.length; s0 += SR) {
+    let w = 0;
+    for (let i = s0; i < s0 + SR; i++) w += (L[i] * L[i] + R[i] * R[i]) / 2;
+    secDb.push(db(Math.sqrt(w / SR)));
+  }
+  const issues: string[] = [];
+  if (a.nan) issues.push('含 NaN');
+  if (a.peak > 1.0) issues.push('削波');
+  if (a.clicks > 0) issues.push(`疑似爆音×${a.clicks}`);
+  const st = mixer.stats;
+  return {
+    seconds, peak: a.peak, rmsDb: a.rmsDb, secDb, nan: a.nan, clicks: a.clicks, low: a.low, mid: a.mid, high: a.high,
+    played: st.played, throttled: st.throttled, capped: st.capped, stolen: st.stolen, peakVoices: st.peakVoices, endLive: mixer.voiceCount,
+    byKey: [...mixer.counts].sort((x, y) => y[1] - x[1]), env: a.env, issues,
+  };
+}
+
+export interface ScoreRow {
+  name: string;
+  notes: number;
+  /** 检测到的主音高与乐谱一致(同音名，允许八度叠置)的音符数 */
+  matched: number;
+  /** 不一致的音：[步, 期望 MIDI, 实测 MIDI] */
+  misses: [number, number, number][];
+}
+
+const MEL_N = 16384;
+
+/** 在 [f1, f2] 内找最强谱峰对应的频率(抛物线插值) */
+function dominantFreq(x: Float32Array, at: number, len: number, sr: number, f1: number, f2: number): { freq: number; mags: Float64Array } {
+  const re = new Float64Array(MEL_N);
+  const im = new Float64Array(MEL_N);
+  for (let i = 0; i < len; i++) {
+    const k = at + i;
+    re[i] = k < x.length ? x[k] * (0.5 - 0.5 * Math.cos((2 * Math.PI * i) / (len - 1))) : 0;
+  }
+  fft(re, im);
+  const mags = new Float64Array(MEL_N / 2);
+  let best = 0;
+  let bi = 0;
+  const b1 = Math.floor((f1 * MEL_N) / sr);
+  const b2 = Math.ceil((f2 * MEL_N) / sr);
+  for (let b = 1; b < MEL_N / 2; b++) {
+    mags[b] = Math.hypot(re[b], im[b]);
+    if (b >= b1 && b <= b2 && mags[b] > best) {
+      best = mags[b];
+      bi = b;
+    }
+  }
+  const a = mags[bi - 1] ?? 0;
+  const c = mags[bi + 1] ?? 0;
+  const off = a + c - 2 * best !== 0 ? (0.5 * (a - c)) / (a - 2 * best + c) : 0;
+  return { freq: ((bi + off) * sr) / MEL_N, mags };
+}
+
+/**
+ * 自动听写：单独渲染旋律通道，在每个音符起音后 ~0.1 秒处取一窗做频谱，
+ * 看乐谱上的那个音(或其八度)是不是当时最强的音高成分。
+ */
+export async function checkScore(part: ScorePart): Promise<ScoreRow> {
+  const lastStep = Math.max(...part.events.map((e) => e[0] + e[2]));
+  const seconds = part.start + lastStep * part.stepDur + 1.5;
+  MusicEngine.solo = part.chan;
+  let buf: AudioBuffer;
+  try {
+    const ctx = new OfflineAudioContext(2, Math.ceil(seconds * SR), SR);
+    let now = 0;
+    const mixer = new Mixer(ctx, { dynamics: false, clock: () => now });
+    const music = new MusicEngine(mixer);
+    music.setMood(part.intensity, 0);
+    music.setTrack(part.track);
+    buf = await renderChunked(ctx, seconds, 0.25, (t) => {
+      now = t;
+      mixer.sweep();
+      music.tick(0.35);
+    });
+  } finally {
+    MusicEngine.solo = null;
+  }
+  const L = buf.getChannelData(0);
+  const R = buf.getChannelData(1);
+  const mono = new Float32Array(buf.length);
+  for (let i = 0; i < mono.length; i++) mono[i] = (L[i] + R[i]) / 2;
+  const win = 4096;
+  const misses: [number, number, number][] = [];
+  let matched = 0;
+  for (const e of part.events) {
+    const want = e[1] + part.transpose;
+    const noteLen = e[2] * part.stepDur;
+    const at = Math.floor((part.start + e[0] * part.stepDur + Math.min(0.11, noteLen * 0.4)) * SR);
+    const { freq, mags } = dominantFreq(mono, at, win, SR, 120, 2600);
+    const got = 69 + 12 * Math.log2(freq / 440);
+    const near = Math.round(got);
+    // 乐谱音(及其上下八度)处的谱峰是否与全场最强峰相当(6dB 以内)
+    let top = 0;
+    for (let b = Math.floor((120 * MEL_N) / SR); b < (2600 * MEL_N) / SR; b++) if (mags[b] > top) top = mags[b];
+    let ok = false;
+    for (const oct of [-12, 0, 12]) {
+      const f = 440 * Math.pow(2, (want + oct - 69) / 12);
+      const b = Math.round((f * MEL_N) / SR);
+      let m = 0;
+      for (let k = b - 3; k <= b + 3; k++) if (mags[k] > m) m = mags[k];
+      if (m >= top * 0.5) ok = true;
+    }
+    if (ok) matched++;
+    else misses.push([e[0], want, near]);
+  }
+  return { name: part.name, notes: part.events.length, matched, misses };
+}
+
+export async function checkAllScores(): Promise<ScoreRow[]> {
+  const rows: ScoreRow[] = [];
+  for (const p of SCORE) rows.push(await checkScore(p));
+  return rows;
 }
 
 export interface StressRow {
@@ -398,10 +667,15 @@ export interface StressRow {
   capped: number;
   stolen: number;
   peakVoices: number;
+  /** 渲染过程中同时存活的发声 + 配乐音符记录数的最大值 / 结束时残留的音效发声数(应为 0) */
+  maxLive: number;
+  endLive: number;
   peak: number;
   rmsDb: number;
   nan: boolean;
   clicks: number;
+  /** 离线渲染耗时(毫秒)：与音频时长之比粗略反映 DSP 开销(含分段暂停的额外开销，是偏保守的上界) */
+  renderMs: number;
   env: number[];
   issues: string[];
 }
@@ -427,10 +701,16 @@ export async function checkStress(seconds = 8, perSec = 60): Promise<StressRow> 
     return s / 4294967296;
   };
   let events = 0;
-  const dt = 1 / 60;
+  const dt = 1 / 30;
   let acc = 0;
-  for (now = 0; now < seconds; now += dt) {
-    music.tick();
+  let maxNodes = 0;
+  const t0 = performance.now();
+  const buf = await renderChunked(ctx, seconds + 2.5, dt, (t) => {
+    now = t;
+    mixer.sweep();
+    music.tick(dt + 0.1);
+    if (mixer.voiceCount + mixer.noteCount > maxNodes) maxNodes = mixer.voiceCount + mixer.noteCount;
+    if (t >= seconds) return;
     acc += perSec * dt;
     while (acc >= 1) {
       acc -= 1;
@@ -438,17 +718,19 @@ export async function checkStress(seconds = 8, perSec = 60): Promise<StressRow> 
       const key = pool[Math.floor(rnd() * pool.length)];
       mixer.play(key, { gain: 0.4 + rnd() * 0.6, pan: rnd() * 1.6 - 0.8, lp: rnd() < 0.3 ? 4000 : 0 });
     }
-    // 偶尔来一个播报 / 击杀 / 金币
-    if (rnd() < 0.004) mixer.play('ann_triple_kill', { v: rnd() < 0.5 ? 1 : 0 });
-    if (rnd() < 0.02) mixer.play('coin');
-  }
+    // 偶尔来一个播报 / 金币
+    if (rnd() < 0.008) mixer.play('ann_triple_kill', { v: rnd() < 0.5 ? 1 : 0 });
+    if (rnd() < 0.04) mixer.play('coin');
+  });
+  const renderMs = performance.now() - t0;
   const st = { ...mixer.stats };
-  const a = analyze(await ctx.startRendering(), 200);
+  const a = analyze(buf, 200);
   const issues: string[] = [];
   if (a.nan) issues.push('含 NaN');
   if (a.peak > 1.0) issues.push('削波');
   if (a.clicks > 0) issues.push(`疑似爆音×${a.clicks}`);
-  return { seconds, events, played: st.played, throttled: st.throttled, capped: st.capped, stolen: st.stolen, peakVoices: st.peakVoices, peak: a.peak, rmsDb: a.rmsDb, nan: a.nan, clicks: a.clicks, env: a.env, issues };
+  if (mixer.voiceCount > 0) issues.push(`结束时仍有 ${mixer.voiceCount} 个发声未回收`);
+  return { seconds, events, played: st.played, throttled: st.throttled, capped: st.capped, stolen: st.stolen, peakVoices: st.peakVoices, maxLive: maxNodes, endLive: mixer.voiceCount, peak: a.peak, rmsDb: a.rmsDb, nan: a.nan, clicks: a.clicks, renderMs, env: a.env, issues };
 }
 
 export interface LimiterRow {

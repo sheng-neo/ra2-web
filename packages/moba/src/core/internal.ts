@@ -131,6 +131,8 @@ export interface UnitRt {
   /** >0 表示正处于前摇 */
   windupLeft: number;
   windupTarget: number;
+  /** 在此时间之前不能开始普攻（缴械：如旋转大招期间） */
+  disarmUntil: number;
 
   // —— 动作(动画)与动作锁 ——
   /** 在此时间之前不能移动/普攻/施法（施法动作中） */
@@ -259,6 +261,8 @@ export interface HeroRt {
   index: number;
   /** 出生/复活点 */
   spawn: Vec2;
+  /** rt.base 对应的等级（升级时才重新计算裸属性） */
+  baseLevel: number;
 
   // —— 普攻指令 ——
   atkOrder: boolean;
@@ -362,6 +366,15 @@ export interface SimArea extends AreaEffect {
   onTick: ((sim: Sim, area: SimArea) => void) | null;
   /** expired = 是否自然到期 */
   onEnd: ((sim: Sim, area: SimArea, expired: boolean) => void) | null;
+}
+
+/**
+ * 把对象上的若干字段设为不可枚举。内部对象(单位/buff/弹道/区域)就放在 GameState 里对外可见，
+ * 把带函数、循环引用的内部字段藏起来后，外部层对状态做 JSON.stringify / 展开 / structuredClone 都是安全的。
+ */
+export function hideFields<T extends object>(obj: T, ...keys: (keyof T)[]): T {
+  for (const key of keys) Object.defineProperty(obj, key, { enumerable: false });
+  return obj;
 }
 
 // ───────────────────────────── 常量 ─────────────────────────────

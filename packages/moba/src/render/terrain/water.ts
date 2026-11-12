@@ -40,42 +40,45 @@ void main() {
   vec4 n1 = texture2D(tNoise, wp * 0.061 - uFlow * t * 0.022);
   vec4 n2 = texture2D(tNoise, wp * 0.113 - uFlow * t * 0.041 + vec2(0.37, 0.71));
   // 波纹法线(世界空间 → 视图空间)
-  vec3 Nw = normalize(vec3((n1.g - 0.5) * 0.55 + (n2.b - 0.5) * 0.4, 1.0, (n1.b - 0.5) * 0.55 + (n2.g - 0.5) * 0.4));
+  vec3 Nw = normalize(vec3((n1.g - 0.5) * 0.4 + (n2.b - 0.5) * 0.3, 1.0, (n1.b - 0.5) * 0.4 + (n2.g - 0.5) * 0.3));
   vec3 N = normalize((viewMatrix * vec4(Nw, 0.0)).xyz);
   vec3 V = normalize(vViewPosition);
   float fres = pow(1.0 - max(dot(N, V), 0.0), 3.0);
 
   float ford = 1.0 - smoothstep(-1.2, 0.8, dLane);
-  float depthF = smoothstep(0.1, 2.6, shore) * (1.0 - 0.45 * ford);
+  float depthF = smoothstep(0.1, 2.8, shore) * (1.0 - 0.5 * ford);
   vec3 tint = mix(cShallow, cDeep, depthF);
-  float alpha = mix(0.16, 0.6, depthF);
+  float alpha = mix(0.2, 0.74, depthF);
 
   float shadow = kitShadow();
   vec3 sun = kitSunColor();
   vec3 L = kitSunDir();
   vec3 irr = kitAmbient(N) + sun * max(dot(N, L), 0.0) * shadow;
   vec3 col = tint * RECIPROCAL_PI * irr;
+  // 大块缓慢流动的明暗水纹：手绘感的浅色涡流
+  float swirl = texture2D(tNoise, vec2(dot(wp, vec2(-uFlow.y, uFlow.x)) * 0.05, dot(wp, uFlow) * 0.018 - t * 0.012)).r;
+  float swirl2 = texture2D(tNoise, vec2(dot(wp, vec2(-uFlow.y, uFlow.x)) * 0.11 + 0.4, dot(wp, uFlow) * 0.04 - t * 0.02)).g;
+  float band = smoothstep(0.5, 0.68, swirl * 0.6 + swirl2 * 0.4);
+  col = mix(col, col * 1.28 + vec3(0.02, 0.05, 0.05), band * 0.5 * depthF);
   // 天光反射
-  col = mix(col, cSky * (0.55 + 0.45 * shadow), fres * 0.55);
-  alpha = mix(alpha, 0.85, fres * 0.6);
+  col = mix(col, cSky * (0.55 + 0.45 * shadow), fres * 0.5);
+  alpha = mix(alpha, 0.88, fres * 0.6);
 
-  // 太阳碎闪：阈值化的高光，星星点点
+  // 太阳碎闪：只在水纹亮带上零星出现
   vec3 H = normalize(L + V);
-  float sp = pow(max(dot(N, H), 0.0), 90.0);
-  float glint = smoothstep(0.35, 0.75, sp) * shadow;
-  col += sun * glint * 0.9;
-  alpha = max(alpha, glint * 0.9);
+  float sp = pow(max(dot(N, H), 0.0), 220.0);
+  float glint = smoothstep(0.3, 0.8, sp) * shadow * (0.25 + 0.75 * band);
+  col += sun * glint * 1.1;
+  alpha = max(alpha, glint);
 
   // 岸边水沫：一条被噪声撕碎的白边 + 向岸推进的细浪
   float fn = n1.r * 0.6 + n2.r * 0.4;
-  float edge = 1.0 - smoothstep(0.0, 0.5, shore - 0.22 + (fn - 0.5) * 0.7);
-  float wave = smoothstep(0.62, 0.9, sin((shore - t * 0.35) * 5.5 + fn * 9.0) * 0.5 + 0.5) * (1.0 - smoothstep(0.5, 1.7, shore)) * 0.45;
-  // 河心的流水纹
-  float streak = smoothstep(0.66, 0.82, texture2D(tNoise, vec2(dot(wp, vec2(-uFlow.y, uFlow.x)) * 0.19, dot(wp, uFlow) * 0.027 - t * 0.045)).g) * smoothstep(1.2, 2.6, shore) * 0.2;
-  float foam = clamp(edge * (0.55 + 0.45 * n2.b) + wave + streak, 0.0, 1.0);
+  float edge = 1.0 - smoothstep(0.0, 0.42, shore - 0.26 + (fn - 0.5) * 0.6);
+  float wave = smoothstep(0.7, 0.92, sin((shore - t * 0.3) * 5.0 + fn * 8.0) * 0.5 + 0.5) * (1.0 - smoothstep(0.45, 1.5, shore)) * 0.4;
+  float foam = clamp(edge * (0.5 + 0.5 * n2.b) + wave, 0.0, 1.0);
   vec3 foamCol = cFoam * RECIPROCAL_PI * (kitAmbient(N) + sun * shadow * 0.9);
   col = mix(col, foamCol, foam);
-  alpha = max(alpha, foam * 0.9);
+  alpha = max(alpha, foam * 0.92);
   // 边界淡出：水面带两侧多出来的部分不应盖住岸
   alpha *= smoothstep(-0.9, -0.3, shore);
 
@@ -130,8 +133,8 @@ export function createWater(field: MapField, splat: SplatTextures, noise: THREE.
       uTime: SHARED.uTime,
       uSplatScale: { value: 1 / (SPLAT_EXTENT * 2) },
       uFlow: { value: flow },
-      cShallow: { value: new THREE.Color(0x8ff0ee) },
-      cDeep: { value: new THREE.Color(0x2f9fd0) },
+      cShallow: { value: new THREE.Color(0x86ecea) },
+      cDeep: { value: new THREE.Color(0x1f8ecf) },
       cSky: { value: new THREE.Color(0xdff4ff) },
       cFoam: { value: new THREE.Color(PALETTE.env.foam) },
     }),

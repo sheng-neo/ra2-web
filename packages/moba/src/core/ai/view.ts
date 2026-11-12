@@ -6,7 +6,7 @@ import { HEROES } from '../data/heroes';
 import type { SimHero, SimUnit } from '../internal';
 import { pathLength } from '../nav';
 import type { Rng } from '../rng';
-import { isSummonerSlot, SUMMONER_CAST } from '../skills/registry';
+import { getSkill, isSummonerSlot, SUMMONER_CAST } from '../skills/registry';
 import type {
   AreaEffect, CastSpec, CoreUnit, Difficulty, HeroUnit, MapData, MonsterUnit, PlayerCommand, PlayerTeam, Projectile, SkillSlot,
   TowerUnit, Unit, Vec2,
@@ -235,7 +235,11 @@ export class SimBotView implements BotView {
     const s = h.skills[slot];
     if (!h.alive || s.level <= 0 || s.cd > 0 || h.mana < s.cost) return false;
     if (h.rt.stunned) return false;
-    return isSummonerSlot(slot) || !h.rt.silenced;
+    if (!isSummonerSlot(slot) && h.rt.silenced) return false;
+    // 与施法管线的校验保持一致：位移技能被定身时放不出来；技能自带的额外条件(如回城引导中)
+    const impl = getSkill(h.heroId, slot);
+    if (impl.movement && h.rt.rooted) return false;
+    return !(impl.canCast && impl.canCast(this.sim, h) !== null);
   }
 
   command(cmd: PlayerCommand): void {

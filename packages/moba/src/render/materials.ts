@@ -5,7 +5,8 @@
  * 1) 风格化受光材质（阶梯明暗 + 轮廓光 + 受击闪白 + 淡出 + 队伍色 + 风摆 + 接收/投射阴影 + 雾）：
  *      const mat = createToonMaterial({ color: 0x6f7f8f, steps: 2, rim: 0.5 });
  *      mesh.castShadow = mesh.receiveShadow = true;
- *    - 合并几何 + 顶点色：`vertexColors: true`；贴图：`map: tex`(需要 uv)。
+ *    - 合并几何 + 顶点色：`vertexColors: true`；贴图：`map: tex`(需要 uv)；没有 uv 的石材/岩体用
+ *      `map: getRockTexture(), triplanar: 0.3, mapGain: 1.75`(按世界坐标三向投影)；`flat: true` 得到切面感。
  *    - 自发光：`emissive: 0x55c8ff, emissiveIntensity: 2`(>1 的部分会被 bloom 溢出)。
  *    - 可选顶点属性 aFx(vec4)：x=风摆权重 y=自发光强度(乘以底色) z=队伍色蒙版 w=AO(1=无遮蔽)。
  *      用 `setFxAttribute(geometry, { sway, glow, team, ao })` 填常量；不提供该属性时等价于 (0,0,0,1)。
@@ -26,9 +27,15 @@
  *    噪声：`Rng`(种子随机)、`hash2`、`valueNoise2`、`fbm2`；GLSL 片段 `GLSL_NOISE`。
  * 6) 全局动画 uniform：`SHARED.uTime / uWind`，每帧由引擎 `tickShared(dt)` 推进；自写 shader 直接引用
  *    `uniforms: { uTime: SHARED.uTime }` 即可同步(不要 clone 这个对象)。
+ * 7) 自写受光 shader(地面贴花/特殊表面)：用 `litUniforms({...})` + `lights: true, fog: true`，顶点里拼
+ *    GLSL_LIGHT_PARS_VERTEX / GLSL_LIGHT_VERTEX_TAIL，片元里拼 GLSL_LIGHT_PARS_FRAGMENT，即可调用
+ *    kitShadow() / kitAmbient(N) / kitSunDir() / kitSunColor() / kitPointLights(N, viewPos)，结尾接 GLSL_OUTPUT_FRAGMENT。
+ *    写法可参考 terrain/decals.ts(预乘透明贴花) 与 terrain/water.ts。
  *
  * 光照约定与 three 内置材质一致(辐照度 × 反照率 / π)，所以同一场景里混用 MeshStandardMaterial 亮度也对得上。
  * 所有自定义 shader 结尾都带 tonemapping/colorspace/fog，直出屏幕(low 档)与走后期(HDR 目标)两条路径都正确。
+ * 注意：low 档没有 HDR 中间目标，叠加混合发生在 gamma 空间，同样的数值会显得更亮。自写的叠加类 shader 可以用
+ *   片段 GLSL_ADDITIVE 提供的 `kitAdditive(color)` 包一下输出颜色来对齐观感(HDR 路径下它原样返回)。
  */
 import * as THREE from 'three';
 import type { TeamId } from '../core/types';
@@ -50,15 +57,15 @@ export interface TeamPalette {
 }
 
 export const PALETTE = {
-  blue: { main: 0x3f8fff, light: 0xa8d4ff, dark: 0x1d3f9a, glow: 0x4fc3ff, stone: 0xe6ebf5, stoneDark: 0xa9b6cf, trim: 0xf0c050 } as TeamPalette,
+  blue: { main: 0x3f8fff, light: 0xa8d4ff, dark: 0x1d3f9a, glow: 0x38a8ff, stone: 0xd3dae8, stoneDark: 0x9aa8c4, trim: 0xf0c050 } as TeamPalette,
   red: { main: 0xff4b3e, light: 0xffb09a, dark: 0x8e1f1c, glow: 0xff5a36, stone: 0x4a3f46, stoneDark: 0x2a2228, trim: 0xf09a3c } as TeamPalette,
   neutral: { main: 0xe2c66a, light: 0xfff0b0, dark: 0x7a6230, glow: 0xffd870, stone: 0x9aa0a8, stoneDark: 0x5c626c, trim: 0xd8c690 } as TeamPalette,
   /** 玩家自己：金绿色 */
   player: { main: 0xb6ff5c, light: 0xe6ffb0, dark: 0x4f8f1c, glow: 0xd8ff7a, stone: 0xe6ebf5, stoneDark: 0xa9b6cf, trim: 0xf0c050 } as TeamPalette,
   env: {
     sun: 0xfff0d6,
-    sky: 0xb9d6ff,
-    bounce: 0xa9b98a,
+    sky: 0xdae5ff,
+    bounce: 0xc2b99a,
     fog: 0xb8dcf0,
     horizon: 0xdff1ff,
     zenith: 0x5fa8ee,
@@ -72,10 +79,10 @@ export const PALETTE = {
     laneDark: 0xa98e63,
     dirt: 0xa98c5e,
     dirtDark: 0x7d6747,
-    sand: 0xd8d0a8,
-    rock: 0x828898,
-    rockDark: 0x5a5f70,
-    rockLight: 0xb2b8c6,
+    sand: 0xcabf96,
+    rock: 0x8a8a93,
+    rockDark: 0x67656b,
+    rockLight: 0xbab9c0,
     rockWarm: 0x8a8378,
     moss: 0x4f9a5c,
     water: 0x4fd2e2,
@@ -88,11 +95,11 @@ export const PALETTE = {
     canopyLight: 0xa6d85c,
     canopyDark: 0x257a5c,
     trunk: 0x6e4d3c,
-    crystal: 0x6fe0ff,
-    crystalDeep: 0x3d6bff,
+    crystal: 0x35c4ff,
+    crystalDeep: 0x5a6cff,
     starGold: 0xffd67a,
     ember: 0xff7a3c,
-    frost: 0x8fdcff,
+    frost: 0x6fd0ff,
     abyss: 0xa070ff,
     outline: 0x1b2233,
   },
@@ -164,28 +171,29 @@ export function hash2(x: number, y: number, seed = 0): number {
 
 const smooth = (t: number): number => t * t * (3 - 2 * t);
 
-/** 值噪声 [0,1]。period > 0 时在该周期上可平铺 */
-export function valueNoise2(x: number, y: number, seed = 0, period = 0): number {
+/** 值噪声 [0,1]。period > 0 时在该周期上可平铺(periodY 省略则两轴同周期) */
+export function valueNoise2(x: number, y: number, seed = 0, period = 0, periodY = period): number {
   const x0 = Math.floor(x);
   const y0 = Math.floor(y);
   const fx = smooth(x - x0);
   const fy = smooth(y - y0);
-  const wrap = (v: number): number => (period > 0 ? ((v % period) + period) % period : v);
-  const a = hash2(wrap(x0), wrap(y0), seed);
-  const b = hash2(wrap(x0 + 1), wrap(y0), seed);
-  const c = hash2(wrap(x0), wrap(y0 + 1), seed);
-  const d = hash2(wrap(x0 + 1), wrap(y0 + 1), seed);
+  const wx = (v: number): number => (period > 0 ? ((v % period) + period) % period : v);
+  const wy = (v: number): number => (periodY > 0 ? ((v % periodY) + periodY) % periodY : v);
+  const a = hash2(wx(x0), wy(y0), seed);
+  const b = hash2(wx(x0 + 1), wy(y0), seed);
+  const c = hash2(wx(x0), wy(y0 + 1), seed);
+  const d = hash2(wx(x0 + 1), wy(y0 + 1), seed);
   return a + (b - a) * fx + (c - a) * fy + (a - b - c + d) * fx * fy;
 }
 
 /** 分形噪声 [0,1]。period 为第一个倍频的周期(之后每倍频翻倍，保持可平铺) */
-export function fbm2(x: number, y: number, octaves = 4, seed = 0, period = 0): number {
+export function fbm2(x: number, y: number, octaves = 4, seed = 0, period = 0, periodY = period): number {
   let amp = 0.5;
   let sum = 0;
   let norm = 0;
   let f = 1;
   for (let i = 0; i < octaves; i++) {
-    sum += amp * valueNoise2(x * f, y * f, seed + i * 17, period > 0 ? period * f : 0);
+    sum += amp * valueNoise2(x * f, y * f, seed + i * 17, period > 0 ? period * f : 0, periodY > 0 ? periodY * f : 0);
     norm += amp;
     amp *= 0.5;
     f *= 2;
@@ -365,6 +373,7 @@ function cached<T extends THREE.Texture>(key: string, make: () => T): T {
 export function disposeSharedTextures(): void {
   for (const t of texCache.values()) t.dispose();
   texCache.clear();
+  stoneField = null;
 }
 
 const clamp255 = (v: number): number => (v < 0 ? 0 : v > 255 ? 255 : v);
@@ -444,9 +453,9 @@ function buildStoneField(): StoneField {
       }
       const edge = f2 - f1; // 0 在缝上
       const o = y * size + x;
-      const n = fbm2((x / size) * 20, (y / size) * 20, 3, 5, 20);
-      const n2 = fbm2((x / size) * 64, (y / size) * 64, 2, 9, 64);
-      const groutW = 0.05 + (n - 0.5) * 0.02;
+      const n = fbm2((x / size) * 20, (y / size) * 20, 2, 5, 20);
+      const n2 = valueNoise2((x / size) * 64, (y / size) * 64, 9, 64);
+      const groutW = 0.034 + (n - 0.5) * 0.016;
       mask[o] = Math.min(1, Math.max(0, (edge - groutW) / 0.018));
       id[o] = id0[bi];
       // 倒角：朝光的边提亮、背光的边压暗
@@ -458,10 +467,12 @@ function buildStoneField(): StoneField {
       gy /= gl;
       const facing = gx * lx + gy * ly;
       let v = 0.5 + tone0[bi] * 0.05 + (n - 0.5) * 0.1 + (n2 - 0.5) * 0.05;
-      v += bevel * bevel * facing * 0.15 - bevel * 0.03;
+      v += bevel * bevel * facing * 0.13 - bevel * 0.02;
       // 偶尔的裂纹
-      const crack = fbm2((x / size) * 8 + tone0[bi] * 7, (y / size) * 8, 3, 77 + bi, 0);
-      if (Math.abs(crack - 0.5) < 0.01 && edge > 0.12) v -= 0.1;
+      if (edge > 0.12) {
+        const crack = fbm2((x / size) * 8 + tone0[bi] * 7, (y / size) * 8, 2, 77 + bi, 8);
+        if (Math.abs(crack - 0.5) < 0.01) v -= 0.1;
+      }
       tone[o] = v;
     }
   }
@@ -519,8 +530,8 @@ export function getStoneDataTexture(): THREE.DataTexture {
 }
 
 /**
- * 可平铺岩石肌理(中性灰)：横向岩层 + 裂隙 + 斑驳。侧面用 (弧长, 高度) 做 uv，顶面用平面投影。
- * 配合顶点色使用：最终颜色 = 顶点色 × 贴图。
+ * 可平铺岩石肌理(中性灰)：横向岩层 + 斑驳 + 手绘笔触。不需要 uv：配合 createToonMaterial 的 triplanar 选项按世界坐标投影，
+ * 再乘上顶点色/基础色(mapGain 取 1.75 左右把均值拉回 1)。
  */
 export function getRockTexture(): THREE.CanvasTexture {
   return cached('rock', () =>
@@ -537,15 +548,12 @@ export function getRockTexture(): THREE.CanvasTexture {
             const v = y / size;
             const warp = fbm2(u * 4, v * 4, 3, 3, 4);
             // 岩层：沿 v 方向的条带，被低频噪声扭曲
-            const band = fbm2(u * 2 + warp * 0.6, v * 9 + warp * 1.6, 3, 11, 0);
+            const band = fbm2(u * 2 + warp * 0.6, v * 9 + warp * 1.6, 3, 11, 2, 9);
             const strata = Math.abs(((v * 7 + warp * 1.4) % 1) - 0.5);
-            let g = 196 + (band - 0.5) * 70;
-            if (strata < 0.045) g -= 30 * (1 - strata / 0.045);
+            let g = 196 + (band - 0.5) * 56;
+            if (strata < 0.04) g -= 18 * (1 - strata / 0.04);
             const fine = fbm2(u * 48, v * 48, 2, 23, 48);
             g += (fine - 0.5) * 30;
-            // 竖向裂隙
-            const crack = fbm2(u * 6 + 3.3, v * 1.5, 3, 41, 0);
-            if (Math.abs(crack - 0.5) < 0.014) g -= 46;
             const o = (y * size + x) * 4;
             d[o] = clamp255(g);
             d[o + 1] = clamp255(g * 0.985);
@@ -709,6 +717,21 @@ vViewPosition = -mvPosition.xyz;
 #include <fog_vertex>
 `;
 
+/**
+ * `vec3 kitAdditive(vec3 c)`：叠加类发光在输出前过一遍。
+ * 走后期(HDR 目标)时原样返回；low 档直出屏幕时混合发生在 gamma 空间，同样的线性数值会亮得多，
+ * 这里把它预先压到等效观感(只有直出屏幕时 three 才定义 TONE_MAPPING，借它区分两条路径)。
+ */
+export const GLSL_ADDITIVE = /* glsl */ `
+vec3 kitAdditive(vec3 c) {
+  #ifdef TONE_MAPPING
+  return pow(max(c, vec3(0.0)) * 0.9, vec3(2.2));
+  #else
+  return c;
+  #endif
+}
+`;
+
 /** 片元 main 结尾：色调映射 → 输出色彩空间 → 雾（与内置材质顺序一致） */
 export const GLSL_OUTPUT_FRAGMENT = /* glsl */ `
 #include <tonemapping_fragment>
@@ -734,6 +757,8 @@ export interface ToonMaterialOptions {
   triplanar?: number;
   /** 贴图亮度增益(中性灰贴图常用 1.6~2 把均值拉回 1)。默认 1 */
   mapGain?: number;
+  /** true：aFx.z 不再是队伍色蒙版，而是「贴图强度」(0 = 不叠贴图，1 = 全强度)。地形用它让岩面有肌理、草顶保持干净 */
+  mapMask?: boolean;
   vertexColors?: boolean;
   /** 自发光颜色与强度(强度 > 1 会触发 bloom) */
   emissive?: THREE.ColorRepresentation;
@@ -911,9 +936,18 @@ void main() {
   tw = tw * tw * tw * tw;
   tw /= tw.x + tw.y + tw.z;
   vec3 tp = vWorldPos * uTriScale;
-  base.rgb *= (texture2D(tMap, tp.zy).rgb * tw.x + texture2D(tMap, tp.xz).rgb * tw.y + texture2D(tMap, tp.xy).rgb * tw.z) * uMapGain;
+  vec3 triTex = (texture2D(tMap, tp.zy).rgb * tw.x + texture2D(tMap, tp.xz).rgb * tw.y + texture2D(tMap, tp.xy).rgb * tw.z) * uMapGain;
+  #ifdef TOON_MAP_MASK
+  base.rgb *= mix(vec3(1.0), triTex, vFx.z);
+  #else
+  base.rgb *= triTex;
   #endif
+  #endif
+  #ifdef TOON_MAP_MASK
+  base.rgb *= uTint;
+  #else
   base.rgb = mix(base.rgb, uTeamColor, vFx.z) * uTint;
+  #endif
   #ifdef ALPHATEST
   if (base.a < ALPHATEST) discard;
   #endif
@@ -990,6 +1024,7 @@ export class ToonMaterial extends THREE.ShaderMaterial {
     if (opts.fx ?? true) defines.TOON_FX = '';
     if (opts.map && (opts.triplanar ?? 0) > 0) defines.TOON_TRIPLANAR = '';
     else if (opts.map) defines.TOON_MAP = '';
+    if (opts.mapMask) defines.TOON_MAP_MASK = '';
     if (opts.flat) defines.TOON_FLAT = '';
     if ((opts.wind ?? 0) > 0) defines.TOON_WIND = '';
     if ((opts.specular ?? 0) > 0) defines.TOON_SPECULAR = '';
@@ -1117,9 +1152,12 @@ export interface OutlineOptions {
   thickness?: number;
 }
 
-/** 背面外扩描边材质。与本体共用 geometry，另建一个 Mesh；支持 InstancedMesh */
+/**
+ * 背面外扩描边材质。与本体共用 geometry，另建一个 Mesh；支持 InstancedMesh。
+ * 若对象(或其祖先经 bindToonParams)绑定了 ToonParams，描边会跟随其 opacity 一起抖动淡出。
+ */
 export function createOutlineMaterial(opts: OutlineOptions = {}): THREE.ShaderMaterial {
-  return new THREE.ShaderMaterial({
+  const mat = new THREE.ShaderMaterial({
     uniforms: {
       ...THREE.UniformsUtils.clone(THREE.UniformsLib.fog),
       uColor: { value: new THREE.Color(opts.color ?? PALETTE.env.outline) },
@@ -1155,6 +1193,20 @@ export function createOutlineMaterial(opts: OutlineOptions = {}): THREE.ShaderMa
     side: THREE.BackSide,
     fog: true,
   });
+  let dirty = false;
+  mat.onBeforeRender = (_r, _s, _c, _g, object) => {
+    const p = object.userData.toon as ToonParams | undefined;
+    if (p) {
+      mat.uniforms.uOpacity.value = p.opacity;
+      mat.uniformsNeedUpdate = true;
+      dirty = true;
+    } else if (dirty) {
+      mat.uniforms.uOpacity.value = 1;
+      mat.uniformsNeedUpdate = true;
+      dirty = false;
+    }
+  };
+  return mat;
 }
 
 // ───────────────────────────── 纯发光体 ─────────────────────────────
@@ -1254,9 +1306,6 @@ export function createGlowMaterial(opts: GlowOptions = {}): THREE.ShaderMaterial
         a *= f;
         #endif
         gl_FragColor = vec4(col, a);
-        #ifdef GLOW_PREMULT
-        gl_FragColor.rgb *= a;
-        #endif
         ${GLSL_OUTPUT_FRAGMENT}
       }
     `,

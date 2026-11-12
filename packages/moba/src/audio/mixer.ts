@@ -47,6 +47,8 @@ interface Voice {
   prio: number;
   vol: number;
   killAt: number;
+  /** 已被更高优先级的声音挤掉(正在 40ms 淡出)：不再计入发声数，也不会被重复挤占 */
+  stolen: boolean;
 }
 
 interface NoteRec {
@@ -60,10 +62,11 @@ export const MAX_VOICES = 28;
 /** 压限器之前的总增益：给多个音效叠加留余量 */
 const SUM_GAIN = 0.8;
 /**
- * 压限器之后的补偿。DynamicsCompressorNode 自带一个由阈值/比率推出的固定提升
- * (本参数下实测约 +4.6dB)，这里把它抵消掉，使小信号的净增益为 1，只有峰值被压。
+ * 压限器之后的补偿。DynamicsCompressorNode 自带一个由阈值/比率推出的固定提升(本参数下实测约 +3.5dB)。
+ * 这里把整条链的小信号净增益定在约 1.33(+2.5dB，离线自检「总线传输特性」一栏实测)：
+ * 默认音量下的整体响度更接近常见手游，峰值仍由压限器和末端软削波兜住(输出恒 < 1)。
  */
-const POST_GAIN = 0.85;
+const POST_GAIN = 1.13;
 const COMP = { threshold: -9, knee: 6, ratio: 8, attack: 0.003, release: 0.2 } as const;
 
 export interface MixerOptions {
@@ -80,6 +83,8 @@ export class Mixer {
   readonly musicRev: GainNode;
   now: () => number;
   readonly stats = { played: 0, throttled: 0, capped: 0, stolen: 0, peakVoices: 0 };
+  /** 各键的播放次数(画廊/自检统计用) */
+  readonly counts = new Map<SfxKey, number>();
 
   private sfxBus: GainNode;
   private uiBus: GainNode;
@@ -173,7 +178,7 @@ export class Mixer {
     let same = 0;
     let live = 0;
     for (const v of this.voices) {
-      if (v.killAt < t) continue;
+      if (v.stolen || v.killAt < t) continue;
       live++;
       if (v.key === key) same++;
     }
@@ -223,9 +228,10 @@ export class Mixer {
     def.fn(patch, o.v ?? 0);
     patch.finish();
 
-    const voice: Voice = { key, patch, out, pan, lpf, send, prio, vol, killAt: patch.end + 0.05 };
+    const voice: Voice = { key, patch, out, pan, lpf, send, prio, vol, killAt: patch.end + 0.05, stolen: false };
     this.voices.push(voice);
     this.stats.played++;
+    this.counts.set(key, (this.counts.get(key) ?? 0) + 1);
     if (live + 1 > this.stats.peakVoices) this.stats.peakVoices = live + 1;
 
     return {
@@ -248,13 +254,14 @@ export class Mixer {
   private steal(prio: number, t: number): boolean {
     let pick: Voice | null = null;
     for (const v of this.voices) {
-      if (v.killAt < t || v.prio >= prio) continue;
+      if (v.stolen || v.killAt < t || v.prio >= prio) continue;
       if (!pick || v.prio < pick.prio) pick = v;
     }
     if (!pick) return false;
     pick.out.gain.cancelScheduledValues(t);
     pick.out.gain.setTargetAtTime(0, t, 0.006);
     pick.killAt = t + 0.04;
+    pick.stolen = true;
     this.stats.stolen++;
     return true;
   }

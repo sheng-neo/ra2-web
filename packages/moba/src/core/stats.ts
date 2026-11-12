@@ -44,7 +44,10 @@ export function recomputeStats(sim: Sim, u: SimUnit): void {
   }
 
   if (u.kind === 'hero') {
-    rt.base = heroStatsAt(u.h.def, u.level);
+    if (u.h.baseLevel !== u.level) {
+      rt.base = heroStatsAt(u.h.def, u.level);
+      u.h.baseLevel = u.level;
+    }
     for (let i = 0; i < u.items.length; i++) {
       const id = u.items[i];
       if (!id) continue;

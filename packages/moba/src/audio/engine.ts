@@ -128,13 +128,16 @@ export class Engine implements AudioEngine {
   private timer = 0;
 
   // 事件处理的缓存
-  private lastState: GameState | null = null;
+  private lastTime = -1;
+  private lastSeed = -1;
+  private lastHero = '';
   private units = new Map<number, Unit>();
   private unitsOld = new Map<number, Unit>();
   private refreshCount = 0;
   private cores: Unit[] = [];
   private projOwner = new Map<number, number>();
   private hitProj = new Set<number>();
+  private towerHits = new Set<number>();
   private areaVoices = new Map<number, AreaVoice>();
   private sight: number[] = [];
   private sightReady = false;
@@ -205,6 +208,8 @@ export class Engine implements AudioEngine {
         }
       }
       this.mixer = new Mixer(this.ctx);
+      // 实时运行时换一个随时间变化的种子：每次开局的随机音高微调、配乐星点都不一样
+      this.mixer.kit.reseed(Date.now());
       this.music = new MusicEngine(this.mixer);
       this.mixer.setVolumes(this.vols.master, this.vols.sfx, this.vols.music);
       if (this.wantTrack !== 'none') this.music.setTrack(this.wantTrack);
@@ -220,10 +225,15 @@ export class Engine implements AudioEngine {
     this.music.tick();
   };
 
+  /** 手势监听常驻：系统打断(来电、切后台)导致上下文挂起后，下一次点按就能恢复 */
   private onGesture = (): void => {
-    this.unlock();
-    if (this.ctx?.state === 'running') this.removeGestureListeners();
+    if (!this.ctx || this.ctx.state !== 'running') this.unlock();
   };
+
+  /** 当前能否出声：已解锁、页面可见、上下文在运行(离线自检挂接时没有 ctx，视为可用) */
+  private get live(): boolean {
+    return this.mixer !== null && !this.hidden && (this.ctx === null || this.ctx.state === 'running');
+  }
 
   private removeGestureListeners(): void {
     if (typeof window === 'undefined') return;
@@ -260,8 +270,20 @@ export class Engine implements AudioEngine {
     this.music?.setTrack(track);
   }
 
+  /**
+   * 自检用：把引擎接到一个离线上下文 + 虚拟时钟上(不创建真正的 AudioContext)，
+   * 这样可以把一段真实对局的事件流按原样渲染成波形来检查。
+   */
+  attachOffline(ctx: BaseAudioContext, clock: () => number): Mixer {
+    this.mixer = new Mixer(ctx, { clock });
+    this.music = new MusicEngine(this.mixer);
+    this.mixer.setVolumes(this.vols.master, this.vols.sfx, this.vols.music);
+    if (this.wantTrack !== 'none') this.music.setTrack(this.wantTrack);
+    return this.mixer;
+  }
+
   ui(sound: UiSound): void {
-    this.mixer?.play(`ui_${sound}`);
+    if (this.live) this.mixer?.play(`ui_${sound}`);
   }
 
   dispose(): void {
@@ -300,10 +322,15 @@ export class Engine implements AudioEngine {
    * 但死亡/伤害事件仍需要知道它是什么兵种、在哪一队。两代轮换防止表无限增长。
    */
   private refreshUnits(state: GameState): void {
-    if (state !== this.lastState) {
+    // 新的一局(时间倒流，或种子/所选英雄变了)：清掉上一局的单位缓存与持续声。
+    // 不用 state 对象的引用判断——不假设模拟层每个 tick 都返回同一个对象
+    const cfg = state.config;
+    if (state.time + 1 < this.lastTime || cfg.seed !== this.lastSeed || cfg.playerHero !== this.lastHero) {
       this.resetMatch();
-      this.lastState = state;
+      this.lastSeed = cfg.seed;
+      this.lastHero = cfg.playerHero;
     }
+    this.lastTime = state.time;
     if (++this.refreshCount > 900) {
       this.refreshCount = 0;
       this.unitsOld = this.units;
@@ -374,7 +401,8 @@ export class Engine implements AudioEngine {
 
   handleEvents(events: GameEvent[], state: GameState): void {
     const m = this.mixer;
-    if (!m || this.hidden || events.length === 0) return;
+    // 上下文没在运行时不排任何声音：否则恢复的瞬间会把积压的声音一起放出来
+    if (!m || !this.live || events.length === 0) return;
     this.refreshUnits(state);
     this.sightReady = false;
     const pid = state.playerId;
@@ -388,6 +416,7 @@ export class Engine implements AudioEngine {
     let killAnnounced = false;
     let playerCoin = false;
     this.hitProj.clear();
+    this.towerHits.clear();
     for (const e of events) {
       if (e.type === 'announce') {
         if (KILL_ANN.has(e.key)) killAnnounced = true;
@@ -395,6 +424,7 @@ export class Engine implements AudioEngine {
         if (e.unitId === pid && e.reason !== 'passive') playerCoin = true;
       } else if (e.type === 'projectileHit') {
         this.hitProj.add(e.id);
+        if (e.visual === 'tower_bolt' || e.visual === 'core_bolt') this.towerHits.add(e.targetId);
       }
     }
     let anns: { key: AnnounceKey; team: number }[] | null = null;
@@ -636,7 +666,17 @@ export class Engine implements AudioEngine {
         if (e.unitId === undefined && me && Math.hypot(e.pos.x - me.pos.x, e.pos.y - me.pos.y) < 1) return;
         break;
       case 'gold_gain':
-        if (playerCoin) return;
+        // 玩家自己的补刀由 gold 事件播更清脆的金币声
+        if (e.unitId === pid || (e.unitId === undefined && playerCoin)) return;
+        break;
+      case 'hit_tower':
+        // 塔弹命中声已由 projectileHit 播放(打在玩家身上时是加重版)，不再叠一层
+        if (e.targetId !== undefined && this.towerHits.has(e.targetId)) return;
+        break;
+      case 'hit_physical':
+      case 'hit_magic':
+        // 模拟层只给英雄普攻带 unitId；小兵/野怪互殴的命中声由 damage 事件负责，这里不再叠加，保持兵线安静
+        if (e.unitId === undefined && e.targetId !== pid) return;
         break;
       case 'tower_destroyed':
       case 'core_destroyed':
@@ -669,7 +709,8 @@ export class Engine implements AudioEngine {
       const dark = a.team === 1 && DARKABLE.has(a.key);
       if (!m.play(key, { v: dark ? 1 : 0, when })) continue;
       const len = SFX[key].len * 0.75;
-      m.duck(0.5, when + len);
+      // 胜负的冲击音之后紧跟胜负短曲的开头，不要把它压下去
+      if (a.key !== 'victory' && a.key !== 'defeat') m.duck(0.5, when + len);
       when += len;
       this.annFreeAt = now + when;
     }
@@ -687,7 +728,7 @@ export class Engine implements AudioEngine {
   update(state: GameState | null, dtReal: number): void {
     const m = this.mixer;
     const music = this.music;
-    if (!m || !music || this.hidden) return;
+    if (!m || !music || !this.live) return;
     m.sweep();
     const dt = Math.min(0.25, Math.max(0, dtReal));
     let target = 0;

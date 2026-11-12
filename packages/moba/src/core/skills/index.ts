@@ -4,4 +4,9 @@
  */
 import './summoner';
 import './heroes';
+import './panyue';
+import './chijin';
+import './xingli';
+import './fengling';
+import './yeque';
 import '../passives';

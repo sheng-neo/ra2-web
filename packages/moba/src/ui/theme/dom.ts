@@ -75,6 +75,7 @@ export function createButton(o: ButtonOptions): HTMLButtonElement {
   const b = h('button', `sf-btn${v !== 'secondary' ? ` sf-btn--${v}` : ''}${o.size && o.size !== 'md' ? ` sf-btn--${o.size}` : ''}${o.block ? ' sf-btn--block' : ''}${o.pulse ? ' sf-btn--pulse' : ''}${o.cls ? ` ${o.cls}` : ''}`);
   b.type = 'button';
   b.dataset.sfSnd = o.sound ?? 'click';
+  if (o.pulse) b.appendChild(h('i', 'sf-btn__glow'));
   if (o.icon) b.appendChild(icon(o.icon));
   b.appendChild(h('span', 'sf-btn__label', o.label));
   if (o.onClick) b.addEventListener('click', o.onClick);
@@ -332,13 +333,14 @@ export function bindUiSounds(root: HTMLElement, audio: Pick<AudioEngine, 'ui' | 
     if (UI_SOUNDS.has(snd)) audio.ui(snd as UiSound);
   };
   root.addEventListener('pointerdown', onDown, true);
-  root.addEventListener('keydown', onDown, true);
+  // 键盘事件的目标是焦点元素（常常是 body），所以挂在 window 上
+  window.addEventListener('keydown', onDown, true);
   root.addEventListener('pointerover', onOver);
   // 捕获阶段播放：即便控件的处理函数里移除了自身/切了屏，声音也已发出
   root.addEventListener('click', onClick, true);
   return () => {
     root.removeEventListener('pointerdown', onDown, true);
-    root.removeEventListener('keydown', onDown, true);
+    window.removeEventListener('keydown', onDown, true);
     root.removeEventListener('pointerover', onOver);
     root.removeEventListener('click', onClick, true);
   };

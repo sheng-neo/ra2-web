@@ -14,6 +14,9 @@ import { mtof } from './synth';
 import type { Patch } from './synth';
 
 const LOOKAHEAD = 0.3;
+/** 切到新曲目后第一拍相对当前时刻的延迟：普通曲目留出交叉淡变的时间，胜负短曲立即进入 */
+const START_DELAY = 0.25;
+const STING_DELAY = 0.08;
 
 interface Layer {
   dry: GainNode;
@@ -65,6 +68,7 @@ abstract class Track {
   private readonly wetOut: GainNode;
   private readonly delayIn: GainNode;
   private nodes: AudioNode[] = [];
+  readonly chanNames: string[] = [];
 
   constructor(m: Mixer, t0: number, delayTime: number) {
     this.m = m;
@@ -133,11 +137,13 @@ abstract class Track {
     l.dly.gain.setTargetAtTime(v, t, tc);
   }
 
-  /** 通道条：电平 + 声像 + 混响/延迟送入量 */
-  protected chan(level: number, o: ChanOpts = {}): GainNode {
+  /** 通道条：电平 + 声像 + 混响/延迟送入量。name 仅用于自检时单独渲染某一通道 */
+  protected chan(name: string, level: number, o: ChanOpts = {}): GainNode {
     const c = this.m.ctx;
     const g = this.keep(c.createGain());
-    g.gain.value = level;
+    const solo = MusicEngine.solo;
+    g.gain.value = solo === null || solo === name ? level : 0;
+    this.chanNames.push(name);
     let tail: AudioNode = g;
     if (o.pan && this.m.kit.canPan) {
       const p = this.keep(c.createStereoPanner());
@@ -225,7 +231,7 @@ const MENU_CHORDS: readonly Chord[] = [
   { bass: 43, pad: [55, 60, 62, 67] }, // Gsus4(后半小节解决到 G)
 ];
 
-const MENU_MEL = indexByStep([
+const MENU_MEL_EVS: readonly Ev[] = [
   // A：主题陈述
   [0, 74, 2, 0.8], [2, 81, 3, 0.9], [5, 79, 1, 0.6], [6, 77, 2, 0.7], [8, 76, 2, 0.7], [10, 72, 2, 0.6], [12, 74, 4, 0.8],
   // 应答：整体上移一级
@@ -239,7 +245,8 @@ const MENU_MEL = indexByStep([
   [96, 77, 3, 0.7], [99, 76, 1, 0.5], [100, 74, 2, 0.6], [102, 81, 2, 0.7], [104, 79, 6, 0.72], [110, 76, 2, 0.55],
   // 主题尾句收束，最后两个音引回开头的 D
   [112, 76, 2, 0.7], [114, 72, 2, 0.6], [116, 74, 4, 0.75], [120, 79, 4, 0.65], [124, 71, 2, 0.5], [126, 72, 2, 0.55],
-], 128);
+];
+const MENU_MEL = indexByStep(MENU_MEL_EVS, 128);
 
 const ARP_PATTERNS: readonly (readonly number[])[] = [
   [0, 1, 2, 3, 2, 1, 2, 3],
@@ -248,13 +255,13 @@ const ARP_PATTERNS: readonly (readonly number[])[] = [
 ];
 
 class MenuTrack extends Track {
-  private cPad = this.chan(1.0, { rev: 0.4 });
-  private cBass = this.chan(0.7, { rev: 0.1 });
-  private cBell = this.chan(0.85, { rev: 0.55, dly: 0.4 });
-  private cFlute = this.chan(0.9, { rev: 0.5, dly: 0.25, pan: 0.15 });
-  private cArp = this.chan(0.42, { rev: 0.35, dly: 0.35, pan: -0.25 });
-  private cStarL = this.chan(0.55, { rev: 0.7, dly: 0.3, pan: -0.6 });
-  private cStarR = this.chan(0.55, { rev: 0.7, dly: 0.3, pan: 0.6 });
+  private cPad = this.chan('cPad', 0.51, { rev: 0.4 });
+  private cBass = this.chan('cBass', 0.24, { rev: 0.1 });
+  private cBell = this.chan('cBell', 1.0, { rev: 0.55, dly: 0.4 });
+  private cFlute = this.chan('cFlute', 0.64, { rev: 0.5, dly: 0.25, pan: 0.15 });
+  private cArp = this.chan('cArp', 1.24, { rev: 0.35, dly: 0.35, pan: -0.25 });
+  private cStarL = this.chan('cStarL', 1.14, { rev: 0.7, dly: 0.3, pan: -0.6 });
+  private cStarR = this.chan('cStarR', 1.14, { rev: 0.7, dly: 0.3, pan: 0.6 });
 
   constructor(m: Mixer, t0: number) {
     super(m, t0, (60 / 66) * 0.75);
@@ -324,7 +331,7 @@ const BATTLE_CHORDS: readonly Chord[] = [C_DM, C_DM, C_C, C_C, C_GB, C_GB, C_AM,
 /** 每小节起点处该和弦持续的小节数(0 = 延续上一小节) */
 const BATTLE_HOLD: readonly number[] = [2, 0, 2, 0, 2, 0, 2, 0, 1, 1, 2, 0, 1, 1, 1, 1];
 
-const BATTLE_MEL = indexByStep([
+const BATTLE_MEL_EVS: readonly Ev[] = [
   // A：主题 → 应答 → 攀升 → 落在五级
   [0, 74, 4, 0.85], [4, 81, 6, 0.95], [10, 79, 2, 0.7], [12, 77, 4, 0.8], [16, 76, 4, 0.8], [20, 72, 4, 0.7], [24, 74, 8, 0.85],
   [32, 76, 4, 0.8], [36, 79, 6, 0.9], [42, 76, 2, 0.65], [44, 74, 4, 0.75], [48, 72, 4, 0.7], [52, 74, 4, 0.75], [56, 76, 8, 0.8],
@@ -339,7 +346,8 @@ const BATTLE_MEL = indexByStep([
   [208, 83, 3, 0.9], [211, 83, 3, 0.8], [214, 86, 2, 0.85], [216, 88, 4, 0.92], [220, 86, 4, 0.85],
   [224, 89, 6, 1], [230, 88, 2, 0.8], [232, 86, 4, 0.9], [236, 81, 4, 0.8],
   [240, 81, 4, 0.8], [244, 76, 4, 0.7], [248, 81, 8, 0.9],
-], 256);
+];
+const BATTLE_MEL = indexByStep(BATTLE_MEL_EVS, 256);
 
 // 16 步打击乐型(力度)
 const KICK_E = [0.8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.5, 0, 0, 0, 0, 0];
@@ -361,20 +369,21 @@ class BattleTrack extends Track {
   private tension = 0;
   private applied = -1;
 
-  private cPad = this.chan(0.8, { rev: 0.35 });
+  private cPad = this.chan('cPad', 0.51, { rev: 0.35 });
   // 探索层
-  private eBass = this.chan(0.62, { layer: this.lExplore });
-  private eArp = this.chan(0.36, { layer: this.lExplore, rev: 0.3, dly: 0.35, pan: -0.3 });
-  private eBell = this.chan(0.62, { layer: this.lExplore, rev: 0.5, dly: 0.35, pan: 0.2 });
-  private eFlute = this.chan(0.75, { layer: this.lExplore, rev: 0.45, dly: 0.2, pan: 0.1 });
-  private ePerc = this.chan(0.42, { layer: this.lExplore, rev: 0.15 });
+  private eBass = this.chan('eBass', 0.21, { layer: this.lExplore });
+  private eArp = this.chan('eArp', 1.34, { layer: this.lExplore, rev: 0.3, dly: 0.35, pan: -0.3 });
+  private eBell = this.chan('eBell', 1.24, { layer: this.lExplore, rev: 0.5, dly: 0.35, pan: 0.2 });
+  private eFlute = this.chan('eFlute', 0.6, { layer: this.lExplore, rev: 0.45, dly: 0.2, pan: 0.1 });
+  private ePerc = this.chan('ePerc', 0.7, { layer: this.lExplore, rev: 0.15 });
   // 战斗层
-  private cBass = this.chan(0.7, { layer: this.lCombat });
-  private cDrum = this.chan(0.62, { layer: this.lCombat, rev: 0.16 });
-  private cHat = this.chan(0.3, { layer: this.lCombat, rev: 0.08, pan: 0.25 });
-  private cStr = this.chan(0.5, { layer: this.lCombat, rev: 0.25, pan: -0.2 });
-  private cBrass = this.chan(0.7, { layer: this.lCombat, rev: 0.35, dly: 0.12 });
-  private cLow = this.chan(0.55, { layer: this.lCombat, rev: 0.3 });
+  private cBass = this.chan('cBass', 0.35, { layer: this.lCombat });
+  private cDrum = this.chan('cDrum', 0.4, { layer: this.lCombat, rev: 0.16 });
+  private cSnare = this.chan('cSnare', 0.7, { layer: this.lCombat, rev: 0.22, pan: -0.1 });
+  private cHat = this.chan('cHat', 1.8, { layer: this.lCombat, rev: 0.08, pan: 0.25 });
+  private cStr = this.chan('cStr', 1.28, { layer: this.lCombat, rev: 0.25, pan: -0.2 });
+  private cBrass = this.chan('cBrass', 0.4, { layer: this.lCombat, rev: 0.35, dly: 0.12 });
+  private cLow = this.chan('cLow', 0.37, { layer: this.lCombat, rev: 0.3 });
 
   constructor(m: Mixer, t0: number) {
     super(m, t0, (60 / 108) * 0.75);
@@ -433,7 +442,7 @@ class BattleTrack extends Track {
         const n = ch.pad[pat[b >> 1]] + 12;
         this.play(this.eArp, t + hum(), (p) => pluck(p, mtof(n), 0, 0.32, (b & 3) === 0 ? 0.6 : 0.42));
       }
-      if (KICK_E[b] > 0) this.play(this.ePerc, t, (p) => kick(p, 0, KICK_E[b] * 0.7));
+      if (KICK_E[b] > 0) this.play(this.ePerc, t, (p) => kick(p, 0, KICK_E[b] * 0.55));
       if (RIM_E[b] > 0) this.play(this.ePerc, t + hum(), (p) => rim(p, 0, RIM_E[b]));
       if (SHAKER_E[b] > 0) this.play(this.ePerc, t + hum(), (p) => shaker(p, 0, SHAKER_E[b] * (0.85 + this.rnd() * 0.3)));
       if (mel) {
@@ -448,7 +457,8 @@ class BattleTrack extends Track {
     if (hot) {
       // ── 战斗层 ──
       if ((b & 1) === 0) {
-        const n = ch.bass + 12 + BASS_C[b >> 1];
+        // 根音落在 C2~B2 之间(太低的和弦根音提一个八度)，再叠八度/五度跳动
+        const n = (ch.bass < 36 ? ch.bass + 12 : ch.bass) + BASS_C[b >> 1];
         this.play(this.cBass, t, (p) => bass(p, mtof(n), 0, sd * 1.5, (b & 3) === 0 ? 0.85 : 0.65, 0.8));
       }
       const roll = fillBar && b >= 12;
@@ -456,9 +466,9 @@ class BattleTrack extends Track {
       if (TAIKO_LO[b] > 0 && !roll) this.play(this.cDrum, t + hum(), (p) => taiko(p, 0, TAIKO_LO[b] * (0.9 + this.rnd() * 0.15), 1));
       if (TAIKO_HI[b] > 0 && !roll) this.play(this.cDrum, t + hum(), (p) => taiko(p, 0, TAIKO_HI[b], 1.5));
       if (SNARE_C[b] > 0 && !roll) {
-        this.play(this.cDrum, t, (p) => {
-          snare(p, 0, SNARE_C[b] * 0.8);
-          if (SNARE_C[b] === 1) clap(p, 0, 0.5);
+        this.play(this.cSnare, t, (p) => {
+          snare(p, 0, SNARE_C[b]);
+          if (SNARE_C[b] === 1) clap(p, 0, 0.7);
         });
       }
       // 乐句交接：最后一拍的大鼓滚奏渐强
@@ -519,11 +529,11 @@ const VIC_CHORDS: readonly (readonly [number, number, readonly number[], number]
 const VIC_TAIL = 36;
 
 class VictoryTrack extends Track {
-  private cPad = this.chan(0.75, { rev: 0.4 });
-  private cBrass = this.chan(0.95, { rev: 0.4, dly: 0.12 });
-  private cBell = this.chan(0.6, { rev: 0.55, dly: 0.3 });
-  private cBass = this.chan(0.7);
-  private cDrum = this.chan(0.6, { rev: 0.2 });
+  private cPad = this.chan('cPad', 0.41, { rev: 0.4 });
+  private cBrass = this.chan('cBrass', 0.4, { rev: 0.4, dly: 0.12 });
+  private cBell = this.chan('cBell', 1.16, { rev: 0.55, dly: 0.3 });
+  private cBass = this.chan('cBass', 0.29);
+  private cDrum = this.chan('cDrum', 0.66, { rev: 0.2 });
   private mel = indexByStep(VIC_MEL, 40);
 
   constructor(m: Mixer, t0: number) {
@@ -553,7 +563,7 @@ class VictoryTrack extends Track {
           if (big) choir(p, [62, 66, 69, 74].map(mtof), 0, len, 0.55);
         });
         this.play(this.cBass, t, (p) => bass(p, mtof(c[1]), 0, len * 0.9, 0.8, 0.4));
-        if (i > 0) this.play(this.cDrum, t, (p) => timpani(p, mtof(c[1]), 0, big ? 1 : 0.7));
+        if (i > 0) this.play(this.cDrum, t, (p) => timpani(p, mtof(c[1]), 0, big ? 0.8 : 0.6));
         if (i === 4 || big) this.play(this.cDrum, t, (p) => cymbal(p, 0, big ? 0.8 : 0.5, big ? 2.6 : 1.5));
       }
       // 进行曲式的小军鼓
@@ -606,11 +616,11 @@ const DEF_CHORDS: readonly (readonly [number, number, readonly number[], number]
 const DEF_TAIL = 32;
 
 class DefeatTrack extends Track {
-  private cPad = this.chan(0.85, { rev: 0.45 });
-  private cHorn = this.chan(0.95, { rev: 0.5, dly: 0.2 });
-  private cBell = this.chan(0.6, { rev: 0.6, dly: 0.3 });
-  private cBass = this.chan(0.7);
-  private cDrum = this.chan(0.55, { rev: 0.25 });
+  private cPad = this.chan('cPad', 0.62, { rev: 0.45 });
+  private cHorn = this.chan('cHorn', 0.63, { rev: 0.5, dly: 0.2 });
+  private cBell = this.chan('cBell', 1.02, { rev: 0.6, dly: 0.3 });
+  private cBass = this.chan('cBass', 0.21);
+  private cDrum = this.chan('cDrum', 0.55, { rev: 0.25 });
   private mel = indexByStep(DEF_MEL, 32);
 
   constructor(m: Mixer, t0: number) {
@@ -653,6 +663,8 @@ class DefeatTrack extends Track {
 // ───────────────────────── 配乐引擎 ─────────────────────────
 
 export class MusicEngine {
+  /** 自检用：只让某个通道出声(其余通道静音)，用来逐通道量电平、配平混音。正式运行恒为 null */
+  static solo: string | null = null;
   private readonly m: Mixer;
   private cur: Track | null = null;
   private name: MusicTrack = 'none';
@@ -666,6 +678,11 @@ export class MusicEngine {
 
   get track(): MusicTrack {
     return this.name;
+  }
+
+  /** 当前曲目的通道名(自检用) */
+  get channels(): string[] {
+    return this.cur ? [...new Set(this.cur.chanNames)] : [];
   }
 
   /** 切换曲目：旧曲淡出、新曲淡入(胜负短曲立即进入) */
@@ -682,7 +699,7 @@ export class MusicEngine {
     }
     this.name = name;
     if (name === 'none') return;
-    const t0 = now + (sting ? 0.08 : 0.25);
+    const t0 = now + (sting ? STING_DELAY : START_DELAY);
     const tr = name === 'menu' ? new MenuTrack(this.m, t0) : name === 'battle' ? new BattleTrack(this.m, t0) : name === 'victory' ? new VictoryTrack(this.m, t0) : new DefeatTrack(this.m, t0);
     tr.mood(this.I, this.tension);
     tr.fade(1, sting ? 0.02 : 0.3);
@@ -716,3 +733,29 @@ export class MusicEngine {
     this.name = 'none';
   }
 }
+
+/**
+ * 主旋律的「乐谱」：供离线自检做自动听写——把旋律通道单独渲染出来，逐音检测音高，
+ * 核对调度器实际奏出的就是这里写的音(音高、时值位置都对)。
+ */
+export interface ScorePart {
+  name: string;
+  track: MusicTrack;
+  /** 承担旋律的通道 */
+  chan: string;
+  intensity: number;
+  /** 每步时长(秒)与第一步的起始时刻 */
+  stepDur: number;
+  start: number;
+  /** 实际发声相对乐谱的移调(半音) */
+  transpose: number;
+  events: readonly Ev[];
+}
+
+export const SCORE: readonly ScorePart[] = [
+  { name: '菜单·钟琴主题', track: 'menu', chan: 'cBell', intensity: 0, stepDur: 60 / 66 / 2, start: START_DELAY, transpose: 0, events: MENU_MEL_EVS },
+  { name: '对局·探索层钟琴', track: 'battle', chan: 'eBell', intensity: 0, stepDur: 60 / 108 / 4, start: START_DELAY, transpose: 0, events: BATTLE_MEL_EVS },
+  { name: '对局·战斗层铜管', track: 'battle', chan: 'cBrass', intensity: 1, stepDur: 60 / 108 / 4, start: START_DELAY, transpose: -12, events: BATTLE_MEL_EVS },
+  { name: '胜利·号角', track: 'victory', chan: 'cBrass', intensity: 0, stepDur: 60 / 132 / 2, start: STING_DELAY, transpose: 0, events: VIC_MEL },
+  { name: '失败·圆号', track: 'defeat', chan: 'cHorn', intensity: 0, stepDur: 60 / 100 / 2, start: STING_DELAY, transpose: 0, events: DEF_MEL },
+];

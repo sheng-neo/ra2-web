@@ -70,19 +70,21 @@ void main() {
   vec4 nB = texture2D(tNoise, wp * 0.0871 + vec2(0.31, 0.17));
 
   // ── 草地 ──
-  vec3 gt = texture2D(tGrass, wp * 0.118).rgb;
+  vec3 gt = texture2D(tGrass, wp * 0.1).rgb;
   #if DETAIL >= 1
-  vec3 gt2 = texture2D(tGrass, vec2(wp.y, -wp.x) * 0.0391 + 0.4).rgb;
+  vec3 gt2 = texture2D(tGrass, vec2(wp.y, -wp.x) * 0.0371 + 0.4).rgb;
   #else
-  vec3 gt2 = vec3(0.5);
+  vec3 gt2 = vec3(0.47);
   #endif
   vec3 grass = mix(cGrassCool, cGrass, smoothstep(0.34, 0.62, nA.r));
-  grass = mix(grass, cGrassWarm, smoothstep(0.5, 0.74, nA.g) * 0.8);
-  grass = mix(grass, cGrassDark, smoothstep(0.58, 0.8, nB.r) * 0.45);
-  grass *= (gt * 1.5 + 0.25) * (gt2 * 0.7 + 0.65);
+  grass = mix(grass, cGrassWarm, smoothstep(0.5, 0.74, nA.g) * 0.6);
+  grass = mix(grass, cGrassDark, smoothstep(0.56, 0.78, nB.r) * 0.4);
+  // 贴图只调制明暗与一点色偏：亮笔触偏黄、暗处偏青
+  vec3 gdet = gt * 2.1 * (gt2 * 0.8 + 0.62);
+  grass *= mix(vec3(0.82, 0.95, 1.02), vec3(1.12, 1.08, 0.86), smoothstep(0.75, 1.35, gdet.g)) * gdet;
   // 零星的小白花/亮草尖(远看的点缀)
   float fleck = smoothstep(0.83, 0.9, nB.b) * smoothstep(0.52, 0.6, nA.b);
-  grass += vec3(0.5, 0.5, 0.3) * fleck * 0.35;
+  grass += vec3(0.5, 0.5, 0.3) * fleck * 0.3;
   vec3 albedo = grass;
 
   // ── 野区泥土：通道中央踩实成土路，靠墙处保留草 ──
@@ -96,7 +98,7 @@ void main() {
   dirtMask = max(dirtMask * 0.85, clearing * 0.9);
   vec3 dirt = mix(cDirt, cLaneEarth, nA.b) * dt;
   albedo = mix(albedo, dirt, dirtMask);
-  albedo = mix(albedo, cGrassDark * (gt * 1.2 + 0.3) * 0.62, bushSoil * 0.85);
+  albedo = mix(albedo, cGrassDark * (gt * 1.6 + 0.2) * 0.6, bushSoil * 0.85);
 
   // ── 兵线石板路：中间铺满，越靠边石板越稀疏，露出夯土，再过渡到草 ──
   float laneN = (nB.g - 0.5) * 1.5 + (nB.b - 0.5) * 0.5;
@@ -106,8 +108,11 @@ void main() {
   float keepT = smoothstep(-2.6, 0.45, dl);
   float isStone = smoothstep(0.3, 0.7, st.g) * step(keepT * keepT, st.b);
   float earth = 1.0 - smoothstep(-0.25, 0.75, dl);
-  vec3 laneEarth = cLaneEarth * dt * (0.84 + 0.22 * nA.b);
-  vec3 laneStone = mix(cLane, cLaneAlt, st.b) * st.r * 2.0 * (0.92 + 0.16 * nA.g);
+  vec3 laneEarth = cLaneEarth * dt * (0.98 + 0.22 * nA.b);
+  vec3 laneStone = mix(cLane, cLaneAlt, st.b) * st.r * 2.0 * (0.9 + 0.2 * nA.r);
+  // 路中央被踩得发亮，偶尔有长了青苔的石板
+  laneStone *= 1.0 + 0.07 * smoothstep(-1.5, -4.0, dLane);
+  laneStone = mix(laneStone, laneStone * vec3(0.8, 0.95, 0.78), smoothstep(0.86, 0.93, st.b) * smoothstep(-3.0, -0.5, dl) * 0.7);
   albedo = mix(albedo, laneEarth, earth);
   float stoneMask = isStone * (1.0 - smoothstep(-0.1, 0.5, dl));
 
@@ -119,7 +124,7 @@ void main() {
   vec3 bStone = team > 0.5 ? cBaseStone[1] : cBaseStone[0];
   vec3 bTrim = team > 0.5 ? cBaseTrim[1] : cBaseTrim[0];
   vec3 bGlow = team > 0.5 ? cBaseGlow[1] : cBaseGlow[0];
-  vec3 plaza = bStone * pz.r * 2.0 * (0.9 + 0.2 * nA.g);
+  vec3 plaza = bStone * pz.r * 1.92 * (0.88 + 0.2 * nA.g);
   plaza = mix(plaza, bTrim, pz.g);
   // 地台边缘的石沿与金线
   float rim = smoothstep(-0.95, -0.8, dBase) * (1.0 - smoothstep(-0.12, 0.0, dBase));
@@ -136,35 +141,36 @@ void main() {
   // ── 河床 ──
   float depth = max(0.0, -vWorldPos.y);
   float dr = dRiver + (nB.g - 0.5) * 0.7;
-  float bedMask = 1.0 - smoothstep(-0.25, 0.55, dr);
+  float bedMask = 1.0 - smoothstep(-0.2, 0.45, dr);
   float under = smoothstep(uWaterLevel + 0.02, uWaterLevel - 0.1, vWorldPos.y);
-  vec3 bed = mix(cSand, cBedDeep, smoothstep(0.12, 0.5, depth));
-  bed *= 0.8 + 0.4 * nB.g;
+  vec3 bed = mix(cSand, cBedDeep, smoothstep(0.1, 0.48, depth));
+  bed *= 0.86 + 0.28 * nB.g;
   // 河底卵石
-  float pebble = smoothstep(0.34, 0.22, texture2D(tNoise, wp * 0.21).a);
-  bed = mix(bed, bed * vec3(0.62, 0.7, 0.8), pebble * 0.7);
+  float pebble = smoothstep(0.3, 0.2, texture2D(tNoise, wp * 0.21).a);
+  bed = mix(bed, bed * vec3(0.66, 0.74, 0.82), pebble * 0.55);
   // 渡口：水下仍能看到石板
   float ford = stoneMask * 0.8 + plazaMask;
   albedo = mix(albedo, mix(bed, albedo * vec3(0.72, 0.9, 0.98), ford), bedMask * (1.0 - plazaMask));
-  // 岸边湿土
-  float wet = (1.0 - smoothstep(0.2, 1.3, dr)) * (1.0 - under);
-  albedo *= 1.0 - 0.3 * wet;
+  // 岸边湿土 + 紧贴水线的一道深色水渍
+  float wet = (1.0 - smoothstep(0.1, 1.1, dr)) * (1.0 - under);
+  albedo *= 1.0 - 0.34 * wet;
+  albedo *= 1.0 - 0.3 * (1.0 - smoothstep(0.0, 0.07, abs(vWorldPos.y - uWaterLevel - 0.03)));
 
   #if DETAIL >= 1
   if (under > 0.01) {
-    // 焦散：两层细胞噪声相减得到流动的光网
+    // 焦散：两层细胞噪声相减得到缓慢流动的柔和光网
     float t = uTime;
-    float c1 = texture2D(tNoise, wp * 0.085 + vec2(t * 0.011, t * 0.008)).a;
-    float c2 = texture2D(tNoise, wp * 0.117 - vec2(t * 0.009, -t * 0.012) + 0.37).a;
-    float caust = smoothstep(0.72, 1.0, 1.0 - abs(c1 - c2) * 2.6);
-    albedo += vec3(0.35, 0.6, 0.62) * caust * under * 0.42;
+    float c1 = texture2D(tNoise, wp * 0.052 + vec2(t * 0.007, t * 0.005)).a;
+    float c2 = texture2D(tNoise, wp * 0.071 - vec2(t * 0.006, -t * 0.008) + 0.37).a;
+    float caust = smoothstep(0.55, 1.0, 1.0 - abs(c1 - c2) * 2.4);
+    albedo += vec3(0.3, 0.55, 0.55) * caust * caust * under * 0.2;
     #if DETAIL >= 2
-    // 水底星屑：稀疏的发光碎晶，缓慢闪烁
-    vec4 sn = texture2D(tNoise, wp * 0.147 + 0.63);
-    float cluster = smoothstep(0.5, 0.7, nA.b + nB.r * 0.4);
-    float spark = smoothstep(0.2, 0.02, sn.a) * cluster;
-    float tw = 0.6 + 0.4 * sin(t * 2.3 + sn.g * 40.0 + wp.x);
-    emissive += cStar * spark * tw * 3.2 * under;
+    // 水底星屑：稀疏成簇的发光碎晶，缓慢闪烁
+    vec4 sn = texture2D(tNoise, wp * 0.094 + 0.63);
+    float cluster = smoothstep(0.56, 0.72, nA.b * 0.6 + nB.r * 0.5);
+    float spark = smoothstep(0.1, 0.02, sn.a) * cluster;
+    float tw = 0.55 + 0.45 * sin(t * 1.7 + sn.g * 40.0 + wp.x);
+    emissive += cStar * spark * tw * 2.6 * under;
     #endif
   }
   #endif
@@ -174,6 +180,10 @@ void main() {
   vec3 L = kitSunDir();
   float ndl = max(dot(N, L), 0.0);
   float shadow = kitShadow();
+  #if DETAIL >= 1
+  // 缓慢飘过的云影：让大片地面有明暗流动
+  shadow *= 1.0 - 0.14 * smoothstep(0.48, 0.7, texture2D(tNoise, wp * 0.0061 + vec2(uTime * 0.004, -uTime * 0.0025)).r);
+  #endif
   // 墙脚/草丛根部的接触阴影
   float ao = mix(0.5, 1.0, smoothstep(-0.1, 1.5, dSolid)) * mix(0.82, 1.0, smoothstep(-0.4, 0.5, dBush));
   float contact = mix(0.72, 1.0, smoothstep(0.0, 0.7, dSolid));
@@ -199,15 +209,16 @@ function buildGroundGeometry(field: MapField): THREE.BufferGeometry {
   const cell = 4;
   const x0 = -Math.ceil((bound + 1.2) / cell) * cell;
   const x1 = -x0;
-  // 南侧只铺到边界外一点(再往南是下沉的外缘台地)，北/东/西多铺一格压在外缘崖体下面
-  const zMaxLimit = bound + 0.6;
   const sub = 4;
   const pos: number[] = [];
   const idx: number[] = [];
   const vmap = new Map<number, number>();
   const key = (x: number, z: number): number => Math.round((x - x0) * 8) * 8192 + Math.round((z - x0) * 8);
-  const vert = (x: number, z: number): number => {
-    const zc = Math.min(z, zMaxLimit);
+  const lim = bound + 0.3;
+  const vert = (x0v: number, z: number): number => {
+    // 夹到边界线：界外是外缘地形(北/东/西为拔起的崖壁，南为下沉的台地)
+    const x = Math.max(-lim, Math.min(lim, x0v));
+    const zc = Math.max(-lim, Math.min(lim, z));
     const k = key(x, zc);
     let i = vmap.get(k);
     if (i === undefined) {
@@ -218,7 +229,6 @@ function buildGroundGeometry(field: MapField): THREE.BufferGeometry {
     return i;
   };
   const quad = (ax: number, az: number, s: number): void => {
-    if (az >= zMaxLimit) return;
     const a = vert(ax, az);
     const b = vert(ax + s, az);
     const c = vert(ax + s, az + s);
@@ -243,7 +253,7 @@ function buildGroundGeometry(field: MapField): THREE.BufferGeometry {
 }
 
 export function createGround(field: MapField, splat: SplatTextures, noise: THREE.Texture, q: QualitySettings, maxAniso: number): Ground {
-  const grass = makeGrassTexture(512);
+  const grass = makeGrassTexture(1024);
   const dirt = makeDirtTexture(512);
   const plaza = makePlazaTexture(512);
   const stone = getStoneDataTexture();
@@ -271,9 +281,9 @@ export function createGround(field: MapField, splat: SplatTextures, noise: THREE
       cLaneEarth: { value: col(E.laneDark) },
       cDirt: { value: col(E.dirt) },
       cSand: { value: col(E.sand) },
-      cBedDeep: { value: col(0x3f9fb8) },
+      cBedDeep: { value: col(0x3d8fb0) },
       cStar: { value: col(0x9ff0ff) },
-      cBaseStone: { value: [col(PALETTE.blue.stone, 0.92), col(PALETTE.red.stone)] },
+      cBaseStone: { value: [col(PALETTE.blue.stone), col(PALETTE.red.stone)] },
       cBaseTrim: { value: [col(PALETTE.blue.trim), col(PALETTE.red.trim)] },
       cBaseGlow: { value: [col(PALETTE.blue.glow), col(PALETTE.red.glow)] },
     }),

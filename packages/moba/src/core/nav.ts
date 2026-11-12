@@ -21,8 +21,13 @@ const PATH_MARGIN = 0.06;
 const HEUR_W = 1.12;
 /** 单次碰撞步进的最大步长：高速位移会被拆成多步，防止穿墙 */
 const MAX_STEP = 0.3;
-/** 障碍物影响净空图的范围（需覆盖地图上最大的空地净空，射线步进才不会跨过建筑） */
-const OBSTACLE_REACH = 12;
+/**
+ * 净空值的上限：只关心「离障碍有多近」，开阔地带统一记为这个值。
+ * 这样建图时远处的墙可以直接跳过(快几倍)，建筑障碍也只需要更新周围这么大的范围。
+ */
+const CLEAR_CAP = 6;
+/** 障碍物影响净空图的范围（= 净空上限：更远处的净空值本来就不会超过它，射线步进不会跨过建筑） */
+const OBSTACLE_REACH = CLEAR_CAP;
 const MAX_EXPANSIONS = 40000;
 const SQRT2 = Math.SQRT2;
 
@@ -60,7 +65,7 @@ function buildStaticField(map: MapData, n: number): Float32Array {
     const y = -EXTENT + iy * NAV_CELL;
     for (let ix = 0; ix < n; ix++) {
       const x = -EXTENT + ix * NAV_CELL;
-      let d = Math.min(map.bound - Math.abs(x), map.bound - Math.abs(y));
+      let d = Math.min(map.bound - Math.abs(x), map.bound - Math.abs(y), CLEAR_CAP);
       p.x = x;
       p.y = y;
       for (let k = 0; k < walls.length; k++) {
@@ -105,6 +110,8 @@ export class NavGrid {
 
   /** 统计（性能测试/调试用） */
   readonly stats = { searches: 0, expansions: 0 };
+  /** 最近一次 findPath 是否只找到了部分路径（终点不连通/搜索超限） */
+  lastPathPartial = false;
 
   constructor(map: MapData) {
     const n = Math.round((EXTENT * 2) / NAV_CELL) + 1;
@@ -498,6 +505,7 @@ export class NavGrid {
       }
     }
     this.stats.expansions += expansions;
+    this.lastPathPartial = !found;
 
     // 回溯节点序列（终点 → 起点）
     const buf = this.nodeBuf;

@@ -4,7 +4,7 @@
 import { HEROES, heroStatsAt, skillLevelsAt, SUMMONER } from './data/heroes';
 import { CORE, ECONOMY, MINIONS, MONSTERS, TOWERS, VISION, xpToNext } from './data/units';
 import {
-  DEFAULT_WINDUP, MON_IDLE, MOVE_NONE,
+  DEFAULT_WINDUP, hideFields, MON_IDLE, MOVE_NONE,
   type AttackProfile, type CampRt, type SimCore, type SimHero, type SimMinion, type SimMonster, type SimTower, type SimUnit, type UnitRt,
 } from './internal';
 import type {
@@ -28,7 +28,7 @@ function newRt(radius: number, weight: number, sight: number, base: Stats, atk: 
     stunned: false, rooted: false, silenced: false, untargetable: false, unstoppable: false, airborne: null,
     moveMode: MOVE_NONE, dirX: 0, dirY: 0, path: null, pathIdx: 0, goalX: 0, goalY: 0, pathTime: -999, stuck: 0, moved: false,
     pushX: 0, pushY: 0, dash: null,
-    atkCd: 0, windupLeft: 0, windupTarget: -1,
+    atkCd: 0, windupLeft: 0, windupTarget: -1, disarmUntil: 0,
     lockUntil: 0, act: null, actStart: 0, actDur: 0, actUntil: 0, actMoveCancel: true,
     hitHeroTime: -999, hitHeroId: -1, revealUntil: -999, lastAttackerId: -1, thinkAt: 0, backdoor: false,
   };
@@ -74,13 +74,13 @@ export function createHero(sim: Sim, index: number, team: PlayerTeam, heroId: He
     buffs: [],
     rt: newRt(def.radius, 2, VISION.hero, heroStatsAt(def, 1), atk),
     h: {
-      def, index, spawn: { x: spawn.x, y: spawn.y },
+      def, index, spawn: { x: spawn.x, y: spawn.y }, baseLevel: 1,
       atkOrder: false, atkTargetId: -1, atkExplicit: false, pendingCast: null, pendingUntil: 0,
       goldFrac: 0, multiKill: 0, lastKillTime: -999, deathStreak: 0, damagers: new Map(), lastCombatTime: -999,
       hooks: [], cooldowns: new Map(), vars: new Map(), controller: null, nextThink: 0,
     },
   };
-  return hero;
+  return hideFields(hero, 'rt', 'h');
 }
 
 export function createMinion(sim: Sim, team: PlayerTeam, lane: LaneId, type: MinionType, pos: Vec2): SimMinion {
@@ -96,23 +96,25 @@ export function createMinion(sim: Sim, team: PlayerTeam, lane: LaneId, type: Min
     projSpeed: d.projectileSpeed, vsStructure: d.towerMult, vsMinion: 1,
   };
   const weight = type === 'super' || type === 'siege' ? 2 : 1;
-  return {
+  const minion: SimMinion = {
     ...newBase(sim, team, pos, teamFacing(team), d.radius, stats),
     kind: 'minion', team, minionType: type, lane, buffs: [],
     rt: newRt(d.radius, weight, VISION.minion, { ...stats }, atk),
     m: { offset: 0, dir: team === 0 ? 1 : -1, goalX: pos.x, goalY: pos.y, helping: false, offLane: false },
   };
+  return hideFields(minion, 'rt', 'm');
 }
 
 export function createTower(sim: Sim, spot: TowerSpot): SimTower {
   const d = TOWERS[spot.tier];
   const stats = makeStats({ maxHp: d.hp, ad: d.ad, armor: d.armor, mr: d.mr, attackSpeed: d.attackSpeed, attackRange: d.attackRange });
   const atk: AttackProfile = { windup: 0.3, dtype: 'physical', visual: 'tower_bolt', projSpeed: d.projectileSpeed, vsStructure: 1, vsMinion: 1 };
-  return {
+  const tower: SimTower = {
     ...newBase(sim, spot.team, spot.pos, teamFacing(spot.team), d.radius, stats),
     kind: 'tower', team: spot.team, lane: spot.lane, tier: spot.tier, buffs: [],
     rt: newRt(d.radius, 0, VISION.tower, { ...stats }, atk),
   };
+  return hideFields(tower, 'rt');
 }
 
 export function createCore(sim: Sim, base: BaseDef): SimCore {
@@ -120,11 +122,12 @@ export function createCore(sim: Sim, base: BaseDef): SimCore {
     maxHp: CORE.hp, ad: CORE.ad, armor: CORE.armor, mr: CORE.mr, attackSpeed: CORE.attackSpeed, attackRange: CORE.attackRange,
   });
   const atk: AttackProfile = { windup: 0.3, dtype: 'physical', visual: 'core_bolt', projSpeed: CORE.projectileSpeed, vsStructure: 1, vsMinion: 1 };
-  return {
+  const core: SimCore = {
     ...newBase(sim, base.team, base.core, teamFacing(base.team), CORE.radius, stats),
     kind: 'core', team: base.team, buffs: [],
     rt: newRt(CORE.radius, 0, VISION.core, { ...stats }, atk),
   };
+  return hideFields(core, 'rt');
 }
 
 export function createMonster(sim: Sim, camp: CampRt, slot: number): SimMonster {
@@ -143,12 +146,13 @@ export function createMonster(sim: Sim, camp: CampRt, slot: number): SimMonster 
   };
   // 野怪面朝地图中心，看起来像在守着营地
   const facing = Math.atan2(-home.y, -home.x);
-  return {
+  const monster: SimMonster = {
     ...newBase(sim, 2, home, facing, d.radius, stats),
     kind: 'monster', team: 2, monsterType: def.monsterType, campId: def.id, buffs: [],
     rt: newRt(d.radius, d.epic ? 0 : 3, VISION.monster, { ...stats }, atk),
     mon: { home, state: MON_IDLE, camp },
   };
+  return hideFields(monster, 'rt', 'mon');
 }
 
 // ───────────────────────── 基础判定 ─────────────────────────

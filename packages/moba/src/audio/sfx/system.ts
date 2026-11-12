@@ -59,7 +59,7 @@ export const SYSTEM = {
   fx_gold_gain: def('状态与系统', '金币掉落(他人)', (p) => {
     p.noise({ flt: 'highpass', fc: 6000, a: 0.001, d: 0.005, g: 0.2 });
     p.ring(2400, COIN, { a: 0.001, d: 0.13, g: 0.2 });
-  }, { ...SYS, loud: -32, len: 0.25, gap: 0.12, group: 'coin', prio: 0, jitter: 0.06, rev: 0.1 }),
+  }, { ...SYS, loud: -32, len: 0.25, gap: 0.12, prio: 0, jitter: 0.06, rev: 0.1 }),
   fx_tower_destroyed: def('状态与系统', '防御塔倒塌', (p) => {
     const dr = p.drive(3);
     p.osc({ f: 82, f1: 28, ft: 0.4, a: 0.004, d: 1.3, g: 0.8, to: dr });

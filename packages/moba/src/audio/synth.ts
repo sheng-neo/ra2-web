@@ -288,11 +288,6 @@ export class Patch {
     return a + (b - a) * this.kit.rnd();
   }
 
-  /** 尾音占位：让回收时刻至少晚到 t(相对起点) */
-  hold(t: number): void {
-    if (this.t0 + t > this.end) this.end = this.t0 + t;
-  }
-
   /** AHD 包络，返回结束时刻 */
   private env(p: AudioParam, o: Env, t: number): number {
     const g = o.g ?? 1;

@@ -5,7 +5,7 @@
  * 所有纹样合并成一个网格、一个 draw call。预乘透明度混合：石材部分正常覆盖，发光部分叠加。
  */
 import * as THREE from 'three';
-import { GLSL_LIGHT_PARS_FRAGMENT, GLSL_LIGHT_PARS_VERTEX, GLSL_LIGHT_VERTEX_TAIL, GLSL_NOISE, GLSL_OUTPUT_FRAGMENT, PALETTE, SHARED, litUniforms } from '../materials';
+import { GLSL_LIGHT_PARS_FRAGMENT, GLSL_LIGHT_PARS_VERTEX, GLSL_LIGHT_VERTEX_TAIL, GLSL_NOISE, SHARED, litUniforms } from '../materials';
 import type { MonsterType } from '../../core/types';
 import { CORE_PAD_RADIUS, type MapField, TOWER_PAD_RADIUS, WATER_LEVEL, campRadius } from './field';
 import { type RGB, rgb } from './geo';
@@ -97,11 +97,15 @@ void main() {
   vec2 p = vUv;
   float r = length(p);
   if (r > 1.0) discard;
+  // 建筑/泉水的铺装不越过地图边界(界外是崖壁或下沉的台地)
+  if (type < 2.5 && (abs(vWorldPos.x) > uBound || abs(vWorldPos.z) > uBound)) discard;
   float a = atan(p.y, p.x) + 3.141593;
   float aa = fwidth(r) * 1.3 + 1e-4;
   vec3 paint = vec3(0.0);
   float alpha = 0.0;
   vec3 glow = vec3(0.0);
+  // ln：发光线条的强度累加。最后既作为彩色镶嵌(亮底上也看得清)，又作为自发光
+  float ln = 0.0;
   float nz = vnoise(vWorldPos.xz * 2.3 + seed);
   float nz2 = vnoise(vWorldPos.xz * 7.1 + seed * 3.0);
 
@@ -115,11 +119,11 @@ void main() {
     paint = mix(paint, vColorB * 0.6, (1.0 - smoothstep(-0.02, 0.0, st)) * 0.35);
     alpha = 1.0 - smoothstep(0.95, 1.0, r + (nz - 0.5) * 0.07);
     float pulse = 0.7 + 0.3 * sin(t * 1.7 + seed * 5.0);
-    glow += vColorA * band(r, 0.83, 0.014, aa) * 2.2 * pulse;
+    ln += band(r, 0.83, 0.014, aa) * 2.2 * pulse;
     // 环上 8 颗菱形星钉
     float ca = (fract(a / TAU * 8.0) - 0.5) * TAU / 8.0 * 0.56;
     float dia = abs(ca) * 5.0 + abs(r - 0.56) * 6.0;
-    glow += vColorA * (1.0 - smoothstep(0.16, 0.22, dia)) * 1.8 * pulse;
+    ln += (1.0 - smoothstep(0.16, 0.22, dia)) * 1.8 * pulse;
   } else if (type < 1.5) {
     // ── 水晶座：大星盘 ──
     vec2 sr = stoneRings(r * 1.02, a, seed);
@@ -131,15 +135,14 @@ void main() {
     paint = mix(paint, vColorB * 1.12, (1.0 - smoothstep(-0.01, 0.0, st)) * 0.5);
     alpha = 1.0 - smoothstep(0.96, 1.0, r + (nz - 0.5) * 0.04);
     float pulse = 0.75 + 0.25 * sin(t * 1.3);
-    glow += vColorA * band(r, 0.9, 0.008, aa) * 2.4;
-    glow += vColorA * band(r, 0.45, 0.006, aa) * 2.0 * pulse;
-    glow += vColorA * runes(r, a + t * 0.06, 0.805, 0.045, 28.0, seed, aa) * 1.9 * pulse;
+    ln += band(r, 0.9, 0.008, aa) * 2.4;
+    ln += band(r, 0.45, 0.006, aa) * 2.0 * pulse;
+    ln += runes(r, a + t * 0.06, 0.805, 0.045, 28.0, seed, aa) * 1.9 * pulse;
     // 从中心向外流动的能量纹
     float rays = pow(abs(sin(a * 4.0)), 24.0) * smoothstep(0.42, 0.5, r) * (1.0 - smoothstep(0.6, 0.74, r));
-    glow += vColorA * rays * (0.6 + 0.6 * sin(r * 30.0 - t * 3.0)) * 1.4;
+    ln += rays * (0.6 + 0.6 * sin(r * 30.0 - t * 3.0)) * 1.4;
   } else if (type < 2.5) {
     // ── 泉水：石沿 + 发光水池 + 缓缓旋转的法阵 ──
-    if (abs(vWorldPos.x) > uBound || abs(vWorldPos.z) > uBound) discard;
     float rimM = smoothstep(0.86, 0.875, r);
     vec2 sr = stoneRings(0.99, a * 1.0, seed);
     vec3 rimCol = vColorB * sr.x * mix(0.6, 1.0, smoothstep(0.0, 0.02, abs(fract(a / TAU * 24.0) - 0.5) - 0.03)) * (0.9 + 0.2 * nz2);
@@ -147,19 +150,19 @@ void main() {
     // 水池：极坐标流动噪声
     vec2 q = vec2(a * 3.0 / TAU * 2.0 + r * 2.0 - t * 0.12, r * 3.0 - t * 0.25);
     float sw = vnoise(q * 3.0) * 0.6 + vnoise(q * 7.0 + 3.0) * 0.4;
-    vec3 pool = mix(vColorA * 0.3, vColorA * 0.75 + vec3(0.2), smoothstep(0.35, 0.8, sw));
-    pool = mix(pool, vec3(1.0), smoothstep(0.78, 0.95, sw) * 0.5);
+    vec3 pool = mix(vColorA * 0.22, vColorA * 0.6 + vec3(0.12), smoothstep(0.35, 0.8, sw));
+    pool = mix(pool, vec3(0.9), smoothstep(0.8, 0.96, sw) * 0.35);
     paint = mix(pool, rimCol, rimM);
     alpha = (1.0 - smoothstep(0.985, 1.0, r)) * mix(0.9, 1.0, rimM);
     float inside = 1.0 - rimM;
     float pulse = 0.75 + 0.25 * sin(t * 1.5);
-    glow += vColorA * inside * (0.5 + 0.5 * (1.0 - r)) * 0.55;
-    glow += vColorA * band(r, 0.62, 0.007, aa) * 2.2 * inside;
-    glow += vColorA * band(r, 0.3, 0.006, aa) * 2.0 * inside;
-    glow += vColorA * runes(r, a - t * 0.1, 0.46, 0.07, 14.0, seed, aa) * 2.0 * pulse * inside;
+    glow += vColorA * inside * (0.5 + 0.5 * (1.0 - r)) * 0.22;
+    ln += band(r, 0.62, 0.007, aa) * 2.2 * inside;
+    ln += band(r, 0.3, 0.006, aa) * 2.0 * inside;
+    ln += runes(r, a - t * 0.1, 0.46, 0.07, 14.0, seed, aa) * 2.0 * pulse * inside;
     float st = sdStar(vec2(p.x * cos(t * 0.1) - p.y * sin(t * 0.1), p.x * sin(t * 0.1) + p.y * cos(t * 0.1)), 0.24, 4.0, 2.6);
-    glow += vColorA * (1.0 - smoothstep(0.006, 0.006 + aa * 1.5, abs(st))) * 2.4 * inside;
-    glow += vec3(1.0) * (1.0 - smoothstep(0.0, 0.2, r)) * 0.5 * pulse;
+    ln += (1.0 - smoothstep(0.006, 0.006 + aa * 1.5, abs(st))) * 2.4 * inside;
+    glow += vec3(1.0) * (1.0 - smoothstep(0.0, 0.2, r)) * 0.3 * pulse;
   } else if (type < 3.5) {
     // ── 小营地：风化的残环 ──
     float broken = smoothstep(0.42, 0.6, vnoise(vec2(a * 2.2, seed * 9.0)) * 0.7 + nz * 0.3);
@@ -167,7 +170,7 @@ void main() {
     float joint = smoothstep(0.02, 0.05, abs(fract(a / TAU * 18.0 + seed) - 0.5) - 0.02);
     paint = vColorB * (0.8 + 0.3 * hash12(vec2(floor(a / TAU * 18.0 + seed), seed))) * mix(0.6, 1.0, joint);
     alpha = ringM * 0.95;
-    glow += vColorA * runes(r, a, 0.66, 0.05, 16.0, seed, aa) * broken * 0.55 * (0.6 + 0.4 * sin(t * 1.1 + seed));
+    ln += runes(r, a, 0.66, 0.05, 16.0, seed, aa) * broken * 0.55 * (0.6 + 0.4 * sin(t * 1.1 + seed));
   } else if (type < 4.5) {
     // ── 增益营地：双环法阵 + 六芒；霜 = 冰晶地面，焰 = 焦土裂纹 ──
     float ember = step(0.5, vParam.w);
@@ -179,12 +182,12 @@ void main() {
     vec3 frost = vec3(0.78, 0.9, 1.0) * (0.75 + 0.3 * nz2);
     paint = mix(frost, scorched, ember);
     alpha = patchM * mix(0.5 * smoothstep(0.35, 0.65, nz + (1.0 - r) * 0.3), 0.7, ember);
-    glow += vColorA * crackLine * patchM * mix(0.35, 1.5, ember) * pulse;
-    glow += vColorA * band(r, 0.9, 0.012, aa) * 2.0 * pulse;
-    glow += vColorA * band(r, 0.74, 0.007, aa) * 1.6;
-    glow += vColorA * runes(r, a + t * 0.08, 0.82, 0.05, 22.0, seed, aa) * 1.7 * pulse;
+    ln += crackLine * patchM * mix(0.2, 1.2, ember) * pulse;
+    ln += band(r, 0.9, 0.012, aa) * 2.0 * pulse;
+    ln += band(r, 0.74, 0.007, aa) * 1.6;
+    ln += runes(r, a + t * 0.08, 0.82, 0.05, 22.0, seed, aa) * 1.7 * pulse;
     float st = sdStar(p, 0.5, 6.0, 2.2);
-    glow += vColorA * (1.0 - smoothstep(0.007, 0.007 + aa * 1.5, abs(st))) * 1.5;
+    ln += (1.0 - smoothstep(0.007, 0.007 + aa * 1.5, abs(st))) * 1.5;
   } else if (type < 5.5) {
     // ── 史诗营地：浮在水面上的巨大法阵，缓慢转动 ──
     float colossus = step(0.5, vParam.w);
@@ -194,15 +197,15 @@ void main() {
     vec2 pr = vec2(p.x * ca - p.y * sa, p.x * sa + p.y * ca);
     float st = sdStar(pr, 0.62, mix(6.0, 8.0, colossus), mix(2.0, 2.8, colossus));
     float st2 = sdStar(vec2(pr.x * ca + pr.y * sa, -pr.x * sa + pr.y * ca), 0.34, mix(3.0, 4.0, colossus), 2.0);
-    glow += vColorA * (1.0 - smoothstep(0.006, 0.006 + aa * 1.5, abs(st))) * 2.2;
-    glow += vColorA * (1.0 - smoothstep(0.005, 0.005 + aa * 1.5, abs(st2))) * 1.8 * pulse;
-    glow += vColorA * band(r, 0.93, 0.01, aa) * 2.4;
-    glow += vColorA * band(r, 0.86, 0.004, aa) * 1.6;
-    glow += vColorA * band(r, 0.7, 0.005, aa) * 1.6 * pulse;
-    glow += vColorA * runes(r, a - t * 0.05, 0.78, 0.045, 30.0, seed, aa) * 2.0 * pulse;
-    glow += vColorA * runes(r, a + t * 0.09, 0.2, 0.05, 9.0, seed + 3.0, aa) * 1.6;
+    ln += (1.0 - smoothstep(0.006, 0.006 + aa * 1.5, abs(st))) * 2.2;
+    ln += (1.0 - smoothstep(0.005, 0.005 + aa * 1.5, abs(st2))) * 1.8 * pulse;
+    ln += band(r, 0.93, 0.01, aa) * 2.4;
+    ln += band(r, 0.86, 0.004, aa) * 1.6;
+    ln += band(r, 0.7, 0.005, aa) * 1.6 * pulse;
+    ln += runes(r, a - t * 0.05, 0.78, 0.045, 30.0, seed, aa) * 2.0 * pulse;
+    ln += runes(r, a + t * 0.09, 0.2, 0.05, 9.0, seed + 3.0, aa) * 1.6;
     // 水面被法阵映亮
-    glow += vColorA * (1.0 - smoothstep(0.2, 1.0, r)) * 0.2 * pulse;
+    glow += vColorA * (1.0 - smoothstep(0.2, 1.0, r)) * 0.16 * pulse;
     paint = vColorB;
     alpha = (1.0 - smoothstep(0.3, 1.0, r)) * 0.28;
   } else {
@@ -211,12 +214,25 @@ void main() {
     glow += vColorA * f * f * (0.8 + 0.2 * sin(t * 1.3 + seed * 6.0)) * vParam.w;
   }
 
+  float lm = clamp(ln, 0.0, 1.0);
+  paint = mix(paint, vColorA * 0.42, lm * 0.9);
+  alpha = max(alpha, lm * 0.92);
+  glow += vColorA * ln * 0.55;
+
   vec3 N = normalize((viewMatrix * vec4(0.0, 1.0, 0.0, 0.0)).xyz);
   float shadow = kitShadow();
   vec3 irr = kitAmbient(N) + kitSunColor() * max(dot(N, kitSunDir()), 0.0) * shadow + kitPointLights(N, -vViewPosition);
-  vec3 col = paint * RECIPROCAL_PI * irr * alpha + glow;
-  gl_FragColor = vec4(col, alpha);
-  ${GLSL_OUTPUT_FRAGMENT}
+  // 先对「未预乘」的受光颜色做色调映射/色彩空间转换，再预乘并叠加发光：
+  // 这样 low 档直出屏幕时半透明边缘不会出现亮边(HDR 路径下这两步是空操作，结果不变)
+  gl_FragColor = vec4(paint * RECIPROCAL_PI * irr, 1.0);
+  #include <tonemapping_fragment>
+  #include <colorspace_fragment>
+  #ifdef TONE_MAPPING
+  gl_FragColor.rgb = gl_FragColor.rgb * alpha + glow * 0.9;
+  #else
+  gl_FragColor.rgb = gl_FragColor.rgb * alpha + glow;
+  #endif
+  gl_FragColor.a = alpha;
 }
 `;
 
@@ -248,8 +264,8 @@ export function mapDecals(field: MapField): DecalSpec[] {
   const map = field.map;
   const out: DecalSpec[] = [];
   const teamCols = [
-    { glow: rgb(PALETTE.blue.glow), stone: rgb(0xd4dbe8) },
-    { glow: rgb(PALETTE.red.glow), stone: rgb(0x5a4c55) },
+    { glow: rgb(0x2f8fff), stone: rgb(0xc6cfe0) },
+    { glow: rgb(0xff4a2c), stone: rgb(0x5a4c55) },
   ];
   map.towers.forEach((t, i) => {
     const c = teamCols[t.team];

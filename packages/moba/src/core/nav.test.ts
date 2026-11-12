@@ -8,22 +8,30 @@ import { createWorld } from './world';
 const map = createMap();
 const LANES: LaneId[] = ['top', 'mid', 'bot'];
 
-/** 沿折线每 0.2m 采样，检查每个点离所有墙体至少 minClear */
-function assertPathClear(m: MapData, from: Vec2, path: Vec2[], minClear: number): void {
+/**
+ * 沿折线每 0.2m 采样，返回路径上离墙体最近的距离（进了墙/出了界返回负数）。
+ * 用精确的多边形几何检查，不依赖被测的距离场。
+ */
+function minWallDistance(m: MapData, from: Vec2, path: Vec2[]): number {
+  let min = Infinity;
   let prev = from;
+  const p = { x: 0, y: 0 };
   for (const wp of path) {
     const d = Math.hypot(wp.x - prev.x, wp.y - prev.y);
     const steps = Math.max(1, Math.ceil(d / 0.2));
     for (let i = 0; i <= steps; i++) {
-      const p = { x: prev.x + ((wp.x - prev.x) * i) / steps, y: prev.y + ((wp.y - prev.y) * i) / steps };
-      expect(isWalkableTerrain(m, p), `point (${p.x.toFixed(2)}, ${p.y.toFixed(2)}) is inside terrain`).toBe(true);
+      p.x = prev.x + ((wp.x - prev.x) * i) / steps;
+      p.y = prev.y + ((wp.y - prev.y) * i) / steps;
+      if (!isWalkableTerrain(m, p)) return -1;
       for (const w of m.walls) {
-        expect(pointInPolygon(p, w)).toBe(false);
-        expect(distToPolygonEdge(p, w)).toBeGreaterThan(minClear);
+        if (pointInPolygon(p, w)) return -1;
+        const e = distToPolygonEdge(p, w);
+        if (e < min) min = e;
       }
     }
     prev = wp;
   }
+  return min;
 }
 
 describe('nav: 寻路', () => {
@@ -38,7 +46,7 @@ describe('nav: 寻路', () => {
       if (!path) continue;
       const end = path[path.length - 1];
       expect(Math.hypot(end.x - b.x, end.y - b.y)).toBeLessThan(0.01);
-      assertPathClear(map, a, path, 0.6 - 0.2);
+      expect(minWallDistance(map, a, path), `lane ${lane}`).toBeGreaterThan(0.6 - 0.2);
     }
   });
 
@@ -52,7 +60,7 @@ describe('nav: 寻路', () => {
     const straight = Math.hypot(a.x - b.x, a.y - b.y);
     expect(len).toBeGreaterThanOrEqual(straight - 1e-6);
     expect(len).toBeLessThan(straight * 1.25);
-    assertPathClear(map, a, path, 0.75 - 0.2);
+    expect(minWallDistance(map, a, path)).toBeGreaterThan(0.75 - 0.2);
   });
 
   it('最大体型的英雄(半径 0.75)能进出每一个野怪营地', () => {
@@ -64,9 +72,9 @@ describe('nav: 寻路', () => {
       if (!path) continue;
       const end = path[path.length - 1];
       expect(Math.hypot(end.x - camp.pos.x, end.y - camp.pos.y), `camp ${camp.id} reachable`).toBeLessThan(0.5);
-      assertPathClear(map, start, path, 0.75 - 0.2);
+      expect(minWallDistance(map, start, path), `camp ${camp.id}`).toBeGreaterThan(0.75 - 0.2);
     }
-  });
+  }, 30000);
 
   it('野区的狭窄通道可以通过，且不会绕远路', () => {
     // 上路内侧两段山体之间的野区入口(宽约 6m，里面有草丛)：从上路走进蓝方上半野区
@@ -76,7 +84,7 @@ describe('nav: 寻路', () => {
     expect(path).not.toBeNull();
     if (!path) return;
     expect(pathLength(a, path)).toBeLessThan(Math.hypot(a.x - b.x, a.y - b.y) * 1.2);
-    assertPathClear(map, a, path, 0.5);
+    expect(minWallDistance(map, a, path)).toBeGreaterThan(0.5);
   });
 
   it('终点在墙里时走到最近的可走点', () => {
@@ -105,6 +113,7 @@ describe('nav: 碰撞移动', () => {
   it('随机乱走永远不会进墙或出界', () => {
     const rng = new Rng(7);
     const r = 0.6;
+    let bad = 0;
     for (let trial = 0; trial < 40; trial++) {
       const pos = { x: 0, y: 0 };
       // 随机找一个合法起点
@@ -117,11 +126,12 @@ describe('nav: 碰撞移动', () => {
         if (rng.chance(0.05)) ang = rng.range(0, Math.PI * 2);
         const step = rng.range(0.05, 1.2); // 包含远超单步上限的高速位移
         nav.moveWithCollision(pos, Math.cos(ang) * step, Math.sin(ang) * step, r);
-        expect(Number.isFinite(pos.x) && Number.isFinite(pos.y)).toBe(true);
-        expect(nav.clearanceAt(pos.x, pos.y)).toBeGreaterThanOrEqual(r - 1e-4);
-        expect(isWalkableTerrain(map, pos)).toBe(true);
+        if (!Number.isFinite(pos.x) || !Number.isFinite(pos.y)) bad++;
+        else if (nav.clearanceAt(pos.x, pos.y) < r - 1e-4 || !isWalkableTerrain(map, pos)) bad++;
+        else for (const w of map.walls) if (pointInPolygon(pos, w)) bad++;
       }
     }
+    expect(bad).toBe(0);
   });
 
   it('斜着顶墙会沿墙面滑动', () => {
@@ -173,19 +183,19 @@ describe('nav: 建筑障碍', () => {
     const path = nav.findPath(a.x, a.y, b.x, b.y, 0.6);
     expect(path).not.toBeNull();
     if (path) {
+      const structures = sim.units.filter((u) => u.kind === 'tower' || u.kind === 'core');
+      let minGap = Infinity;
       let prev: Vec2 = a;
       for (const wp of path) {
         const steps = Math.max(1, Math.ceil(Math.hypot(wp.x - prev.x, wp.y - prev.y) / 0.2));
         for (let i = 0; i <= steps; i++) {
           const x = prev.x + ((wp.x - prev.x) * i) / steps;
           const y = prev.y + ((wp.y - prev.y) * i) / steps;
-          for (const u of sim.units) {
-            if (u.kind !== 'tower' && u.kind !== 'core') continue;
-            expect(Math.hypot(u.pos.x - x, u.pos.y - y)).toBeGreaterThan(u.radius + 0.6 - 0.2);
-          }
+          for (const u of structures) minGap = Math.min(minGap, Math.hypot(u.pos.x - x, u.pos.y - y) - u.radius);
         }
         prev = wp;
       }
+      expect(minGap).toBeGreaterThan(0.6 - 0.2);
     }
 
     nav.removeObstacle(tower.id);

@@ -29,6 +29,8 @@ interface Sting {
   chord?: readonly [number, readonly number[], number];
   /** 结尾的上行星辉琶音 */
   sparkle?: boolean;
+  /** 旋律本身已是下行：暗变体不再倒置 */
+  noFlip?: boolean;
 }
 
 const ROOT = 62; // D4
@@ -46,7 +48,7 @@ function sting(p: Patch, s: Sting, dark: boolean): void {
   let last = 0;
   for (let i = 0; i < n; i++) {
     const m = s.mel[i];
-    const semi = dark ? darken(s.mel[n - 1 - i][1]) : m[1];
+    const semi = dark ? darken(s.mel[s.noFlip ? i : n - 1 - i][1]) : m[1];
     const f = mtof(root + semi);
     const t = m[0] * beat;
     const dur = m[2] * beat;
@@ -97,7 +99,7 @@ const S: Record<string, Sting> = {
   killing_spree: { bpm: 160, mel: [[0, 12, 0.5, 0.8], [0.5, 12, 0.5, 0.8], [1, 15, 1.3, 0.95]], timp: [1] },
   unstoppable: { bpm: 160, mel: [[0, 12, 0.5, 0.85], [0.5, 12, 0.5, 0.85], [1, 12, 0.5, 0.9], [1.5, 17, 1.8, 1]], oct: true, timp: [0, 1.5], cym: 1.5 },
   legendary: { bpm: 160, mel: [[0, 12, 0.5, 0.85], [0.5, 15, 0.5, 0.9], [1, 19, 0.5, 0.93], [1.5, 22, 0.5, 0.96], [2, 24, 3, 1]], oct: true, bells: true, timp: [0, 0.5, 1, 1.5, 2], cym: 2, chord: [2, [0, 7, 12, 16, 19], 3], sparkle: true },
-  shutdown: { bpm: 150, mel: [[0, 19, 0.5, 1], [0.5, 12, 1.6, 0.95]], timp: [0.5] },
+  shutdown: { bpm: 150, mel: [[0, 19, 0.5, 1], [0.5, 12, 1.6, 0.95]], timp: [0.5], noFlip: true },
   ace: { bpm: 120, mel: [[0, 0, 0.75, 1], [1, 0, 0.4, 0.9], [1.5, 3, 0.4, 0.95], [2, 7, 3, 1]], oct: true, timp: [0, 1, 1.5, 2], cym: 2, chord: [2, [-12, 0, 7, 12, 15], 3], sparkle: true },
   tower_destroyed: { bpm: 120, inst: 'horn', mel: [[0, 0, 1, 0.85], [1, 7, 2.2, 0.95]], timp: [0, 1] },
   epic_slain: { bpm: 150, mel: [[0, 0, 0.5, 0.9], [0.5, 5, 0.5, 0.92], [1, 7, 0.5, 0.95], [1.5, 12, 2.2, 1]], oct: true, timp: [0, 1.5], cym: 1.5, chord: [1.5, [0, 7, 12, 16], 2.2], sparkle: true },

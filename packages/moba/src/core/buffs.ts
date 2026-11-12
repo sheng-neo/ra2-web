@@ -9,7 +9,7 @@
  */
 import { cancelWindup } from './combat';
 import { MONSTERS } from './data/units';
-import type { BuffFn, SimBuff, SimUnit } from './internal';
+import { hideFields, type BuffFn, type SimBuff, type SimUnit } from './internal';
 import { cancelDash } from './movement';
 import { recomputeStats } from './stats';
 import type { BuffId } from './types';
@@ -175,6 +175,7 @@ export function addBuff(sim: Sim, target: SimUnit, id: BuffId, opts: BuffOpts): 
       tickInterval: opts.tickInterval ?? 0, tickLeft: opts.tickInterval ?? 0,
       onTick: opts.onTick ?? null, onExpire: opts.onExpire ?? null, onRemove: opts.onRemove ?? null,
     };
+    hideFields(b, 'onTick', 'onExpire', 'onRemove');
     target.buffs.push(b);
   }
 
@@ -204,19 +205,20 @@ export function removeBuffInstance(sim: Sim, u: SimUnit, b: SimBuff): boolean {
 /** 移除某 id 的全部 buff（给了 key 则只移除该 key）。不触发 onExpire。返回是否移除了东西 */
 export function removeBuff(sim: Sim, u: SimUnit, id: BuffId, key?: string): boolean {
   const buffs = u.buffs;
-  let removed = false;
+  let removed: SimBuff[] | null = null;
   for (let i = buffs.length - 1; i >= 0; i--) {
     const b = buffs[i];
     if (b.id !== id || (key !== undefined && b.key !== key)) continue;
     buffs.splice(i, 1);
-    removed = true;
-    afterRemoval(sim, u, b);
+    if (removed) removed.push(b);
+    else removed = [b];
   }
-  if (removed) {
-    refreshFlags(u);
-    if (u.alive && (u.kind === 'hero' || STAT_BUFFS.has(id))) recomputeStats(sim, u);
-  }
-  return removed;
+  if (!removed) return false;
+  refreshFlags(u);
+  // onRemove 回调里可能再增删这个单位的 buff(如护盾消失时连带移除壁垒)：先摘完、再回调，遍历才不会被打乱
+  for (const b of removed) afterRemoval(sim, u, b);
+  if (u.alive && (u.kind === 'hero' || STAT_BUFFS.has(id))) recomputeStats(sim, u);
+  return true;
 }
 
 /** 死亡时清空全部 buff（只触发 onRemove） */

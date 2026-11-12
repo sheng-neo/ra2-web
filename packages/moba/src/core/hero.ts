@@ -11,7 +11,9 @@ import { ARMOR_K, ECONOMY } from './data/units';
 import { canTarget } from './entity';
 import { COMBAT_WINDOW, MOVE_DIR, MOVE_NONE, type CastCommand, type HeroHooks, type SimHero, type SimUnit } from './internal';
 import { orderMoveDir, orderMoveTo, stopMove, updateDash, updateOrderedMove } from './movement';
-import { getHeroHooks, getItemPassive, getSkill, isSummonerSlot, SUMMONER_CAST, type CastContext, type RejectReason, type SkillImpl } from './skills/registry';
+import {
+  getHeroHooks, getItemHooks, getSkill, isSummonerSlot, SUMMONER_CAST, type CastContext, type RejectReason, type SkillImpl,
+} from './skills/registry';
 import { recomputeStats } from './stats';
 import { TICK_DT, type AbilitySlot, type CastSpec, type ItemId, type ItemPassiveId, type PlayerCommand, type SkillSlot, type Vec2 } from './types';
 import type { Sim } from './world';
@@ -45,8 +47,6 @@ export function interruptRecall(sim: Sim, hero: SimHero): void {
 
 // ───────────────────────── 钩子组 ─────────────────────────
 
-const itemHookCache = new Map<ItemId, HeroHooks>();
-
 /** 重建英雄生效中的钩子组：英雄被动 + 身上装备的被动（同 id 被动只生效一份） */
 export function rebuildHooks(hero: SimHero): void {
   const hooks: HeroHooks[] = [];
@@ -57,14 +57,9 @@ export function rebuildHooks(hero: SimHero): void {
     if (!id) continue;
     const item = ITEMS[id];
     if (!item.passive || seen.has(item.passive.id)) continue;
-    const factory = getItemPassive(item.passive.id);
-    if (!factory) continue;
+    const hk = getItemHooks(item);
+    if (!hk) continue;
     seen.add(item.passive.id);
-    let hk = itemHookCache.get(id);
-    if (!hk) {
-      hk = factory(item);
-      itemHookCache.set(id, hk);
-    }
     hooks.push(hk);
   }
   hero.h.hooks = hooks;
@@ -119,26 +114,33 @@ export function sellItem(sim: Sim, hero: SimHero, index: number): boolean {
 
 const smartBuf: SimUnit[] = [];
 
-function targetRank(u: SimUnit): number {
-  return u.kind === 'hero' ? 0 : u.kind === 'minion' ? 1 : u.kind === 'monster' ? 3 : 2;
+/** 「残血小兵」：一刀能收掉，或血量低于这个比例 */
+const LOW_MINION_HP = 0.35;
+
+function lastHittable(hero: SimHero, m: SimUnit): boolean {
+  return m.hp <= (hero.stats.ad * ARMOR_K) / (ARMOR_K + m.stats.armor);
+}
+
+/** 智能选目标的类别优先级（越小越优先）：英雄 → 残血小兵 → 建筑 → 其他小兵 → 野怪 */
+function targetRank(hero: SimHero, u: SimUnit): number {
+  switch (u.kind) {
+    case 'hero': return 0;
+    case 'minion': return lastHittable(hero, u) || u.hp < u.stats.maxHp * LOW_MINION_HP ? 1 : 3;
+    case 'monster': return 4;
+    default: return 2;
+  }
 }
 
 /**
- * 智能选目标：射程内 英雄(血量比例最低) → 小兵(能补刀的优先，其次血量最低) → 建筑 → 野怪；
+ * 智能选目标：射程内按 英雄(血量比例最低) → 残血小兵(能补刀的最优先) → 建筑(最近) → 其他小兵(血量最低) → 野怪 的顺序选；
  * 射程内没有任何目标时，返回 seek 范围内最近的敌人(走过去打)。都没有返回 null。
  */
 export function pickSmartTarget(sim: Sim, hero: SimHero, seek: number): SimUnit | null {
   const range = hero.stats.attackRange;
-  const ad = hero.stats.ad;
   const n = sim.grid.query(hero.pos.x, hero.pos.y, range + seek, smartBuf);
-  let bestHero: SimUnit | null = null;
-  let heroScore = Infinity;
-  let bestMinion: SimUnit | null = null;
-  let minionScore = Infinity;
-  let bestStructure: SimUnit | null = null;
-  let structureScore = Infinity;
-  let bestMonster: SimUnit | null = null;
-  let monsterScore = Infinity;
+  let best: SimUnit | null = null;
+  let bestRank = Infinity;
+  let bestScore = Infinity;
   let nearest: SimUnit | null = null;
   let nearestD = Infinity;
   for (let i = 0; i < n; i++) {
@@ -146,28 +148,16 @@ export function pickSmartTarget(sim: Sim, hero: SimHero, seek: number): SimUnit 
     if (!canTarget(hero, c)) continue;
     const d = Math.hypot(c.pos.x - hero.pos.x, c.pos.y - hero.pos.y) - c.radius;
     if (d <= range + ATTACK_LEEWAY) {
-      if (c.kind === 'hero') {
-        const score = c.hp / c.stats.maxHp;
-        if (score < heroScore) {
-          heroScore = score;
-          bestHero = c;
-        }
-      } else if (c.kind === 'minion') {
-        // 一刀能收掉的排最前
-        const lastHit = c.hp <= (ad * ARMOR_K) / (ARMOR_K + c.stats.armor);
-        const score = lastHit ? c.hp - 1e6 : c.hp;
-        if (score < minionScore) {
-          minionScore = score;
-          bestMinion = c;
-        }
-      } else if (c.kind === 'monster') {
-        if (c.hp < monsterScore) {
-          monsterScore = c.hp;
-          bestMonster = c;
-        }
-      } else if (d < structureScore) {
-        structureScore = d;
-        bestStructure = c;
+      const rank = targetRank(hero, c);
+      let score: number;
+      if (c.kind === 'hero') score = c.hp / c.stats.maxHp;
+      else if (c.kind === 'minion') score = lastHittable(hero, c) ? c.hp - 1e6 : c.hp;
+      else if (c.kind === 'monster') score = c.hp;
+      else score = d;
+      if (rank < bestRank || (rank === bestRank && score < bestScore)) {
+        best = c;
+        bestRank = rank;
+        bestScore = score;
       }
     } else if (d <= range + seek && d < nearestD) {
       // 不主动跑远路去招惹野怪
@@ -176,7 +166,7 @@ export function pickSmartTarget(sim: Sim, hero: SimHero, seek: number): SimUnit 
       nearest = c;
     }
   }
-  return bestHero ?? bestMinion ?? bestStructure ?? bestMonster ?? nearest;
+  return best ?? nearest;
 }
 
 function orderAttack(sim: Sim, hero: SimHero, targetId: number | undefined): void {
@@ -199,7 +189,7 @@ function orderAttack(sim: Sim, hero: SimHero, targetId: number | undefined): voi
     if (cur && canTarget(hero, cur)) {
       // 出手中不换目标；同等优先级时保持当前目标，避免每次按键都换人
       if (hero.rt.windupLeft > 0) return;
-      if (inRange(hero, cur, ATTACK_LEEWAY) && targetRank(cur) <= targetRank(best)) return;
+      if (inRange(hero, cur, ATTACK_LEEWAY) && targetRank(hero, cur) <= targetRank(hero, best)) return;
     }
     target = best;
   }
@@ -418,6 +408,11 @@ export function requestCast(sim: Sim, hero: SimHero, cmd: CastCommand, buffered 
   });
   const ctx: CastContext = {
     sim, caster: hero, slot, level, def, origin: { x: origin.x, y: origin.y }, dir: aim.dir, targetPos: aim.pos, target: aim.target,
+    spec,
+    range: 'range' in spec ? spec.range : 0,
+    radius: 'radius' in spec ? spec.radius : 0,
+    width: 'width' in spec ? spec.width : 0,
+    angle: 'angle' in spec ? spec.angle : 0,
     val: (key: string): number => {
       if (!def) throw new Error(`summoner skill "${slot}" has no values`);
       return skillValue(def, key, level);
@@ -508,6 +503,7 @@ export function respawnHero(sim: Sim, hero: SimHero): void {
   rt.atkCd = 0;
   rt.windupLeft = 0;
   rt.lockUntil = 0;
+  rt.disarmUntil = 0;
   rt.act = null;
   rt.revealUntil = -999;
   h.atkOrder = false;

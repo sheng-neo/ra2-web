@@ -223,7 +223,8 @@ export function cancelWindup(u: SimUnit): void {
 
 function canSwing(sim: Sim, u: SimUnit): boolean {
   const rt = u.rt;
-  return u.alive && !rt.stunned && rt.dash === null && rt.windupLeft <= 0 && rt.atkCd <= 0 && sim.state.time >= rt.lockUntil;
+  const t = sim.state.time;
+  return u.alive && !rt.stunned && rt.dash === null && rt.windupLeft <= 0 && rt.atkCd <= 0 && t >= rt.lockUntil && t >= rt.disarmUntil;
 }
 
 /** 开始一次普攻出手（进入前摇） */
@@ -376,7 +377,6 @@ export function engage(sim: Sim, u: SimUnit, target: SimUnit, dt: number, chase:
   const rt = u.rt;
   if (rt.windupLeft > 0) return true;
   if (inRange(u, target)) {
-    rt.path = null;
     if (canSwing(sim, u)) startSwing(sim, u, target);
     else if (sim.state.time >= rt.lockUntil && !rt.stunned) faceTo(u, target.pos.x, target.pos.y);
     return true;

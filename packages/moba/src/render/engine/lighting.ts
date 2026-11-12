@@ -70,7 +70,8 @@ export class LightRig {
 
   /**
    * 技能闪光：在 (x, height, z) 处亮起一盏短暂的点光，照亮地面与角色。
-   * intensity 约 20~120(物理单位，随距离平方衰减)；池满时顶掉最快熄灭的一盏。low 档无点光，调用无效果。
+   * intensity 是点光强度(随距离衰减)：贴近地面(高度 1~2 米)的技能闪光取 3~15 即可，再大地面会过曝；
+   * radius 为照射半径(米)，duration 为熄灭时长(秒)。池满时顶掉最快熄灭的一盏。low 档无点光，调用无效果。
    */
   pulse(x: number, z: number, height: number, color: THREE.ColorRepresentation, intensity: number, radius: number, duration: number): void {
     if (this.pulses.length === 0) return;
@@ -108,13 +109,15 @@ export class LightRig {
     let minZ = Infinity;
     let maxZ = -Infinity;
     _origin.setFromMatrixPosition(camera.matrixWorld);
+    // 调试俯瞰相机很高：射线上限随相机高度放宽，保证能打到地面
+    const maxDist = Math.max(MAX_RAY_DIST, _origin.y * 2.5);
     for (const [nx, ny] of _ndc) {
       _dir.set(nx, ny, 0.5).unproject(camera).sub(_origin).normalize();
       // 与 y=0 以及 y=MAX_OBJECT_HEIGHT 两个平面求交
       for (let k = 0; k < 2; k++) {
         const planeY = k === 0 ? 0 : MAX_OBJECT_HEIGHT;
-        let t = _dir.y < -1e-4 ? (planeY - _origin.y) / _dir.y : MAX_RAY_DIST;
-        if (t < 0 || t > MAX_RAY_DIST) t = t < 0 ? 0 : MAX_RAY_DIST;
+        let t = _dir.y < -1e-4 ? (planeY - _origin.y) / _dir.y : maxDist;
+        if (t < 0 || t > maxDist) t = t < 0 ? 0 : maxDist;
         _p.copy(_dir).multiplyScalar(t).add(_origin);
         const lx = _p.dot(_right);
         const ly = _p.dot(_up);

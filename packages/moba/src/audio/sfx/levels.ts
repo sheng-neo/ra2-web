@@ -86,7 +86,7 @@ export const TRIM: Partial<Record<SfxKey, number>> = {
   fx_yeque_s1_dash: 0.696,
   fx_yeque_s2_cast: 1.307,
   fx_yeque_ult_vanish: 0.359,
-  fx_yeque_ult_strike: 0.780,
+  fx_yeque_ult_strike: 0.708,
   area_telegraph: 0.330,
   area_telegraph_enemy: 0.487,
   area_panyue_aura: 0.181,
