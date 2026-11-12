@@ -548,6 +548,7 @@ async function runCheck(): Promise<AudioReport> {
   const report: AudioReport = { done: false, progress: '开始', summary: {}, sfx: [], music: [], stress: null, limiter: null, mix: [], match: [], score: [], trimTable: '' };
   window.__audioReport = report;
   const music: MusicRow[] = [];
+  let breathNote = '';
   const say = (s: string): void => {
     report.progress = s;
     progressEl.textContent = s;
@@ -617,7 +618,7 @@ async function runCheck(): Promise<AudioReport> {
         report.match.push({ name, ...(await checkMatch(found.hero, found.at - 4, 24, found.seed)) });
         renderReport(report, music);
       } else {
-        report.summary = { ...report.summary, breathNote: '没有找到玩家在场的巨龙吐息' };
+        breathNote = '没有找到玩家在场的巨龙吐息';
       }
     }
     if (which.has('stress')) {
@@ -640,6 +641,7 @@ async function runCheck(): Promise<AudioReport> {
       stressIssues: report.stress?.issues.join(',') ?? '',
       limiterSmallGain: report.limiter?.smallGain ?? 0,
       limiterMaxOut: report.limiter?.maxOut ?? 0,
+      breathNote,
     };
     say(`完成：音效异常 ${sfxBad}，配乐异常 ${musicBad}`);
     progressEl.className = `pill ${sfxBad + musicBad + (report.stress?.issues.length ?? 0) ? 'bad' : 'ok'}`;

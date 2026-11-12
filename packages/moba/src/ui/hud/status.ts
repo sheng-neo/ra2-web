@@ -3,14 +3,15 @@
  * 经验条、属性速览(4 项两字版：物攻或法强 / 护甲 / 魔抗 / 移速)、状态图标行(剩余时间转圈 + 层数，点按/悬停看说明)、
  * 6 格装备(点按看四层说明：名字 → 大白话 → 属性 → 被动；新到手的那一格闪一下)、金币与商店入口。
  */
-import { HEROES } from '../../core/data/heroes';
+import { HEROES, heroFullName } from '../../core/data/heroes';
 import { ITEMS } from '../../core/data/items';
 import type { Buff, BuffId, GameEvent, HeroUnit, ItemId } from '../../core/types';
-import { BUFF_META, buffIcon, itemIcon, skillIcon, uiIcon } from '../icons';
-import { createPortrait, escapeHtml } from '../menu/shared';
+import { BUFF_META, buffIcon, itemIcon, roleIcon, skillIcon, uiIcon } from '../icons';
+import { ROLE_COLOR, createPortrait, escapeHtml } from '../menu/shared';
 import { attachTooltip, createSlot, h, icon, injectStyle, sfCss } from '../theme';
 import { classSlot, clamp01, numSlot, replay, textSlot, varSlot, type HudCtx, type HudPart } from './common';
 import { itemTipHtml } from './itemtip';
+import { passiveTipHtml } from './skills';
 import { buffDesc } from './text';
 
 const CSS = sfCss(`
@@ -38,6 +39,13 @@ const CSS = sfCss(`
 .sf-hud__st-lv.is-up { animation: sf-hud-lvup 0.9s var(--sf-ease-out); }
 @keyframes sf-hud-lvup { 0% { transform: scale(2.2); box-shadow: 0 0 0 2px #0a1128, 0 0 0 0 rgba(255, 244, 214, 0.95); } 60% { transform: scale(0.94); } 100% { transform: none; box-shadow: 0 0 0 2px #0a1128, 0 0 0 22u rgba(255, 244, 214, 0); } }
 .sf-hud__st-passive { --sf-slot: max(22px, 25u); position: absolute; left: -6u; bottom: -4u; }
+/* 名签：压在头像上沿正中，职业图标(职业色) + 名字 */
+.sf-hud__st-name {
+  position: absolute; left: 50%; top: -9u; transform: translateX(-50%); display: inline-flex; align-items: center; gap: 2u; height: max(15px, 16u); padding: 0 6u 0 4u; border-radius: 99px; pointer-events: none;
+  font-size: max(10px, 11u); font-weight: 800; line-height: 1; letter-spacing: 0.06em; white-space: nowrap; color: var(--sf-c-text);
+  background: rgba(6, 10, 24, 0.9); box-shadow: 0 0 0 1px var(--sf-c-gold-line), 0 1px 3px rgba(0, 0, 0, 0.6);
+}
+.sf-hud__st-name .sf-i { width: 1.15em; height: 1.15em; vertical-align: 0; color: var(--role, var(--sf-c-gold-300)); }
 
 /* ── 生命 / 法力 / 经验 ── */
 .sf-hud__st-bars { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3u; }
@@ -118,6 +126,7 @@ const CSS = sfCss(`
   .sf-hud__st-items .sf-slot { --sf-slot: 28u; }
   .sf-hud__st-passive { --sf-slot: max(20px, 22u); left: -7u; top: -9u; bottom: auto; }
   .sf-hud__st-lv { right: -7u; }
+  .sf-hud__st-name { top: auto; bottom: -7u; height: max(14px, 15u); padding: 0 5u 0 3u; font-size: max(9px, 10u); }
   /* 状态图标只排到技能区左缘为止，多了向上换行 */
   .sf-hud__buffs { left: 68u; right: calc(var(--hud-sk) * 2.9 + var(--hud-r)); }
 }
@@ -154,16 +163,14 @@ export function createStatusBar(ctx: HudCtx): StatusBar {
   const passive = createSlot(skillIcon(heroId, 'passive'), { round: true, cls: 'sf-hud__st-passive', label: `被动：${def.passive.name}` });
   passive.setAttribute('data-hud-hit', '');
   disposers.push(
-    attachTooltip(
-      passive,
-      () =>
-        `<div class="sf-tip__title"><span>${escapeHtml(def.passive.name)}</span><span class="sf-tip__meta">被动</span></div>` +
-        // 先一句大白话，再给带数值的完整描述
-        (def.passive.brief ? `<div style="font-weight:600;color:var(--sf-c-text)">${escapeHtml(def.passive.brief)}</div>` : '') +
-        `<div>${escapeHtml(def.passive.desc)}</div>`,
-    ),
+    // 与技能浮层同一套层次：「被动」+ 类型标签 → 一句大白话 → 带数值的完整描述
+    attachTooltip(passive, () => passiveTipHtml(def)),
   );
-  const por = h('div', 'sf-hud__st-por', createPortrait(host, heroId), respawn, lv, passive);
+  // 头像上沿的小名签：职业图标 + 名字(全称写在无障碍标签里；属性浮层的标题也用全称)
+  const nameTag = h('span', 'sf-hud__st-name', icon(roleIcon(def.role)), def.name);
+  nameTag.style.setProperty('--role', ROLE_COLOR[def.role]);
+  nameTag.setAttribute('aria-label', heroFullName(def));
+  const por = h('div', 'sf-hud__st-por', createPortrait(host, heroId), respawn, nameTag, lv, passive);
 
   // ── 条 ──
   const hpNow = h('span', 'sf-num');
@@ -224,7 +231,7 @@ export function createStatusBar(ctx: HudCtx): StatusBar {
         ['射程', s.attackRange.toFixed(1)], ['', ''],
       ];
       return (
-        `<div class="sf-tip__title"><span>${escapeHtml(def.name)} · 属性</span></div>` +
+        `<div class="sf-tip__title"><span>${escapeHtml(heroFullName(def))}</span><span class="sf-tip__meta">属性</span></div>` +
         `<div style="display:grid;grid-template-columns:auto auto auto auto;gap:1px 10px;margin-top:4px">${rows
           .map(([k, v]) => `<span style="color:var(--sf-c-text-3)">${k}</span><b class="sf-num" style="color:var(--sf-c-text);text-align:right">${v}</b>`)
           .join('')}</div>` +

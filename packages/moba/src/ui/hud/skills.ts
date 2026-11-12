@@ -1,15 +1,18 @@
 /**
- * 右下技能区：大普攻键 + 弧形排列的 一技能/二技能/大招 + 外圈较小的 回城/恢复/闪现，以及瞄准时出现的「取消」区。
- * 这里只管外观与状态（冷却扫描、秒数、缺蓝、未学会、被控、升级/就绪闪光、键位角标、技能详情内容）；
+ * 右下技能区：大普攻键 + 弧形排列的 一技能/二技能/大招 + 外圈较小的 回城/疗伤/闪现，以及瞄准时出现的「取消」区。
+ * 这里只管外观与状态（冷却扫描、秒数、缺蓝、未学会、被控、升级/就绪闪光、键位角标、类型标签角标、技能详情内容）；
  * 按下/拖动/施放的手势在 ui/input 里，通过 buttons 拿到这些按钮。
+ *
+ * 「技能一眼能懂」：一技能 / 二技能 / 大招的键右上角有一枚两字角标(该技能最要紧的类型标签，大招写「大招」)；
+ * 详情浮层自上而下是 标题 → 标签 + 施法方式 → 一句大白话 → 数值行 → 详细描述，大白话永远排在数值前面。
  */
 import { HEROES, SUMMONER, skillLevelsAt, skillValue } from '../../core/data/heroes';
-import type { AbilitySlot, SkillDef, SkillSlot, SummonerSlot } from '../../core/types';
+import type { AbilitySlot, HeroDef, SkillDef, SkillSlot, SummonerSlot } from '../../core/types';
 import { anySkillIcon, roleIcon, uiIcon } from '../icons';
-import { escapeHtml } from '../menu/shared';
+import { ensureTagStyle, escapeHtml, hexRgb, skillKeyTag, skillTagsHtml } from '../menu/shared';
 import { h, icon, injectStyle, sfCss } from '../theme';
 import { classSlot, clamp01, replay, textSlot, varSlot, type HudCtx, type HudPart } from './common';
-import { SUMMONER_CAST, castLabel } from './text';
+import { SUMMONER_CAST, castKind, castLabel, castReach } from './text';
 
 export type ButtonId = SkillSlot | 'attack';
 export const SKILL_SLOTS: SkillSlot[] = ['s1', 's2', 'ult', 'recall', 'heal', 'flash'];
@@ -18,7 +21,7 @@ const SLOT_NAME: Record<AbilitySlot, string> = { s1: '一技能', s2: '二技能
 
 /**
  * 各键圆心相对技能区右下角的位置（单位：技能键直径 --hud-sk）。
- * 三个技能排在以普攻键为圆心的内弧上(左、左上、正上)，三个召唤师技能排在外弧上：
+ * 三个技能排在以普攻键为圆心的内弧上(左、左上、正上)，三个通用技能排在外弧上：
  * 拇指从普攻键出发，向任何一个键都是一次不换手的滑动。
  */
 const ATK = { x: 0.86, y: 0.86 };
@@ -93,6 +96,18 @@ const CSS = sfCss(`
 .sf-hud__sk > .sf-hud__key { left: calc(var(--d) * -0.06); top: calc(var(--d) * -0.06); }
 .sf-hud__sk.is-atk > .sf-hud__key { left: 6%; top: 6%; }
 
+/* 类型标签角标：右上角两个字(键位角标在左上、等级点在下方，互不重叠)。深色半透明底 + 标签色文字，颜色只是辅助 */
+.sf-hud__sk-tag {
+  --tag: 243, 207, 133;
+  position: absolute; right: calc(var(--d) * -0.1); top: calc(var(--d) * -0.07); z-index: 1; padding: 0.22em 0.42em 0.24em; border-radius: 99px; pointer-events: none;
+  font-size: max(9px, calc(var(--d) * 0.17)); font-weight: 800; font-style: normal; line-height: 1; letter-spacing: 0.02em; white-space: nowrap;
+  color: rgb(var(--tag)); background: rgba(6, 10, 24, 0.88); box-shadow: 0 0 0 1px rgba(var(--tag), 0.6), 0 1px 3px rgba(0, 0, 0, 0.6);
+  transition: color 0.15s linear, box-shadow 0.15s linear, background 0.15s linear;
+}
+.sf-hud__sk-tag.is-ult { color: #2b1a04; background: var(--sf-grad-gold); box-shadow: 0 0 0 1px rgba(8, 13, 31, 0.9), 0 1px 3px rgba(0, 0, 0, 0.6); }
+/* 未学会：角标一并变灰 */
+.sf-hud__sk.is-locked .sf-hud__sk-tag { color: #8b96b3; background: rgba(6, 10, 24, 0.88); box-shadow: 0 0 0 1px rgba(139, 150, 179, 0.5); }
+
 /* 就绪 / 升级闪光 */
 .sf-hud__sk-fx { position: absolute; inset: -18%; border-radius: 50%; opacity: 0; pointer-events: none; }
 .sf-hud__sk.is-ready .sf-hud__sk-fx { background: radial-gradient(circle, rgba(255, 255, 255, 0.95) 0, rgba(190, 236, 255, 0.7) 38%, rgba(92, 214, 247, 0) 68%); animation: sf-hud-sk-ready 0.5s ease-out; }
@@ -130,10 +145,19 @@ const CSS = sfCss(`
 /* 竖屏：屏幕窄，取消区正好落在摇杆正上方——往上抬一点，别和摇杆底盘叠在一起 */
 @media (orientation: portrait) { .sf-hud__cancel { bottom: calc(var(--hud-sk) * 3.12); } }
 
-/* 技能详情浮层里的数值高亮 */
+/* 技能详情浮层：标签行 → 大白话(比正文大一号，主文字色) → 分隔线 → 数值行 → 详细描述(次文字色) */
 .sf-tip .sf-hud-v { color: var(--sf-c-gold-200); font-weight: 700; }
+.sf-tip .sf-hud-tiptags { display: flex; flex-wrap: wrap; align-items: center; gap: 4u 8u; margin: 4u 0 1u; }
+.sf-tip .sf-hud-tipcast { font-size: var(--sf-fs-xs); color: var(--sf-c-text-3); letter-spacing: 0.06em; }
+.sf-tip .sf-hud-tipbrief { margin: 4u 0 0; font-size: var(--sf-fs-md); font-weight: 700; line-height: 1.45; color: var(--sf-c-text); }
 .sf-tip .sf-hud-tipline { display: flex; flex-wrap: wrap; gap: 3u 10u; margin: 2u 0 5u; font-size: var(--sf-fs-xs); color: var(--sf-c-cyan-300); }
 .sf-tip .sf-hud-tipline .is-warn { color: #ff9c9c; }
+.sf-tip .sf-hud-tipbrief + .sf-hud-tipline, .sf-tip .sf-hud-tipbrief + .sf-hud-tipdesc { margin-top: 7u; padding-top: 6u; box-shadow: inset 0 1px 0 var(--sf-c-line); }
+.sf-tip .sf-hud-tipdesc { color: var(--sf-c-text-2); }
+/* 手机横屏(屏高很小)：详细描述最多三行，其余完整 */
+@media (max-height: 460px) and (orientation: landscape) {
+  .sf-tip .sf-hud-tipdesc { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; }
+}
 `);
 
 interface BtnView {
@@ -178,8 +202,23 @@ function descHtml(def: SkillDef, level: number): string {
   });
 }
 
+/**
+ * 被动技能的详情浮层(状态栏头像旁的被动图标用)：标题 → 「被动」+ 类型标签 → 一句大白话 → 详细描述。
+ * 样式类与技能浮层同一套(随 createSkillBar 注入)。
+ */
+export function passiveTipHtml(def: HeroDef): string {
+  const p = def.passive;
+  return (
+    `<div class="sf-tip__title"><span>${escapeHtml(p.name)}</span><span class="sf-tip__meta">被动</span></div>` +
+    `<div class="sf-hud-tiptags">${skillTagsHtml('passive', p.tags)}</div>` +
+    (p.brief ? `<div class="sf-hud-tipbrief">${escapeHtml(p.brief)}</div>` : '') +
+    `<div class="sf-hud-tipdesc">${escapeHtml(p.desc)}</div>`
+  );
+}
+
 export function createSkillBar(ctx: HudCtx): SkillBar {
   injectStyle('sf-hud-skills', CSS);
+  ensureTagStyle();
   const heroId = ctx.me.heroId;
   const def = HEROES[heroId];
   const el = h('div', 'sf-hud__skills');
@@ -216,6 +255,13 @@ export function createSkillBar(ctx: HudCtx): SkillBar {
         pipsBox.appendChild(p);
       }
     }
+    // 类型标签角标：只有英雄技能有；数据里没写标签的技能不显示(大招恒有「大招」)
+    const keyTag = ability ? skillKeyTag(slot as AbilitySlot, def.skills[slot as AbilitySlot].tags) : null;
+    let tagEl: HTMLElement | null = null;
+    if (keyTag) {
+      tagEl = h('i', `sf-hud__sk-tag${slot === 'ult' ? ' is-ult' : ''}`, keyTag.text);
+      tagEl.style.setProperty('--tag', hexRgb(keyTag.color));
+    }
     const b = h(
       'button',
       `sf-hud__sk ${slot === 'ult' ? 'is-ult' : ability ? '' : 'is-sum'}`,
@@ -228,6 +274,7 @@ export function createSkillBar(ctx: HudCtx): SkillBar {
       h('i', 'sf-hud__sk-fx'),
       pipsBox,
       h('span', 'sf-hud__key', KEY_LABEL[slot]),
+      tagEl,
     );
     b.type = 'button';
     b.tabIndex = -1;
@@ -272,17 +319,25 @@ export function createSkillBar(ctx: HudCtx): SkillBar {
       const cost = lv > 0 ? sk.cost : d.manaCost[idx];
       const lvText = lv > 0 ? `Lv.${lv}/${d.maxLevel}` : `${unlockLevel(slot)} 级解锁`;
       const lack = lv > 0 && ctx.me.mana < cost ? '<span class="is-warn">法力不足</span>' : '';
+      // 有大白话的技能：施法方式挪到标签行，数值行只留距离；没有的(向后兼容)退回「标题 → 数值行 → 描述」
+      const tagRow = d.brief || d.tags?.length ? `<div class="sf-hud-tiptags">${skillTagsHtml(slot, d.tags)}<span class="sf-hud-tipcast">${castKind(d.cast)}</span></div>` : '';
+      const reach = tagRow ? castReach(d.cast) : castLabel(d.cast);
       return (
         `<div class="sf-tip__title"><span>${escapeHtml(d.name)}</span><span class="sf-tip__meta sf-num">${SLOT_NAME[slot]} · ${lvText}</span></div>` +
-        `<div class="sf-hud-tipline"><span>冷却 <b class="sf-num">${Math.round(cd * 10) / 10}</b> 秒</span><span>消耗 <b class="sf-num">${cost}</b> 法力</span><span>${castLabel(d.cast)}</span>${cdLeft}${lack}${key}</div>` +
-        `<div>${descHtml(d, lv)}</div>`
+        tagRow +
+        (d.brief ? `<div class="sf-hud-tipbrief">${escapeHtml(d.brief)}</div>` : '') +
+        `<div class="sf-hud-tipline"><span>冷却 <b class="sf-num">${Math.round(cd * 10) / 10}</b> 秒</span><span>消耗 <b class="sf-num">${cost}</b> 法力</span>${reach ? `<span>${reach}</span>` : ''}${cdLeft}${lack}${key}</div>` +
+        `<div class="sf-hud-tipdesc">${descHtml(d, lv)}</div>`
       );
     }
+    // 通用技能：标题 → 大白话 → 数值行 → 描述(没有标签行)
     const s = SUMMONER[slot];
+    const reach = castReach(SUMMONER_CAST[slot]);
     return (
       `<div class="sf-tip__title"><span>${escapeHtml(s.name)}</span><span class="sf-tip__meta">通用技能</span></div>` +
-      `<div class="sf-hud-tipline"><span>冷却 <b class="sf-num">${s.cooldown}</b> 秒</span><span>${castLabel(SUMMONER_CAST[slot])}</span>${cdLeft}${key}</div>` +
-      `<div>${escapeHtml(s.desc)}</div>`
+      `<div class="sf-hud-tipbrief">${escapeHtml(s.brief)}</div>` +
+      `<div class="sf-hud-tipline"><span>冷却 <b class="sf-num">${s.cooldown}</b> 秒</span>${reach ? `<span>${reach}</span>` : ''}${cdLeft}${key}</div>` +
+      `<div class="sf-hud-tipdesc">${escapeHtml(s.desc)}</div>`
     );
   }
 
