@@ -267,7 +267,24 @@ export class Engine implements AudioEngine {
 
   setMusic(track: MusicTrack): void {
     this.wantTrack = track;
+    // 离开对局曲目(回菜单 / 进结算)：对局里挂在配乐与总线上的状态一并收掉。
+    // 不能指望 update() 来复位——宿主退出对局后就不再调它了(玩家阵亡期间退出时，「阵亡低通」会一直闷着菜单配乐)
+    if (track !== 'battle') this.leaveBattle();
     this.music?.setTrack(track);
+  }
+
+  /** 收掉只属于对局的声音状态：阵亡低通、回城引导声、区域铺底、濒死心跳、战斗热度 */
+  private leaveBattle(): void {
+    if (this.toneDead) {
+      this.toneDead = false;
+      this.mixer?.setMusicTone(20000);
+    }
+    this.areaVoices.forEach((a) => a.h.stop(0.2));
+    this.areaVoices.clear();
+    this.recallVoice?.stop(0.1);
+    this.recallVoice = null;
+    this.hbTimer = 0;
+    this.heat = 0;
   }
 
   /**

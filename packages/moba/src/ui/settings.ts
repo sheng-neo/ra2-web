@@ -1,5 +1,5 @@
 /**
- * 设置：持久化(localStorage) + 可复用的设置面板组件。
+ * 设置：持久化(localStorage，带内存兜底) + 可复用的设置面板组件。
  * 面板通过回调与宿主交互，主菜单与对局内 HUD 共用同一份实现。
  */
 import type { AudioEngine } from '../audio/api';
@@ -7,6 +7,7 @@ import type { Quality } from '../render/api';
 import { DEFAULT_SETTINGS } from './api';
 import type { Settings } from './api';
 import { uiIcon } from './icons';
+import { storageGetJson, storageSet } from './storage';
 import { createButton, createSegmented, createSlider, createToggle, ensureTheme, h, icon, injectStyle, openDialog, sfCss, u } from './theme';
 import type { Dialog, Segmented, Slider, Toggle } from './theme';
 
@@ -16,36 +17,25 @@ const clamp01 = (v: unknown, fallback: number): number => (typeof v === 'number'
 const isQuality = (v: unknown): v is Quality => v === 'low' || v === 'medium' || v === 'high';
 
 /**
- * 读取设置：DEFAULT_SETTINGS ← defaults(宿主给的设备默认值，如 detectQuality()) ← 本地已存的值。
- * 页面可能在沙箱 iframe 里，localStorage 不可用时静默退回默认。
+ * 读取设置：DEFAULT_SETTINGS ← defaults(宿主给的设备默认值，如 detectQuality()) ← 已存的值。
+ * 页面可能在沙箱 iframe 里，localStorage 不可用时退回本次会话的内存副本(见 storage.ts)，再没有就用默认值。
  */
 export function loadSettings(defaults?: Partial<Settings>): Settings {
   const out: Settings = { ...DEFAULT_SETTINGS, ...defaults };
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) {
-      const o = JSON.parse(raw) as Partial<Record<keyof Settings, unknown>> | null;
-      if (o && typeof o === 'object') {
-        if (isQuality(o.quality)) out.quality = o.quality;
-        out.masterVolume = clamp01(o.masterVolume, out.masterVolume);
-        out.sfxVolume = clamp01(o.sfxVolume, out.sfxVolume);
-        out.musicVolume = clamp01(o.musicVolume, out.musicVolume);
-        if (typeof o.showFps === 'boolean') out.showFps = o.showFps;
-        if (typeof o.cameraShake === 'boolean') out.cameraShake = o.cameraShake;
-      }
-    }
-  } catch {
-    // 读不到就用默认值
+  const o = storageGetJson(STORAGE_KEY) as Partial<Record<keyof Settings, unknown>> | null;
+  if (o && typeof o === 'object') {
+    if (isQuality(o.quality)) out.quality = o.quality;
+    out.masterVolume = clamp01(o.masterVolume, out.masterVolume);
+    out.sfxVolume = clamp01(o.sfxVolume, out.sfxVolume);
+    out.musicVolume = clamp01(o.musicVolume, out.musicVolume);
+    if (typeof o.showFps === 'boolean') out.showFps = o.showFps;
+    if (typeof o.cameraShake === 'boolean') out.cameraShake = o.cameraShake;
   }
   return out;
 }
 
 export function saveSettings(s: Settings): void {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(s));
-  } catch {
-    // 存不了不影响游戏
-  }
+  storageSet(STORAGE_KEY, JSON.stringify(s));
 }
 
 // ───────────────────────── 设置面板 ─────────────────────────

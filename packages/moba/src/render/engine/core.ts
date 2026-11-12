@@ -214,7 +214,7 @@ export function createRendererCore(container: HTMLElement, state: GameState, opt
     else rig.setReach(hx + (dx / d) * len, hz + (dz / d) * len);
   };
 
-  const prewarm = (): void => {
+  const prewarmPass = (): void => {
     if (disposed) return;
     warmed = true;
     // 用当前帧信息(步长 0)让各模块把本帧的实例摆好，再让引擎把整个场景不分可见与否画一遍
@@ -232,6 +232,13 @@ export function createRendererCore(container: HTMLElement, state: GameState, opt
       for (const f of finish) f();
     }
   };
+  /** 对外的预热：做完再补画正常的一帧，免得「全场景可见」的预热画面留在 canvas 上 */
+  const prewarm = (): void => {
+    if (disposed) return;
+    prewarmPass();
+    for (const m of modules) m.update(frame);
+    engine.render(0, true);
+  };
 
   const step = (s: GameState, alpha: number, dtReal: number, draw: boolean): void => {
     if (disposed) return;
@@ -242,7 +249,7 @@ export function createRendererCore(container: HTMLElement, state: GameState, opt
       frame.alpha = alpha;
       frame.playerTeam = playerTeamOf(s);
       followPlayer(s, alpha);
-      prewarm();
+      prewarmPass();
     }
     frame.state = s;
     frame.alpha = alpha;

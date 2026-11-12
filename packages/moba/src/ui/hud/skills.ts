@@ -127,6 +127,8 @@ const CSS = sfCss(`
 .sf-hud__cancel.is-hot { transform: scale(1.14); color: #fff; background: radial-gradient(circle at 50% 35%, #ff7a6e, #c2262f 62%, #6e1019); box-shadow: 0 0 0 1px rgba(8, 13, 31, 0.9), 0 0 0 max(2px, 3u) #fff, 0 0 22u rgba(255, 93, 93, 0.95); }
 .sf-hud__cancel > span { display: flex; flex-direction: column; align-items: center; gap: 1u; font-size: max(10px, 11u); font-weight: 800; letter-spacing: 0.1em; line-height: 1.1; }
 .sf-hud__cancel .sf-i { width: calc(var(--d) * 0.36); height: calc(var(--d) * 0.36); }
+/* 竖屏：屏幕窄，取消区正好落在摇杆正上方——往上抬一点，别和摇杆底盘叠在一起 */
+@media (orientation: portrait) { .sf-hud__cancel { bottom: calc(var(--hud-sk) * 3.12); } }
 
 /* 技能详情浮层里的数值高亮 */
 .sf-tip .sf-hud-v { color: var(--sf-c-gold-200); font-weight: 700; }

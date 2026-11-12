@@ -41,6 +41,11 @@ export interface HudOptions {
   /** 页面切到后台时自动打开暂停面板，缺省 true */
   autoPause?: boolean;
   /**
+   * 建好后是否立刻接受输入，缺省 true。宿主在加载页还没关时传 false，开打那一刻再 setInputEnabled(true)：
+   * 否则加载期间按下的键会变成对局命令(放技能、开商店、弹暂停面板)。
+   */
+  inputEnabled?: boolean;
+  /**
    * 开局操作提示条显示多少秒后自动收起，缺省 8（一行七八个键位，3 秒读不完）；0 = 不显示。
    * 玩家点 × 关掉过一次后会记住(localStorage)，之后的对局不再显示。
    */
@@ -56,13 +61,42 @@ export interface HudHandle extends Hud {
   /** 直接弹一条播报横幅 */
   announce(key: AnnounceKey, team: TeamId, unitId?: number, victimId?: number): void;
   getInputMode(): InputMode;
+  /**
+   * 开 / 关玩家输入(见 HudOptions.inputEnabled)。关闭时按住中的摇杆、方向键、瞄准全部作废；
+   * 只管玩家的操作，页面切后台时的自动暂停不受影响。
+   */
+  setInputEnabled(enabled: boolean): void;
+  /** 打开后统计各部件 update / handleEvents 的耗时(定位偶发尖峰用)；关闭时零开销 */
+  setProfiling(on: boolean): void;
+  /** 各部件耗时统计(毫秒)：按 update 最大值从高到低排；未开启统计时为空数组 */
+  getProfile(): HudPartProfile[];
 }
+
+/** 单个部件的耗时统计(毫秒) */
+export interface HudPartProfile {
+  part: string;
+  /** update：调用次数 / 平均 / 最大 / 超过 2ms 的次数 */
+  calls: number;
+  avg: number;
+  max: number;
+  slow: number;
+  /** handleEvents(含 afterEvents)：批数 / 平均 / 最大 */
+  evBatches: number;
+  evAvg: number;
+  evMax: number;
+}
+
+/** 统计里「慢」的门槛(毫秒)：一帧 16.7ms，单个部件占掉 2ms 就值得看一眼 */
+const SLOW_MS = 2;
 
 const CSS = sfCss(`
 /* 对局结束：收起操作类部件，把画面留给终局演出与结算页 */
 .sf-hud__skills, .sf-hud__joy, .sf-hud__shopbar, .sf-hud__status { transition: opacity 0.5s linear; }
 .sf-hud.is-over .sf-hud__skills, .sf-hud.is-over .sf-hud__joy, .sf-hud.is-over .sf-hud__shopbar, .sf-hud.is-over .sf-hud__status { opacity: 0; pointer-events: none; }
 .sf-hud.is-over .sf-hud__skills *, .sf-hud.is-over .sf-hud__shopbar *, .sf-hud.is-over .sf-hud__status * { pointer-events: none; }
+/* 宿主关闭了输入(加载页还盖着 / 提示层开着)：控件与战场都不接指针，暂停对话框除外 */
+.sf-hud.is-locked .sf-hud__field, .sf-hud.is-locked button, .sf-hud.is-locked [data-hud-hit] { pointer-events: none; }
+.sf-hud.is-locked .sf-dialog-scrim, .sf-hud.is-locked .sf-dialog-scrim button { pointer-events: auto; }
 `);
 
 function findPlayer(state: GameState): HeroUnit {
@@ -89,9 +123,10 @@ export function createHud(root: HTMLElement, host: HudHost, state: GameState, op
     team: findPlayer(state).team,
     mode: initialInputMode(forced),
     paused: false,
+    enabled: opts.inputEnabled !== false,
     now: performance.now() / 1000,
     toast: (text, tone) => toasts.show(text, tone),
-    inputBlocked: () => !ctx.me.alive || ctx.paused || ctx.state.over,
+    inputBlocked: () => !ctx.enabled || !ctx.me.alive || ctx.paused || ctx.state.over,
     hero(id) {
       for (const hero of ctx.state.heroes) if (hero.id === id) return hero;
       return undefined;
@@ -149,7 +184,8 @@ export function createHud(root: HTMLElement, host: HudHost, state: GameState, op
     toggleScoreboard: () => actions.setScoreboard(!scoreboard.isPinned(), true),
     isScoreboardPinned: () => scoreboard.isPinned(),
     openSettings() {
-      if (settings || disposed) return;
+      // 胜负已分：不再弹暂停面板(模拟已经停了，面板只会盖住终局演出)
+      if (settings || disposed || ctx.state.over) return;
       dismissTooltip();
       input.reset();
       ctx.paused = true;
@@ -195,12 +231,71 @@ export function createHud(root: HTMLElement, host: HudHost, state: GameState, op
   // DOM 顺序即叠放顺序（各部件自带 z-index 分层，同层内后者在上）
   el.append(...death.els.slice(0, 2), field, input.joystick, minimap.el, ...shop.els.slice(0, 1), ...top.els, feed.el, fps.el, status.el, skills.el, banner.el, channel.el, tips.el, toasts.el, death.els[2], scoreboard.el, shop.els[1]);
 
-  const parts: HudPart[] = [minimap, top, feed, banner, status, skills, shop, scoreboard, death, toasts, channel, fps, tips, input];
+  const named: [string, HudPart][] = [
+    ['minimap', minimap], ['topbar', top], ['feed', feed], ['banner', banner], ['status', status], ['skills', skills], ['shop', shop],
+    ['scoreboard', scoreboard], ['death', death], ['toasts', toasts], ['channel', channel], ['fps', fps], ['tips', tips], ['input', input],
+  ];
+  const parts: HudPart[] = named.map((n) => n[1]);
   const updaters = parts.filter((p) => p.update);
   const listeners = parts.filter((p) => p.handleEvent);
   const batchers = parts.filter((p) => p.afterEvents);
 
+  // ── 耗时统计(调试用，默认关闭) ──
+  interface Prof {
+    calls: number;
+    total: number;
+    max: number;
+    slow: number;
+    evBatches: number;
+    evTotal: number;
+    evMax: number;
+    /** 当前这批事件里累计的耗时 */
+    evCur: number;
+  }
+  let profiling = false;
+  const prof = new Map<HudPart, Prof>();
+  const profOf = (p: HudPart): Prof => {
+    let r = prof.get(p);
+    if (!r) prof.set(p, (r = { calls: 0, total: 0, max: 0, slow: 0, evBatches: 0, evTotal: 0, evMax: 0, evCur: 0 }));
+    return r;
+  };
+  function profiledUpdate(dtReal: number): void {
+    for (let i = 0; i < updaters.length; i++) {
+      const p = updaters[i];
+      const t0 = performance.now();
+      (p.update as NonNullable<HudPart['update']>)(ctx, dtReal);
+      const ms = performance.now() - t0;
+      const r = profOf(p);
+      r.calls++;
+      r.total += ms;
+      if (ms > r.max) r.max = ms;
+      if (ms > SLOW_MS) r.slow++;
+    }
+  }
+  function profiledEvents(events: GameEvent[]): void {
+    for (let j = 0; j < listeners.length; j++) {
+      const p = listeners[j];
+      const t0 = performance.now();
+      for (let i = 0; i < events.length; i++) (p.handleEvent as NonNullable<HudPart['handleEvent']>)(events[i], ctx);
+      profOf(p).evCur += performance.now() - t0;
+    }
+    for (let j = 0; j < batchers.length; j++) {
+      const p = batchers[j];
+      const t0 = performance.now();
+      (p.afterEvents as NonNullable<HudPart['afterEvents']>)(ctx);
+      profOf(p).evCur += performance.now() - t0;
+    }
+    for (const r of prof.values()) {
+      if (r.evCur <= 0) continue;
+      r.evBatches++;
+      r.evTotal += r.evCur;
+      if (r.evCur > r.evMax) r.evMax = r.evCur;
+      r.evCur = 0;
+    }
+  }
+
   setMode(ctx.mode);
+  el.classList.toggle('is-locked', !ctx.enabled);
   root.appendChild(el);
   const unbindSounds = bindUiSounds(el, host.audio);
 
@@ -231,12 +326,17 @@ export function createHud(root: HTMLElement, host: HudHost, state: GameState, op
           input.reset();
         }
       }
-      for (let i = 0; i < updaters.length; i++) (updaters[i].update as NonNullable<HudPart['update']>)(ctx, dtReal);
+      if (profiling) profiledUpdate(dtReal);
+      else for (let i = 0; i < updaters.length; i++) (updaters[i].update as NonNullable<HudPart['update']>)(ctx, dtReal);
     },
     handleEvents(events: GameEvent[], st) {
       if (disposed || events.length === 0) return;
       sync(st);
       ctx.now = performance.now() / 1000;
+      if (profiling) {
+        profiledEvents(events);
+        return;
+      }
       for (let i = 0; i < events.length; i++) {
         const ev = events[i];
         for (let j = 0; j < listeners.length; j++) (listeners[j].handleEvent as NonNullable<HudPart['handleEvent']>)(ev, ctx);
@@ -262,5 +362,36 @@ export function createHud(root: HTMLElement, host: HudHost, state: GameState, op
       banner.demo({ type: 'announce', key, team, unitId, victimId }, ctx);
     },
     getInputMode: () => ctx.mode,
+    setInputEnabled(enabled) {
+      if (enabled === ctx.enabled || disposed) return;
+      ctx.enabled = enabled;
+      el.classList.toggle('is-locked', !enabled);
+      if (!enabled) {
+        dismissTooltip();
+        input.reset();
+      }
+    },
+    setProfiling(on) {
+      profiling = on;
+      if (on) prof.clear();
+    },
+    getProfile() {
+      const out: HudPartProfile[] = [];
+      for (const [name, p] of named) {
+        const r = prof.get(p);
+        if (!r) continue;
+        out.push({
+          part: name,
+          calls: r.calls,
+          avg: r.calls > 0 ? r.total / r.calls : 0,
+          max: r.max,
+          slow: r.slow,
+          evBatches: r.evBatches,
+          evAvg: r.evBatches > 0 ? r.evTotal / r.evBatches : 0,
+          evMax: r.evMax,
+        });
+      }
+      return out.sort((a, b) => b.max - a.max);
+    },
   };
 }

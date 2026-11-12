@@ -41,5 +41,5 @@ export {
 export type {
   BadgeTone, ButtonOptions, ButtonVariant, Child, IconButtonOptions, Progress, Segmented, SegmentedOptions, Slider, SliderOptions, SlotOptions, Tabs, TabsOptions, Toggle, ToggleOptions,
 } from './dom';
-export { attachTooltip, dismissTooltip, hasOpenDialog, isButtonKeyFocused, isTooltipOpenFor, openDialog, showTooltip } from './overlay';
+export { attachTooltip, closeAllDialogs, dismissTooltip, hasOpenDialog, isButtonKeyFocused, isTooltipOpenFor, openDialog, showTooltip } from './overlay';
 export type { Dialog, DialogOptions, TooltipOptions } from './overlay';

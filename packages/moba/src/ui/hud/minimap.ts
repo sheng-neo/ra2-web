@@ -81,6 +81,15 @@ export function createMinimap(ctx: HudCtx): Minimap {
   let sizeDirty = true;
   let lastMeasure = -1;
   let lastDraw = -1;
+  /** ResizeObserver 报上来的 CSS 边长；没有它的浏览器为 0，退回每秒读一次 clientWidth */
+  let observedCss = 0;
+  /**
+   * 英雄圆头像的精灵缓存(键：英雄 + 色环)。裁圆、把大头像缩到十几像素、描色环这三步都很贵(软件光栅下尤其)，
+   * 而它们的结果只跟尺寸有关：各做一次存成小画布，之后每帧每位英雄只是一次原样贴图。尺寸变化时清空。
+   */
+  const heroSprites = new Map<string, HTMLCanvasElement>();
+  /** 史诗野怪刷新倒计时的文字精灵(键：文字)。文字每秒才变一次，没必要每帧重新排版描边 */
+  const labelSprites = new Map<string, HTMLCanvasElement>();
   const pings: Ping[] = [];
   const lastAlert = new Map<number, number>();
   /** 己方建筑 id：受击时在小地图上报警。查表比每条伤害事件都去搜单位便宜得多 */
@@ -202,7 +211,8 @@ export function createMinimap(ctx: HudCtx): Minimap {
   }
 
   function measure(): void {
-    const css = canvas.clientWidth;
+    // 有 ResizeObserver 时用它量好的尺寸：读 clientWidth 会强制同步布局，HUD 每帧都在写样式，白白多排一次版
+    const css = observedCss > 0 ? observedCss : canvas.clientWidth;
     if (css <= 0) return;
     const dpr = Math.min(2, window.devicePixelRatio || 1);
     const n = Math.max(64, Math.round(css * dpr));
@@ -212,8 +222,69 @@ export function createMinimap(ctx: HudCtx): Minimap {
     canvas.width = canvas.height = n;
     k = px / (2 * R);
     s = px / 172;
+    heroSprites.clear();
+    labelSprites.clear();
     buildStatic();
     lastDraw = -1;
+  }
+
+  /** 倒计时文字精灵：深色描边 + 浅色字，按当前缩放排好版 */
+  function labelSprite(label: string): HTMLCanvasElement | null {
+    let sp = labelSprites.get(label);
+    if (sp) return sp;
+    // 只留最近的几条(两只史诗野怪 × 每秒一个新数字)
+    if (labelSprites.size > 6) labelSprites.clear();
+    const fontPx = Math.round(8.5 * s);
+    const pad = Math.ceil(2.4 * s) + 1;
+    sp = document.createElement('canvas');
+    sp.width = Math.ceil(fontPx * 0.62 * label.length) + pad * 2;
+    sp.height = fontPx + pad * 2;
+    const c = sp.getContext('2d');
+    if (!c) return null;
+    c.font = `700 ${fontPx}px "DIN Alternate", "Roboto Condensed", sans-serif`;
+    c.textAlign = 'center';
+    c.textBaseline = 'middle';
+    c.lineWidth = Math.max(2, 2.4 * s);
+    c.strokeStyle = 'rgba(6, 10, 22, 0.9)';
+    c.strokeText(label, sp.width / 2, sp.height / 2);
+    c.fillStyle = '#f4ecff';
+    c.fillText(label, sp.width / 2, sp.height / 2);
+    labelSprites.set(label, sp);
+    return sp;
+  }
+
+  /** 英雄头像精灵：暗色衬底 + 裁圆的头像 + 色环。头像图还没解码好时返回 null(调用方画兜底色块，且不缓存) */
+  function heroSprite(hero: HeroUnit, me: boolean): HTMLCanvasElement | null {
+    const key = `${hero.heroId}|${me ? 'me' : hero.team}`;
+    let sp = heroSprites.get(key);
+    if (sp) return sp;
+    const img = portraitImg(hero.heroId);
+    if (!img) return null;
+    const r = (me ? 7.4 : 6.2) * s;
+    const outer = r + 1.4 * s;
+    const size = Math.ceil(outer * 2) + 2;
+    const o = size / 2;
+    sp = document.createElement('canvas');
+    sp.width = sp.height = size;
+    const c = sp.getContext('2d');
+    if (!c) return null;
+    c.beginPath();
+    c.arc(o, o, outer, 0, Math.PI * 2);
+    c.fillStyle = 'rgba(6, 10, 22, 0.92)';
+    c.fill();
+    c.save();
+    c.beginPath();
+    c.arc(o, o, r, 0, Math.PI * 2);
+    c.clip();
+    c.drawImage(img, o - r, o - r, r * 2, r * 2);
+    c.restore();
+    c.beginPath();
+    c.arc(o, o, r, 0, Math.PI * 2);
+    c.strokeStyle = me ? COLORS.me : TEAM_COLOR[hero.team];
+    c.lineWidth = Math.max(1.2, 1.7 * s);
+    c.stroke();
+    heroSprites.set(key, sp);
+    return sp;
   }
 
   function diamond(c: CanvasRenderingContext2D, x: number, y: number, r: number): void {
@@ -268,15 +339,9 @@ export function createMinimap(ctx: HudCtx): Minimap {
       c.stroke();
       if (epic) {
         const sec = Math.ceil(st.respawnIn);
-        c.font = `700 ${Math.round(8.5 * s)}px "DIN Alternate", "Roboto Condensed", sans-serif`;
-        c.textAlign = 'center';
-        c.textBaseline = 'middle';
         const label = sec >= 60 ? `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}` : String(sec);
-        c.lineWidth = Math.max(2, 2.4 * s);
-        c.strokeStyle = 'rgba(6, 10, 22, 0.9)';
-        c.strokeText(label, x, y + r + 8 * s);
-        c.fillStyle = '#f4ecff';
-        c.fillText(label, x, y + r + 8 * s);
+        const sp = labelSprite(label);
+        if (sp) c.drawImage(sp, Math.round(x - sp.width / 2), Math.round(y + r + 8 * s - sp.height / 2));
       }
     }
   }
@@ -336,23 +401,21 @@ export function createMinimap(ctx: HudCtx): Minimap {
       c.fillStyle = COLORS.me;
       c.fill();
     }
+    const sp = heroSprite(hero, me);
+    if (sp) {
+      // 对齐到整像素：原样贴图不用重采样
+      c.drawImage(sp, Math.round(x - sp.width / 2), Math.round(y - sp.height / 2));
+      return;
+    }
+    // 头像图还没到：主题色圆片兜底(不裁剪，直接画圆)
     c.beginPath();
     c.arc(x, y, r + 1.4 * s, 0, Math.PI * 2);
     c.fillStyle = 'rgba(6, 10, 22, 0.92)';
     c.fill();
-    const img = portraitImg(hero.heroId);
-    c.save();
     c.beginPath();
     c.arc(x, y, r, 0, Math.PI * 2);
-    c.clip();
-    if (img) c.drawImage(img, x - r, y - r, r * 2, r * 2);
-    else {
-      c.fillStyle = HEROES[hero.heroId].palette.primary;
-      c.fillRect(x - r, y - r, r * 2, r * 2);
-    }
-    c.restore();
-    c.beginPath();
-    c.arc(x, y, r, 0, Math.PI * 2);
+    c.fillStyle = HEROES[hero.heroId].palette.primary;
+    c.fill();
     c.strokeStyle = ring;
     c.lineWidth = Math.max(1.2, 1.7 * s);
     c.stroke();
@@ -523,13 +586,25 @@ export function createMinimap(ctx: HudCtx): Minimap {
     sizeDirty = true;
   };
   window.addEventListener('resize', onResize);
+  // 尺寸由 CSS 变量决定(横竖屏切换会变)：交给 ResizeObserver 在布局之后告诉我们，不主动去量
+  const ro =
+    typeof ResizeObserver === 'function'
+      ? new ResizeObserver((entries) => {
+          const w = entries.length > 0 ? entries[entries.length - 1].contentRect.width : 0;
+          if (w > 0 && w !== observedCss) {
+            observedCss = w;
+            sizeDirty = true;
+          }
+        })
+      : null;
+  ro?.observe(canvas);
 
   return {
     el,
     update(c) {
       const now = c.now;
-      // 尺寸由 CSS 变量决定(横竖屏切换会变)：除了 resize，再每秒兜底量一次
-      if (sizeDirty || now - lastMeasure > 1) {
+      // 没有 ResizeObserver 的浏览器：除了 resize，再每秒兜底量一次；有的话只在它报了变化时才量
+      if (sizeDirty || (!ro && now - lastMeasure > 1)) {
         lastMeasure = now;
         measure();
       }
@@ -573,7 +648,10 @@ export function createMinimap(ctx: HudCtx): Minimap {
     },
     dispose() {
       endPeek();
+      ro?.disconnect();
       window.removeEventListener('resize', onResize);
+      heroSprites.clear();
+      labelSprites.clear();
     },
   };
 }

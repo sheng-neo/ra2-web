@@ -279,8 +279,10 @@ export class CameraRig {
       const sx = Math.sin(t * 61.3) * 0.6 + Math.sin(t * 37.1 + 1.3) * 0.4;
       const sy = Math.sin(t * 53.7 + 2.1) * 0.6 + Math.sin(t * 29.9 + 0.4) * 0.4;
       const sr = Math.sin(t * 44.3 + 4.2);
-      cam.translateX(sx * a * 0.55);
-      cam.translateY(sy * a * 0.45);
+      // 位移幅度按取景大小折算(基准：屏幕半高对应 10.4 米)：镜头拉近或换成竖屏后，震动在屏幕上的幅度不变
+      const k = (this.distance * Math.tan((cam.fov / 2) * DEG) * Math.min(1, this.aspect)) / 10.4;
+      cam.translateX(sx * a * 0.55 * k);
+      cam.translateY(sy * a * 0.45 * k);
       cam.rotateZ(sr * a * 0.012);
       this.trauma = Math.max(0, this.trauma - dt * 2.4);
     }

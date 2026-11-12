@@ -17,6 +17,7 @@ import { SKILL_SLOTS, type ButtonId, type SkillBar } from '../hud/skills';
 import { dismissTooltip, h, hasOpenDialog, injectStyle, isTooltipOpenFor, sfCss, showTooltip } from '../theme';
 import { castSpecOf, isAimable, previewIndicator, solveByPoint, solveByVector, type AimSolution } from './aim';
 import { detectInputMode } from './device';
+import { LONG_PRESS_MS, isTapPress } from './gesture';
 
 const CSS = sfCss(`
 /* 虚拟摇杆：空闲时半透明停在左下角提示位置；按下后跳到手指处 */
@@ -47,7 +48,6 @@ type AimOwner = number | 'key' | null;
 const COS_STEP = Math.cos((7 * Math.PI) / 180);
 const MOVE_RESEND = 0.08;
 const ATTACK_RESEND = 0.15;
-const LONG_PRESS_MS = 350;
 const DRAG_START_TOUCH = 12;
 const DRAG_START_MOUSE = 8;
 const MOVETO_RESEND = 0.09;
@@ -61,6 +61,8 @@ interface Press {
   btn: ButtonId;
   x0: number;
   y0: number;
+  /** 按下事件的时间戳(毫秒)：松手时与抬起事件的时间戳相减，判定轻点 / 长按 */
+  t0: number;
   /** press 刚按下 / info 原地长按看详情 / aim 手动瞄准中 / void 已作废(被取消或被打断)：松手什么都不做 */
   state: 'press' | 'info' | 'aim' | 'void';
   timer: number;
@@ -308,7 +310,8 @@ export function createInput(ctx: HudCtx, deps: InputDeps): Input {
     setAim(sol.indicator);
   }
 
-  function endPress(p: Press, cast: boolean): void {
+  /** upStamp：抬起事件的时间戳；不是正常松手(取消、失去捕获、重置)时不传 */
+  function endPress(p: Press, cast: boolean, upStamp = Number.NaN): void {
     window.clearTimeout(p.timer);
     presses.delete(p.id);
     skills.setDown(p.btn, false);
@@ -317,17 +320,28 @@ export function createInput(ctx: HudCtx, deps: InputDeps): Input {
       return;
     }
     const slot = p.btn;
+    const el = skills.buttons[slot];
     if (p.state === 'aim') {
       const sol = p.sol;
       const cancelled = p.cancel;
       releaseAim(p.id);
       if (cast && !cancelled) fire(slot, sol);
-    } else if (p.state === 'info' || p.state === 'void') {
-      // 原地长按只是看说明、或这次按压已被取消：不施放（说明浮层自己到时收起）
-      releaseAim(p.id);
-    } else if (cast) {
-      fire(slot, null);
+      return;
     }
+    releaseAim(p.id);
+    // 这次按压已被取消，或不是正常松手：不施放
+    if (p.state === 'void' || !cast) return;
+    // 原地按压：轻点还是长按只看两个事件的时间戳之差，不看长按定时器有没有来得及触发(主线程卡顿时它会迟到)。
+    // 鼠标点按没有长按语义，一律当轻点
+    if (!p.touch || isTapPress(p.t0, upStamp)) {
+      // 定时器抢在松手前跑了(其实只是一次轻点)：把刚弹出的说明收掉
+      if (p.state === 'info' && isTooltipOpenFor(el)) dismissTooltip();
+      fire(slot, null);
+    } else if (p.state === 'press') {
+      // 确实按了很久，只是定时器被卡住没触发：补上说明浮层，不施放
+      showTooltip(el, skills.tipHtml(slot), 4200);
+    }
+    // 其余：state === 'info' 的正常长按，说明浮层自己到时收起
   }
 
   function bindButton(id: ButtonId): void {
@@ -335,14 +349,14 @@ export function createInput(ctx: HudCtx, deps: InputDeps): Input {
     on(el, 'pointerdown', (ev) => {
       if (ev.pointerType === 'mouse' && ev.button !== 0) return;
       ev.preventDefault();
-      if (presses.has(ev.pointerId)) return;
+      if (!ctx.enabled || presses.has(ev.pointerId)) return;
       try {
         el.setPointerCapture(ev.pointerId);
       } catch {
         // 合成事件没有活动指针
       }
       const touch = ev.pointerType !== 'mouse';
-      const p: Press = { id: ev.pointerId, btn: id, x0: ev.clientX, y0: ev.clientY, state: 'press', timer: 0, touch, nx: 0, ny: -1, mag: 0, sol: null, cancel: false };
+      const p: Press = { id: ev.pointerId, btn: id, x0: ev.clientX, y0: ev.clientY, t0: ev.timeStamp, state: 'press', timer: 0, touch, nx: 0, ny: -1, mag: 0, sol: null, cancel: false };
       presses.set(ev.pointerId, p);
       skills.setDown(id, true);
       if (id === 'attack') {
@@ -397,7 +411,7 @@ export function createInput(ctx: HudCtx, deps: InputDeps): Input {
     });
     const up = (ev: PointerEvent, cast: boolean): void => {
       const p = presses.get(ev.pointerId);
-      if (p) endPress(p, cast);
+      if (p) endPress(p, cast, ev.timeStamp);
     };
     on(el, 'pointerup', (ev) => up(ev, true));
     on(el, 'pointercancel', (ev) => up(ev, false));
@@ -494,6 +508,7 @@ export function createInput(ctx: HudCtx, deps: InputDeps): Input {
   on(root, 'pointerdown', (ev) => noteDevice(ev.pointerType), { capture: true });
 
   on(field, 'pointerdown', (ev) => {
+    if (!ctx.enabled) return;
     if (actsAsTouch(ev)) {
       if (ev.pointerType === 'mouse' && ev.button !== 0) return;
       if (joyId === null && inJoyZone(ev)) {
@@ -597,7 +612,8 @@ export function createInput(ctx: HudCtx, deps: InputDeps): Input {
   };
 
   onWin('keydown', (ev) => {
-    if (hasOpenDialog() || typing(ev) || ev.ctrlKey || ev.metaKey || ev.altKey) return;
+    // 宿主关着输入(加载页未关 / 提示层开着)：一个键都不认，连商店、暂停也不开
+    if (!ctx.enabled || hasOpenDialog() || typing(ev) || ev.ctrlKey || ev.metaKey || ev.altKey) return;
     const code = ev.code;
     if (!deps.forced && GAME_KEYS.has(code)) deps.setMode('kbm');
     if (setDirKey(code, true)) {

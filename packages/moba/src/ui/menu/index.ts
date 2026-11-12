@@ -4,7 +4,8 @@
 import { HEROES } from '../../core/data/heroes';
 import type { Difficulty, HeroId } from '../../core/types';
 import type { MatchChoice, MenuHost } from '../api';
-import { bindUiSounds, dismissTooltip, ensureTheme, h } from '../theme';
+import { storageGetJson, storageSet } from '../storage';
+import { bindUiSounds, closeAllDialogs, dismissTooltip, ensureTheme, h } from '../theme';
 import { createBackdrop } from './backdrop';
 import { createSelectScreen } from './select';
 import { createTitleScreen } from './title';
@@ -13,34 +14,28 @@ import type { MenuScreen } from './title';
 const CHOICE_KEY = 'starfall.lastChoice.v1';
 const DEFAULT_CHOICE: MatchChoice = { heroId: 'chijin', difficulty: 'normal' };
 
-/** 记住上次选的英雄与难度（沙箱里读写失败就算了） */
+/** 记住上次选的英雄与难度(本地存储不可用时只在本次会话里记住，见 storage.ts) */
 function loadChoice(): MatchChoice {
-  try {
-    const raw = localStorage.getItem(CHOICE_KEY);
-    if (raw) {
-      const o = JSON.parse(raw) as { heroId?: unknown; difficulty?: unknown } | null;
-      const heroId = o && typeof o.heroId === 'string' && o.heroId in HEROES ? (o.heroId as HeroId) : DEFAULT_CHOICE.heroId;
-      const d = o?.difficulty;
-      const difficulty: Difficulty = d === 'easy' || d === 'normal' || d === 'hard' ? d : DEFAULT_CHOICE.difficulty;
-      return { heroId, difficulty };
-    }
-  } catch {
-    // 用默认值
-  }
-  return { ...DEFAULT_CHOICE };
+  const o = storageGetJson(CHOICE_KEY) as { heroId?: unknown; difficulty?: unknown } | null;
+  if (!o || typeof o !== 'object') return { ...DEFAULT_CHOICE };
+  const heroId = typeof o.heroId === 'string' && o.heroId in HEROES ? (o.heroId as HeroId) : DEFAULT_CHOICE.heroId;
+  const d = o.difficulty;
+  const difficulty: Difficulty = d === 'easy' || d === 'normal' || d === 'hard' ? d : DEFAULT_CHOICE.difficulty;
+  return { heroId, difficulty };
 }
 
 function saveChoice(c: MatchChoice): void {
-  try {
-    localStorage.setItem(CHOICE_KEY, JSON.stringify(c));
-  } catch {
-    // 忽略
-  }
+  storageSet(CHOICE_KEY, JSON.stringify({ heroId: c.heroId, difficulty: c.difficulty }));
 }
 
 export interface MainMenuOptions {
   /** 直接从选英雄页开始（「再来一局」后想换英雄时可用） */
   start?: 'title' | 'select';
+  /**
+   * 取消信号：宿主要丢弃整个流程(错误恢复时的软重启)时 abort。菜单立即释放自己的 DOM、监听、动画帧、
+   * 3D 预览和打开着的对话框；返回的 Promise 此后不再 resolve。
+   */
+  signal?: AbortSignal;
 }
 
 /**
@@ -50,6 +45,7 @@ export interface MainMenuOptions {
 export function showMainMenu(root: HTMLElement, host: MenuHost, opts: MainMenuOptions = {}): Promise<MatchChoice> {
   ensureTheme();
   return new Promise((resolve) => {
+    if (opts.signal?.aborted) return;
     const shell = h('div', 'sf-root sf-menu-root');
     const backdrop = createBackdrop(shell, 'menu');
     const unbindSounds = bindUiSounds(shell, host.audio);
@@ -58,7 +54,35 @@ export function showMainMenu(root: HTMLElement, host: MenuHost, opts: MainMenuOp
     let choice = loadChoice();
     let current: MenuScreen | null = null;
     let finished = false;
+    let released = false;
+    let finishTimer = 0;
     const leaving = new Map<number, MenuScreen>();
+
+    /** 释放菜单占用的一切。正常结束与中途取消共用 */
+    const release = (): void => {
+      if (released) return;
+      released = true;
+      opts.signal?.removeEventListener('abort', onAbort);
+      window.clearTimeout(finishTimer);
+      for (const [t, scr] of leaving) {
+        window.clearTimeout(t);
+        scr.dispose();
+      }
+      leaving.clear();
+      current?.dispose();
+      current = null;
+      unbindSounds();
+      backdrop.dispose();
+      shell.remove();
+    };
+    const onAbort = (): void => {
+      finished = true;
+      dismissTooltip();
+      // 标题页 / 选英雄页打开的设置、操作说明对话框都挂在 shell 里
+      closeAllDialogs(shell);
+      release();
+    };
+    opts.signal?.addEventListener('abort', onAbort);
 
     const swap = (next: MenuScreen): void => {
       dismissTooltip();
@@ -78,9 +102,13 @@ export function showMainMenu(root: HTMLElement, host: MenuHost, opts: MainMenuOp
       shell.appendChild(next.el);
     };
 
-    const showTitle = (): void => swap(createTitleScreen({ host, root: shell, onStart: showSelect }));
+    const showTitle = (): void => {
+      if (finished) return;
+      swap(createTitleScreen({ host, root: shell, onStart: showSelect }));
+    };
 
-    const showSelect = (): void =>
+    const showSelect = (): void => {
+      if (finished) return;
       swap(
         createSelectScreen({
           host,
@@ -94,6 +122,7 @@ export function showMainMenu(root: HTMLElement, host: MenuHost, opts: MainMenuOp
           onConfirm: finish,
         }),
       );
+    };
 
     const finish = (c: MatchChoice): void => {
       if (finished) return;
@@ -105,17 +134,8 @@ export function showMainMenu(root: HTMLElement, host: MenuHost, opts: MainMenuOp
       shell.style.transition = 'opacity 0.35s linear';
       shell.style.opacity = '0';
       shell.style.pointerEvents = 'none';
-      window.setTimeout(() => {
-        for (const [t, scr] of leaving) {
-          window.clearTimeout(t);
-          scr.dispose();
-        }
-        leaving.clear();
-        current?.dispose();
-        current = null;
-        unbindSounds();
-        backdrop.dispose();
-        shell.remove();
+      finishTimer = window.setTimeout(() => {
+        release();
         resolve(c);
       }, 360);
     };

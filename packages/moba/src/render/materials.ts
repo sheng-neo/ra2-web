@@ -721,11 +721,16 @@ vViewPosition = -mvPosition.xyz;
  * `vec3 kitAdditive(vec3 c)`：叠加类发光在输出前过一遍。
  * 走后期(HDR 目标)时原样返回；low 档直出屏幕时混合发生在 gamma 空间，同样的线性数值会亮得多，
  * 这里把它预先压到等效观感(只有直出屏幕时 three 才定义 TONE_MAPPING，借它区分两条路径)。
+ * 返回值之后还要过一遍色调映射与 sRGB 编码，所以这里给的是「期望的显示增量」的 2.2 次方。
  */
 export const GLSL_ADDITIVE = /* glsl */ `
 vec3 kitAdditive(vec3 c) {
   #ifdef TONE_MAPPING
-  return pow(max(c, vec3(0.0)) * 0.9, vec3(2.2));
+  // 目标是「在 gamma 空间直接加上去」之后，观感接近 HDR 路径里「线性相加再色调映射」。后者在亮背景上其实加不了多少
+  // (沙石地面上 1.0 的线性叠加只让显示值涨 0.2 出头)，所以这里把叠加量做成饱和曲线：显示值的增量最多 0.68，
+  // 小数值基本线性。否则团战里几层辉光一叠就是一块死白，把英雄整个盖住(low 档又没有 bloom 来柔化边缘)。
+  vec3 d = 0.68 * (1.0 - exp(-0.9 * max(c, vec3(0.0))));
+  return pow(d, vec3(2.2));
   #else
   return c;
   #endif

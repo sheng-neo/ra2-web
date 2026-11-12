@@ -47,15 +47,44 @@ function acquireRenderer(): THREE.WebGLRenderer {
   return created;
 }
 
+/**
+ * 停放期间把绘图缓冲缩到最小，不白占显存。改 canvas 尺寸也是同步的 GL 操作(实测软件渲染下同样会卡 4 秒)，
+ * 所以不能在释放那一刻做：先插一个栅栏，轮询到 GPU 把积压的指令都执行完了再缩；期间渲染器被取走就作罢。
+ */
+function shrinkWhenIdle(r: THREE.WebGLRenderer): void {
+  const gl = r.getContext() as WebGL2RenderingContext;
+  let sync: WebGLSync | null = null;
+  try {
+    sync = typeof gl.fenceSync === 'function' ? gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0) : null;
+    gl.flush();
+  } catch {
+    sync = null;
+  }
+  if (!sync) return;
+  let tries = 0;
+  const poll = (): void => {
+    if (parked !== r || contextLost(r)) return;
+    const status = gl.clientWaitSync(sync, 0, 0);
+    if (status === gl.TIMEOUT_EXPIRED && ++tries < 150) {
+      window.setTimeout(poll, 200);
+      return;
+    }
+    gl.deleteSync(sync);
+    if (status === gl.ALREADY_SIGNALED || status === gl.CONDITION_SATISFIED) {
+      r.setPixelRatio(1);
+      r.setSize(1, 1, false);
+    }
+  };
+  window.setTimeout(poll, 200);
+}
+
 function releaseRenderer(r: THREE.WebGLRenderer): void {
   r.setRenderTarget(null);
   r.renderLists.dispose();
   const lost = contextLost(r);
   if (!lost && !parked) {
-    // 停放期间把绘图缓冲缩到最小，不白占显存
-    r.setPixelRatio(1);
-    r.setSize(1, 1, false);
     parked = r;
+    shrinkWhenIdle(r);
     return;
   }
   r.dispose();

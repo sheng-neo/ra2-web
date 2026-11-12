@@ -37,10 +37,15 @@ export interface HudCtx {
   mode: InputMode;
   /** 设置/暂停面板打开中 */
   paused: boolean;
+  /**
+   * HUD 是否接受玩家输入。宿主在「HUD 已建好但还不该响应」的阶段关掉它：加载页还盖着、错误 / 图形中断提示层开着。
+   * 关闭期间键盘快捷键与战场指针一律不处理(连商店、暂停也不开)，画面照常刷新。
+   */
+  enabled: boolean;
   /** 墙钟秒数：驱动与模拟时间无关的界面动画 */
   now: number;
   toast(text: string, tone?: ToastTone): void;
-  /** 操作类输入(移动/攻击/施法)是否应屏蔽：阵亡、暂停、对局结束 */
+  /** 操作类输入(移动/攻击/施法)是否应屏蔽：阵亡、暂停、对局结束、宿主关闭了输入 */
   inputBlocked(): boolean;
   hero(id: number): HeroUnit | undefined;
   unit(id: number): Unit | undefined;

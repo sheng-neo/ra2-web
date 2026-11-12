@@ -49,6 +49,9 @@ export interface PortraitSource {
   portrait(heroId: HeroId): string;
 }
 
+/** 已经解码过的头像地址：再建头像元素时直接同步显示成品，不再走「兜底色块 → 淡入」 */
+const decodedSrc = new Set<string>();
+
 /**
  * 英雄头像：宿主给的 data URL 铺满；图还没到或失败时，露出英雄主题色底 + 定位徽标，
  * 所以渲染层没就绪时界面也不会出现破图。
@@ -68,14 +71,59 @@ export function createPortrait(host: PortraitSource, heroId: HeroId, cls?: strin
   if (src) {
     const img = document.createElement('img');
     img.alt = def.name;
-    img.decoding = 'async';
     img.draggable = false;
-    img.addEventListener('load', () => el.classList.add('is-loaded'));
-    img.addEventListener('error', () => img.remove());
+    const ready = decodedSrc.has(src);
+    // 解码过的图：同步解码(命中缓存，几乎不花时间)并直接标记为已载入，第一帧就是成品
+    img.decoding = ready ? 'sync' : 'async';
+    if (ready) el.classList.add('is-loaded');
+    img.addEventListener('load', () => {
+      decodedSrc.add(src);
+      el.classList.add('is-loaded');
+    });
+    img.addEventListener('error', () => {
+      el.classList.remove('is-loaded');
+      img.remove();
+    });
     img.src = src;
     el.appendChild(img);
   }
   return el;
+}
+
+/**
+ * 预先把头像图片解码好(加载页期间调用)：之后 createPortrait 建出来的头像第一帧就是成品图。
+ * 永不 reject：某张图解不出来就跳过，界面对它仍走兜底样式。
+ */
+export function preloadPortraits(host: PortraitSource, heroIds: readonly HeroId[]): Promise<void> {
+  const jobs: Promise<void>[] = [];
+  const seen = new Set<string>();
+  for (const id of heroIds) {
+    let src = '';
+    try {
+      src = host.portrait(id);
+    } catch {
+      src = '';
+    }
+    if (!src || seen.has(src) || decodedSrc.has(src)) continue;
+    seen.add(src);
+    jobs.push(
+      new Promise<void>((resolve) => {
+        const img = new Image();
+        const ok = (): void => {
+          decodedSrc.add(src);
+          resolve();
+        };
+        img.src = src;
+        if (typeof img.decode === 'function') {
+          img.decode().then(ok, () => resolve());
+        } else {
+          img.addEventListener('load', ok);
+          img.addEventListener('error', () => resolve());
+        }
+      }),
+    );
+  }
+  return Promise.all(jobs).then(() => undefined);
 }
 
 /** 上手难度星级（1~3 颗实心星） */

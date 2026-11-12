@@ -210,8 +210,15 @@ function statCell(col: string, label: string, value: string, extra?: HTMLElement
   return cell;
 }
 
+export interface ResultOptions {
+  /** 取消信号：宿主丢弃整个流程(软重启)时 abort。结算页立即释放 DOM 与监听，返回的 Promise 不再 resolve */
+  signal?: AbortSignal;
+}
+
 /** 显示结算页。玩家点「再来一局」resolve('again')，点「返回主菜单」resolve('menu') */
-export function showResult(root: HTMLElement, state: GameState, host: MenuHost): Promise<'again' | 'menu'> {
+export function showResult(root: HTMLElement, state: GameState, host: MenuHost, opts: ResultOptions = {}): Promise<'again' | 'menu'> {
+  // 还没显示就已被取消：什么都不建
+  if (opts.signal?.aborted) return new Promise<'again' | 'menu'>(() => {});
   ensureTheme();
   injectStyle('sf-menu-result', CSS);
 
@@ -357,6 +364,23 @@ export function showResult(root: HTMLElement, state: GameState, host: MenuHost):
 
   return new Promise((resolve) => {
     let done = false;
+    let closeTimer = 0;
+    /** 摘掉监听、提示浮层与节点。正常关闭(退场动画播完后)与中途取消共用 */
+    const release = (): void => {
+      opts.signal?.removeEventListener('abort', onAbort);
+      window.clearTimeout(closeTimer);
+      window.removeEventListener('keydown', onKey);
+      for (const d of tipDisposers.splice(0)) d();
+      unbindSounds();
+      backdrop.dispose();
+      shell.remove();
+    };
+    const onAbort = (): void => {
+      done = true;
+      dismissTooltip();
+      release();
+    };
+    opts.signal?.addEventListener('abort', onAbort);
     const finish = (r: 'again' | 'menu'): void => {
       if (done) return;
       done = true;
@@ -364,10 +388,8 @@ export function showResult(root: HTMLElement, state: GameState, host: MenuHost):
       dismissTooltip();
       for (const d of tipDisposers.splice(0)) d();
       shell.classList.add('is-closing');
-      window.setTimeout(() => {
-        unbindSounds();
-        backdrop.dispose();
-        shell.remove();
+      closeTimer = window.setTimeout(() => {
+        release();
         resolve(r);
       }, 350);
     };

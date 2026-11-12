@@ -9,11 +9,29 @@ const CLOSE_SVG =
 
 // ───────────── 对话框 ─────────────
 
-let openDialogs = 0;
+/** 打开中的对话框。用登记表而不是计数器：宿主直接清空 DOM(错误恢复时的软重启)也不会让状态卡死 */
+interface OpenEntry {
+  scrim: HTMLElement;
+  close(): void;
+}
+const openEntries = new Set<OpenEntry>();
 
-/** 是否有对话框打开（各界面的全局快捷键据此让路） */
+/** 是否有对话框打开（各界面的全局快捷键据此让路）。只认还在文档里的：节点被外部移走的不算 */
 export function hasOpenDialog(): boolean {
-  return openDialogs > 0;
+  for (const e of openEntries) if (e.scrim.isConnected) return true;
+  return false;
+}
+
+/**
+ * 关闭全部对话框(不播退场动画，立即摘除节点)；传 within 则只关挂在它里面的。
+ * 宿主要丢弃整个界面(软重启)或某个界面被中途取消时调用：监听与回调照常走 onClose 清理。
+ */
+export function closeAllDialogs(within?: HTMLElement): void {
+  for (const e of Array.from(openEntries)) {
+    if (within && e.scrim.isConnected && !within.contains(e.scrim)) continue;
+    e.close();
+    e.scrim.remove();
+  }
 }
 
 /**
@@ -84,10 +102,11 @@ export function openDialog(root: HTMLElement, o: DialogOptions): Dialog {
   if (o.width) panel.style.setProperty('--sf-dialog-w', o.width);
   const scrim = h('div', 'sf-dialog-scrim', panel);
 
+  const entry: OpenEntry = { scrim, close: () => close() };
   const close = (): void => {
     if (closed) return;
     closed = true;
-    openDialogs = Math.max(0, openDialogs - 1);
+    openEntries.delete(entry);
     window.removeEventListener('keydown', onKey, true);
     document.removeEventListener('focusin', onFocusIn);
     scrim.classList.add('is-leaving');
@@ -97,6 +116,11 @@ export function openDialog(root: HTMLElement, o: DialogOptions): Dialog {
     o.onClose?.();
   };
   const onKey = (ev: KeyboardEvent): void => {
+    if (!scrim.isConnected) {
+      // 节点已被外部移走(宿主清空了容器)：只做善后，不吞这次按键
+      close();
+      return;
+    }
     if (ev.key !== 'Escape' || !closable) return;
     // 捕获阶段拦截，避免底下的界面同时响应 Esc
     ev.stopPropagation();
@@ -117,8 +141,8 @@ export function openDialog(root: HTMLElement, o: DialogOptions): Dialog {
   window.addEventListener('keydown', onKey, true);
   document.addEventListener('focusin', onFocusIn);
 
-  openDialogs++;
   root.appendChild(scrim);
+  openEntries.add(entry);
   panel.focus({ preventScroll: true });
   return { el: scrim, body, close };
 }

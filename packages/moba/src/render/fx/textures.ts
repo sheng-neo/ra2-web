@@ -652,15 +652,20 @@ export function createFxAtlas(): THREE.DataTexture {
 /**
  * 预乘混合输出片段：要求 main 里已有 `vec3 fxC`(HDR 颜色)、`float fxA`(覆盖率)、`float fxAdd`(1 = 纯叠加，0 = 普通透明)。
  * 材质用 CustomBlending(ONE, ONE_MINUS_SRC_ALPHA)，这样同一个 draw call 里可以混排叠加与遮挡两种粒子。
- * low 档直出屏幕时(TONE_MAPPING 已定义)先对未预乘的颜色做色调映射，再预乘，叠加部分用 kitAdditive 压到等效观感。
+ * low 档直出屏幕时(TONE_MAPPING 已定义)：遮挡部分先对未预乘的颜色做色调映射再预乘；叠加部分用 kitAdditive 压到等效观感。
  */
 export const GLSL_FX_OUT = /* glsl */ `
   #ifdef TONE_MAPPING
-  gl_FragColor = vec4(mix(fxC, kitAdditive(fxC * fxA), fxAdd), 1.0);
+  // 遮挡部分(权重 1 - fxAdd)与叠加部分(权重 fxAdd)分别映射再合成。两部分不能先混色再统一乘系数：
+  // 半叠加的粒子(0 < fxAdd < 1)那样算，覆盖率趋近 0 的外圈也会带着半份亮度，叠出一块边缘生硬的死白。
+  gl_FragColor = vec4(fxC, 1.0);
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
-  gl_FragColor.rgb *= mix(fxA, 1.0, fxAdd);
-  gl_FragColor.a = fxA * (1.0 - fxAdd);
+  vec3 fxOver = gl_FragColor.rgb * (fxA * (1.0 - fxAdd));
+  gl_FragColor = vec4(kitAdditive(fxC * (fxA * fxAdd)), 1.0);
+  #include <tonemapping_fragment>
+  #include <colorspace_fragment>
+  gl_FragColor = vec4(fxOver + gl_FragColor.rgb, fxA * (1.0 - fxAdd));
   #else
   gl_FragColor = vec4(fxC * fxA, fxA * (1.0 - fxAdd));
   #endif

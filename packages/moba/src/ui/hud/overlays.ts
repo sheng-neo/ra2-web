@@ -5,6 +5,7 @@
 import { MONSTERS } from '../../core/data/units';
 import type { GameEvent, HeroUnit } from '../../core/types';
 import { uiIcon } from '../icons';
+import { storageGet, storageSet } from '../storage';
 import { h, icon, injectStyle, sfCss } from '../theme';
 import { classSlot, clamp01, numSlot, textSlot, varSlot, type HudCtx, type HudPart, type InputMode, type ToastTone } from './common';
 import { glyphFace, heroFace, teamCls } from './face';
@@ -316,13 +317,9 @@ export function createFps(ctx: HudCtx): HudPart & { el: HTMLElement } {
 
 const TIPS_SEEN_KEY = 'starfall.hud.tips.v1';
 
-/** 玩家是否点掉过提示条（点掉 = 已经会玩了，以后的对局不再弹） */
+/** 玩家是否点掉过提示条（点掉 = 已经会玩了，以后的对局不再弹；存储不可用时至少本次会话内记住） */
 function tipsDismissedBefore(): boolean {
-  try {
-    return localStorage.getItem(TIPS_SEEN_KEY) === '1';
-  } catch {
-    return false;
-  }
+  return storageGet(TIPS_SEEN_KEY) === '1';
 }
 
 export interface Tips extends HudPart {
@@ -355,6 +352,7 @@ export function createTips(ctx: HudCtx, seconds: number): Tips {
         h('span', null, ...kbd('F', 'G', 'B'), '闪现 / 恢复 / 回城'),
         h('span', null, ...kbd('P'), '商店'),
         h('span', null, ...kbd('Tab'), '战况'),
+        h('span', null, ...kbd('Esc'), '暂停'),
       );
     } else {
       list.append(
@@ -362,6 +360,7 @@ export function createTips(ctx: HudCtx, seconds: number): Tips {
         h('span', null, icon(uiIcon('touch')), h('b', null, '轻点技能'), '自动瞄准'),
         h('span', null, icon(uiIcon('target')), h('b', null, '按住拖动'), '手动瞄准，松手施放'),
         h('span', null, icon(uiIcon('cancel')), '拖到', h('b', null, '取消'), '松手放弃'),
+        h('span', null, icon(uiIcon('info')), h('b', null, '长按技能'), '看说明'),
       );
     }
   }
@@ -375,11 +374,7 @@ export function createTips(ctx: HudCtx, seconds: number): Tips {
   }
   close.addEventListener('click', () => {
     dismiss();
-    try {
-      localStorage.setItem(TIPS_SEEN_KEY, '1');
-    } catch {
-      // 存不了就下局再提示一次，无妨
-    }
+    storageSet(TIPS_SEEN_KEY, '1');
   });
 
   return {

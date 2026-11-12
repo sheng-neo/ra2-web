@@ -176,6 +176,8 @@ export function showLayer(parent: HTMLElement, o: LayerOptions): Layer {
   const close = (): void => {
     if (closed) return;
     closed = true;
+    window.removeEventListener('keydown', guardKey, true);
+    window.removeEventListener('keyup', guardKey, true);
     el.remove();
   };
   let primary: HTMLButtonElement | null = null;
@@ -199,6 +201,20 @@ export function showLayer(parent: HTMLElement, o: LayerOptions): Layer {
   for (const type of ['pointerdown', 'pointerup', 'mousedown', 'mouseup', 'click', 'touchstart', 'touchend', 'wheel', 'contextmenu', 'keydown', 'keyup']) {
     el.addEventListener(type, swallow);
   }
+  // 上面只拦得住「目标在提示层里」的事件。焦点不在提示层时(玩家点过别处、浏览器拒绝了 focus)，按键的目标是 body，
+  // 根本不经过提示层，会直达底下界面挂在 window 上的快捷键(HUD 的技能键、标题页与结算页的回车)。
+  // 所以在 window 的捕获阶段再拦一道，并顺手把焦点拉回主按钮，键盘用户不至于「丢」在提示层外面
+  const guardKey = (ev: KeyboardEvent): void => {
+    if (closed || !el.isConnected) return;
+    if (ev.target instanceof Node && el.contains(ev.target)) return;
+    ev.stopPropagation();
+    if (ev.type === 'keydown' && (ev.key === 'Tab' || ev.key === 'Enter' || ev.key === ' ')) {
+      ev.preventDefault();
+      primary?.focus({ preventScroll: true });
+    }
+  };
+  window.addEventListener('keydown', guardKey, true);
+  window.addEventListener('keyup', guardKey, true);
 
   el.appendChild(card);
   parent.appendChild(el);

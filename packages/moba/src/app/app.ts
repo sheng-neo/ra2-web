@@ -15,16 +15,19 @@ import type { AudioEngine } from '../audio/api';
 import type { HeroId } from '../core/types';
 import { createHeroPreview, detectQuality, getHeroPortrait } from '../render/index';
 import type { MatchChoice, MenuHost, Settings } from '../ui/api';
-import { dismissTooltip, ensureTheme, loadSettings, saveSettings, showMainMenu, showResult } from '../ui/index';
+import { closeAllDialogs, dismissTooltip, ensureTheme, loadSettings, saveSettings, showMainMenu, showResult } from '../ui/index';
 import { startMatch, type CancelToken, type MatchEnv, type MatchSession } from './match';
 import { parseDebugParams, type DebugParams } from './params';
 import { PerfMeter } from './perf';
+import { createSettingsStore } from './settings-store';
 import { describeError, hideBootSplash, injectAppStyle, showLayer, supportsWebGL2, type Layer } from './shell';
 
 export type AppPhase = 'boot' | 'menu' | 'loading' | 'match' | 'result' | 'unsupported';
 
-/** 结算页淡入多久之后释放底下的对局画面 */
+/** 结算页淡入多久之后停掉底下的对局(此时已盖严) */
 const RESULT_COVER_MS = 650;
+/** 停机之后再过多久才释放渲染器：让新界面(结算页的战绩行 / 标题页的 Logo)先把入场动画播完 */
+const RELEASE_DELAY_MS = 1100;
 
 /** 调试 / 测试钩子：window.__moba */
 export interface MobaDebug {
@@ -91,6 +94,45 @@ export function startApp(): void {
   let matches = 0;
   /** 设置 / 音频等基础设施是否已就绪(之后才谈得上软重启) */
   let ready = false;
+  /** 当前流程的取消信号：软重启时 abort，主菜单 / 结算页据此立即自行释放 */
+  let flowAbort = new AbortController();
+
+  // ───────────── 送走一局 ─────────────
+
+  /** 已停机、等着释放渲染器的旧对局(同一时刻最多一个) */
+  let retired: (() => void) | null = null;
+  const flushRetired = (): void => {
+    const fn = retired;
+    retired = null;
+    fn?.();
+  };
+  /**
+   * 送走一局：立刻停机(主循环、监听、HUD、对局容器)，渲染器挪到稍后的空闲时刻再释放。
+   * 释放是同步的 GL 调用，要等显卡把积压的帧画完(软件渲染下实测能卡十几秒)；紧跟在停机后面做，
+   * 刚出现的结算页 / 标题页就会僵住。先停止出帧、让出几帧、等入场动画播完，再释放就只是一次很短的活。
+   */
+  const retire = (s: MatchSession): void => {
+    flushRetired();
+    s.halt();
+    let done = false;
+    const run = (): void => {
+      if (done) return;
+      done = true;
+      if (retired === run) retired = null;
+      try {
+        s.dispose();
+      } catch (err) {
+        console.error(err);
+      }
+    };
+    retired = run;
+    const whenIdle = (): void => {
+      if (typeof window.requestIdleCallback === 'function') window.requestIdleCallback(run, { timeout: 1500 });
+      else window.setTimeout(run, 0);
+    };
+    // 页面在后台时 raf 不触发：那就留到下一局开始前(flushRetired)或回到前台再做
+    window.setTimeout(() => requestAnimationFrame(() => requestAnimationFrame(whenIdle)), RELEASE_DELAY_MS);
+  };
 
   // ───────────── 错误提示(界面内) ─────────────
 
@@ -115,11 +157,16 @@ export function startApp(): void {
     }
     session = null;
     try {
+      flushRetired();
+      // 主菜单 / 结算页：通知它们自行释放(背景动画、window 上的按键监听、3D 预览)
+      flowAbort.abort();
+      // 还开着的对话框(设置、操作说明)连同它们的全局监听一起收掉，否则「有对话框打开」的状态会卡住全部快捷键
+      closeAllDialogs();
       dismissTooltip();
     } catch (err) {
       console.error(err);
     }
-    // 菜单 / 加载 / 结算页没有对外的取消接口：直接清空容器，它们残留的回调会因代数不符而被忽略
+    // 加载页由对局的取消令牌负责收尾；这里把容器清空兜底，残留的回调会因代数不符而被忽略
     root.replaceChildren();
     runGuarded('title');
   };
@@ -166,14 +213,15 @@ export function startApp(): void {
 
   // ───────────── 设置与音频 ─────────────
 
-  let settings: Settings;
+  let store: ReturnType<typeof createSettingsStore<Settings>>;
   let audio: AudioEngine;
   try {
     ensureTheme();
-    settings = loadSettings({ quality: detectQuality() });
-    // 调试参数只影响本次会话
-    if (params.quality) settings.quality = params.quality;
-    if (params.showFps) settings.showFps = true;
+    // URL 调试参数(quality / fps)只影响本次会话：放在覆盖层里，不随玩家改别的设置一起写进存档
+    const overrides: Partial<Settings> = {};
+    if (params.quality) overrides.quality = params.quality;
+    if (params.showFps) overrides.showFps = true;
+    store = createSettingsStore<Settings>(loadSettings({ quality: detectQuality() }), overrides, saveSettings);
     audio = createAudio();
   } catch (err) {
     // 连基础设施都起不来：软重启无从谈起，只能请玩家重新载入
@@ -203,14 +251,15 @@ export function startApp(): void {
     return;
   }
   ready = true;
+  /** 生效中的设置(活对象：玩家存档叠上调试覆盖) */
+  const settings: Settings = store.current;
   const applyVolumes = (): void => audio.setVolumes({ master: settings.masterVolume, sfx: settings.sfxVolume, music: settings.musicVolume });
   applyVolumes();
 
   const settingsListeners = new Set<(patch: Partial<Settings>) => void>();
   const getSettings = (): Settings => settings;
   const updateSettings = (patch: Partial<Settings>): void => {
-    Object.assign(settings, patch);
-    saveSettings(settings);
+    store.update(patch);
     applyVolumes();
     for (const fn of settingsListeners) fn(patch);
   };
@@ -301,6 +350,8 @@ export function startApp(): void {
     const gen = ++generation;
     token = { cancelled: false };
     const myToken = token;
+    flowAbort = new AbortController();
+    const signal = flowAbort.signal;
     let next: 'title' | 'select' | 'direct' = start;
 
     for (;;) {
@@ -311,10 +362,12 @@ export function startApp(): void {
         choice = { heroId: params.hero ?? 'chijin', difficulty: params.difficulty ?? 'normal' };
       } else {
         phase = 'menu';
-        choice = await showMainMenu(root, menuHost, { start: next });
+        choice = await showMainMenu(root, menuHost, { start: next, signal });
         if (gen !== generation) return;
       }
 
+      // 上一局的渲染器若还没来得及释放，开新局之前必须先放掉(显存与 WebGL 上下文数量都有限)
+      flushRetired();
       matches++;
       const created = await startMatch(
         matchEnv,
@@ -333,20 +386,20 @@ export function startApp(): void {
       if (gen !== generation) return;
 
       if (outcome.kind === 'quit') {
-        created.dispose();
+        retire(created);
         session = null;
         next = 'title';
         continue;
       }
 
-      // 结算页盖在对局画面上淡入；HUD 立刻收起(免得两边同时响应按键)，画面等盖严了再释放
+      // 结算页盖在对局画面上淡入；HUD 立刻收起(免得两边同时响应按键)，画面等盖严了再停
       phase = 'result';
       created.disposeHud();
       // 结算页的「时长」按分出胜负的那一刻算，不含之后播结束演出的几秒
-      const resultDone = showResult(root, { ...outcome.state, time: outcome.endTime }, menuHost);
+      const resultDone = showResult(root, { ...outcome.state, time: outcome.endTime }, menuHost, { signal });
       await sleep(RESULT_COVER_MS);
       if (gen !== generation) return;
-      created.dispose();
+      retire(created);
       session = null;
       const picked = await resultDone;
       if (gen !== generation) return;

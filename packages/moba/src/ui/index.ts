@@ -13,6 +13,7 @@
  *   每帧：hud.handleEvents(events, state); hud.update(state, dtReal);   结束：hud.dispose();
  *   const next = await showResult(app, world.state, host);      // 'again' | 'menu'
  *   if (next === 'again') showMainMenu(app, host, { start: 'select' });
+ * showMainMenu / showResult 的最后一个参数可带 { signal }：宿主软重启时 abort，界面立即自行释放(见各自的 Options)。
  */
 
 // ── 对局外界面 ──
@@ -20,19 +21,19 @@ export { showMainMenu } from './menu/index';
 export type { MainMenuOptions } from './menu/index';
 export { showLoading } from './menu/loading';
 export { computeScores, showResult } from './menu/result';
-export type { HeroScore } from './menu/result';
+export type { HeroScore, ResultOptions } from './menu/result';
 export { openHowToDialog } from './menu/howto';
 export { itemTooltipHtml } from './menu/select';
 export { createBackdrop } from './menu/backdrop';
 export type { Backdrop, BackdropMood } from './menu/backdrop';
 export {
-  DIFFICULTY_META, HERO_ORDER, HERO_RATINGS, RATING_KEYS, RATING_LABELS, ROLE_COLOR, createPortrait, createStars, escapeHtml, fmtClock, fmtK,
+  DIFFICULTY_META, HERO_ORDER, HERO_RATINGS, RATING_KEYS, RATING_LABELS, ROLE_COLOR, createPortrait, createStars, escapeHtml, fmtClock, fmtK, preloadPortraits,
 } from './menu/shared';
 export type { PortraitSource, RatingKey } from './menu/shared';
 
 // ── 对局内 HUD（含全部输入） ──
 export { createHud } from './hud/index';
-export type { HudHandle, HudOptions } from './hud/index';
+export type { HudHandle, HudOptions, HudPartProfile } from './hud/index';
 export type { InputMode } from './hud/common';
 
 // ── 设置 ──

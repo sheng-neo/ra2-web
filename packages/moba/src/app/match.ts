@@ -14,7 +14,7 @@ import { createWorld } from '../core/world';
 import type { GameRenderer, Quality } from '../render/api';
 import { createGameRenderer } from '../render/index';
 import type { HudHost, LoadingScreen, MatchChoice, MenuHost, Settings } from '../ui/api';
-import { createHud, showLoading } from '../ui/index';
+import { createHud, preloadPortraits, showLoading } from '../ui/index';
 import type { HudHandle } from '../ui/index';
 import { GameLoop, type LoopFrame } from './loop';
 import type { PerfMeter } from './perf';
@@ -26,6 +26,8 @@ const RESULT_DELAY_MS = 2600;
 const MIN_LOADING_MS = 1200;
 /** 阵亡去色的渐变时长(秒) */
 const GRAY_FADE = 0.6;
+/** 加载阶段等头像图片解码的上限(毫秒)：解不完也不拦着开局，界面有兜底样式 */
+const PORTRAIT_WAIT_MS = 1500;
 /** 正常速度下单帧最多补的模拟步数 */
 const NORMAL_MAX_STEPS = 6;
 /** 单帧步数超过它(只可能发生在加速调试时)就精简交给渲染 / 音频的事件 */
@@ -88,25 +90,34 @@ export interface MatchSession {
   readonly stage: HTMLElement;
   /** 对局结束(含结束演出)或玩家中途退出时 resolve；只 resolve 一次 */
   readonly finished: Promise<MatchOutcome>;
-  /** 外部暂停(提示层打开期间等)：按原因叠加 */
+  /**
+   * 外部暂停(提示层打开期间等)：按原因叠加。除 HUD 自己的暂停面板('hud')以外，任何外部暂停期间 HUD 都不接受玩家输入——
+   * 提示层盖着的时候按下的键不该变成对局命令。
+   */
   setPause(reason: string, paused: boolean): void;
   /** 只收起 HUD(结算页出现时)，画面继续渲染 */
   disposeHud(): void;
-  /** 完整释放：HUD、渲染器、主循环、监听。可重复调用 */
+  /**
+   * 停机：停主循环、摘监听、收 HUD、把对局容器移出文档。渲染器先留着——它的释放是同步的 GL 调用，
+   * 要等显卡把积压的帧画完，紧跟在停机后面做会卡住刚出现的界面；由调用方挑个空闲时刻再 dispose()。可重复调用。
+   */
+  halt(): void;
+  /** 完整释放：halt() + 释放渲染器。可重复调用 */
   dispose(): void;
 }
 
-/** 渲染层在契约之外可能提供的扩展(按特性探测，没有就退化) */
-interface RendererExtras {
-  setCameraShake?(enabled: boolean): void;
-  snapCamera?(): void;
+/**
+ * 老版本渲染器在契约之外暴露的内部对象(按特性探测)。契约里已有可选的 setCameraShake / snapCamera / setDeathTint，
+ * 存在即用；只有 setDeathTint 缺席时才退回到直接写调色参数 / 给渲染容器加 CSS 滤镜。
+ */
+interface LegacyEngine {
   engine?: {
     postEnabled?: boolean;
     grade?: { desaturate: number; dim: number };
   };
 }
 
-const extrasOf = (r: GameRenderer): RendererExtras => r as GameRenderer & RendererExtras;
+const legacyEngineOf = (r: GameRenderer): LegacyEngine['engine'] => (r as GameRenderer & LegacyEngine).engine;
 
 const now = (): number => performance.now();
 
@@ -185,7 +196,7 @@ export async function startMatch(env: MatchEnv, choice: MatchChoice, opts: Match
     app.insertBefore(matchEl, app.firstChild);
     const quality: Quality = env.getSettings().quality;
     renderer = createGameRenderer(stage, state, { quality });
-    extrasOf(renderer).setCameraShake?.(env.getSettings().cameraShake);
+    renderer.setCameraShake?.(env.getSettings().cameraShake);
 
     // ── 3. 预热着色器 ──(头两帧会编译全部用到的着色器并上传贴图，放在加载页后面做)
     loading.setProgress(0.62, '点亮星辉与光影…');
@@ -197,10 +208,12 @@ export async function startMatch(env: MatchEnv, choice: MatchChoice, opts: Match
     await nextPaint();
     if (cancelled()) return null;
     renderer.render(state, 1, 1 / 60);
-    extrasOf(renderer).snapCamera?.();
+    renderer.snapCamera?.();
 
     // ── 4. 建 HUD ──
     loading.setProgress(0.92, '布置战斗界面…');
+    // 头像先解码好：HUD 一建出来就是成品图，不会在加载页淡出时露出兜底的色块
+    await Promise.race([preloadPortraits(env.menuHost, state.heroes.map((x) => x.heroId)), sleep(PORTRAIT_WAIT_MS)]);
     await nextPaint();
     if (cancelled()) return null;
 
@@ -217,20 +230,35 @@ export async function startMatch(env: MatchEnv, choice: MatchChoice, opts: Match
     };
 
     const pauseReasons = new Set<string>();
+    /** 主循环启动(加载页关闭)之后才为真 */
+    let started = false;
+    /** HUD 只在「已开打、且没有外部提示层暂停着」时接受玩家输入 */
+    const syncInput = (): void => {
+      let external = false;
+      for (const r of pauseReasons) if (r !== 'hud') external = true;
+      if (!hudDisposed) builtHud?.setInputEnabled(started && !external);
+    };
     const setPause = (reason: string, paused: boolean): void => {
       if (paused) pauseReasons.add(reason);
       else pauseReasons.delete(reason);
       loop.setPaused(pauseReasons.size > 0);
+      syncInput();
     };
 
-    // 阵亡去色：渲染层开着后期就用它的调色，否则退回给渲染容器加 CSS 滤镜。
+    // 阵亡去色：渲染器实现了契约里的 setDeathTint 就交给它(它自己按画质档选调色还是滤镜)；
+    // 老版本没有这个方法时退回原先的做法——开着后期就直接写它的调色参数，否则给渲染容器加 CSS 滤镜。
     // 交给 HUD 的 dimTarget 是个不进文档的替身——只为告诉 HUD「去色由宿主负责」，别再铺 backdrop-filter。
     let playerDead = false;
     let gray = 0;
-    let grayWritten = 0;
+    let grayWritten = -1;
     let hadGrade = false;
     let cssGray = false;
     const dimProxy = document.createElement('div');
+    const setCssGray = (on: boolean): void => {
+      if (on === cssGray) return;
+      cssGray = on;
+      stage.classList.toggle('is-gray', on);
+    };
     const updateDeathTint = (dt: number): void => {
       // 胜负已分就不再压灰：结束演出要看得清
       const target = playerDead && !state.over ? 1 : 0;
@@ -238,7 +266,17 @@ export async function startMatch(env: MatchEnv, choice: MatchChoice, opts: Match
         const stepV = dt / GRAY_FADE;
         gray = gray < target ? Math.min(target, gray + stepV) : Math.max(target, gray - stepV);
       }
-      const engine = renderer ? extrasOf(renderer).engine : undefined;
+      const r = renderer;
+      if (!r) return;
+      if (typeof r.setDeathTint === 'function') {
+        if (gray !== grayWritten) {
+          r.setDeathTint(gray);
+          grayWritten = gray;
+        }
+        setCssGray(false);
+        return;
+      }
+      const engine = legacyEngineOf(r);
       const grade = engine?.postEnabled === true ? engine.grade : undefined;
       // 只在数值变化(或后期刚被打开)时写调色参数：平时不去碰它，免得盖掉渲染层自己对这两个参数的使用
       if (grade && (gray !== grayWritten || !hadGrade)) {
@@ -247,11 +285,7 @@ export async function startMatch(env: MatchEnv, choice: MatchChoice, opts: Match
         grayWritten = gray;
       }
       hadGrade = !!grade;
-      const wantCss = !grade && target === 1;
-      if (wantCss !== cssGray) {
-        cssGray = wantCss;
-        stage.classList.toggle('is-gray', wantCss);
-      }
+      setCssGray(!grade && target === 1);
     };
 
     const hudHost: HudHost = {
@@ -275,6 +309,8 @@ export async function startMatch(env: MatchEnv, choice: MatchChoice, opts: Match
       onDeathChange: (dead) => {
         playerDead = dead;
       },
+      // 加载页还盖着：HUD 先不接输入，开打那一刻再放开(见下面的 syncInput)
+      inputEnabled: false,
     });
     builtHud = hud;
 
@@ -369,7 +405,7 @@ export async function startMatch(env: MatchEnv, choice: MatchChoice, opts: Match
     const unsubscribeSettings = env.onSettings((patch) => {
       if (!renderer) return;
       if (patch.quality !== undefined) renderer.setQuality(patch.quality);
-      if (patch.cameraShake !== undefined) extrasOf(renderer).setCameraShake?.(patch.cameraShake);
+      if (patch.cameraShake !== undefined) renderer.setCameraShake?.(patch.cameraShake);
     });
 
     // 图形上下文丢失(系统回收显存、驱动重置)：暂停并给出可恢复的提示。
@@ -385,14 +421,16 @@ export async function startMatch(env: MatchEnv, choice: MatchChoice, opts: Match
       }
       stage.replaceChildren();
       renderer = createGameRenderer(stage, state, { quality: env.getSettings().quality });
-      extrasOf(renderer).setCameraShake?.(env.getSettings().cameraShake);
+      renderer.setCameraShake?.(env.getSettings().cameraShake);
       renderer.resize();
       renderer.render(state, 1, 0);
-      // 新渲染器的调色参数是初始值：让阵亡去色在下一帧重新写入
+      renderer.snapCamera?.();
+      // 新渲染器的去色是初始值：让阵亡去色在下一帧重新写入
+      grayWritten = -1;
       hadGrade = false;
     };
     const onContextLost = (ev: Event): void => {
-      if (disposed || !renderer || contextLayer) return;
+      if (halted || !renderer || contextLayer) return;
       // 阻止默认行为，浏览器才会在条件允许时派发 restored
       ev.preventDefault();
       setPause('context', true);
@@ -405,7 +443,7 @@ export async function startMatch(env: MatchEnv, choice: MatchChoice, opts: Match
             primary: true,
             onClick() {
               contextLayer = null;
-              if (disposed) return;
+              if (halted) return;
               try {
                 rebuildRenderer();
                 setPause('context', false);
@@ -425,7 +463,7 @@ export async function startMatch(env: MatchEnv, choice: MatchChoice, opts: Match
       });
     };
     const onContextRestored = (): void => {
-      if (disposed || !contextLayer) return;
+      if (halted || !contextLayer) return;
       contextLayer.close();
       contextLayer = null;
       resizePending = true;
@@ -444,6 +482,32 @@ export async function startMatch(env: MatchEnv, choice: MatchChoice, opts: Match
       }
     };
 
+    let halted = false;
+    const halt = (): void => {
+      if (halted) return;
+      halted = true;
+      loop.stop();
+      finish({ kind: 'quit' });
+      resizeObserver?.disconnect();
+      window.removeEventListener('resize', requestResize);
+      window.removeEventListener('orientationchange', requestResize);
+      document.removeEventListener('visibilitychange', onVisibility);
+      stage.removeEventListener('webglcontextlost', onContextLost, true);
+      stage.removeEventListener('webglcontextrestored', onContextRestored, true);
+      unsubscribeSettings();
+      contextLayer?.close();
+      contextLayer = null;
+      // 先 HUD 后渲染器：HUD 释放时还会调 setAim(null) / setCameraPeek(null)
+      disposeHud();
+      // 对局里挂在声音上的状态(阵亡低通、引导声…)到此为止；主循环停了，没人再替它 update
+      try {
+        audio.update(null, 0);
+      } catch (err) {
+        console.error(err);
+      }
+      matchEl.remove();
+    };
+
     const session: MatchSession = {
       config,
       world,
@@ -457,29 +521,17 @@ export async function startMatch(env: MatchEnv, choice: MatchChoice, opts: Match
       finished,
       setPause,
       disposeHud,
+      halt,
       dispose() {
+        halt();
         if (disposed) return;
         disposed = true;
-        loop.stop();
-        finish({ kind: 'quit' });
-        resizeObserver?.disconnect();
-        window.removeEventListener('resize', requestResize);
-        window.removeEventListener('orientationchange', requestResize);
-        document.removeEventListener('visibilitychange', onVisibility);
-        stage.removeEventListener('webglcontextlost', onContextLost, true);
-        stage.removeEventListener('webglcontextrestored', onContextRestored, true);
-        unsubscribeSettings();
-        contextLayer?.close();
-        contextLayer = null;
-        // 先 HUD 后渲染器：HUD 释放时还会调 setAim(null) / setCameraPeek(null)
-        disposeHud();
         try {
           renderer?.dispose();
         } catch (err) {
           console.error(err);
         }
         renderer = null;
-        matchEl.remove();
       },
     };
 
@@ -500,6 +552,8 @@ export async function startMatch(env: MatchEnv, choice: MatchChoice, opts: Match
     audio.setMusic('battle');
     loading.close();
     env.setPhase('match');
+    started = true;
+    syncInput();
     loop.start();
     return session;
   } catch (err) {
