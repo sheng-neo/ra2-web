@@ -5,14 +5,14 @@
  *   loading            加载页        &hero=xingli&difficulty=hard&p=0.6(固定进度；缺省为自动走完)
  *   result             结算页        &hero=chijin&win=1|0
  *   settings           设置对话框    &mode=menu|match
- *   howto              操作说明      &tab=keys|touch
+ *   howto              操作说明      &tab=keys|touch|win
  *   icons              全部图标网格
  *   components         设计系统组件一览
  *
  * 宿主用桩实现：头像/立绘/音频优先动态加载真实模块（../render、../audio），不存在或出错就用占位。
  */
 import type { AudioEngine } from '../audio/api';
-import { HEROES, HERO_IDS } from '../core/data/heroes';
+import { HEROES, HERO_IDS, SUMMONER } from '../core/data/heroes';
 import { ITEM_LIST } from '../core/data/items';
 import { createMockState } from '../core/mock';
 import type { BuffId, Difficulty, HeroId, HeroRole, PlayerTeam, RoleLane, SummonerSlot } from '../core/types';
@@ -343,6 +343,7 @@ function showDialogOnly(host: MenuHost, which: 'settings' | 'howto'): void {
     const d = openHowToDialog(shell);
     if (params.get('tab') === 'touch') (d.el.querySelectorAll('.sf-tab')[1] as HTMLElement | undefined)?.click();
     if (params.get('tab') === 'keys') (d.el.querySelectorAll('.sf-tab')[0] as HTMLElement | undefined)?.click();
+    if (params.get('tab') === 'win') (d.el.querySelectorAll('.sf-tab')[2] as HTMLElement | undefined)?.click();
   }
 }
 
@@ -395,8 +396,8 @@ function showIcons(): void {
       (['passive', 's1', 's2', 'ult'] as HeroIconSlot[]).map((s) => badgeCell(() => skillIcon(id, s), s === 'passive' ? def.passive.name : def.skills[s].name, SLOT_NAMES[s])),
     );
   }
-  const SUMMONER_NAMES: Record<SummonerSlot, string> = { recall: '回城', heal: '恢复', flash: '闪现' };
-  section('召唤师技能', (['recall', 'heal', 'flash'] as SummonerSlot[]).map((s) => badgeCell(() => summonerIcon(s), SUMMONER_NAMES[s], s)));
+  const SUMMONER_NAMES: Record<SummonerSlot, string> = { recall: SUMMONER.recall.name, heal: SUMMONER.heal.name, flash: SUMMONER.flash.name };
+  section('通用技能', (['recall', 'heal', 'flash'] as SummonerSlot[]).map((s) => badgeCell(() => summonerIcon(s), SUMMONER_NAMES[s], s)));
   section('装备', ITEM_LIST.map((it) => badgeCell(() => itemIcon(it.id), it.name, it.id)));
   section('状态', (Object.keys(BUFF_META) as BuffId[]).map((b) => badgeCell(() => buffIcon(b), BUFF_META[b].name, `${b} · ${BUFF_META[b].kind}`)));
   section('通用图标', UI_ICON_NAMES.map((n) => glyphCell(uiIcon(n), n)));

@@ -1,5 +1,5 @@
 /**
- * 网格类特效：光柱 / 光球与护罩 / 月牙斩弧 / 晶体弹 / 箭矢 / 飞刃 / 旋风漏斗 / 光环箍，以及受光的岩刺与碎岩。
+ * 网格类特效：光柱 / 光球与护罩 / 月牙斩弧 / 晶体弹 / 箭矢 / 飞刃 / 旋风漏斗 / 光环箍 / 吐息锥 / 匕首 / 盾影，以及受光的岩刺与碎岩。
  * 每种形状一个 InstancedMesh(同一份着色器)，没有实例时不产生 draw call。
  * 实例由 CPU 逐帧驱动：一次性实例按「起止缩放 + 速度 + 自转 + 淡入淡出」自动播放并回收；
  * 常驻实例(hold)由持有者逐帧改字段(投射物模型、护盾罩)。
@@ -33,6 +33,10 @@ export const SHAPE = {
   rock: 9,
   /** 开口锥(吐息)：口在原点、沿 +x 张开，长 1、末端半径 1；uv.x = 沿长度 0..1，uv.y = 绕轴 0..1 */
   breath: 10,
+  /** 柳叶匕首(荆轲)：刃尖朝 +x，全长约 1.45，重心在原点；配 MODE.solid */
+  dagger: 11,
+  /** 双弧盾面(樊哙)：立在原点、底边贴 y = 0、高 1、半宽约 0.31，盾面朝 +x 并微微后弧；配 MODE.plate */
+  shield: 12,
 } as const;
 
 /** 受光(走 Toon 材质、投影)的形状；其余形状都是自发光着色器 */
@@ -58,9 +62,11 @@ export const MODE = {
   hoop: 8,
   /** 吐息气流：沿长度流动的噪声，根部白热、向外转为本色，边缘被噪声侵蚀；k = 流速，progress = 收尾溶解 */
   breath: 9,
+  /** 盾影：亮包边 + 内圈细线 + 盾鼻，盾面只留一层很淡的填充；k = 填充强度，progress = 一道自下而上扫过的漆光 */
+  plate: 10,
 } as const;
 
-const CAP: Record<number, number> = { 0: 48, 1: 96, 2: 64, 3: 96, 4: 48, 5: 24, 6: 32, 7: 64, 8: 96, 9: 64, 10: 4 };
+const CAP: Record<number, number> = { 0: 48, 1: 96, 2: 64, 3: 96, 4: 48, 5: 24, 6: 32, 7: 64, 8: 96, 9: 64, 10: 4, 11: 24, 12: 24 };
 const POOL = 420;
 
 const VERTEX = /* glsl */ `
@@ -173,6 +179,18 @@ void main() {
     float prof = sin(vUv.y * PI);
     a *= min(1.0, prof * prof * 2.0);
     hot = pow(prof, 6.0) * 0.5;
+  } else if (mode > 9.5) {
+    // 盾影：uv.x 横跨盾面、uv.y 沿长轴，四条边就是 0 / 1；包边亮、盾面淡，中央一枚盾鼻
+    float ex = abs(vUv.x * 2.0 - 1.0);
+    float ey = abs(vUv.y * 2.0 - 1.0);
+    float rim = max(smoothstep(0.84, 0.95, ex), smoothstep(0.92, 0.975, ey));
+    float inner = max(1.0 - smoothstep(0.0, 0.05, abs(ex - 0.66)), 1.0 - smoothstep(0.0, 0.03, abs(ey - 0.8))) * step(ex, 0.71) * step(ey, 0.83);
+    float bd = length(vec2((vUv.x - 0.5) * 0.62, vUv.y - 0.5));
+    float boss = (1.0 - smoothstep(0.0, 0.02, abs(bd - 0.1))) + (1.0 - smoothstep(0.03, 0.05, bd));
+    float sheen = pr >= 0.0 ? (1.0 - smoothstep(0.0, 0.16, abs(vUv.y + ex * 0.25 - mix(-0.25, 1.35, pr)))) : 0.0;
+    float fill = k * (0.55 + 0.45 * ey) + sheen * 0.35;
+    a *= min(1.0, rim + inner * 0.45 + boss * 0.8 + fill);
+    hot = rim * 0.45 + boss * 0.35 + sheen * 0.4;
   } else {
     // 吐息：两层反向滚动的噪声沿锥体流出；越往外越稀、边缘被侵蚀，收尾时整体由根部向外溶解
     float u = vUv.x;
@@ -196,9 +214,9 @@ void main() {
   float fxA = min(1.0, a);
   if (fxA < 0.004) discard;
   vec3 fxC = c * (1.0 + hot * 0.7) + vec3(hot * 0.3 * max(c.r, max(c.g, c.b)));
-  // §7.1 亮度上限：大面积的壳 / 柱 / 罩 / 漩涡 / 吐息主体 ≤0.9(白热部分放宽到 1.6)，线状的斩弧 / 环箍 ≤1.6，
+  // §7.1 亮度上限：大面积的壳 / 柱 / 罩 / 漩涡 / 吐息主体 ≤0.9(白热部分放宽到 1.6)，线状的斩弧 / 环箍 / 盾影 ≤1.6，
   // 小弹体与实体交给输出段的全局上限(3.2)
-  float capL = (mode > 0.5 && mode < 1.5) || (mode > 2.5 && mode < 3.5) || (mode > 4.5 && mode < 6.5) || mode > 8.5 ? 0.9 + 0.7 * min(1.0, hot * 2.0) : (mode > 3.5 && mode < 4.5) || (mode > 7.5 && mode < 8.5) ? 1.6 : 8.0;
+  float capL = (mode > 0.5 && mode < 1.5) || (mode > 2.5 && mode < 3.5) || (mode > 4.5 && mode < 6.5) || (mode > 8.5 && mode < 9.5) ? 0.9 + 0.7 * min(1.0, hot * 2.0) : (mode > 3.5 && mode < 4.5) || (mode > 7.5 && mode < 8.5) || mode > 9.5 ? 1.6 : 8.0;
   float capM = max(fxC.r, max(fxC.g, fxC.b));
   float capK = capL * 0.7;
   if (capM > capK) fxC *= (capK + (capM - capK) / (1.0 + (capM - capK) / (capL - capK))) / capM;
@@ -487,6 +505,101 @@ function buildBreath(): THREE.BufferGeometry {
   return white(g);
 }
 
+/** 一组三角形(逐三角形给明暗)拼成的硬切面几何 */
+function facets(tris: [number[], number[], number[], number][]): THREE.BufferGeometry {
+  const pos: number[] = [];
+  const colArr: number[] = [];
+  for (const [a, b, c, shade] of tris) {
+    pos.push(...a, ...b, ...c);
+    for (let i = 0; i < 3; i++) colArr.push(shade, shade, shade * 1.04);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(new Array((pos.length / 3) * 2).fill(0), 2));
+  g.setAttribute('color', new THREE.Float32BufferAttribute(colArr, 3));
+  g.computeVertexNormals();
+  return g;
+}
+
+function buildDagger(): THREE.BufferGeometry {
+  // 柳叶匕首：双刃、中间起脊(菱形截面)，一字格，缠绳短柄，环首。刃尖朝 +x，整体前移让重心落在原点
+  const OX = -0.3;
+  const prof: [number, number][] = [[0, 0.07], [0.08, 0.105], [0.3, 0.125], [0.6, 0.1], [0.85, 0.055], [1, 0]];
+  const tris: [number[], number[], number[], number][] = [];
+  for (let i = 0; i < prof.length - 1; i++) {
+    const [x0, w0] = prof[i];
+    const [x1, w1] = prof[i + 1];
+    const h0 = 0.036 * (1 - x0 * 0.8);
+    const h1 = 0.036 * (1 - x1 * 0.8);
+    for (const sy of [1, -1]) {
+      for (const sz of [1, -1]) {
+        const r0 = [x0 + OX, sy * h0, 0];
+        const r1 = [x1 + OX, sy * h1, 0];
+        const e0 = [x0 + OX, 0, sz * w0];
+        const e1 = [x1 + OX, 0, sz * w1];
+        // 四个斜面明暗各不相同：转起来有一闪一闪的寒光
+        const shade = sy > 0 ? (sz > 0 ? 1.55 : 1.15) : sz > 0 ? 0.95 : 0.75;
+        if (sy * sz > 0) tris.push([r0, e0, r1, shade], [r1, e0, e1, shade]);
+        else tris.push([r0, r1, e0, shade], [r1, e1, e0, shade]);
+      }
+    }
+  }
+  const box = (x0: number, x1: number, hy: number, hz: number, shade: number): void => {
+    const v = (i: number): number[] => [(i & 1 ? x1 : x0) + OX, i & 2 ? hy : -hy, i & 4 ? hz : -hz];
+    for (const [a, b, c, d, k] of [[0, 1, 3, 2, 0.8], [4, 6, 7, 5, 1], [0, 4, 5, 1, 0.6], [2, 3, 7, 6, 1.2], [0, 2, 6, 4, 0.7], [1, 5, 7, 3, 0.9]] as const) {
+      tris.push([v(a), v(b), v(c), shade * k], [v(a), v(c), v(d), shade * k]);
+    }
+  };
+  box(-0.045, 0.02, 0.032, 0.16, 0.62);
+  box(-0.42, -0.045, 0.034, 0.04, 0.2);
+  box(-0.5, -0.42, 0.05, 0.07, 0.55);
+  return facets(tris);
+}
+
+/** 盾面轮廓(与樊哙模型的漆盾同一套折线)：上缘中间起尖、两侧各一道圆弧，下缘两角上收；a = 0 中线 → 1 侧边 */
+const SHIELD_TOP = [0.15, 0.045, 0.085, 0.1, 0.08, 0.02, -0.13];
+const SHIELD_BOT = [-0.045, -0.03, -0.012, 0, 0.012, 0.045, 0.14];
+function shieldEdge(line: number[], a: number): number {
+  const f = Math.min(1, Math.max(0, a)) * (line.length - 1);
+  const i = Math.min(line.length - 2, Math.floor(f));
+  return (line[i] + (line[i + 1] - line[i]) * (f - i)) / 1.45;
+}
+
+function buildShield(): THREE.BufferGeometry {
+  const NU = 12;
+  const NV = 8;
+  const HW = 0.31;
+  const pos: number[] = [];
+  const uv: number[] = [];
+  const nor: number[] = [];
+  const idx: number[] = [];
+  for (let j = 0; j <= NV; j++) {
+    const v = j / NV;
+    for (let i = 0; i <= NU; i++) {
+      const u = i / NU;
+      const a = Math.abs(u * 2 - 1);
+      const hw = HW * (0.93 + 0.07 * Math.cos(v * Math.PI * 2));
+      const z = (u * 2 - 1) * hw;
+      const y0 = 0.031 + shieldEdge(SHIELD_BOT, a);
+      const y1 = 0.897 + shieldEdge(SHIELD_TOP, a);
+      const y = y0 + (y1 - y0) * v;
+      pos.push(-0.075 * (z / HW) * (z / HW), y, z);
+      uv.push(u, v);
+      nor.push(1, 0, 0);
+      if (i < NU && j < NV) {
+        const b = j * (NU + 1) + i;
+        idx.push(b, b + 1, b + NU + 1, b + 1, b + NU + 2, b + NU + 1);
+      }
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+  g.setIndex(idx);
+  return white(g);
+}
+
 function withFx(geo: THREE.BufferGeometry, glow: (x: number, y: number, z: number) => number): void {
   const pos = geo.getAttribute('position');
   const fx = new Uint8Array(pos.count * 4);
@@ -612,6 +725,8 @@ export class GlowSystem {
       buildSpike(),
       buildRock(),
       buildBreath(),
+      buildDagger(),
+      buildShield(),
     ];
     geos.forEach((geo, shape) => {
       const cap = CAP[shape];

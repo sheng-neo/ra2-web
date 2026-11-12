@@ -38,24 +38,25 @@ export const HEROES_SFX = {
   // ═════════════ 施放提示 ═════════════
   cast_panyue_s1: def('技能施放', '樊哙·侧盾闯帐', (p) => {
     // 一通鼓，盾沿两下由低到高
-    drum(p, 0, 1, 1.15);
-    shield(p, D4, 0.005, 0.26, 0.7);
-    shield(p, A4, 0.1, 0.36, 0.8);
+    drum(p, 0, 0.6, 1.15);
+    shield(p, D4, 0.005, 0.26, 0.9);
+    shield(p, A4, 0.1, 0.36, 1);
   }, CAST),
   cast_panyue_s2: def('技能施放', '樊哙·拥盾怒目', (p) => {
     // 两通鼓由高到低：站定
-    drum(p, 0, 0.9, 1.1);
-    shield(p, D4, 0.005, 0.24, 0.6);
-    drum(p, 0.12, 1, 0.82, 0.5);
-    shield(p, A3, 0.125, 0.5, 0.8);
+    drum(p, 0, 0.55, 1.1);
+    shield(p, D4, 0.005, 0.24, 0.8);
+    drum(p, 0.12, 0.6, 0.82, 0.5);
+    shield(p, A3, 0.125, 0.5, 1);
   }, CAST),
   cast_panyue_ult: def('技能施放', '樊哙·死且不避', (p) => {
     // 三通鼓越擂越高，最后一下带起盾鸣
-    drum(p, 0, 0.8, 0.9, 0.3);
-    drum(p, 0.09, 0.9, 1.1, 0.3);
-    drum(p, 0.18, 1, 1.35, 0.5);
-    shield(p, D4, 0.185, 0.6, 0.9);
-    p.noise({ k: 'brown', flt: 'lowpass', fc: 260, a: 0.3, d: 0.3, g: 0.8 });
+    drum(p, 0, 0.5, 0.9, 0.3);
+    drum(p, 0.09, 0.55, 1.1, 0.3);
+    drum(p, 0.18, 0.65, 1.35, 0.5);
+    shield(p, A3, 0.005, 0.2, 0.5);
+    shield(p, D4, 0.185, 0.6, 1.1);
+    p.noise({ k: 'brown', flt: 'lowpass', fc: 260, a: 0.3, d: 0.3, g: 0.5 });
   }, { ...CAST, len: 0.9, loud: -18 }),
 
   cast_chijin_s1: def('技能施放', '程咬金·拦腰一斧(一声)', (p) => {
@@ -76,8 +77,8 @@ export const HEROES_SFX = {
   }, { ...CAST, ...TUNED, rev: 0.26 }),
   cast_xingli_s2: def('技能施放', '王昭君·回环收弦', (p) => {
     // 外推一音：拨响后把弦推高一个全音
-    pipa(p, A5, 0, 0.5, 1, B5);
-    pipa(p, E5, 0.09, 0.4, 0.5);
+    pipa(p, A5, 0, 0.6, 1, B5);
+    pipa(p, E5, 0.16, 0.4, 0.5);
   }, { ...CAST, ...TUNED, len: 0.7, rev: 0.26 }),
   cast_xingli_ult: def('技能施放', '王昭君·雁落平沙', (p) => {
     [E5, B5, E6, G6].forEach((f, i) => pipa(p, f, i * 0.07, i === 3 ? 0.7 : 0.3, 0.7 + i * 0.1));
@@ -87,7 +88,7 @@ export const HEROES_SFX = {
   cast_fengling_s1: def('技能施放', '李广·白羽没石', (p) => {
     // 拉满弓的吱呀
     creak(p, 0, 0.26, 1);
-    p.osc({ w: 'triangle', f: 98, f1: 147, a: 0.2, d: 0.08, g: 0.3 });
+    p.osc({ w: 'triangle', f: 98, f1: 147, a: 0.2, d: 0.08, g: 0.1 });
   }, CAST),
   cast_fengling_s2: def('技能施放', '李广·飞将腾身', (p) => {
     twang(p, D4, 0, 0.1, 0.6);
@@ -95,15 +96,15 @@ export const HEROES_SFX = {
   }, CAST),
   cast_fengling_ult: def('技能施放', '李广·箭锁阴山', (p) => {
     // 两拍战鼓 + 开弓
-    drum(p, 0, 0.9, 1.25, 0.3);
-    drum(p, 0.14, 1, 1.25, 0.36);
-    creak(p, 0.05, 0.36, 0.7);
+    drum(p, 0, 0.6, 1.3, 0.3);
+    drum(p, 0.14, 0.7, 1.3, 0.36);
+    creak(p, 0.05, 0.36, 1.3);
   }, { ...CAST, len: 0.9, loud: -18 }),
 
   cast_yeque_s1: def('技能施放', '荆轲·风萧易水', (p) => {
     zhu(p, D5, 0, 0.32, 1);
     // 暗哑的低音：杀气的底色
-    p.osc({ f: 73.4, f1: 55, a: 0.01, d: 0.26, g: 0.4 });
+    p.osc({ f: 73.4, f1: 55, a: 0.01, d: 0.26, g: 0.25 });
     p.noise({ flt: 'bandpass', fc: 900, fc1: 2200, q: 4, a: 0.05, d: 0.2, g: 0.2 });
   }, { ...CAST, ...TUNED }),
   cast_yeque_s2: def('技能施放', '荆轲·引匕一掷', (p) => {
@@ -116,7 +117,7 @@ export const HEROES_SFX = {
     // 两个下行的筑音，落在三全音上：不祥的预告
     zhu(p, D5, 0, 0.22, 0.8);
     zhu(p, mtof(68), 0.13, 0.5, 1);
-    p.osc({ f: 62, f1: 40, t: 0.02, a: 0.004, d: 0.24, g: 0.6 });
+    p.osc({ f: 62, f1: 40, t: 0.02, a: 0.004, d: 0.24, g: 0.4 });
     p.noise({ flt: 'bandpass', fc: 1200, fc1: 500, q: 4, a: 0.05, d: 0.35, g: 0.2 });
   }, { ...CAST, ...TUNED, len: 0.8, loud: -18 }),
 
@@ -138,9 +139,9 @@ export const HEROES_SFX = {
   fx_panyue_passive_hit: def('技能特效', '樊哙·覆盾震地', (p) => {
     // 「咚」+ 盾面嗡鸣
     const dr = p.drive(2);
-    p.osc({ f: 100, f1: 36, ft: 0.14, a: 0.003, d: 0.46, g: 0.7, to: dr });
+    p.osc({ f: 100, f1: 36, ft: 0.14, a: 0.003, d: 0.46, g: 0.5, to: dr });
     p.noise({ k: 'pink', flt: 'lowpass', fc: 900, fc1: 220, a: 0.003, d: 0.34, g: 0.5, to: dr });
-    shield(p, 196, 0, 0.75, 0.9);
+    shield(p, 247, 0, 0.75, 1);
     p.noise({ flt: 'bandpass', fc: 1500, q: 0.8, a: 0.001, d: 0.045, g: 0.7 });
     // 溅起的碎土
     p.scatter(3, 0.05, 0.2, (at) => p.noise({ k: 'pink', flt: 'bandpass', fc: p.rr(300, 800), q: 2, t: at, a: 0.001, d: 0.05, g: 0.25 }));
@@ -156,20 +157,20 @@ export const HEROES_SFX = {
   }, { ...FX, loud: -19, len: 0.5 }),
   fx_panyue_s1_impact: def('技能特效', '樊哙·侧盾撞击', (p) => {
     const dr = p.drive(2.5);
-    p.osc({ f: 108, f1: 34, ft: 0.15, a: 0.003, d: 0.5, g: 0.85, to: dr });
-    p.osc({ w: 'triangle', f: 250, f1: 85, ft: 0.1, a: 0.002, d: 0.2, g: 0.45, to: dr });
+    p.osc({ f: 108, f1: 34, ft: 0.15, a: 0.003, d: 0.5, g: 0.6, to: dr });
+    p.osc({ w: 'triangle', f: 250, f1: 85, ft: 0.1, a: 0.002, d: 0.2, g: 0.4, to: dr });
     p.noise({ k: 'pink', flt: 'lowpass', fc: 2400, fc1: 220, a: 0.002, d: 0.3, g: 0.8, to: dr });
     p.noise({ flt: 'highpass', fc: 2600, a: 0.001, d: 0.014, g: 0.5 });
-    shield(p, 262, 0, 0.7, 1);
+    shield(p, 294, 0, 0.7, 1.1);
     // 被撞翻的卫士与交戟：几下错落的闷响
     p.scatter(4, 0.08, 0.3, (at) => p.osc({ f: p.rr(90, 150), f1: 50, t: at, a: 0.002, d: 0.08, g: p.rr(0.2, 0.35) }));
     p.ring(1150, IRON, { t: 0.04, a: 0.001, d: 0.12, g: 0.06 });
   }, { ...FX, loud: -13, len: 0.9, rev: 0.24 }),
   fx_panyue_s2_cast: def('技能特效', '樊哙·拥盾一喝', (p) => {
     // 盾下缘顿地
-    p.osc({ f: 128, f1: 55, a: 0.002, d: 0.2, g: 0.9 });
+    p.osc({ f: 128, f1: 55, a: 0.002, d: 0.2, g: 0.6 });
     p.noise({ k: 'pink', flt: 'lowpass', fc: 800, a: 0.001, d: 0.06, g: 0.5 });
-    shield(p, 220, 0, 0.9, 0.8);
+    shield(p, 262, 0, 0.9, 0.9);
     // 一声喝(震慑环)
     shout(p, 0.04, 0.3, 0.9);
     // 盾影合拢成护盾：一道上行的铜色泛音
@@ -182,20 +183,22 @@ export const HEROES_SFX = {
     p.scatter(3, 0.02, 0.2, (at) => p.ring(p.rr(800, 1300), IRON, { t: at, a: 0.001, d: 0.05, g: 0.05 }));
   }, { ...FX, loud: -19, len: 0.6 }),
   fx_panyue_ult_land: def('技能特效', '樊哙·砸地(大鼓 + 盾震)', (p) => {
-    const dr = p.drive(3);
+    // 失真器的输出接近满幅：后面压一道增益，给盾震和尘浪的中频留出峰值余量
+    const dr = p.drive(3, p.gain(0.8));
     // 大鼓：两层低频冲击错开
-    p.osc({ f: 76, f1: 25, ft: 0.5, a: 0.004, d: 1.5, g: 0.9, to: dr });
-    p.osc({ f: 150, f1: 48, ft: 0.2, a: 0.003, d: 0.5, g: 0.5, to: dr });
-    p.osc({ f: 56, f1: 30, ft: 0.4, t: 0.07, a: 0.006, d: 1.1, g: 0.45, to: dr });
+    p.osc({ f: 76, f1: 25, ft: 0.5, a: 0.004, d: 1.5, g: 0.75, to: dr });
+    p.osc({ f: 150, f1: 48, ft: 0.2, a: 0.003, d: 0.5, g: 0.35, to: dr });
+    p.osc({ f: 56, f1: 30, ft: 0.4, t: 0.07, a: 0.006, d: 1.1, g: 0.3, to: dr });
     // 厚尘浪
     p.noise({ k: 'pink', flt: 'lowpass', fc: 1800, fc1: 160, a: 0.004, d: 1.2, g: 0.9, to: dr });
+    p.noise({ k: 'pink', flt: 'bandpass', fc: 700, q: 0.7, a: 0.01, d: 0.5, g: 0.6 });
     p.noise({ flt: 'bandpass', fc: 1200, q: 0.5, a: 0.001, d: 0.09, g: 1 });
     p.noise({ flt: 'highpass', fc: 3000, a: 0.001, d: 0.02, g: 0.5 });
     // 盾震：大盾印的长鸣
-    shield(p, 147, 0, 1.6, 1.1);
-    shield(p, 221, 0.02, 1.1, 0.5);
+    shield(p, 262, 0, 1.6, 0.8);
+    shield(p, 392, 0.02, 1.1, 0.45);
     // 三道由内向外的冲击弧
-    [0.1, 0.24, 0.4].forEach((t, i) => p.noise({ k: 'pink', flt: 'bandpass', fc: 500 - i * 110, q: 0.9, t, a: 0.03, d: 0.3, g: 0.45 - i * 0.1 }));
+    [0.1, 0.24, 0.4].forEach((t, i) => p.noise({ k: 'pink', flt: 'bandpass', fc: 900 - i * 190, q: 0.9, t, a: 0.03, d: 0.3, g: 0.6 - i * 0.1 }));
     // 落回地面的碎土块
     p.scatter(9, 0.15, 1.1, (at) => p.osc({ f: p.rr(80, 160), f1: 50, t: at, a: 0.002, d: p.rr(0.05, 0.1), g: p.rr(0.12, 0.3) * (1.4 - at) }));
   }, { ...FX, loud: -11, len: 2.3, gap: 0.2, poly: 2, prio: 3, rev: 0.3 }),
@@ -204,9 +207,9 @@ export const HEROES_SFX = {
   fx_chijin_passive_hit: def('技能特效', '程咬金·重斧(带回血音)', (p) => {
     // 「哐」
     const dr = p.drive(2.5);
-    p.osc({ f: 150, f1: 48, ft: 0.1, a: 0.002, d: 0.28, g: 0.8, to: dr });
-    p.noise({ flt: 'bandpass', fc: 1700, q: 0.8, a: 0.001, d: 0.06, g: 0.8, to: dr });
-    iron(p, 392, 0, 1, 0.3);
+    p.osc({ f: 150, f1: 48, ft: 0.1, a: 0.002, d: 0.28, g: 0.5, to: dr });
+    p.noise({ flt: 'bandpass', fc: 1700, q: 0.8, a: 0.001, d: 0.06, g: 0.7, to: dr });
+    iron(p, 392, 0, 1, 0.34);
     p.scatter(4, 0.02, 0.18, (at) => p.noise({ flt: 'highpass', fc: p.rr(3500, 6500), t: at, a: 0.001, d: 0.01, g: 0.18 }));
     // 回血：三个很短的上行音
     [G5, mtof(84), E6].forEach((f, i) => p.osc({ w: 'glass', f, t: 0.09 + i * 0.05, a: 0.004, d: 0.14, g: 0.16 }));
@@ -264,7 +267,7 @@ export const HEROES_SFX = {
     p.lfo(rip.gain, 70, 0.5, 0, 0.3);
     p.noise({ flt: 'bandpass', fc: 1800, fc1: 6500, fct: 0.16, q: 1.4, a: 0.012, d: 0.2, g: 0.6, to: rip });
     // 音波推出去的一下
-    p.osc({ f: 150, f1: 70, a: 0.003, d: 0.12, g: 0.5 });
+    p.osc({ f: 150, f1: 70, a: 0.003, d: 0.12, g: 0.35 });
   }, { ...FX, ...TUNED, loud: -16, len: 0.6, rev: 0.24 }),
   fx_xingli_s2_burst: def('技能特效', '王昭君·回环收拨', (p) => {
     // 向内收拢的气声
@@ -272,8 +275,8 @@ export const HEROES_SFX = {
     // 收拨：四弦由高到低一扫而过(空弦 A D E A)
     [A5, E5, D5, A4].forEach((f, i) => pipa(p, f, 0.12 + i * 0.02, 0.62 - i * 0.05, 0.9));
     // 拉拽的一沉
-    p.osc({ f: 124, f1: 40, t: 0.12, a: 0.003, d: 0.5, g: 0.8 });
-    p.noise({ k: 'pink', flt: 'lowpass', fc: 2200, fc1: 260, t: 0.12, a: 0.002, d: 0.28, g: 0.6 });
+    p.osc({ f: 124, f1: 40, t: 0.12, a: 0.003, d: 0.5, g: 0.55 });
+    p.noise({ k: 'pink', flt: 'lowpass', fc: 2200, fc1: 260, t: 0.12, a: 0.002, d: 0.28, g: 0.5 });
   }, { ...FX, ...TUNED, loud: -14, len: 1.1, rev: 0.28 }),
   fx_xingli_ult_cast: def('技能特效', '王昭君·起曲引雁', (p) => {
     // 一小段渐强渐弱的轮指 + 低处两根空弦
@@ -282,28 +285,28 @@ export const HEROES_SFX = {
     for (let i = 0; i < n; i++) pick(p, i % 4 === 3 ? D6 : B5, 0.03 + i * 0.062, 0.2, 0.25 + 0.6 * Math.sin((Math.PI * i) / n), i % 2 === 0, lp);
     pipa(p, E4, 0, 0.9, 0.7);
     pipa(p, B4, 0.05, 0.8, 0.5);
-    p.osc({ f: 82.4, a: 0.3, d: 0.42, g: 0.3 });
+    p.osc({ f: 82.4, a: 0.3, d: 0.42, g: 0.15 });
     // 远远的一声雁鸣
     honk(p, 0.5, 0.22);
   }, { ...FX, ...TUNED, loud: -16, len: 1.2, rev: 0.3 }),
   fx_xingli_meteor: def('技能特效', '王昭君·落雁', (p) => {
     // 雁影俯冲：一声下行五度的滑音拨弦 + 翼尖带起的风
     const top = GOOSE[Math.floor(p.rnd() * GOOSE.length) % GOOSE.length];
-    pipa(p, top, 0, 0.3, 1, top * 0.667);
+    pipa(p, top, 0, 0.42, 1, top * 0.667);
     p.noise({ flt: 'bandpass', fc: 3600, fc1: 1200, fct: 0.11, q: 2, a: 0.07, d: 0.04, g: 0.3 });
     // 落地：音波环的一震 + 轻的落沙
-    p.osc({ f: 150, f1: 48, ft: 0.14, t: 0.11, a: 0.003, d: 0.4, g: 0.8 });
-    p.noise({ k: 'pink', flt: 'lowpass', fc: 2600, fc1: 300, t: 0.11, a: 0.002, d: 0.26, g: 0.6 });
+    p.osc({ f: 150, f1: 48, ft: 0.14, t: 0.11, a: 0.003, d: 0.4, g: 0.5 });
+    p.noise({ k: 'pink', flt: 'lowpass', fc: 2600, fc1: 300, t: 0.11, a: 0.002, d: 0.26, g: 0.45 });
     p.noise({ flt: 'highpass', fc: 4500, t: 0.13, a: 0.03, d: 0.35, g: 0.12 });
   }, { ...FX, ...TUNED, loud: -15, len: 0.8, gap: 0.09, poly: 4, rev: 0.26 }),
 
   // ═════════════ 李广 ═════════════
   fx_fengling_s1_cast: def('技能特效', '李广·白羽没石出手', (p) => {
     // 沉的一声「嘣」+ 「咻」
-    twang(p, 104, 0, 0.34, 1.1);
-    p.osc({ f: 120, f1: 58, a: 0.003, d: 0.14, g: 0.4 });
-    whistle(p, 0.01, 0.3, 0.9, 4200, 1900);
-    p.noise({ flt: 'bandpass', fc: 2400, fc1: 900, q: 1.5, t: 0.01, a: 0.015, d: 0.22, g: 0.5 });
+    twang(p, 123, 0, 0.34, 1.1);
+    p.osc({ f: 120, f1: 58, a: 0.003, d: 0.14, g: 0.25 });
+    whistle(p, 0.01, 0.3, 0.45, 4200, 1900);
+    p.noise({ flt: 'bandpass', fc: 2400, fc1: 900, q: 1.5, t: 0.01, a: 0.015, d: 0.22, g: 0.35 });
   }, { ...FX, loud: -16, len: 0.6 }),
   fx_fengling_s2_dash: def('技能特效', '李广·飞将腾身(落地上弦)', (p) => {
     // 腾身：衣甲带风
@@ -358,16 +361,17 @@ export const HEROES_SFX = {
   fx_yeque_ult_strike: def('技能特效', '荆轲·图穷匕见', (p) => {
     // 极短的留白，然后一声干脆的「嚓」+ 低音鼓
     const T = 0.045;
-    const dr = p.drive(3);
-    p.noise({ flt: 'highpass', fc: 3200, t: T, a: 0.001, d: 0.035, g: 1, to: dr });
+    const dr = p.drive(3, p.gain(0.6));
+    p.noise({ flt: 'highpass', fc: 3200, t: T, a: 0.001, d: 0.04, g: 1.1 });
+    p.noise({ flt: 'bandpass', fc: 5200, q: 1.5, t: T, a: 0.001, d: 0.06, g: 0.6 });
     // 自下而上的一道寒光
     p.noise({ flt: 'bandpass', fc: 2600, fc1: 7000, q: 2, t: T, a: 0.004, d: 0.1, g: 0.5 });
     p.ring(2500, DAGGER, { t: T, a: 0.001, d: 0.45, g: 0.2 });
-    p.osc({ f: 110, f1: 36, ft: 0.13, t: T + 0.01, a: 0.003, d: 0.42, g: 0.75, to: dr });
-    p.noise({ k: 'pink', flt: 'lowpass', fc: 1400, fc1: 300, t: T + 0.01, a: 0.001, d: 0.07, g: 0.4, to: dr });
+    p.osc({ f: 110, f1: 36, ft: 0.13, t: T + 0.01, a: 0.003, d: 0.42, g: 0.4, to: dr });
+    p.noise({ k: 'pink', flt: 'lowpass', fc: 1400, fc1: 300, t: T + 0.01, a: 0.001, d: 0.07, g: 0.3, to: dr });
     // 收尾：低处一组相距三全音的筑音
-    zhu(p, D4, T + 0.02, 0.5, 0.5);
-    zhu(p, mtof(56), T + 0.03, 0.5, 0.4);
+    zhu(p, D4, T + 0.02, 0.5, 0.6);
+    zhu(p, mtof(56), T + 0.03, 0.5, 0.5);
   }, { ...FX, loud: -13, len: 0.9, prio: 3, rev: 0.24 }),
   yeque_refresh: def('技能特效', '荆轲·得手(技能刷新)', (p) => {
     // 一声冷的击弦泛音
@@ -460,7 +464,7 @@ export const HEROES_SFX = {
     }
     // 沙面上的风 + 低处的空弦
     p.noise({ flt: 'highpass', fc: 5500, a: 0.3, h: hold, d: 0.6, g: 0.05, to: g });
-    p.osc({ f: 82.4, a: 0.3, h: hold, d: 0.5, g: 0.25, to: g });
+    p.osc({ f: 82.4, a: 0.3, h: hold, d: 0.5, g: 0.08, to: g });
   }, { ...BED, ...TUNED, loud: -27, len: 3, rev: 0.3 }),
   area_fengling_rain: def('区域铺底', '箭锁阴山·箭阵', (p) => {
     const d = p.dur;

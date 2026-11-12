@@ -235,13 +235,16 @@ export function analyze(buf: AudioBuffer, envPoints = 64, envActiveOnly = false)
   };
 }
 
-/** 渲染单个音效(干声 + 混响，旁路压限，增益 1、居中)。返回缓冲与渲染时长 */
-export async function renderSfx(key: SfxKey, v = 0): Promise<AudioBuffer> {
+/**
+ * 渲染单个音效(干声 + 混响，旁路压限，增益 1、居中)。
+ * dur 只对跟随时长的键有意义(区域铺底、回城引导、巨龙吐息)。
+ */
+export async function renderSfx(key: SfxKey, v = 0, dur?: number): Promise<AudioBuffer> {
   const def = SFX[key];
-  const seconds = def.len + (def.rev > 0 ? 2.2 : 0.4);
+  const seconds = Math.max(def.len, dur ?? 0) + (def.rev > 0 ? 2.2 : 0.4);
   const ctx = new OfflineAudioContext(2, Math.ceil(seconds * SR), SR);
   const mixer = new Mixer(ctx, { dynamics: false, clock: () => 0 });
-  mixer.play(key, { v, pan: 0 });
+  mixer.play(key, { v, pan: 0, dur });
   return ctx.startRendering();
 }
 

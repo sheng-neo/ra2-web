@@ -1,7 +1,8 @@
 /**
  * 加载页：蓝方 5 人 vs 红方 5 人的对阵卡 + 进度条 + 轮播小贴士。
+ * 对阵卡写全称：卡片窄，拆成两行——职业(图标 + 文字，职业色)在上，名字在下；称号只在够高的横屏里显示。
  */
-import { HEROES } from '../../core/data/heroes';
+import { HEROES, heroFullName } from '../../core/data/heroes';
 import type { HeroId, PlayerTeam } from '../../core/types';
 import type { LoadingScreen, MatchChoice, MenuHost } from '../api';
 import { LANE_NAMES, laneIcon, roleIcon, uiIcon } from '../icons';
@@ -22,6 +23,12 @@ const TIPS: string[] = [
   '被防御塔连续命中，伤害会越打越高——及时退出攻击范围。',
   '轻点技能键是智能施法；按住拖动可以手动瞄准，拖到取消区松手则取消。',
   '连杀会抬高你的赏金，被终结时对手将获得额外金币。',
+  // 五位英雄各一条：告诉玩家对面(或队友)最要紧的一个特点
+  '樊哙的大盾最扛打：让他先冲，其他人跟上。',
+  '程咬金放完技能后的下一下普攻会回血，换血别光放技能。',
+  '王昭君的技能打中同一个人三次会眩晕，被她连中两下就该躲了。',
+  '李广站着不动连续射击会越射越快，优先打断他。',
+  '荆轲专挑残血下手：血量低于四成时离他远一点。',
 ];
 
 const CSS = sfCss(`
@@ -54,8 +61,8 @@ const CSS = sfCss(`
 .sf-lcard::after { content: ''; position: absolute; left: 0; right: 0; top: 0; height: max(2px, 3u); z-index: 2; background: var(--team); box-shadow: 0 0 10u var(--team); }
 .sf-lcard__tag { position: absolute; left: 50%; top: 7u; z-index: 3; transform: translateX(-50%); }
 .sf-lcard__info { position: absolute; left: 0; right: 0; bottom: 0; z-index: 3; display: flex; flex-direction: column; align-items: center; gap: 2u; padding: 0 3u 9u; text-align: center; }
-.sf-lcard__role { display: grid; place-items: center; width: max(20px, 26u); height: max(20px, 26u); margin-bottom: 2u; border-radius: 50%; color: #08101f; background: var(--role); box-shadow: 0 0 0 max(1.5px, 2u) #0a1128, 0 0 10u color-mix(in srgb, var(--role) 60%, transparent); }
-.sf-lcard__role .sf-i { width: 62%; height: 62%; }
+.sf-lcard__role { display: inline-flex; align-items: center; gap: 3u; height: max(18px, 22u); margin-bottom: 2u; padding: 0 7u 0 3u; border-radius: 99px; font-size: var(--sf-fs-xs); font-weight: 800; line-height: 1; letter-spacing: 0.08em; white-space: nowrap; color: #08101f; background: var(--role); box-shadow: 0 0 0 max(1.5px, 2u) #0a1128, 0 0 10u color-mix(in srgb, var(--role) 60%, transparent); }
+.sf-lcard__role .sf-i { width: max(13px, 15u); height: max(13px, 15u); vertical-align: 0; }
 .sf-lcard__name { font-weight: 800; font-size: max(13px, 19u); line-height: 1.2; letter-spacing: 0.12em; margin-right: -0.12em; color: var(--sf-c-text); white-space: nowrap; }
 .sf-lcard__title { font-size: var(--sf-fs-xs); line-height: 1.3; color: var(--sf-c-text-3); white-space: nowrap; }
 .sf-lcard__lane { display: inline-flex; align-items: center; gap: 3u; font-size: var(--sf-fs-xs); line-height: 1.3; color: var(--sf-c-text-2); white-space: nowrap; }
@@ -105,6 +112,8 @@ const CSS = sfCss(`
   .sf-lcard__lane { display: none; }
   .sf-lcard__tag { top: 3px; }
   .sf-lcard__tag .sf-badge { height: 15px; padding: 0 4px; font-size: 10px; }
+  .sf-lcard__role { height: 16px; padding: 0 5px 0 2px; font-size: 10px; letter-spacing: 0.02em; }
+  .sf-lcard__role .sf-i { width: 12px; height: 12px; }
   .sf-lcard__name { font-size: 12px; letter-spacing: 0.04em; margin-right: 0; }
 }
 @media (orientation: portrait) {
@@ -118,12 +127,14 @@ const CSS = sfCss(`
   .sf-lcard__title { display: none; }
   .sf-loading__team--red .sf-loading__team-name { flex-direction: row; }
   .sf-loading__team--red .sf-loading__team-name::after { background: linear-gradient(90deg, var(--team), transparent); }
+  /* 顶部那行字窄屏放不下：收紧字距，整段整段地换行 */
+  .sf-loading__mode { flex-wrap: wrap; justify-content: center; gap: 2u 8u; letter-spacing: 0.08em; white-space: nowrap; }
 }
 `);
 
 function card(host: MenuHost, heroId: HeroId, team: PlayerTeam, me: boolean, index: number): HTMLElement {
   const def = HEROES[heroId];
-  const role = h('span', 'sf-lcard__role', icon(roleIcon(def.role)));
+  const role = h('span', 'sf-lcard__role', icon(roleIcon(def.role)), def.roleName);
   const el = h(
     'div',
     `sf-lcard${me ? ' is-me' : ''}`,
@@ -138,6 +149,7 @@ function card(host: MenuHost, heroId: HeroId, team: PlayerTeam, me: boolean, ind
       h('span', 'sf-lcard__lane', icon(laneIcon(def.lane)), LANE_NAMES[def.lane]),
     ),
   );
+  el.setAttribute('aria-label', `${heroFullName(def)}，${def.title}`);
   el.style.setProperty('--hero', def.palette.glow);
   el.style.setProperty('--role', ROLE_COLOR[def.role]);
   // 蓝方自外向内、红方自内向外依次入场
@@ -171,7 +183,7 @@ export function showLoading(root: HTMLElement, choice: MatchChoice, host: MenuHo
       'header',
       'sf-loading__head',
       h('h2', 'sf-title sf-metal', '星陨高原'),
-      h('p', 'sf-loading__mode', '5v5 对战', h('i'), `你的英雄：${HEROES[choice.heroId].name}`, h('i'), `对手难度：${DIFFICULTY_META[choice.difficulty].label}`),
+      h('p', 'sf-loading__mode', '5v5 对战', h('i'), `你的英雄：${heroFullName(choice.heroId)}`, h('i'), `对手难度：${DIFFICULTY_META[choice.difficulty].label}`),
     ),
     h('div', 'sf-loading__versus', team(0), h('div', 'sf-loading__vs', h('span'), h('b', 'sf-metal', 'VS')), team(1)),
     h('footer', 'sf-loading__foot', tip, h('div', 'sf-loading__bar', label, pct, progress.el)),

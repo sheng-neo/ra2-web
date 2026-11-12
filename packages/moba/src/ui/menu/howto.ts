@@ -1,9 +1,14 @@
 /**
- * 操作说明对话框：键鼠 / 触控 两套图示。
+ * 操作说明对话框：键鼠 / 触控 两套操作图示，外加一页「怎么赢」——用一张示意地图讲清最少的规则：
+ * 三条路、按顺序推塔、摧毁水晶、蓝buff / 红buff、河道巨龙与远古巨灵。示意图上的记号与对局里的小地图一致，顺带当图例用。
  */
+import { ECONOMY, MONSTERS, MONSTER_RULES } from '../../core/data/units';
+import { createMap } from '../../core/map';
+import type { MonsterType, Vec2 } from '../../core/types';
 import { uiIcon } from '../icons';
 import { createTabs, h, injectStyle, openDialog, sfCss, u } from '../theme';
 import type { Dialog } from '../theme';
+import { fmtClock } from './shared';
 
 type Tone = 'move' | 'atk' | 'skill' | 'sum' | 'ui';
 
@@ -37,13 +42,29 @@ const CSS = sfCss(`
 .sf-touchfig { width: 100%; max-width: max(300px, 430u); }
 .sf-touchfig svg { display: block; width: 100%; height: auto; }
 
+/* 「怎么赢」：示意地图 + 带图例记号的说明 */
+.sf-winfig { display: flex; flex-direction: column; align-items: center; gap: 4u; width: 100%; }
+.sf-winfig svg { display: block; width: 100%; max-width: max(210px, 300u); height: auto; }
+.sf-winfig text { font-family: var(--sf-font); font-weight: 700; }
+.sf-winfig p { margin: 0; font-size: var(--sf-fs-xs); color: var(--sf-c-text-3); text-align: center; }
+.sf-howto__glyph { display: inline-block; width: max(18px, 20u); height: max(18px, 20u); transform: translateY(0.25em); }
+.sf-howto__glyph svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.sf-howto__pane--win { align-items: start; }
+.sf-howto__pane--win .sf-howto__list { gap: 7u; }
+
 @media (orientation: portrait), (max-width: 620px) {
   .sf-howto__pane { grid-template-columns: 1fr; gap: 14u; }
+  .sf-winfig svg { max-width: min(62vw, 250px); }
 }
 @media (max-height: 480px) and (orientation: landscape) {
   .sf-howto { gap: 8u; }
   .sf-howto__fig { padding: 8u; }
   .sf-howto__list { gap: 5u; }
+  .sf-howto__pane--win { grid-template-columns: minmax(0, 0.6fr) minmax(0, 1fr); gap: 12u; }
+  .sf-howto__pane--win .sf-howto__list { gap: 3u; }
+  .sf-howto__pane--win .sf-howto__list li { line-height: 1.4; }
+  .sf-winfig svg { max-width: 164px; }
+  .sf-winfig p { display: none; }
 }
 `);
 
@@ -142,22 +163,119 @@ function touchPane(): HTMLElement {
   return h('div', 'sf-howto__pane', h('div', 'sf-howto__fig sf-inset', fig), list);
 }
 
-/** 打开操作说明。触控设备默认显示触控页 */
-export function openHowToDialog(root: HTMLElement): Dialog {
+// ───────────────────────── 怎么赢 ─────────────────────────
+
+/** 图例颜色：与小地图(hud/minimap.ts)同一套——蓝buff 蓝点、红buff 红点、小野怪黄菱形、河道巨龙紫三角、远古巨灵金菱形 */
+const CAMP_COLOR: Record<MonsterType, string> = {
+  mossback: '#e2cf7a',
+  glimwing: '#e2cf7a',
+  frost_golem: '#4da3ff',
+  ember_golem: '#ff5d5d',
+  abyss_drake: '#c09bff',
+  star_colossus: '#ffd76a',
+};
+const TEAM_FILL = ['#4da3ff', '#ff5d5d'] as const;
+const DARK = '#060a16';
+const n1 = (v: number): number => Math.round(v * 10) / 10;
+
+/** 营地记号(SVG 片段)：圆点 + 细环 / 三角 + 外环 / 菱形(远古巨灵是大菱形 + 双外环) */
+function campGlyph(type: MonsterType, x: number, y: number, r: number): string {
+  const c = CAMP_COLOR[type];
+  const ring = (k: number, w: number): string => `<circle cx="${x}" cy="${y}" r="${n1(r * k)}" fill="none" stroke="${c}" stroke-width="${w}" opacity=".8"/>`;
+  if (type === 'frost_golem' || type === 'ember_golem') return `${ring(1.7, 1)}<circle cx="${x}" cy="${y}" r="${r}" fill="${c}" stroke="${DARK}" stroke-width="1"/>`;
+  if (type === 'abyss_drake') {
+    return `${ring(1.9, 1.2)}<path d="M${x} ${n1(y - r * 1.25)}L${n1(x + r * 1.1)} ${n1(y + r * 0.85)}H${n1(x - r * 1.1)}Z" fill="${c}" stroke="${DARK}" stroke-width="1" stroke-linejoin="round"/>`;
+  }
+  const k = type === 'star_colossus' ? 1.25 : 0.8;
+  const d = `<path d="M${x} ${n1(y - r * k)}L${n1(x + r * k)} ${y}L${x} ${n1(y + r * k)}L${n1(x - r * k)} ${y}Z" fill="${c}" stroke="${DARK}" stroke-width="1" stroke-linejoin="round"/>`;
+  return type === 'star_colossus' ? `${ring(1.75, 1.1)}${ring(2.4, 0.9)}${d}` : d;
+}
+
+/** 防御塔记号：队伍色小方块 */
+const towerGlyph = (x: number, y: number, r: number, team: 0 | 1): string =>
+  `<rect x="${n1(x - r)}" y="${n1(y - r)}" width="${n1(r * 2)}" height="${n1(r * 2)}" rx="${n1(r * 0.3)}" fill="${TEAM_FILL[team]}" stroke="${DARK}" stroke-width="1"/>`;
+
+/** 水晶记号：队伍色的竖菱形，外面一圈光 */
+const coreGlyph = (x: number, y: number, r: number, team: 0 | 1): string =>
+  `<circle cx="${x}" cy="${y}" r="${n1(r * 1.55)}" fill="${TEAM_FILL[team]}" fill-opacity=".22" stroke="${TEAM_FILL[team]}" stroke-width="1.2"/>` +
+  `<path d="M${x} ${n1(y - r * 1.2)}L${n1(x + r * 0.8)} ${y}L${x} ${n1(y + r * 1.2)}L${n1(x - r * 0.8)} ${y}Z" fill="#f2feff" stroke="${TEAM_FILL[team]}" stroke-width="1.4" stroke-linejoin="round"/>`;
+
+/** 说明行开头的小记号：传 SVG 片段(画在 20×20 的画布上)，或一个完整的 <svg> 图标 */
+function glyphBox(inner: string): HTMLElement {
+  const el = h('span', 'sf-howto__glyph');
+  el.innerHTML = inner.startsWith('<svg') ? inner : `<svg viewBox="0 0 20 20" aria-hidden="true">${inner}</svg>`;
+  return el;
+}
+
+function glyphRow(glyph: HTMLElement, title: string, html: string): HTMLLIElement {
+  const text = h('span');
+  text.innerHTML = html;
+  return h('li', null, glyph, h('span', null, h('b', null, title), ' ', text));
+}
+
+function winPane(): HTMLElement {
+  const map = createMap();
+  // 世界坐标 → 示意图坐标(200×200，四周留边)。方位与小地图一致：蓝方在左下，红方在右上
+  const K = 88 / map.bound;
+  const P = (v: Vec2): string => `${n1(100 + v.x * K)} ${n1(100 + v.y * K)}`;
+  const X = (v: Vec2): number => n1(100 + v.x * K);
+  const Y = (v: Vec2): number => n1(100 + v.y * K);
+  const line = (pts: Vec2[]): string => pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${P(p)}`).join('');
+
+  let svg =
+    '<svg viewBox="0 -15 200 230" role="img" aria-label="战场示意图：蓝方在左下，红方在右上，三条路，河道从左上到右下">' +
+    '<rect x="2" y="2" width="196" height="196" rx="12" fill="#0b1630" stroke="rgba(232,199,122,.55)" stroke-width="2"/>' +
+    `<path d="${line(map.river)}" fill="none" stroke="#2f86b8" stroke-width="${n1(map.riverWidth * K)}" stroke-linecap="round" stroke-linejoin="round" opacity=".5"/>`;
+  for (const lane of ['top', 'mid', 'bot'] as const) {
+    svg += `<path d="${line(map.lanes[lane])}" fill="none" stroke="#b9a577" stroke-width="5.500" stroke-linecap="round" stroke-linejoin="round" opacity=".85"/>`;
+  }
+  for (const c of map.camps) svg += campGlyph(c.monsterType, X(c.pos), Y(c.pos), MONSTERS[c.monsterType].epic ? 5 : c.monsterType === 'frost_golem' || c.monsterType === 'ember_golem' ? 3.6 : 3.2);
+  for (const t of map.towers) svg += towerGlyph(X(t.pos), Y(t.pos), 3.4, t.team);
+  for (const b of map.bases) svg += coreGlyph(X(b.core), Y(b.core), 6.5, b.team);
+  // 两个基地的名字写在图框外(框里挤满了记号)：左下角下方、右上角上方
+  svg += '<text x="5" y="211.500" font-size="11.500" fill="#9ccfff">◣ 我方水晶</text><text x="195" y="-4" font-size="11.500" fill="#ff9c9c" text-anchor="end">敌方水晶 ◥</text></svg>';
+  const fig = h('div', 'sf-winfig');
+  fig.innerHTML = `${svg}<p>图上的记号和对局里的小地图是同一套</p>`;
+
+  const camp = (t: MonsterType): { first: string; reward: string } => {
+    const def = map.camps.find((c) => c.monsterType === t);
+    return { first: fmtClock(def ? def.firstSpawn : 0).replace(/^0/, ''), reward: MONSTERS[t].reward ?? '' };
+  };
+  const drake = camp('abyss_drake');
+  const colossus = camp('star_colossus');
+  const near = Math.round(ECONOMY.proximityGoldRatio * 100);
+  const list = h(
+    'ul',
+    'sf-howto__list',
+    glyphRow(glyphBox(coreGlyph(10, 10, 5.4, 1)), '怎么赢', '摧毁<em>敌方水晶</em>就赢。你在左下角的蓝色方，敌方水晶在右上角。'),
+    glyphRow(glyphBox(towerGlyph(10, 10, 5.5, 1)), '推塔', '上、中、下三条路，每条路按 <em>一塔 → 二塔 → 高地塔</em> 的顺序拆；拆掉任意一路的高地塔，才打得动水晶。塔先打小兵，跟着小兵进塔。'),
+    glyphRow(glyphBox(uiIcon('gold')), '补兵', `给小兵<em>最后一击</em>拿全额金币，只站在旁边只有约 ${near}%。金币够了会<em>自动买</em>推荐装备。`),
+    glyphRow(glyphBox(campGlyph('frost_golem', 10, 10, 4.6)), MONSTERS.frost_golem.name, `野区的大野怪。${MONSTERS.frost_golem.reward ?? ''}。`),
+    glyphRow(glyphBox(campGlyph('ember_golem', 10, 10, 4.6)), MONSTERS.ember_golem.name, `野区的大野怪。${MONSTERS.ember_golem.reward ?? ''}。`),
+    glyphRow(glyphBox(campGlyph('abyss_drake', 10, 11, 4.4)), MONSTERS.abyss_drake.name, `左上河道，<em>${drake.first}</em> 刷新。${drake.reward}。它会吐息：看到地上的扇形预警就走出去。`),
+    glyphRow(glyphBox(campGlyph('star_colossus', 10, 10, 3.6)), MONSTERS.star_colossus.name, `右下河道，<em>${colossus.first}</em> 刷新。${colossus.reward}(${MONSTER_RULES.blessingDuration} 秒一过就没了，趁这会儿推塔)。`),
+  );
+  return h('div', 'sf-howto__pane sf-howto__pane--win', h('div', 'sf-howto__fig sf-inset', fig), list);
+}
+
+export type HowToTab = 'keys' | 'touch' | 'win';
+
+/** 打开操作说明。不指定页签时，触控设备默认显示触控页，其余显示键鼠页 */
+export function openHowToDialog(root: HTMLElement, tab?: HowToTab): Dialog {
   injectStyle('sf-menu-howto', CSS);
-  type Tab = 'keys' | 'touch';
   const coarse = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
   const holder = h('div');
-  const show = (t: Tab): void => {
+  const show = (t: HowToTab): void => {
     holder.textContent = '';
-    holder.appendChild(t === 'keys' ? keyboardPane() : touchPane());
+    holder.appendChild(t === 'keys' ? keyboardPane() : t === 'touch' ? touchPane() : winPane());
   };
-  const tabs = createTabs<Tab>({
+  const tabs = createTabs<HowToTab>({
     tabs: [
       { id: 'keys', label: '键盘鼠标', icon: uiIcon('keyboard') },
       { id: 'touch', label: '触控', icon: uiIcon('touch') },
+      { id: 'win', label: '怎么赢', icon: uiIcon('crown') },
     ],
-    value: coarse ? 'touch' : 'keys',
+    value: tab ?? (coarse ? 'touch' : 'keys'),
     onChange: show,
   });
   show(tabs.get());

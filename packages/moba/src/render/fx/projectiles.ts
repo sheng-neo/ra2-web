@@ -12,12 +12,15 @@ import { MODE, SHAPE, type FxMesh } from './glow';
 import type { FxKit } from './kit';
 import type { RibbonStyle } from './ribbons';
 import { SPRITE } from './textures';
-import { C, TAU, THEME, col, teamTheme } from './util';
+import { C, THEME, col, teamTheme } from './util';
 
 interface ProjColors {
   glow: THREE.Color;
   hot: THREE.Color;
   deep: THREE.Color;
+  /** 拖尾的起止颜色(缺省用 glow → deep)：王昭君的弦尾是金的，弹体是月白的 */
+  tail?: THREE.Color;
+  tail2?: THREE.Color;
 }
 
 interface ProjDef {
@@ -41,10 +44,16 @@ interface ProjDef {
   arc: number;
   /** 脚下跟随的地面光斑半径(0 = 无) */
   ground: number;
+  /** 网格的手动进度(斩弧形状的弹体填 -2 = 不扫过，整道弧常亮) */
+  progress: number;
+  /** 跟在弹体后面的回声(同形状、逐个缩小变淡)个数与间距(米)：音波前锋用 */
+  echo: number;
+  echoGap: number;
   colors(team: TeamId): ProjColors;
   emit(k: FxKit, c: ProjColors, x: number, y: number, z: number, dx: number, dz: number): void;
-  hit(k: FxKit, c: ProjColors, x: number, y: number, z: number, strong: boolean): void;
-  end(k: FxKit, c: ProjColors, x: number, y: number, z: number): void;
+  /** (dx, dz) = 弹体最后的飞行方向 */
+  hit(k: FxKit, c: ProjColors, x: number, y: number, z: number, strong: boolean, dx: number, dz: number): void;
+  end(k: FxKit, c: ProjColors, x: number, y: number, z: number, dx: number, dz: number): void;
 }
 
 const none = (): void => {};
@@ -65,6 +74,9 @@ function def(o: Partial<ProjDef> & Pick<ProjDef, 'shape' | 'scale' | 'colors'>):
     rate: 0,
     arc: 0,
     ground: 0,
+    progress: -1,
+    echo: 0,
+    echoGap: 0.5,
     emit: none,
     hit: none,
     end: none,
@@ -72,139 +84,168 @@ function def(o: Partial<ProjDef> & Pick<ProjDef, 'shape' | 'scale' | 'colors'>):
   };
 }
 
+/** 王昭君：弹体月白，弦尾是金的 */
+const XINGLI: ProjColors = { ...THEME.xingli, tail: C.stringGold, tail2: THEME.xingli.accent };
+/** 荆轲：匕首寒白，身后一线寒光渐入墨色 */
+const YEQUE: ProjColors = { ...THEME.yeque, tail: THEME.yeque.hot, tail2: THEME.yeque.deep };
+/** 李广：箭后一道笔直的白线 */
+const FENGLING: ProjColors = { ...THEME.fengling, tail: C.white, tail2: THEME.fengling.hot };
+
+/** 一圈朝向镜头的音波(王昭君的命中反馈) */
+function waveRing(k: FxKit, c: ProjColors, x: number, y: number, z: number, size: number, life: number, delay = 0): void {
+  k.particles.use(P.ringB).tint(c.hot, c.glow).spawn(x, y, z, 0, 0, 0, life, size * 0.3, size, delay);
+}
+
 const DEFS: Record<ProjectileVisual, ProjDef> = {
-  // 星璃普攻：小星辉弹
+  // 王昭君普攻：一枚小月牙音波(弧顶朝前，不自转) + 金色细弦尾；命中是一小圈音波
   xingli_basic: def({
-    shape: SHAPE.diamond,
-    scale: [0.42, 0.42, 0.42],
-    colors: () => THEME.xingli,
-    roll: 9,
-    ribbon: R.thin,
-    ribbonWidth: 1.2,
-    halo: 0.9,
-    rate: 14,
-    emit(k, c, x, y, z) {
-      k.particles.use(P.glint).tint(C.white, c.glow).spawn(x, y, z, k.rnd.signed() * 0.8, k.rnd.signed() * 0.8, k.rnd.signed() * 0.8, 0.3, 0.26, 0.06);
-    },
+    shape: SHAPE.slash,
+    mode: MODE.slash,
+    scale: [0.5, 0.5, 0.5],
+    colors: () => XINGLI,
+    intensity: 2.3,
+    add: 0.45,
+    k: 0.62,
+    progress: -2,
+    ribbon: R.string,
+    ribbonWidth: 0.9,
+    halo: 0.55,
     hit(k, c, x, y, z) {
-      flash(k, x, y, z, 0.9, c.hot, 0.14);
-      glints(k, x, y, z, 3, 2.6, C.white, c.glow, 0.35, 0.26);
+      k.particles.use(P.hitFlash).tint(C.white, c.glow).spawn(x, y, z, 0, 0, 0, FX_RULES.flashBasic, 0.5, 0.85);
+      waveRing(k, c, x, y, z, 1.25, 0.24);
     },
   }),
-  // 流星矢：拖尾的蓝白流星(穿透)
+  // 一弦穿云：三道前后相叠的弧形音波前锋(宽度约等于判定宽 1.3) + 中心一根绷直的金色弦光；沿途是垂直于弹道的短促弦震线
   xingli_s1: def({
-    shape: SHAPE.diamond,
-    scale: [1.5, 0.75, 0.75],
-    colors: () => THEME.xingli,
-    intensity: 2.6,
-    roll: 6,
-    ribbon: R.energy,
-    ribbonWidth: 2.2,
-    halo: 2.3,
-    rate: 46,
-    ground: 1.6,
-    emit(k, c, x, y, z, dx, dz) {
+    shape: SHAPE.slash,
+    mode: MODE.slash,
+    scale: [0.92, 0.92, 0.92],
+    colors: () => XINGLI,
+    intensity: 2.4,
+    add: 0.4,
+    k: 0.72,
+    progress: -2,
+    echo: 2,
+    echoGap: 0.52,
+    ribbon: R.string,
+    ribbonWidth: 1.5,
+    halo: 1.1,
+    rate: 30,
+    ground: 1.1,
+    emit(k, _c, x, y, z, dx, dz) {
       const r = k.rnd;
-      k.particles.use(P.glint).tint(C.white, c.glow).spawn(x + r.signed() * 0.3, y + r.signed() * 0.3, z + r.signed() * 0.3, -dx * 2 + r.signed() * 1.5, r.signed() * 1.5, -dz * 2 + r.signed() * 1.5, r.range(0.3, 0.55), 0.34, 0.08);
-      if (r.chance(0.3)) k.particles.use(P.star).tint(THEME.xingli.accent, c.hot).spawn(x, y, z, -dx * 3 + r.signed() * 2, r.range(0.5, 2.5), -dz * 3 + r.signed() * 2, 0.5, 0.26, 0.1);
+      // 弦震线：垂直于弹道、一左一右弹开的短线
+      const side = r.chance(0.5) ? 1 : -1;
+      const s = r.range(4.5, 7.5);
+      k.particles.use(P.string).spawn(x - dx * r.range(0.3, 1.4), y + r.signed() * 0.08, z - dz * r.range(0.3, 1.4), -dz * side * s, 0, dx * side * s, 0.12, 0.05, 0.02);
     },
     hit(k, c, x, y, z, strong) {
-      flash(k, x, y, z, 1.9, c.hot, 0.2, true);
-      glints(k, x, y, z, 7, 4.5, C.white, c.glow, 0.5, 0.32);
-      ring(k, x, z, 1.4, 0.3, c.glow, 1.5, 0.2, 0.25);
-      shards(k, x, y, z, 4, 5, 4, c.hot, c.glow, 0.2);
-      if (strong) k.shake(0.12, x, z);
+      k.particles.use(P.hitFlash).tint(C.white, c.glow).spawn(x, y, z, 0, 0, 0, FX_RULES.flashSkill, 0.9, 1.5);
+      // 两圈音波
+      waveRing(k, c, x, y, z, 2.0, 0.28);
+      waveRing(k, c, x, y, z, 1.4, 0.3, 0.07);
+      k.decals.add(DECAL.rings, x, z, 1.3, 0.38).params(2, 0.22).color(c.glow, 1.5).under(C.shadow, 0.25);
+      const p = k.particles.use(P.mote);
+      for (let i = 0; i < k.n(4); i++) p.spawn(x, y, z, k.rnd.signed() * 3, k.rnd.range(0.5, 3), k.rnd.signed() * 3, 0.4, 0.2, 0.05);
+      if (strong) k.shake(0.08, x, z);
     },
     end(k, c, x, y, z) {
-      flash(k, x, y, z, 1.6, c.hot, 0.22, true);
-      glints(k, x, y, z, 10, 4, C.white, c.glow, 0.6, 0.3);
-      ring(k, x, z, 1.2, 0.3, c.glow, 1.2, 0.2, 0.2);
+      // 余音散开：一圈淡淡的音波 + 几点金芒
+      waveRing(k, c, x, y, z, 1.8, 0.32);
+      const p = k.particles.use(P.mote);
+      for (let i = 0; i < k.n(6); i++) p.spawn(x, y, z, k.rnd.signed() * 2.5, k.rnd.range(-0.5, 2), k.rnd.signed() * 2.5, 0.5, 0.2, 0.05);
     },
   }),
-  // 风翎普攻：箭矢
+  // 李广普攻：白羽箭
   fengling_basic: def({
     shape: SHAPE.arrow,
     mode: MODE.solid,
     scale: [1.15, 1.15, 1.15],
-    colors: () => THEME.fengling,
+    colors: () => FENGLING,
     intensity: 1.3,
     add: 0.2,
     ribbon: R.thin,
     ribbonWidth: 0.9,
-    halo: 0.5,
-    hit(k, c, x, y, z) {
-      flash(k, x, y, z, 0.8, c.hot, 0.12);
-      sparks(k, x, y, z, 2, 5, c.hot, c.glow, 0, 0, 0, 0.25, 0.1);
-      k.particles.use(P.feather).spawn(x, y, z, k.rnd.signed() * 2, 2, k.rnd.signed() * 2, 0.7, 0.36, 0.3);
+    halo: 0.45,
+    hit(k, c, x, y, z, _strong, dx, dz) {
+      hitBurst(k, x, y, z, 0.75, C.white, c.glow, dx, dz, 3, FX_RULES.flashBasic, 6);
+      k.particles.use(P.plume).spawn(x, y, z, k.rnd.signed() * 2 - dx, 2, k.rnd.signed() * 2 - dz, 0.7, 0.34, 0.28);
     },
   }),
-  // 贯风矢：带气旋的大箭
+  // 白羽没石：重箭。一道笔直的破空白线 + 贴地带起的草屑；命中英雄 = 石屑迸溅(呼应「没石」)，飞到尽头 = 斜插在地上的箭
   fengling_s1: def({
     shape: SHAPE.arrow,
     mode: MODE.solid,
-    scale: [1.9, 1.9, 1.9],
-    colors: () => THEME.fengling,
-    intensity: 1.4,
+    scale: [2.0, 2.0, 2.0],
+    colors: () => FENGLING,
+    intensity: 1.45,
     add: 0.25,
-    roll: 14,
-    ribbon: R.wind,
-    ribbonWidth: 1.6,
-    halo: 1.5,
-    rate: 44,
-    ground: 1.4,
-    emit(k, c, x, y, z, dx, dz) {
+    roll: 4,
+    ribbon: R.white,
+    ribbonWidth: 1.25,
+    halo: 1.0,
+    rate: 16,
+    emit(k, _c, x, _y, z, dx, dz) {
       const r = k.rnd;
-      // 绕箭身打旋的气流：垂直于飞行方向的平面内取一点，速度沿切向
-      const a = r.next() * TAU;
-      const ca = Math.cos(a) * 0.5;
-      const sa = Math.sin(a) * 0.5;
-      const px = -dz * ca;
-      const pz = dx * ca;
-      k.particles.use(P.streak).tint(c.hot, c.glow).spawn(x + px, y + sa, z + pz, -dz * -sa * 9 - dx * 4, ca * 9, dx * -sa * 9 - dz * 4, 0.2, 0.13, 0.04);
-      if (r.chance(0.12)) k.particles.use(P.feather).spawn(x, y, z, -dx * 3 + r.signed() * 2, r.range(0.5, 2), -dz * 3 + r.signed() * 2, 0.8, 0.4, 0.32);
+      const sz = r.range(0.14, 0.26);
+      k.particles.use(P.grass).spawn(x + r.signed() * 0.3, 0.1, z + r.signed() * 0.3, dx * r.range(2, 5) + r.signed() * 1.5, r.range(1.2, 2.6), dz * r.range(2, 5) + r.signed() * 1.5, r.range(0.35, 0.55), sz, sz * 0.8);
     },
-    hit(k, c, x, y, z, strong) {
-      flash(k, x, y, z, 1.8, c.hot, 0.18, true);
-      ring(k, x, z, 1.6, 0.32, c.glow, 1.5, 0.2, 0.25);
-      sparks(k, x, y, z, 6, 8, c.hot, c.glow, 0, 0, 0, 0.3, 0.13);
-      const p = k.particles.use(P.feather);
-      for (let i = 0; i < k.n(4); i++) p.spawn(x, y, z, k.rnd.signed() * 4, k.rnd.range(1, 4), k.rnd.signed() * 4, 0.9, 0.42, 0.34);
-      if (strong) k.shake(0.14, x, z);
+    hit(k, c, x, y, z, strong, dx, dz) {
+      hitBurst(k, x, y, z, 1.6, C.white, c.glow, dx, dz, 6, FX_RULES.flashSkill, 9);
+      ring(k, x, z, 1.5, 0.3, c.glow, 1.4, 0.2, 0.25);
+      // 石屑：灰白的碎片顺着箭势向前迸开
+      const p = k.particles.use(P.debris).tint(C.stone, C.stoneDark);
+      for (let i = 0; i < k.n(9); i++) {
+        const a = Math.atan2(dz, dx) + k.rnd.signed() * 0.9;
+        const s = k.rnd.range(3, 8);
+        const sz = k.rnd.range(0.12, 0.3);
+        p.spawn(x, y, z, Math.cos(a) * s, k.rnd.range(1.5, 5.5), Math.sin(a) * s, k.rnd.range(0.5, 0.8), sz, sz * 0.8);
+      }
+      const f = k.particles.use(P.plume);
+      for (let i = 0; i < k.n(3); i++) f.spawn(x, y, z, k.rnd.signed() * 3 - dx * 2, k.rnd.range(1, 3.5), k.rnd.signed() * 3 - dz * 2, 0.9, 0.4, 0.32);
+      if (strong) k.shake(FX_RULES.shakeSkill, x, z);
     },
-    end(k, c, x, y, z) {
-      flash(k, x, y, z, 1.3, c.hot, 0.18);
-      const p = k.particles.use(P.leaf);
-      for (let i = 0; i < k.n(5); i++) p.orbit(x, y - 0.4, z, 0.2, 1.2, k.rnd.next() * TAU, 8, 1, 0.45, 0.3, 0.16);
+    end(k, c, x, _y, z, dx, dz) {
+      // 力尽处：箭斜插进地面，停一会儿再淡去
+      k.glow.spawn(SHAPE.arrow, MODE.solid, 0.7).at(x + dx * 0.2, 0.42, z + dz * 0.2).scale(1.7).rot(0, -Math.atan2(dz, dx), -0.62).color(c.hot, 1.3, 1).fade(0, 0.7).opt(0.2, 1, 0);
+      k.particles.use(P.dust).spawn(x + dx * 0.6, 0.12, z + dz * 0.6, dx, 0.8, dz, 0.4, 0.4, 0.9);
+      const sz = 0.2;
+      k.particles.use(P.grass).spawn(x + dx * 0.6, 0.12, z + dz * 0.6, dx * 2, 2.2, dz * 2, 0.5, sz, sz * 0.8);
     },
   }),
-  // 影刃飞旋：旋转的暗紫飞刃
+  // 引匕一掷：匕首形，刃尖朝前直飞，绕飞行轴慢转；寒白细尾 + 很淡的墨点。命中 = 短促的十字寒光 + 墨溅；落空 = 钉进地面后淡出
   yeque_s2: def({
-    shape: SHAPE.blade,
+    shape: SHAPE.dagger,
     mode: MODE.solid,
-    scale: [0.72, 0.72, 0.72],
-    colors: () => THEME.yeque,
-    intensity: 2.1,
-    add: 0.5,
-    yawSpin: 26,
-    ribbon: R.shadow,
-    ribbonWidth: 0.75,
-    halo: 1.3,
-    rate: 22,
-    emit(k, c, x, y, z, dx, dz) {
+    scale: [0.86, 0.86, 0.86],
+    colors: () => YEQUE,
+    intensity: 1.55,
+    add: 0.2,
+    roll: 3,
+    ribbon: R.thin,
+    ribbonWidth: 0.85,
+    halo: 0.5,
+    rate: 14,
+    emit(k, _c, x, y, z, dx, dz) {
       const r = k.rnd;
-      k.particles.use(P.wisp).spawn(x, y, z, -dx * 1.5 + r.signed(), r.range(0.2, 1.2), -dz * 1.5 + r.signed(), 0.35, 0.4, 0.8);
-      if (r.chance(0.5)) k.particles.use(P.glint).tint(c.hot, c.glow).spawn(x, y, z, r.signed() * 2, r.signed() * 2, r.signed() * 2, 0.25, 0.24, 0.06);
+      const sz = r.range(0.06, 0.13);
+      k.particles.use(P.inkDot).spawn(x - dx * 0.5, y, z - dz * 0.5, -dx * 1.5 + r.signed(), r.range(0, 0.8), -dz * 1.5 + r.signed(), 0.3, sz, sz * 0.6);
     },
     hit(k, c, x, y, z, strong) {
-      flash(k, x, y, z, 1.4, c.hot, 0.16);
-      k.particles.use(P.crescent).tint(c.hot, c.glow).spawn(x, y, z, 0, 0, 0, 0.2, 0.9, 1.9);
-      sparks(k, x, y, z, 5, 7, c.hot, c.glow, 0, 0, 0, 0.3, 0.12);
-      if (strong) k.shake(0.08, x, z);
+      k.particles.use(P.hitFlash).tint(C.white, c.hot).spawn(x, y, z, 0, 0, 0, FX_RULES.flashBasic, 0.6, 1.0);
+      // 十字寒光：一枚四芒闪光，瞬间放大即逝
+      k.particles.use(P.glint).tint(c.hot, c.hot).spawn(x, y, z, 0, 0, 0, 0.14, 0.7, 1.5);
+      k.particles.use(P.ink).spawn(x, y, z, 0, 0.3, 0, 0.36, 0.5, 0.95, 0.02);
+      const p = k.particles.use(P.inkDot);
+      for (let i = 0; i < k.n(5); i++) {
+        const sz = k.rnd.range(0.07, 0.16);
+        p.spawn(x, y, z, k.rnd.signed() * 4, k.rnd.range(0.5, 3), k.rnd.signed() * 4, 0.4, sz, sz * 0.7);
+      }
+      if (strong) k.shake(0.06, x, z);
     },
-    end(k, c, x, y, z) {
-      flash(k, x, y, z, 0.9, c.glow, 0.16);
-      const p = k.particles.use(P.wisp);
-      for (let i = 0; i < k.n(3); i++) p.spawn(x, y, z, k.rnd.signed(), k.rnd.range(0.5, 1.5), k.rnd.signed(), 0.5, 0.5, 1);
+    end(k, c, x, _y, z, dx, dz) {
+      k.glow.spawn(SHAPE.dagger, MODE.solid, 0.55).at(x + dx * 0.15, 0.3, z + dz * 0.15).scale(0.86).rot(0.4, -Math.atan2(dz, dx), -0.7).color(c.hot, 1.5, 1).fade(0, 0.6).opt(0.2, 1, 0);
+      k.particles.use(P.inkFlat).spawn(x + dx * 0.4, 0.07, z + dz * 0.4, 0, 0, 0, 0.7, 0.4, 0.7);
     },
   }),
   // 远程兵(提灯傀儡)的灯火弹：小而清楚，不和英雄技能抢眼
@@ -329,6 +370,10 @@ interface ProjView {
   acc: number;
   age: number;
   shown: boolean;
+  /** 最后一帧的水平飞行方向(命中 / 消散特效用) */
+  dx: number;
+  dz: number;
+  echoes: FxMesh[];
 }
 
 export const PROJECTILE_VISUALS = Object.keys(DEFS) as ProjectileVisual[];
@@ -363,12 +408,23 @@ export class ProjectileViews {
     mesh.color(d.mode === MODE.solid ? colors.hot : colors.glow, d.intensity, 0);
     mesh.add = d.add;
     mesh.k = d.k;
-    return { id: p.id, def: d, colors, team: p.team, seen: 0, mesh, ribbon: -1, decal: -1, sx, sz, h0, x: sx, y: h0, z: sz, acc: 0, age: 0, shown: false };
+    mesh.progress = d.progress;
+    const echoes: FxMesh[] = [];
+    for (let i = 0; i < d.echo; i++) {
+      const m = k.glow.hold(d.shape, d.mode);
+      m.color(colors.glow, d.intensity * (0.8 - i * 0.22), 0);
+      m.add = d.add;
+      m.k = d.k;
+      m.progress = d.progress;
+      echoes.push(m);
+    }
+    return { id: p.id, def: d, colors, team: p.team, seen: 0, mesh, ribbon: -1, decal: -1, sx, sz, h0, x: sx, y: h0, z: sz, acc: 0, age: 0, shown: false, dx: p.dir.x, dz: p.dir.y, echoes };
   }
 
   private release(v: ProjView): void {
     const k = this.k;
     k.glow.release(v.mesh);
+    for (const m of v.echoes) k.glow.release(m);
     k.ribbons.end(v.ribbon);
     if (v.decal >= 0) k.decals.release(v.decal, 0.15);
   }
@@ -430,10 +486,23 @@ export class ProjectileViews {
       m.scale3(d.scale[0] * pop, d.scale[1] * pop, d.scale[2] * pop);
       if (d.yawSpin !== 0) m.rot(0.25, v.age * d.yawSpin, 0);
       else m.rot(v.age * d.roll, -Math.atan2(dz, dx), Math.atan2(dy, Math.hypot(dx, dz)));
+      // 回声：跟在弹体后面，一个比一个小、一个比一个淡；刚出手时还没拉开距离，贴着弹体不显示
+      for (let i = 0; i < v.echoes.length; i++) {
+        const em = v.echoes[i];
+        const back = Math.min(d.echoGap * (i + 1), Math.hypot(x - v.sx, z - v.sz));
+        const sc = pop * (1 - 0.14 * (i + 1));
+        em.at(x - dx * back, y - dy * back, z - dz * back).scale3(d.scale[0] * sc, d.scale[1] * sc, d.scale[2] * sc).rot(m.rx, m.ry, m.rz);
+        em.a = shown && back > d.echoGap * (i + 0.5) ? 0.85 - i * 0.25 : 0;
+      }
+      const hl = Math.hypot(dx, dz);
+      if (hl > 1e-4) {
+        v.dx = dx / hl;
+        v.dz = dz / hl;
+      }
       if (shown) {
         if (d.ribbon) {
           if (v.ribbon < 0) {
-            v.ribbon = k.ribbons.start(d.ribbon, x, y, z, v.colors.glow, v.colors.deep);
+            v.ribbon = k.ribbons.start(d.ribbon, x, y, z, v.colors.tail ?? v.colors.glow, v.colors.tail2 ?? v.colors.deep);
             k.ribbons.setWidth(v.ribbon, d.ribbonWidth);
           } else k.ribbons.move(v.ribbon, x, y, z);
         }
@@ -481,11 +550,13 @@ export class ProjectileViews {
     const colors = v ? v.colors : d.colors(2);
     let y = v ? v.y : 1.2;
     if (!v?.shown && !k.anchors.pointVisible(x, z)) return;
+    const dx = v ? v.dx : 1;
+    const dz = v ? v.dz : 0;
     if (e.type === 'projectileHit') {
       if (k.anchor(e.targetId)) y = k.a.y + Math.min(k.a.height * 0.5, 3.2);
-      d.hit(k, colors, x, y, z, e.targetId === playerId || (v !== undefined && v.team === playerTeam && k.a.unit !== null && k.a.unit.kind === 'hero'));
+      d.hit(k, colors, x, y, z, e.targetId === playerId || (v !== undefined && v.team === playerTeam && k.a.unit !== null && k.a.unit.kind === 'hero'), dx, dz);
     } else {
-      d.end(k, colors, x, y, z);
+      d.end(k, colors, x, y, z, dx, dz);
     }
   }
 

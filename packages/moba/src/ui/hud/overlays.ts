@@ -2,6 +2,7 @@
  * 盖在战场上的轻量提示层：阵亡面板(去色 + 复活倒计时 + 击杀者)、命令被拒的轻提示、回城引导条、
  * 残血红边、帧率、开局操作提示条、点地落点波纹。全部不拦截操作（除了提示条的关闭按钮）。
  */
+import { heroFullName } from '../../core/data/heroes';
 import { MONSTERS } from '../../core/data/units';
 import type { GameEvent, HeroUnit } from '../../core/types';
 import { uiIcon } from '../icons';
@@ -195,7 +196,7 @@ export function createDeathOverlay(ctx: HudCtx, opts: DeathOptions): DeathOverla
       killer.textContent = '';
       const by = c.hero(ev.killerId);
       killer.appendChild(h('span', 'is-dim', '击杀者'));
-      if (by) killer.append(heroFace(c.host, by, c.team), h('span', 'is-red', `敌方 ${by.name}`), h('span', 'is-dim sf-num', `Lv.${by.level}`));
+      if (by) killer.append(heroFace(c.host, by, c.team), h('span', 'is-red', `敌方 ${heroFullName(by.heroId)}`), h('span', 'is-dim sf-num', `Lv.${by.level}`));
       else {
         const src = c.unit(ev.killerId);
         const foe = c.team === 0 ? 1 : 0;

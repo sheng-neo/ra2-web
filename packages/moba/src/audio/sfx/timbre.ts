@@ -23,13 +23,14 @@ export function shield(p: Patch, f: number, t: number, d: number, g: number, to?
   p.noise({ k: 'pink', flt: 'bandpass', fc: 520, q: 1.4, t, a: 0.001, d: 0.045, g: g * 0.6, to });
   for (let i = 0; i < BRONZE.length; i++) {
     const fi = f * BRONZE[i];
-    const gi = (g * 0.3) / (1 + i * 0.8);
-    const di = d / (1 + i * 0.5);
+    const gi = (g * 0.45) / (1 + i * 0.6);
+    const di = d / (1 + i * 0.4);
     p.osc({ f: fi, t, a: 0.002, d: di, g: gi, to });
     if (i < 2) p.osc({ f: fi * 1.013, t, a: 0.004, d: di * 0.9, g: gi * 0.6, to });
   }
-  // 金属相碰的瞬态
-  p.noise({ flt: 'bandpass', fc: Math.min(4200, f * 4.2), q: 3, t, a: 0.001, d: 0.03, g: g * 0.25, to });
+  // 盾鼻(铜泡)被磕到的一声短「铛」+ 金属相碰的瞬态：小喇叭上靠这两层听出是铜
+  p.osc({ f: f * 5.3, t, a: 0.001, d: Math.min(0.2, d * 0.3), g: g * 0.12, to });
+  p.noise({ flt: 'bandpass', fc: Math.min(4200, f * 4.2), q: 3, t, a: 0.001, d: 0.03, g: g * 0.3, to });
 }
 
 /** 一声短喝：粗糙的低音过三个共振峰。不求像人声，只要读作「喝！」 */
@@ -45,13 +46,13 @@ export function shout(p: Patch, t: number, d: number, g: number, f = 135, to?: A
 
 /** 生铁重击：闷的「哐」。生铁不像钢那样长鸣，分音衰减很快 */
 export function iron(p: Patch, f: number, t: number, g: number, len = 0.2, to?: AudioNode): void {
-  p.osc({ w: 'triangle', f: 190, f1: 75, ft: 0.07, t, a: 0.001, d: 0.12, g: g * 0.6, to });
+  p.osc({ w: 'triangle', f: 190, f1: 75, ft: 0.07, t, a: 0.001, d: 0.12, g: g * 0.35, to });
   p.noise({ flt: 'bandpass', fc: 2100, q: 0.9, t, a: 0.001, d: 0.035, g: g * 0.6, to });
   for (let i = 0; i < IRON.length; i++) {
-    p.osc({ f: f * IRON[i], t, a: 0.001, d: len / (1 + i * 0.6), g: (g * 0.32) / (1 + i * 0.6), to });
+    p.osc({ f: f * IRON[i], t, a: 0.001, d: len / (1 + i * 0.5), g: (g * 0.55) / (1 + i * 0.5), to });
   }
   // 一只不在分音列上的三角波：听起来更像粗糙的铸铁，而不是音叉
-  p.osc({ w: 'triangle', f: f * 1.47, t, a: 0.001, d: len * 0.5, g: g * 0.12, to });
+  p.osc({ w: 'triangle', f: f * 1.47, t, a: 0.001, d: len * 0.5, g: g * 0.2, to });
 }
 
 /** 挥空呼啸：带通噪声的中心频率先扬后落(f0 → fPeak → f1) */
@@ -64,25 +65,30 @@ export function whoosh(p: Patch, t: number, d: number, g: number, f0: number, fP
 
 /**
  * 琵琶拨弦：指甲触弦的「啪」+ 靠近码子拨弦的明亮弦音，高次泛音很快收拢。
- * f1 给出时音高滑向 f1(推拉弦 / 下行滑音)。
+ * f1 给出时音高在起音后很快滑向 f1(推拉弦 / 下行滑音)。
  */
 export function pipa(p: Patch, f: number, t: number, d: number, g: number, f1?: number, to?: AudioNode): void {
   const lp = p.filt('lowpass', 2000, 1.3, to);
   const top = Math.min(15000, f * 10 + 2000);
   p.ramp(lp.frequency, [[t, top], [t + 0.045, Math.max(1500, f * 3.5)], [t + Math.max(0.1, d), Math.max(800, f * 1.6)]]);
-  // 弦被拨开的瞬间张力略高：音高从稍高处落回
-  if (f1 === undefined) p.osc({ w: 'string', f: f * 1.014, f1: f, ft: 0.035, t, a: 0.001, d, g: g * 0.62, to: lp });
-  else p.osc({ w: 'string', f, f1, ft: d * 0.7, t, a: 0.001, d, g: g * 0.62, to: lp });
-  p.osc({ w: 'string', f: (f1 ?? f) * 2.003, t: t + 0.002, a: 0.001, d: d * 0.4, g: g * 0.1, to: lp });
-  p.noise({ flt: 'bandpass', fc: 3400, q: 1.1, t, a: 0.001, d: 0.011, g: g * 0.45, to });
+  // 弦被拨开的瞬间张力略高：音高从稍高处落回。
+  // (string 波形按峰值归一，泛音多、基音只占两成多，所以增益给得比正弦层大)
+  if (f1 === undefined) p.osc({ w: 'string', f: f * 1.014, f1: f, ft: 0.035, t, a: 0.001, d, g: g * 1.5, to: lp });
+  else {
+    // 滑音要在弦声还没衰下去的头一百来毫秒里走完，并且这段时间把音量托住，否则滑了也听不见
+    const slide = Math.min(0.12, d * 0.3);
+    p.osc({ w: 'string', f, f1, ft: slide, t, a: 0.001, h: slide * 0.6, d, g: g * 1.5, to: lp });
+  }
+  p.osc({ w: 'string', f: (f1 ?? f) * 2.003, t: t + 0.002, a: 0.001, d: d * 0.4, g: g * 0.25, to: lp });
+  p.noise({ flt: 'bandpass', fc: 3400, q: 1.1, t, a: 0.001, d: 0.011, g: g * 0.6, to });
   // 桐木面板的一下共鸣
-  p.osc({ w: 'triangle', f: 330, f1: 250, t, a: 0.001, d: 0.04, g: g * 0.2, to });
+  p.osc({ w: 'triangle', f: 330, f1: 250, t, a: 0.001, d: 0.04, g: g * 0.25, to });
 }
 
 /** 轮指用的轻拨：只有一只振荡器，几十个连着排也不重。snap = 是否带指甲声 */
 export function pick(p: Patch, f: number, t: number, d: number, g: number, snap: boolean, to?: AudioNode): void {
-  p.osc({ w: 'string', f, t, a: 0.001, d, g: g * 0.6, to });
-  if (snap) p.noise({ flt: 'bandpass', fc: 3400, q: 1.1, t, a: 0.001, d: 0.008, g: g * 0.3, to });
+  p.osc({ w: 'string', f, t, a: 0.001, d, g: g * 1.5, to });
+  if (snap) p.noise({ flt: 'bandpass', fc: 3400, q: 1.1, t, a: 0.001, d: 0.008, g: g * 0.4, to });
 }
 
 /** 一声雁鸣：两个音节的簧片音过一个鼻音共振峰 */
@@ -96,8 +102,8 @@ export function honk(p: Patch, t: number, g: number, to?: AudioNode): void {
 export function zhu(p: Patch, f: number, t: number, d: number, g: number, to?: AudioNode): void {
   const lp = p.filt('lowpass', 3000, 0.9, to);
   p.ramp(lp.frequency, [[t, Math.min(12000, f * 12)], [t + 0.03, Math.max(1800, f * 4)], [t + Math.max(0.08, d), Math.max(900, f * 2)]]);
-  p.osc({ w: 'zhu', f, det: -6, t, a: 0.001, d, g: g * 0.4, to: lp });
-  p.osc({ w: 'zhu', f, det: 7, t: t + 0.003, a: 0.001, d: d * 0.85, g: g * 0.3, to: lp });
+  p.osc({ w: 'zhu', f, det: -6, t, a: 0.001, d, g: g * 1.0, to: lp });
+  p.osc({ w: 'zhu', f, det: 7, t: t + 0.003, a: 0.001, d: d * 0.85, g: g * 0.75, to: lp });
   // 竹尺的「嗒」
   p.noise({ flt: 'bandpass', fc: 2600, q: 2, t, a: 0.001, d: 0.008, g: g * 0.5, to });
   p.osc({ f: 1250, f1: 800, t, a: 0.001, d: 0.012, g: g * 0.15, to });
@@ -118,15 +124,17 @@ export function creak(p: Patch, t: number, d: number, g: number, to?: AudioNode)
   p.ramp(bp.frequency, [[t, 600], [t + d, 1100]]);
   const am = p.gain(0.5, bp);
   p.lfo(am.gain, 34, 0.5, t, d, 52);
-  p.osc({ w: 'sawtooth', f: 92, f1: 150, ft: d, t, a: d * 0.5, d: d * 0.5, g, to: am });
-  p.noise({ k: 'pink', t, a: d * 0.5, d: d * 0.5, g: g * 0.4, to: am });
+  // 窄带通只留下锯齿的高次谐波，源信号要给足
+  p.osc({ w: 'sawtooth', f: 92, f1: 150, ft: d, t, a: d * 0.5, d: d * 0.5, g: g * 4, to: am });
+  p.noise({ k: 'pink', t, a: d * 0.5, d: d * 0.5, g: g * 1.6, to: am });
 }
 
 /** 箭矢钉入：「笃」——短促的木质闷响 */
 export function thunk(p: Patch, t: number, g: number, pitch = 1, to?: AudioNode): void {
-  p.osc({ f: 340 * pitch, f1: 170 * pitch, t, a: 0.001, d: 0.05, g: g * 0.7, to });
-  p.osc({ w: 'triangle', f: 700 * pitch, f1: 380 * pitch, t, a: 0.001, d: 0.022, g: g * 0.3, to });
-  p.noise({ flt: 'bandpass', fc: 1500 * pitch, q: 1.8, t, a: 0.001, d: 0.016, g: g * 0.5, to });
+  p.osc({ f: 520 * pitch, f1: 300 * pitch, t, a: 0.001, d: 0.045, g: g * 0.7, to });
+  p.osc({ w: 'triangle', f: 1040 * pitch, f1: 600 * pitch, t, a: 0.001, d: 0.02, g: g * 0.3, to });
+  p.noise({ flt: 'bandpass', fc: 1700 * pitch, q: 1.8, t, a: 0.001, d: 0.016, g: g * 0.5, to });
+  p.osc({ f: 180 * pitch, f1: 120 * pitch, t, a: 0.001, d: 0.05, g: g * 0.25, to });
 }
 
 /** 箭啸：「咻」——窄带噪声 + 一丝哨音，频率随飞行变化 */

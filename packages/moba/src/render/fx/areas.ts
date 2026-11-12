@@ -6,7 +6,7 @@
  */
 import { TICK_DT, type AreaEffect, type AreaVisual, type TeamId } from '../../core/types';
 import type { FrameInfo } from '../engine/context';
-import { P, WARN, dustRing, embers, ring } from './common';
+import { P, WARN, dustRing, ring } from './common';
 import { DECAL } from './decals';
 import { MODE, SHAPE, type FxMesh } from './glow';
 import type { FxKit } from './kit';
@@ -76,6 +76,9 @@ const TP = THEME.panyue;
 const TC = THEME.chijin;
 const TX = THEME.xingli;
 const TF = THEME.fengling;
+/** 程咬金的斧刃赤金与风沙色 */
+const AXE_GOLD = col(0xffc060);
+const AXE_DUST = col(0xe8b070);
 
 const DEFS: Record<AreaVisual, AreaDef> = {
   // ── 通用预警圈 ──
@@ -92,34 +95,35 @@ const DEFS: Record<AreaVisual, AreaDef> = {
     },
   },
 
-  // ── 不动壁垒：跟随自身的岩环减速场 ──
+  // ── 樊哙·拥盾怒目：跟随自身的震慑减速场。三面小盾影绕身缓转，尘屑被吸向中心 ──
   panyue_s2_aura: {
     create(k, v) {
       const z = hold(k, v, DECAL.zone);
-      k.decals.at(z).params(14, 0).color(TP.glow, 1.5, 0.9).under(TP.dark, 0.35);
-      const s = hold(k, v, DECAL.swirl);
-      k.decals.at(s).params(5, -1.4).color(TP.deep, 0.9, 0.7).under(C.shadow, 0.25);
+      k.decals.at(z).params(0, 0).color(TP.glow, 1.4, 0.85).under(TP.dark, 0.3);
       hostileEdge(k, v);
-      // 绕身旋转的碎岩
-      for (let i = 0; i < 5; i++) {
-        const m = k.glow.hold(SHAPE.rock, MODE.plain);
-        m.color(C.white, 1);
+      for (let i = 0; i < 3; i++) {
+        const m = k.glow.hold(SHAPE.shield, MODE.plate);
+        m.color(TP.accent, 1.0, 0);
+        m.add = 0.25;
+        m.k = 0.12;
         v.meshes.push(m);
       }
     },
     update(k, v, dt) {
-      place(k, v, (i) => (i === 1 ? 0.96 : 1));
+      place(k, v);
       const n = v.meshes.length;
       const grow = Math.min(1, v.age * 5);
+      const fade = Math.max(0, Math.min(1, (v.duration - v.age) * 4));
       for (let i = 0; i < n; i++) {
-        const a = v.phase + v.age * 1.9 + (i * TAU) / n;
+        const a = v.phase + v.age * 1.1 + (i * TAU) / n;
         const m = v.meshes[i];
-        m.at(v.x + Math.cos(a) * 1.75, 0.9 + Math.sin(v.age * 2.3 + i * 1.7) * 0.25, v.z + Math.sin(a) * 1.75);
-        const s = (0.22 + (i % 3) * 0.06) * grow;
-        m.scale(s);
-        m.rot(v.age * 1.3 + i, v.age * 0.9 + i * 2, v.age * 0.7);
+        // 盾面朝外，贴着身周缓缓转
+        m.at(v.x + Math.cos(a) * 1.55, 0.08, v.z + Math.sin(a) * 1.55).scale(1.55 * grow).rot(0, -a, 0.05);
+        m.a = 0.6 * fade;
+        // 漆光每 1.6 秒自下而上扫一遍，三面错开
+        m.progress = (v.age * 0.62 + i / n) % 1;
       }
-      for (let n = due(k, v, dt, 9); n > 0; n--) {
+      for (let c = due(k, v, dt, 6); c > 0; c--) {
         const a = k.rnd.next() * TAU;
         const d = v.radius * k.rnd.range(0.55, 1);
         // 尘屑被吸向中心：表达「减速」
@@ -127,160 +131,176 @@ const DEFS: Record<AreaVisual, AreaDef> = {
       }
     },
     end(k, v) {
-      ring(k, v.x, v.z, v.radius * 0.5, 0.35, TP.glow, 1.2, 0.5, 0.2);
-      dustRing(k, v.x, v.z, 6, 1.4, 2.5, C.dust, C.dustDark, 1.0, 0.6);
+      ring(k, v.x, v.z, v.radius * 0.5, 0.35, TP.glow, 1.1, 0.5, 0.2);
+      dustRing(k, v.x, v.z, 5, 1.4, 2.5, C.dust, C.dustDark, 1.0, 0.6);
     },
   },
 
-  // ── 山崩地裂落地后的裂隙减速场 ──
+  // ── 樊哙·死且不避落地后的震裂地面：只冒尘，碎土偶尔跳一下 ──
   panyue_ult_fissure: {
     create(k, v) {
       const z = hold(k, v, DECAL.zone);
-      k.decals.at(z).params(18, 1).color(TP.glow, 1.5, 0.9).under(TP.dark, 0.4);
+      k.decals.at(z).params(12, 1).color(TP.glow, 1.4, 0.85).under(TP.dark, 0.35);
       hostileEdge(k, v);
     },
     update(k, v, dt) {
       place(k, v);
-      // 裂缝里持续冒出的热尘与琥珀余烬
-      for (let n = due(k, v, dt, 20); n > 0; n--) {
-        const a = k.rnd.next() * TAU;
-        const d = v.radius * Math.sqrt(k.rnd.next()) * 0.95;
+      for (let n = due(k, v, dt, 12); n > 0; n--) {
+        const r = k.rnd;
+        const a = r.next() * TAU;
+        const d = v.radius * Math.sqrt(r.next()) * 0.95;
         const x = v.x + Math.cos(a) * d;
         const z = v.z + Math.sin(a) * d;
-        if (k.rnd.chance(0.35)) k.particles.use(P.dust).spawn(x, 0.1, z, 0, k.rnd.range(0.5, 1.2), 0, 0.9, 0.5, 1.2);
-        else k.particles.use(P.ember).tint(TP.hot, TP.deep).spawn(x, 0.1, z, k.rnd.signed() * 0.3, k.rnd.range(0.8, 2), k.rnd.signed() * 0.3, k.rnd.range(0.6, 1), 0.15, 0.04);
+        const pick = r.next();
+        if (pick < 0.55) k.particles.use(P.dust).spawn(x, 0.1, z, 0, r.range(0.5, 1.2), 0, 0.9, 0.5, 1.2);
+        else if (pick < 0.88) {
+          const sz = r.range(0.12, 0.22);
+          k.particles.use(P.debris).tint(C.earth, C.earthDark).spawn(x, 0.1, z, r.signed() * 0.6, r.range(2.2, 4), r.signed() * 0.6, 0.6, sz, sz * 0.8);
+        } else k.particles.use(P.ember).tint(TP.hot, TP.deep).spawn(x, 0.1, z, r.signed() * 0.3, r.range(0.8, 1.8), r.signed() * 0.3, r.range(0.5, 0.8), 0.13, 0.04);
       }
     },
   },
 
-  // ── 焚天旋舞：跟随自身的火焰旋风 ──
+  // ── 程咬金·抡圆了砍：跟随自身的斧影旋风。两道常驻的斧影绕身飞转，风沙被卷起来；圈内的英雄必须看得清 ──
   chijin_ult_spin: {
     create(k, v) {
       const z = hold(k, v, DECAL.zone);
-      k.decals.at(z).params(0, 2).color(TC.glow, 1.7, 0.95).under(TC.dark, 0.4);
-      const s = hold(k, v, DECAL.swirl);
-      k.decals.at(s).params(3, 2.4).color(TC.glow, 1.5, 0.9).under(TC.dark, 0.45);
+      k.decals.at(z).params(0, 2).color(TC.glow, 1.6, 0.9).under(TC.dark, 0.35);
       hostileEdge(k, v);
+      // 风沙漏斗：赤金掺尘黄，压矮、很透；low 档再淡一半
       const m = k.glow.hold(SHAPE.cone, MODE.vortex);
-      m.color(TC.glow, 1.3, 0.85);
-      m.add = 0.25;
+      m.color(AXE_DUST, 0.9, 0);
+      m.add = 0.3;
       m.k = 4;
-      m.progress = 0.15;
+      m.progress = 0.3;
       v.meshes.push(m);
+      for (let i = 0; i < 2; i++) {
+        const arc = k.glow.hold(SHAPE.slash, MODE.slash);
+        arc.color(i === 0 ? TC.glow : TC.accent, 1.25, 0);
+        arc.add = 0.2;
+        arc.k = 0.62;
+        arc.progress = -2;
+        v.meshes.push(arc);
+      }
     },
     update(k, v, dt) {
       place(k, v);
-      const m = v.meshes[0];
       const grow = Math.min(1, v.age * 4);
-      const fade = Math.min(1, (v.duration - v.age) * 3);
-      const w = v.radius * 0.5 * grow;
-      m.at(v.x, 0.05, v.z).scale3(w, 3.3 * grow, w).rot(0, -v.age * 9, 0);
-      m.a = 0.85 * Math.max(0, fade);
-      for (let n = due(k, v, dt, 46); n > 0; n--) {
+      const fade = Math.max(0, Math.min(1, (v.duration - v.age) * 3));
+      const w = v.radius * 0.55 * grow;
+      const funnel = v.meshes[0];
+      funnel.at(v.x, 0.05, v.z).scale3(w, 2.1 * grow, w).rot(0, v.age * 7, 0);
+      funnel.a = (k.lowQ ? 0.2 : 0.4) * fade;
+      for (let i = 1; i < v.meshes.length; i++) {
+        const arc = v.meshes[i];
+        const rr = v.radius * 0.94 * (0.4 + 0.6 * grow);
+        arc.at(v.x, 0.85 + (i - 1) * 0.45, v.z).scale(rr).rot(i === 1 ? 0.1 : -0.1, v.phase + v.age * 12 + i * Math.PI, 0);
+        arc.a = 0.55 * fade;
+      }
+      for (let n = due(k, v, dt, 22); n > 0; n--) {
         const r = k.rnd;
         const a = r.next() * TAU;
-        if (r.chance(0.6)) k.particles.use(P.ember).tint(TC.hot, TC.glow).orbit(v.x, r.range(0.2, 1.2), v.z, v.radius * r.range(0.3, 0.6), v.radius * r.range(0.85, 1), a, 7, r.range(0.8, 2.6), r.range(0.4, 0.6), 0.2, 0.05);
-        else {
-          const d = v.radius * r.range(0.35, 0.95);
-          k.particles.use(P.flame).spawn(v.x + Math.cos(a) * d, 0.1, v.z + Math.sin(a) * d, -Math.sin(a) * 3, r.range(1.5, 3), Math.cos(a) * 3, r.range(0.3, 0.5), 0.9, 0.45);
-        }
+        // 被卷起来的尘土贴着地面顺着斧势转；铁火星更小、更短命
+        if (r.chance(0.6)) k.particles.use(P.dust).tint(C.sand, C.dustDark).orbit(v.x, r.range(0.15, 0.6), v.z, v.radius * r.range(0.45, 0.7), v.radius * r.range(0.9, 1.05), a, -5, r.range(0.3, 1), r.range(0.4, 0.6), 0.5, 1.0);
+        else k.particles.use(P.spark).tint(AXE_GOLD, TC.deep).orbit(v.x, r.range(0.4, 1.4), v.z, v.radius * r.range(0.7, 0.9), v.radius * r.range(0.95, 1.1), a, -9, r.range(0.5, 2), r.range(0.16, 0.24), 0.1, 0.03);
       }
     },
     end(k, v) {
-      ring(k, v.x, v.z, v.radius, 0.45, TC.glow, 1.5, 0.4, 0.3);
-      embers(k, v.x, 0.5, v.z, 14, v.radius * 0.6, 2.4, TC.hot, TC.glow, 1.1);
+      ring(k, v.x, v.z, v.radius, 0.4, TC.glow, 1.3, 0.5, 0.25);
+      dustRing(k, v.x, v.z, 8, v.radius * 0.5, 3, C.sand, C.dustDark, 1.1, 0.6);
     },
   },
 
-  // ── 引力星环：延迟后收束 ──
+  // ── 王昭君·回环收弦：延迟后收束。两臂回旋的曲线 + 由外向内依次亮起的四道同心细环 + 四颗金色音珠(四弦)沿环收拢 ──
   xingli_s2_well: {
     create(k, v) {
       const s = hold(k, v, DECAL.swirl, 0.08);
-      k.decals.at(s).params(4, -3).color(TX.glow, 1.6, 0.9).under(TX.dark, 0.45);
-      const st = hold(k, v, DECAL.star, 0.08);
-      k.decals.at(st).params(5, 2.4).color(TX.hot, 1.3, 0.8).under(C.black, 0);
+      k.decals.at(s).params(2, -3).color(TX.glow, 1.4, 0.8).under(TX.dark, 0.35);
+      const rg = hold(k, v, DECAL.rings, 0.08);
+      k.decals.at(rg).params(4, 0).color(TX.hot, 1.5, 0.9).under(TX.dark, 0.3);
       const m = k.glow.hold(SHAPE.hoop, MODE.hoop);
-      m.color(TX.glow, 1.3, 0.9);
+      m.color(TX.glow, 1.2, 0.85);
       m.add = 0.3;
       v.meshes.push(m);
     },
     update(k, v, dt) {
-      // 星环随倒计时向中心收拢
+      // 音环随倒计时向中心收拢
       const shrink = 1 - 0.72 * v.t * v.t;
       k.decals.at(v.slots[0]).at(v.x, v.z).radius(v.radius);
-      k.decals.at(v.slots[1]).at(v.x, v.z).radius(v.radius * 0.7 * shrink).rot(v.age * 2.5);
+      k.decals.at(v.slots[1]).at(v.x, v.z).radius(v.radius).params(4, Math.min(1, v.t * 1.25));
       const m = v.meshes[0];
       m.at(v.x, 0.7 + v.t * 0.6, v.z).scale(v.radius * shrink);
       m.rot(0, v.age * 3, 0);
-      // 五颗小星沿环疾转
-      for (let i = 0; i < 5; i++) {
-        const a = v.phase + v.age * (4 + v.t * 6) + (i * TAU) / 5;
-        k.sprites.draw(SPRITE.spark, v.x + Math.cos(a) * v.radius * shrink, 0.75 + v.t * 0.6, v.z + Math.sin(a) * v.radius * shrink, 0.75, a, TX.hot, 2.2, 1, 1);
+      // 四颗音珠沿环疾转并收拢
+      for (let i = 0; i < 4; i++) {
+        const a = v.phase + v.age * (4 + v.t * 6) + (i * TAU) / 4;
+        const bx = v.x + Math.cos(a) * v.radius * shrink;
+        const bz = v.z + Math.sin(a) * v.radius * shrink;
+        k.sprites.draw(SPRITE.glow, bx, 0.75 + v.t * 0.6, bz, 0.62, 0, TX.accent, 2.1, 1, 0.7);
       }
-      for (let n = due(k, v, dt, 40); n > 0; n--) {
+      for (let n = due(k, v, dt, 26); n > 0; n--) {
         const r = k.rnd;
-        k.particles.use(P.glint).tint(C.white, TX.glow).orbit(v.x, r.range(0.1, 0.9), v.z, v.radius * r.range(0.7, 1.05), v.radius * 0.15, r.next() * TAU, 5, 0.6, 0.3, 0.3, 0.1);
+        k.particles.use(P.mote).orbit(v.x, r.range(0.1, 0.9), v.z, v.radius * r.range(0.7, 1.05), v.radius * 0.15, r.next() * TAU, 5, 0.6, 0.3, 0.2, 0.06);
       }
     },
   },
 
-  // ── 星陨天降：持续落星的星域 ──
+  // ── 王昭君·雁落平沙：边界环 + 淡淡的圆月倒影 + 缓慢外扩的沙面涟漪；两波之间有小雁掠过、白羽零星飘落 ──
   xingli_ult_storm: {
     create(k, v) {
       const z = hold(k, v, DECAL.zone);
-      k.decals.at(z).params(24, 0).color(TX.glow, 1.6, 0.95).under(TX.dark, 0.45);
-      const rn = hold(k, v, DECAL.rune, 0.2);
-      k.decals.at(rn).params(8, 0.35).color(TX.glow, 1.3, 0.75).under(TX.dark, 0.35);
+      k.decals.at(z).params(0, 0).color(TX.glow, 1.5, 0.9).under(TX.dark, 0.4);
+      const mo = hold(k, v, DECAL.moon, 0.3);
+      k.decals.at(mo).params(0.74, 0.6).color(TX.hot, 1.1, 0.5).under(TX.dark, 0.2);
+      const rp = hold(k, v, DECAL.rings, 0.3);
+      k.decals.at(rp).params(3, 2).color(TX.glow, 1.1, 0.6).under(TX.dark, 0.2);
       hostileEdge(k, v);
     },
     update(k, v, dt) {
-      place(k, v, (i) => (i === 1 ? 0.93 : 1));
-      for (let n = due(k, v, dt, 16); n > 0; n--) {
+      place(k, v, (i) => (i === 1 ? 0.5 : i === 2 ? 0.94 : 1));
+      for (let n = due(k, v, dt, 7); n > 0; n--) {
         const r = k.rnd;
         const a = r.next() * TAU;
-        const d = v.radius * Math.sqrt(r.next()) * 0.95;
+        const d = v.radius * Math.sqrt(r.next()) * 0.9;
         const x = v.x + Math.cos(a) * d;
         const z = v.z + Math.sin(a) * d;
-        if (r.chance(0.55)) {
-          // 装饰性的细流星：与真正的陨星同一个下坠方向
-          const tf = r.range(0.22, 0.3);
-          k.particles.use(P.streak).tint(TX.hot, TX.glow).spawn(x + 2.4, 9.5, z - 1.8, -2.4 / tf, -9.5 / tf, 1.8 / tf, tf, 0.2, 0.1);
-          k.particles.use(P.ripple).tint(TX.hot, TX.glow).spawn(x, 0.08, z, 0, 0, 0, 0.3, 0.2, 0.9, tf);
-        } else k.particles.use(P.glint).tint(C.white, TX.glow).spawn(x, r.range(0.2, 2.5), z, 0, r.range(0.3, 1.2), 0, r.range(0.5, 0.9), 0.34, 0.08);
+        if (r.chance(0.5)) {
+          // 小雁影：与俯冲的雁同一个来向，低低地斜掠过去(不落地)
+          const tf = r.range(0.5, 0.65);
+          k.particles.use(P.goose).spawn(x + 3.2, 4.6, z - 2.4, -6.4 / tf, -3.4 / tf, 4.8 / tf, tf, 0.85, 0.95);
+        } else k.particles.use(P.plume).spawn(x, r.range(1.5, 3), z, r.signed() * 0.5, -0.4, r.signed() * 0.5, r.range(0.9, 1.3), 0.34, 0.28);
       }
     },
     end(k, v) {
-      ring(k, v.x, v.z, v.radius, 0.5, TX.glow, 1.2, 0.85, 0.2);
+      ring(k, v.x, v.z, v.radius, 0.5, TX.glow, 1.1, 0.85, 0.2);
     },
   },
 
-  // ── 千羽天幕：持续箭雨 ──
+  // ── 李广·箭锁阴山：边界 + 压暗一层的地面(箭阵的影子) + 两波之间零星落下的箭 ──
   fengling_ult_rain: {
     create(k, v) {
       const z = hold(k, v, DECAL.zone);
-      k.decals.at(z).params(20, 0).color(TF.glow, 1.5, 0.95).under(TF.dark, 0.4);
-      const s = hold(k, v, DECAL.swirl, 0.2);
-      k.decals.at(s).params(5, 1.3).color(TF.glow, 0.9, 0.6).under(TF.dark, 0.3);
+      k.decals.at(z).params(0, 0).color(TF.glow, 1.4, 0.9).under(TF.dark, 0.35);
+      const sh = hold(k, v, DECAL.glow, 0.25);
+      k.decals.at(sh).params(0.6).color(C.black, 0, 0.55).under(TF.dark, 0.05);
       hostileEdge(k, v);
     },
     update(k, v, dt) {
       place(k, v);
-      for (let n = due(k, v, dt, 18); n > 0; n--) {
+      for (let n = due(k, v, dt, 10); n > 0; n--) {
         const r = k.rnd;
         const a = r.next() * TAU;
         const d = v.radius * Math.sqrt(r.next()) * 0.95;
         const x = v.x + Math.cos(a) * d;
         const z = v.z + Math.sin(a) * d;
-        if (r.chance(0.7)) {
-          // 两波之间零星落下的箭，让箭雨看起来是连续的
-          const tf = r.range(0.16, 0.22);
-          k.particles.use(P.arrow).spawn(x + 1.4, 10, z + 0.9, -1.4 / tf, -10 / tf, -0.9 / tf, tf, 0.5, 0.45);
-          k.particles.use(P.ripple).tint(TF.hot, TF.glow).spawn(x, 0.08, z, 0, 0, 0, 0.26, 0.2, 0.8, tf);
-        } else k.particles.use(P.leaf).orbit(v.x, 0.3, v.z, d, d * 1.1, a, 2.5, r.range(0.5, 1.5), 0.7, 0.3, 0.16);
+        // 两波之间零星落下的箭，让箭雨看起来是连续的
+        const tf = r.range(0.16, 0.22);
+        k.particles.use(P.arrow).tint(C.plume, TF.hot).spawn(x + 1.4, 10, z + 0.9, -1.4 / tf, -10 / tf, -0.9 / tf, tf, 0.5, 0.45);
+        k.particles.use(P.dust).spawn(x, 0.12, z, 0, r.range(0.4, 0.9), 0, 0.32, 0.26, 0.6, tf);
       }
     },
     end(k, v) {
-      ring(k, v.x, v.z, v.radius, 0.5, TF.glow, 1.1, 0.85, 0.2);
+      ring(k, v.x, v.z, v.radius, 0.5, TF.glow, 1.0, 0.85, 0.2);
     },
   },
 

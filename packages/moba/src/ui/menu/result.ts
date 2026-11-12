@@ -1,5 +1,5 @@
 /**
- * 结算页：胜利/失败大标题、对局概况、双方 10 人战绩表、MVP、再来一局/返回主菜单。
+ * 结算页：胜利/失败大标题、对局概况、双方 10 人战绩表(英雄写全称「名字 · 职业」，职业小字)、MVP、再来一局/返回主菜单。
  */
 import { ITEMS } from '../../core/data/items';
 import type { GameState, HeroUnit, PlayerTeam } from '../../core/types';
@@ -8,7 +8,7 @@ import { itemIcon, uiIcon } from '../icons';
 import { attachTooltip, bindUiSounds, createBadge, createButton, createSlot, dismissTooltip, ensureTheme, h, hasOpenDialog, icon, injectStyle, isButtonKeyFocused, sfCss } from '../theme';
 import { createBackdrop } from './backdrop';
 import { itemTooltipHtml } from './select';
-import { createPortrait, fmtClock, fmtK } from './shared';
+import { createPortrait, fmtClock, fmtK, heroNameNode } from './shared';
 
 // ───────────────────────── 评分 ─────────────────────────
 
@@ -155,6 +155,8 @@ const CSS = sfCss(`
   .sf-rt { --cols: minmax(0, 1.5fr) 92u 46u 66u minmax(0, 1fr) minmax(0, 0.85fr) 62u auto 54u; }
   .sf-rt__head, .sf-rt__row { column-gap: 7u; padding: 0 8u; }
   .sf-result__actions .sf-btn { --sf-btn-h: max(40px, 46u); }
+  /* 英雄列窄：只留名字(职业看头像)，把地方让给「你 / MVP」徽标 */
+  .sf-rt__name .sf-heroname__role { display: none; }
 }
 
 /* ── 小横屏（如 667×375）：去掉补刀与推塔两列，保持一行一人 ── */
@@ -313,7 +315,7 @@ export function showResult(root: HTMLElement, state: GameState, host: MenuHost, 
         'span',
         'sf-rt__hero',
         h('span', 'sf-rt__pic-wrap', createPortrait(host, x.heroId, 'sf-rt__pic'), h('span', 'sf-rt__lv', String(x.level))),
-        h('span', 'sf-rt__name', x.name),
+        heroNameNode(x.heroId, 'sf-rt__name'),
         badges,
       );
       const kda = statCell('kda', '战绩', '');

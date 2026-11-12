@@ -1,8 +1,9 @@
 /**
- * 风翎 · 疾风 / 翠绿：气环、风痕、飘羽与箭雨。
+ * 李广 · 苍翠：破空的白线、白羽、草屑与石屑。「度不中不发」——特效要干净利落，
+ * 不出现气旋、风环、风刃和绕飞的风叶。
  */
 import { HEROES } from '../../../core/data/heroes';
-import { P, R, dustPuff, flash, hoop, pillar, ring, slashArc } from '../common';
+import { FX_RULES, P, R, dustPuff, pillar, plumes, ring, slashArc } from '../common';
 import { DECAL } from '../decals';
 import { MODE, SHAPE } from '../glow';
 import type { FxKit } from '../kit';
@@ -12,25 +13,25 @@ import { type FxHandler, fixedValue } from './types';
 const T = THEME.fengling;
 const S2 = HEROES.fengling.skills.s2;
 
-function feathers(k: FxKit, x: number, y: number, z: number, count: number, speed: number, vx = 0, vz = 0): void {
-  const p = k.particles.use(P.feather);
+/** 草屑：从 (x, z) 的地面被带起来，(vx, vz) 是整体被吹走的方向 */
+export function grassBits(k: FxKit, x: number, z: number, count: number, spread: number, vx: number, vz: number, up = 2.2, delay = 0): void {
+  const p = k.particles.use(P.grass);
   const r = k.rnd;
   const n = k.n(count);
   for (let i = 0; i < n; i++) {
-    const a = r.next() * TAU;
-    const s = speed * r.range(0.4, 1);
-    p.spawn(x, y + r.signed() * 0.4, z, Math.cos(a) * s + vx, r.range(0.8, 3), Math.sin(a) * s + vz, r.range(0.8, 1.3), 0.46, 0.38, r.next() * 0.05);
+    const sz = r.range(0.16, 0.3);
+    p.spawn(x + r.signed() * spread, 0.12, z + r.signed() * spread, vx * r.range(0.5, 1.1) + r.signed() * 0.8, up * r.range(0.5, 1.2), vz * r.range(0.5, 1.1) + r.signed() * 0.8, r.range(0.4, 0.7), sz, sz * 0.8, delay + r.next() * 0.04);
   }
 }
 
-function leaves(k: FxKit, x: number, y: number, z: number, count: number, radius: number): void {
-  const p = k.particles.use(P.leaf);
-  const r = k.rnd;
-  const n = k.n(count);
-  for (let i = 0; i < n; i++) p.orbit(x, y + r.next() * 0.6, z, radius * 0.25, radius * r.range(0.8, 1.2), r.next() * TAU, r.range(6, 10), r.range(0.8, 2.2), r.range(0.4, 0.65), 0.34, 0.2);
+/** 弓弦回弹：立在弓位的一道竖弧光(弧顶朝前)，一闪即逝 */
+function stringSnap(k: FxKit, x: number, y: number, z: number, facing: number, size: number, pitch = 0): void {
+  const m = slashArc(k, x - Math.cos(facing) * size * 0.8, y, z - Math.sin(facing) * size * 0.8, facing, size, 0.16, T.hot, 2.2, Math.PI / 2, false, 0.95);
+  m.rot(Math.PI / 2, -facing, pitch).scale(size * 0.92, size * 1.06).fade(0.02, 0.35);
+  m.k = 0.5;
 }
 
-/** 贯风矢出手 @pos, dir：两道气环顺着箭路推出去 */
+/** 白羽没石·出手 @pos, dir：弓弦回弹的竖弧光 + 一个小破空环 + 脚边草屑向两侧压开 */
 const s1Cast: FxHandler = (k, e) => {
   const dx = e.dir?.x ?? 1;
   const dz = e.dir?.y ?? 0;
@@ -39,21 +40,19 @@ const s1Cast: FxHandler = (k, e) => {
   const z = e.pos.y + dz * 0.8;
   const y = 1.4;
   const r = k.rnd;
-  flash(k, x, y, z, 1.5, T.hot, 0.18);
-  k.glow.spawn(SHAPE.hoop, MODE.hoop, 0.32).at(x, y, z).vel(dx * 5, 0, dz * 5).rot(0, -facing, -Math.PI / 2).scale(0.3, 1.6).color(T.glow, 1.9, 0.9).fade(0.1, 0.4);
-  k.glow.spawn(SHAPE.hoop, MODE.hoop, 0.28).at(x, y, z).vel(dx * 10, 0, dz * 10).rot(0, -facing, -Math.PI / 2).scale(0.2, 1.0).color(T.hot, 1.9, 0.9).fade(0.1, 0.4).delay(0.04);
-  const p = k.particles.use(P.streak).tint(T.hot, T.glow);
-  const n = k.n(10);
-  for (let i = 0; i < n; i++) {
-    const s = r.range(12, 22);
-    p.spawn(x + r.signed() * 0.3, y + r.signed() * 0.4, z + r.signed() * 0.3, dx * s + r.signed() * 2.5, r.signed() * 1.5, dz * s + r.signed() * 2.5, r.range(0.16, 0.3), 0.14, 0.05);
-  }
-  feathers(k, x, y, z, 5, 2.5, -dx * 2.5, -dz * 2.5);
-  dustPuff(k, e.pos.x - dx * 0.4, 0.2, e.pos.y - dz * 0.4, 3, 0.3, 0.9, C.dust, C.dustDark, 0.5);
-  k.decals.add(DECAL.streak, x + dx * 2.2, z + dz * 2.2, 2.6, 0.36).rot(facing, 0.16).params(0.3, 6).color(T.glow, 1.5).under(C.black, 0);
+  k.particles.use(P.hitFlash).tint(C.white, T.hot).spawn(x, y, z, 0, 0, 0, FX_RULES.flashBasic, 0.7, 1.2);
+  stringSnap(k, x, y, z, facing, 1.0);
+  // 破空环：只有一个，小而快
+  k.glow.spawn(SHAPE.hoop, MODE.hoop, 0.22).at(x + dx * 0.3, y, z + dz * 0.3).vel(dx * 12, 0, dz * 12).rot(0, -facing, -Math.PI / 2).scale(0.15, 0.75).color(C.white, 1.5, 0.85).fade(0.1, 0.35);
+  // 破空白线
+  const p = k.particles.use(P.streak).tint(C.white, T.hot);
+  for (let i = 0; i < 3; i++) p.spawn(x + r.signed() * 0.12, y + r.signed() * 0.15, z + r.signed() * 0.12, dx * r.range(20, 28), 0, dz * r.range(20, 28), r.range(0.12, 0.18), 0.1, 0.03, i * 0.015);
+  // 脚边的草被箭风压向两侧
+  for (const side of [1, -1]) grassBits(k, e.pos.x + dx * 0.6, e.pos.y + dz * 0.6, 4, 0.3, dx * 1.5 - dz * side * 3.2, dz * 1.5 + dx * side * 3.2);
+  k.decals.add(DECAL.streak, x + dx * 2.2, z + dz * 2.2, 2.6, 0.3).rot(facing, 0.1).params(0, 6).color(C.white, 1.1, 0.7).under(C.black, 0);
 };
 
-/** 逐风步 from → to：两道风痕 + 起跳处卷起的叶与羽 */
+/** 飞将腾身 from → to：一道低平的细残痕 + 起跳处扬尘 */
 const s2Dash: FxHandler = (k, e) => {
   const from = e.from ?? e.pos;
   const to = e.to ?? e.pos;
@@ -65,48 +64,43 @@ const s2Dash: FxHandler = (k, e) => {
   const facing = Math.atan2(dz, dx);
   const dur = dist / fixedValue(S2, 'dashSpeed');
   const id = e.unitId ?? -1;
-  ring(k, from.x, from.y, 1.6, 0.35, T.glow, 1.4, 0.15, 0.25);
-  leaves(k, from.x, 0.3, from.y, 8, 1.5);
-  feathers(k, from.x, 1, from.y, 4, 2);
-  dustPuff(k, from.x, 0.2, from.y, 3, 0.3, 0.9, C.dust, C.dustDark, 0.5);
+  dustPuff(k, from.x, 0.2, from.y, 4, 0.35, 0.95, C.dust, C.dustDark, 0.5);
+  grassBits(k, from.x, from.y, 5, 0.35, -dx * 2, -dz * 2, 2.6);
   k.decals
-    .add(DECAL.streak, (from.x + to.x) / 2, (from.y + to.y) / 2, dist / 2 + 0.3, 0.45)
-    .rot(facing, 0.5 / (dist / 2 + 0.3))
-    .params(0.35, 0.45 / dur)
-    .color(T.glow, 1.5)
+    .add(DECAL.streak, (from.x + to.x) / 2, (from.y + to.y) / 2, dist / 2 + 0.3, 0.4)
+    .rot(facing, 0.32 / (dist / 2 + 0.3))
+    .params(0.2, 0.4 / dur)
+    .color(T.glow, 1.2, 0.75)
     .under(C.black, 0);
   if (k.anchor(id)) {
-    k.trail(id, R.wind, dur + 0.06, 0.8, undefined, undefined, 0.4, dx, dz);
-    k.trail(id, R.wind, dur + 0.06, 1.3, undefined, undefined, -0.4, dx, dz);
-    k.trail(id, R.thin, dur + 0.06, 1.6, T.hot, T.glow);
+    k.trail(id, R.white, dur + 0.05, 0.55, C.white, T.glow);
+    k.trail(id, R.thin, dur + 0.05, 1.25, T.hot, T.glow);
   }
-  // 途中立起的一道风刃，随身形向前掠过
-  slashArc(k, from.x + dx * dist * 0.3, 1.1, from.y + dz * dist * 0.3, facing, 1.3, 0.28, T.hot, 1.9, Math.PI / 2, false, 0.8).vel(dx * 8, 0, dz * 8);
   k.after(dur, () => {
-    ring(k, to.x, to.y, 1.3, 0.3, T.glow, 1.2, 0.2, 0.2);
-    leaves(k, to.x, 0.3, to.y, 4, 1.1);
+    dustPuff(k, to.x, 0.15, to.y, 2, 0.3, 0.8, C.dust, C.dustDark, 0.4);
+    plumes(k, to.x, 1.2, to.y, 2, 1.4, -dx * 1.5, -dz * 1.5);
   });
 };
 
-/** 朝天射击 @unit：一簇箭矢拖着绿光直冲天空 */
+/** 箭锁阴山·仰射 @unit：一簇羽箭带着细光冲天，弓位一道朝上的弦震弧，几片白羽 */
 const ultCast: FxHandler = (k, e) => {
   const x = e.pos.x;
   const z = e.pos.y;
   const r = k.rnd;
-  const p = k.particles.use(P.arrow);
-  const n = k.n(14);
+  const facing = k.anchor(e.unitId) && k.a.unit ? k.a.unit.facing : 0;
+  const p = k.particles.use(P.arrow).tint(C.plume, T.hot);
+  const n = k.n(12);
   for (let i = 0; i < n; i++) p.spawn(x + r.signed() * 0.4, 1.8 + r.next() * 0.5, z + r.signed() * 0.4, r.signed() * 2.2, r.range(26, 36), r.signed() * 2.2, r.range(0.28, 0.36), 0.5, 0.4, r.next() * 0.16);
-  pillar(k, x, z, 0.5, 10, 0.45, T.glow, 1.8, 0.8);
-  hoop(k, x, 0.3, z, 0.5, 2.3, 0, 0.42, T.glow, 1.8, 0.85);
-  hoop(k, x, 1.6, z, 0.4, 1.4, 6, 0.36, T.hot, 1.8, 0.85).delay(0.05);
-  ring(k, x, z, 2.3, 0.4, T.glow, 1.4, 0.15, 0.25);
-  feathers(k, x, 1.4, z, 8, 3.5);
-  leaves(k, x, 0.3, z, 6, 1.6);
-  flash(k, x, 2.3, z, 2, T.hot, 0.22, true);
-  k.light(x, z, 2, T.glow, 5, 7, 0.4);
+  pillar(k, x, z, 0.24, 9, 0.4, T.glow, 1.5, 0.5);
+  stringSnap(k, x + Math.cos(facing) * 0.5, 1.7, z + Math.sin(facing) * 0.5, facing, 1.05, 0.9);
+  ring(k, x, z, 1.8, 0.34, T.glow, 1.2, 0.2, 0.2);
+  plumes(k, x, 1.5, z, 5, 2.6);
+  grassBits(k, x, z, 5, 0.6, 0, 0, 3);
+  k.particles.use(P.hitFlash).tint(C.white, T.hot).spawn(x, 2.1, z, 0, 0, 0, FX_RULES.flashSkill, 0.9, 1.5);
+  k.light(x, z, 2, T.glow, 5, 7, 0.3);
 };
 
-/** 一波箭雨落地 @pos, radius：每支箭都有落点与溅起的风屑 */
+/** 一波箭雨落地 @pos, radius：每支箭都有落点(小尘点 + 草屑)，同时把区域边界亮一下 */
 const ultTick: FxHandler = (k, e) => {
   const x = e.pos.x;
   const z = e.pos.y;
@@ -126,7 +120,7 @@ const ultTick: FxHandler = (k, e) => {
   }
   const H = 10;
   const p = k.particles;
-  const n = k.n(20);
+  const n = k.n(16);
   for (let i = 0; i < n; i++) {
     const a = r.next() * TAU;
     const d = Math.sqrt(r.next()) * R0 * 0.96;
@@ -134,20 +128,14 @@ const ultTick: FxHandler = (k, e) => {
     const lz = z + Math.sin(a) * d;
     const tf = r.range(0.15, 0.2);
     const delay = r.next() * 0.3;
-    p.use(P.arrow).spawn(lx - sx, H, lz - sz, sx / tf, -H / tf, sz / tf, tf, 0.56, 0.5, delay);
-    // 落点：贴地涟漪 + 两点风屑
-    p.use(P.ripple).tint(T.hot, T.glow).spawn(lx, 0.08, lz, 0, 0, 0, 0.3, 0.25, 1.1, delay + tf);
-    p.use(P.streak).tint(T.hot, T.glow);
-    for (let j = 0; j < 2; j++) p.spawn(lx, 0.15, lz, r.signed() * 3, r.range(2, 5), r.signed() * 3, 0.22, 0.12, 0.04, delay + tf);
+    p.use(P.arrow).tint(C.plume, T.hot).spawn(lx - sx, H, lz - sz, sx / tf, -H / tf, sz / tf, tf, 0.56, 0.5, delay);
+    // 落点：一小团尘 + 偶尔带起一片草
+    p.use(P.dust).spawn(lx, 0.12, lz, sx * 0.25, r.range(0.5, 1.1), sz * 0.25, 0.35, 0.3, 0.7, delay + tf);
+    if (i % 3 === 0) grassBits(k, lx, lz, 1, 0.1, sx * 0.6, sz * 0.6, 2.4, delay + tf);
+    else p.use(P.chip).tint(C.white, T.glow).spawn(lx, 0.15, lz, r.signed() * 2.5, r.range(2, 4.5), r.signed() * 2.5, 0.18, 0.1, 0.03, delay + tf);
   }
   // 每一波都把边界亮一下：范围读得清
-  k.decals.add(DECAL.ring, x, z, R0, 0.45).params(0.8, 1).color(T.glow, 1.2).under(T.dark, 0.2);
-  const lf = k.particles.use(P.leaf);
-  for (let i = 0; i < k.n(3); i++) {
-    const a = r.next() * TAU;
-    const d = r.next() * R0;
-    lf.spawn(x + Math.cos(a) * d, 0.3, z + Math.sin(a) * d, r.signed() * 2, r.range(1, 3), r.signed() * 2, r.range(0.5, 0.8), 0.3, 0.16, 0.15 + r.next() * 0.3);
-  }
+  k.decals.add(DECAL.ring, x, z, R0, 0.4).params(0.82, 1).color(T.glow, 1.1, 0.8).under(T.dark, 0.2);
 };
 
 export const FENGLING = {

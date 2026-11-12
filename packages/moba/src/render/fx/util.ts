@@ -70,16 +70,16 @@ export interface Theme {
 }
 
 export const THEME: Record<HeroId, Theme> = {
-  // 磐岳：岩石 / 琥珀金
+  // 樊哙：琥珀金 —— 盾形冲击弧、夯土尘浪、震裂
   panyue: { glow: col(0xff9218), hot: col(0xffc44e), deep: col(0xd9580a), accent: col(0xf2b75a), dark: col(0x2e2218) },
-  // 赤烬：烈焰 / 橙红
-  chijin: { glow: col(0xff4c14), hot: col(0xffae38), deep: col(0xcc1e12), accent: col(0xff9428), dark: col(0x26100e) },
-  // 星璃：星辉 / 青蓝
-  xingli: { glow: col(0x3aa8ff), hot: col(0x8ad6ff), deep: col(0x3c50dc), accent: col(0xffd98a), dark: col(0x101a48) },
-  // 风翎：疾风 / 翠绿
+  // 程咬金：橙红 —— 赤金斧弧、劲风、铁火星
+  chijin: { glow: col(0xff5a1e), hot: col(0xffae38), deep: col(0xcc1e12), accent: col(0xff9428), dark: col(0x26100e) },
+  // 王昭君：月白青 + 弦金 —— 弦线、音波环、雁影、圆月
+  xingli: { glow: col(0x8cc4ff), hot: col(0xf2f8ff), deep: col(0x3a4a9c), accent: col(0xffd98a), dark: col(0x141a3c) },
+  // 李广：苍翠 —— 破空白线、白羽、草屑、石屑
   fengling: { glow: col(0x2ee096), hot: col(0x7ef6be), deep: col(0x1f9670), accent: col(0xe9c46a), dark: col(0x0e3428) },
-  // 夜阙：暗影 / 紫
-  yeque: { glow: col(0x9050ff), hot: col(0xbe8eff), deep: col(0x5626c8), accent: col(0xd08cff), dark: col(0x140a28) },
+  // 荆轲：墨紫 + 寒白 —— 墨痕笔触、匕首寒光、帛卷(accent = 淬药的寒青，dark = 墨)
+  yeque: { glow: col(0x8a5cf0), hot: col(0xe8f0ff), deep: col(0x3a2a78), accent: col(0xbfe9e2), dark: col(0x0e0a16) },
 };
 
 export const C = {
@@ -126,6 +126,23 @@ export const C = {
   /** 苔孢、蛾鳞粉 */
   spore: col(0xd8e8a0),
   moth: col(0x8ff0e0),
+  /** 英雄特效包：夯土 / 碎土块、青铜、弦金、白羽、沙、草屑、石屑、帛(米白)、朱砂 */
+  earth: col(0x9a7c58),
+  earthDark: col(0x5e4a36),
+  bronze: col(0xe0a848),
+  stringGold: col(0xffe2a0),
+  plume: col(0xfbfaf4),
+  sand: col(0xd8c49a),
+  sandDark: col(0xa89472),
+  grass: col(0xa8c060),
+  grassDark: col(0x6f8a3a),
+  stone: col(0xd0ccc4),
+  stoneDark: col(0x8a8680),
+  silk: col(0xf0e6cc),
+  silkDark: col(0xb8a67e),
+  cinnabar: col(0xc8322a),
+  /** 墨(遮挡层用的近黑墨紫) */
+  ink: col(0x0e0a16),
 };
 
 export interface TeamTheme {

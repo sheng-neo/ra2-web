@@ -126,9 +126,11 @@ const CSS = sfCss(`
   .sf-hud__st-items .sf-slot { --sf-slot: 28u; }
   .sf-hud__st-passive { --sf-slot: max(20px, 22u); left: -7u; top: -9u; bottom: auto; }
   .sf-hud__st-lv { right: -7u; }
-  .sf-hud__st-name { top: auto; bottom: -7u; height: max(14px, 15u); padding: 0 5u 0 3u; font-size: max(9px, 10u); }
+  /* 竖屏：左上角是被动图标，名签排在它右边，只写名字(职业图标省掉)，状态图标行相应右移一点 */
+  .sf-hud__st-name { left: calc(max(20px, 22u) - 5u); top: -10u; transform: none; height: max(14px, 15u); padding: 0 5u; font-size: max(10px, 10u); }
+  .sf-hud__st-name .sf-i { display: none; }
   /* 状态图标只排到技能区左缘为止，多了向上换行 */
-  .sf-hud__buffs { left: 68u; right: calc(var(--hud-sk) * 2.9 + var(--hud-r)); }
+  .sf-hud__buffs { left: max(68u, 66px); right: calc(var(--hud-sk) * 2.9 + var(--hud-r)); }
 }
 `);
 

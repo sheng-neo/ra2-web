@@ -7,14 +7,14 @@
  */
 import { createAudioWithDebug } from '../audio';
 import type { MusicTrack, UiSound } from '../audio/api';
-import { checkAllScores, checkAllSfx, checkLimiter, checkMix, checkMusic, checkStress, renderGame } from '../audio/offline';
+import { checkAllScores, checkAllSfx, checkLimiter, checkMix, checkMusic, checkStress, renderGame, renderSfx } from '../audio/offline';
 import type { GameRow, LimiterRow, MixRow, MusicRow, ScoreRow, SfxRow, StressRow } from '../audio/offline';
 import { SFX, SFX_KEYS } from '../audio/sfx';
-import type { SfxCat } from '../audio/sfx';
+import type { SfxCat, SfxKey } from '../audio/sfx';
 import { HEROES, HERO_IDS } from '../core/data/heroes';
 import { createMockState } from '../core/mock';
 import { TICK_DT } from '../core/types';
-import type { AbilitySlot, AnnounceKey, AreaVisual, FxKey, GameEvent, HeroId, ProjectileVisual, SkillSlot, Unit, Vec2 } from '../core/types';
+import type { AbilitySlot, AnnounceKey, AreaVisual, FxKey, GameEvent, GameState, HeroId, ProjectileVisual, SkillSlot, Unit, Vec2 } from '../core/types';
 import { createWorld } from '../core/world';
 
 interface AudioReport {
@@ -40,10 +40,28 @@ interface RtReport {
   errors: string[];
 }
 
+/**
+ * 脚本化分析入口(听不到声音时用数据核对设计意图)：外部脚本在页面里拿到波形，自己做音高 / 起音 / 调制分析。
+ * - render：把某个键离线渲染成单声道采样(增益 1、居中、旁路压限)；
+ * - renderEvents：把一串事件按时间喂给一台挂在离线上下文上的引擎(假对局状态，不开配乐)，
+ *   返回单声道采样与各键的播放次数——用来核对事件映射、去重与提前收声。
+ */
+interface AudioLab {
+  sampleRate: number;
+  render(key: SfxKey, v?: number, dur?: number): Promise<Float32Array>;
+  mockState(hero: HeroId): GameState;
+  renderEvents(
+    state: GameState,
+    seconds: number,
+    script: { t: number; events?: GameEvent[]; ui?: UiSound; run?: (s: GameState) => void }[],
+  ): Promise<{ samples: Float32Array; counts: Record<string, number> }>;
+}
+
 declare global {
   interface Window {
     __audioReport?: AudioReport;
     __audioRT?: RtReport;
+    __audioLab?: AudioLab;
   }
 }
 
@@ -843,6 +861,58 @@ async function runRealtime(): Promise<void> {
   });
   rt.done = true;
 }
+
+function toMono(buf: AudioBuffer): Float32Array {
+  const L = buf.getChannelData(0);
+  const R = buf.numberOfChannels > 1 ? buf.getChannelData(1) : L;
+  const m = new Float32Array(buf.length);
+  for (let i = 0; i < m.length; i++) m[i] = (L[i] + R[i]) / 2;
+  return m;
+}
+
+window.__audioLab = {
+  sampleRate: 44100,
+  render: async (key, v = 0, dur) => toMono(await renderSfx(key, v, dur)),
+  mockState: (hero) => createMockState(hero),
+  renderEvents: async (st, seconds, script) => {
+    const eng = createAudioWithDebug();
+    const sr = 44100;
+    const ctx = new OfflineAudioContext(2, Math.ceil(seconds * sr), sr);
+    let now = 0;
+    const mixer = eng.attachOffline(ctx, () => now);
+    const todo = [...script].sort((a, b) => a.t - b.t);
+    const step = (t: number): void => {
+      now = t;
+      while (todo.length && todo[0].t <= t + 1e-6) {
+        const s = todo.shift();
+        if (!s) break;
+        s.run?.(st);
+        if (s.ui) eng.ui(s.ui);
+        if (s.events) eng.handleEvents(s.events, st);
+      }
+      st.time += TICK_DT;
+      eng.update(st, TICK_DT);
+    };
+    try {
+      for (let i = 1; i * TICK_DT < seconds - 0.01; i++) {
+        const t = i * TICK_DT;
+        void ctx.suspend(t).then(() => {
+          step(t);
+          void ctx.resume();
+        });
+      }
+      step(0);
+      const buf = await ctx.startRendering();
+      const counts: Record<string, number> = {};
+      mixer.counts.forEach((n, k) => {
+        counts[k] = n;
+      });
+      return { samples: toMono(buf), counts };
+    } finally {
+      eng.dispose();
+    }
+  },
+};
 
 if (params.get('auto') === '1') void runCheck();
 if (params.get('rt') === '1') void runRealtime();

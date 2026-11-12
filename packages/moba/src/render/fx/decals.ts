@@ -1,5 +1,6 @@
 /**
- * 贴地贴花：冲击环 / 柔光斑 / 扇形 / 裂纹 / 符文阵 / 预警圈 / 方向条 / 射程圈 / 锁定圈 / 旋涡 / 焦痕 / 星印 / 斩痕 / 指向环 / 区域边界。
+ * 贴地贴花：冲击环 / 柔光斑 / 扇形 / 裂纹 / 符文阵 / 预警圈 / 方向条 / 射程圈 / 锁定圈 / 旋涡 / 焦痕 / 星印 / 斩痕 / 指向环 / 区域边界 / 纹章环 / 扇形预警，
+ * 以及英雄专用的墨迹笔触 / 帛卷 / 音波环 / 盾印 / 圆月。
  * 全部是实例化的贴地四边形，图案在片元着色器里用距离场程序绘制(任意分辨率都锐利、可动、可溶解)，
  * 整个系统 1 个 draw call(+1 个「被遮挡部分」的透视通道，只画标了 xray 的贴花：瞄准指示器、预警圈)。
  *
@@ -58,6 +59,25 @@ export const DECAL = {
    * A 色只画边线与刻度(实线，琥珀)，B 色(under 的颜色)是随进度推进的填充(普通混合，0.18~0.28)。朝向 = rot。
    */
   coneWarn: 16,
+  /**
+   * 墨迹笔触(荆轲)：沿 rot 方向的一笔浓墨，起笔一顿、收笔出锋带飞白。radius = 半长，aspect = 半宽 / 半长。
+   * 墨色用 under 的颜色(遮挡层，不发光)；A 色只画刚划过那一瞬的中线寒光。p0 = 行笔速度(0 = 立即全显)，p1 = 寒光强度。
+   */
+  ink: 17,
+  /**
+   * 帛卷(荆轲大招)：从起点朝 rot 方向铺开的一条长帛，前沿带一根卷轴。radius = 半长，aspect = 半宽 / 半长。
+   * 帛面用 under 的颜色，A 色(取墨色)画卷面的淡墨纹与边线。p0 = 铺开所占的寿命比例，p1 = 纹样相位。
+   */
+  scroll: 18,
+  /**
+   * 音波环(王昭君)：p0 道同心细环(1~5)。一次性：p1 ≥ 0 由内向外依次荡开(p1 = 相邻两环错开的寿命比例，0 取 0.16)，
+   * p1 < 0 由外向内依次收拢。常驻：0 ≤ p1 ≤ 1 = 由外向内逐环点亮的进度(1 = 全亮)，p1 = 2 = 循环外扩的涟漪。
+   */
+  rings: 19,
+  /** 盾印(樊哙)：贴地的双弧盾轮廓，长轴沿 rot、盾顶朝前。一次性的会「砸下」并迅速冷却。p0 = 盾鼻与竖带的强度，p1 = 额外亮度 */
+  shieldMark: 20,
+  /** 圆月(王昭君)：月白的柔光圆盘(带月海斑驳) + 外圈月晕细环。p0 = 月盘占半径的比例(0 取 0.72)，p1 = 月晕强度 */
+  moon: 21,
 } as const;
 
 /** 各画质的贴花填充倍率：low 档没有 bloom 衬托边线，大面积色块更容易糊住单位，统一压到六成 */
@@ -483,7 +503,7 @@ void main() {
     e = ln * fade * inside;
     hot = ln * 0.18 * fade * inside;
     cov = (min(ln, 1.0) * 0.55) * fade * inside;
-  } else {
+  } else if (type < 16.5) {
     // ── 扇形预警：A 色画实线边与刻度，B 色是由顶点向外推进的淡填充 ──
     float da = (abs(ang) - p0) * max(r, 0.05);
     float inside = (1.0 - smoothstep(-aa, aa, da)) * disc;
@@ -499,6 +519,114 @@ void main() {
     e = (edge * (1.05 + 0.5 * pulse * urgent) + lead * 0.8 + ticks * 0.5) * inside * apex;
     hot = (edge * 0.15 + lead * 0.2) * inside * apex;
     cov = (0.05 + inner * (0.18 + 0.08 * urgent * pulse)) * inside * apex;
+  } else if (type < 17.5) {
+    // ── 墨迹笔触：起笔一顿(略粗) → 行笔 → 收笔渐细出锋；越到笔尾飞白越多。墨是遮挡层(B 色)，A 色只是中线上一闪而过的寒光 ──
+    float u = p.x * 0.5 + 0.5;
+    float wid = (0.56 + 0.3 * exp(-u * u * 40.0) + 0.07 * sin(u * 9.0 + seed * 20.0)) * (1.0 - smoothstep(0.5, 1.0, u) * 0.88);
+    wid *= smoothstep(0.0, 0.03, u);
+    float edgeN = fbm(vec2(p.x * vW.z * 1.3 + seed * 17.0, p.y * 3.0 + seed * 3.0)) - 0.5;
+    float d = abs(p.y) - wid * (1.0 + edgeN * 0.4);
+    float body = 1.0 - smoothstep(-0.1, 0.02, d);
+    float dry = fbm(vec2(p.x * vW.z * 0.9 + seed * 5.0, p.y * vW.w * 26.0 + seed * 9.0));
+    float th = 0.64 - 0.32 * u - 0.14 * abs(p.y) / max(wid, 0.05);
+    float gaps = smoothstep(th, th + 0.18, dry);
+    float sweep = p0 > 0.0 ? 1.0 - smoothstep(-0.08, 0.03, u - min(1.0, t * p0) * 1.12) : 1.0;
+    float fade = 1.0 - smoothstep(0.5, 1.0, t + (dry - 0.5) * 0.3);
+    cov = body * (1.0 - gaps * 0.9) * sweep * fade;
+    float line = exp(-p.y * p.y * 260.0) * sweep * (1.0 - smoothstep(0.0, 0.3, t)) * smoothstep(0.0, 0.08, u) * (1.0 - smoothstep(0.82, 1.0, u));
+    e = line * p1;
+    hot = line * p1 * 0.5;
+  } else if (type < 18.5) {
+    // ── 帛卷：帛面(B 色)由近及远铺开，前沿是一根卷轴；卷面上是 A 色(墨)的边线与几道山水细纹。寿命末尾由噪声溶解 ──
+    float u = p.x * 0.5 + 0.5;
+    float front = min(1.0, t / max(p0, 0.01));
+    float ay = abs(p.y);
+    float wob = 0.84 + 0.035 * sin(u * vW.z * 2.6 + seed * 20.0);
+    float cloth = (1.0 - smoothstep(wob - 0.07, wob, ay)) * smoothstep(0.0, 0.012, u) * (1.0 - smoothstep(front - 0.006, front + 0.006, u));
+    float du = 0.07 / max(vW.z, 0.3);
+    float roll = (1.0 - smoothstep(du * 0.55, du, abs(u - front + du * 0.4))) * (1.0 - smoothstep(0.93, 1.0, ay)) * step(0.02, front);
+    float border = band(ay - (wob - 0.17), 0.03, 0.03);
+    float xs = u * vW.z * 2.0;
+    float river = band(p.y - 0.3 * sin(xs * 1.5 + p1) - 0.1 * sin(xs * 3.7 + p1 * 2.3), 0.05, 0.05);
+    float peak = abs(fract(xs * 0.55 + p1 * 0.3) - 0.5) * 2.0;
+    float hills = band(p.y + 0.38 - peak * 0.22, 0.04, 0.04) * step(0.25, fract(xs * 0.275 + 0.13));
+    float dis = vnoise(wp * 3.0 + seed * 7.0);
+    float fade = 1.0 - smoothstep(0.62, 1.0, t + (dis - 0.5) * 0.35);
+    cov = cloth * 0.92 * fade;
+    fil = max(max(border * 0.55, (river * 0.5 + hills * 0.42) * (1.0 - smoothstep(0.45, 0.62, ay))) * cloth, roll * 0.9) * fade;
+  } else if (type < 19.5) {
+    // ── 音波环：若干道同心细环，带一点细微的颤动 ──
+    float n = clamp(floor(p0 + 0.5), 1.0, 5.0);
+    float lw = max(0.011, 0.028 / max(vW.z, 0.1));
+    float ln = 0.0;
+    float hal = 0.0;
+    for (int i = 0; i < 5; i++) {
+      float fi = float(i);
+      if (fi >= n) break;
+      float rr;
+      float br;
+      if (persist > 0.5) {
+        if (p1 > 1.5) {
+          float ph = fract(now * 0.22 + fi / n + seed);
+          rr = mix(0.14, 0.97, ph);
+          br = smoothstep(0.0, 0.2, ph) * (1.0 - smoothstep(0.6, 1.0, ph)) * 0.6;
+        } else {
+          rr = 0.965 - fi * 0.2;
+          br = 0.16 + 0.84 * smoothstep(fi / n, (fi + 0.6) / n, p1);
+        }
+      } else {
+        float stg = p1 >= 0.0 ? (p1 > 0.0 ? p1 : 0.16) : -p1;
+        float tt = clamp((t - fi * stg) / max(1.0 - (n - 1.0) * stg, 0.05), 0.0, 1.0);
+        float k = 1.0 - (1.0 - tt) * (1.0 - tt) * (1.0 - tt);
+        rr = p1 >= 0.0 ? mix(0.1, 0.975, k) : mix(0.975, 0.08, k);
+        br = step(0.001, tt) * (1.0 - smoothstep(0.45, 1.0, tt));
+      }
+      float dd = r - rr + lw * 0.5 * sin(ang * 22.0 + now * 26.0 + fi * 2.1);
+      ln += band(dd, lw, aa) * br;
+      hal += band(dd, lw * 4.5, lw * 2.5) * br;
+    }
+    e = ln * 1.2 * disc;
+    hot = ln * 0.25 * disc;
+    cov = hal * 0.5 * disc;
+    fil = hal * 0.06 * disc;
+  } else if (type < 20.5) {
+    // ── 盾印：与樊哙漆盾同形的贴地轮廓(上缘两道圆弧、中间起尖；下缘两角上收；两侧微收腰) ──
+    float pop = 1.0 - pow(1.0 - min(1.0, t * 7.0), 3.0);
+    float sc = persist > 0.5 ? 1.0 : mix(1.22, 1.0, pop);
+    vec2 q = p / sc;
+    float ym = q.x / 1.72 + 0.5;
+    float sa = abs(q.y) / 0.533;
+    float hwm = 0.93 + 0.07 * cos(ym * TAU);
+    float topm = 0.897 + (0.1 - 0.75 * (sa - 0.45) * (sa - 0.45) + 0.2 * exp(-sa * sa * 90.0)) / 1.45;
+    float botm = 0.031 + (-0.045 + 0.185 * sa * sa * sa) / 1.45;
+    float d = max((sa - hwm) * 0.533, max(ym - topm, botm - ym) * 1.72);
+    float ad = fwidth(d) * 1.2 + 1e-4;
+    float inside = 1.0 - smoothstep(-ad, ad, d);
+    float outline = band(d + 0.034, 0.03, ad);
+    float inner = band(d + 0.14, 0.011, ad);
+    float bq = length(q);
+    float boss = band(bq - 0.15, 0.016, ad) + (1.0 - smoothstep(0.05, 0.07, bq));
+    float stripe = band(abs(q.y) - 0.085, 0.011, ad) * inside * step(0.19, bq) * (1.0 - smoothstep(-0.2, -0.12, d));
+    float heat = persist > 0.5 ? 0.0 : 1.0 - smoothstep(0.0, 0.25, t);
+    float fade = persist > 0.5 ? 1.0 : 1.0 - smoothstep(0.5, 1.0, t + (vnoise(wp * 2.0 + seed * 7.0) - 0.5) * 0.3);
+    float ln = outline + inner * 0.6 + (boss + stripe * 0.7) * p0;
+    e = ln * (0.75 + p1 + heat * 0.8) * fade;
+    hot = outline * heat * 0.8 * fade;
+    fil = inside * (0.08 + heat * 0.25) * fade;
+    cov = (inside * 0.32 + outline * 0.6) * fade;
+  } else {
+    // ── 圆月：月盘 + 月缘亮线 + 月晕 ──
+    float mr = p0 > 0.0 ? p0 : 0.72;
+    float appear = persist > 0.5 ? 1.0 : smoothstep(0.0, 0.12, t) * (1.0 - smoothstep(0.6, 1.0, t));
+    float discM = 1.0 - smoothstep(mr - 0.05, mr, r);
+    float mare = fbm(p * 2.6 + seed * 9.0);
+    float body = discM * (0.6 + 0.4 * smoothstep(0.35, 0.7, mare)) * (0.8 + 0.2 * (1.0 - r / mr));
+    float limb = band(r - (mr - 0.03), 0.02, aa);
+    float halo = band(r - 0.95, 0.012, aa) * p1 + exp(-(r - mr) * 9.0) * step(mr, r) * 0.22 * disc;
+    fil = body * 0.42 * appear;
+    e = (limb * 0.8 + halo * 0.9 + body * 0.12) * appear;
+    hot = limb * 0.15 * appear;
+    cov = discM * 0.12 * appear;
   }
 
   float alpha = vC0.a * uAlpha;

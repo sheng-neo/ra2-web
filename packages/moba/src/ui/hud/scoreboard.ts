@@ -1,11 +1,13 @@
 /**
- * 记分板：双方 10 人的头像、等级、K/D/A、补刀、经济(累计金币)、装备与复活倒计时。
+ * 记分板：双方 10 人的头像、等级、「名字 · 职业」、K/D/A、补刀、经济(累计金币)、装备与复活倒计时。
+ * 英雄名：横屏写全称(职业小一号、职业色)；竖屏列窄，只写名字，职业换成名字前的一枚职业图标。
  * 按住 Tab 临时查看(不拦截操作)；点右上按钮则固定显示，点任意处或再点按钮关闭。
  * 打开时每秒刷新 4 次，不跟帧。
  */
+import { HEROES, heroFullName } from '../../core/data/heroes';
 import type { HeroUnit, ItemId, PlayerTeam } from '../../core/types';
-import { itemIcon, uiIcon } from '../icons';
-import { fmtK } from '../menu/shared';
+import { itemIcon, roleIcon, uiIcon } from '../icons';
+import { ROLE_COLOR, fmtK, heroNameNode } from '../menu/shared';
 import { createIconButton, h, icon, injectStyle, sfCss } from '../theme';
 import { classSlot, fmtTime, numSlot, textSlot, type HudCtx, type HudPart } from './common';
 import { heroFace } from './face';
@@ -42,7 +44,8 @@ const CSS = sfCss(`
 .sf-hud__sb-hero .sf-hud__face { --sz: 28u; }
 .sf-hud__sb-facebox { position: relative; flex: none; }
 .sf-hud__sb-lv { position: absolute; right: -5u; bottom: -4u; display: grid; place-items: center; min-width: max(14px, 15u); height: max(14px, 15u); padding: 0 2u; border-radius: 99px; font-size: max(10px, 10.5u); font-weight: 800; line-height: 1; color: #2b1a04; background: var(--sf-grad-gold); box-shadow: 0 0 0 1.5px #0a1128; }
-.sf-hud__sb-name { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sf-hud__sb-name { display: inline-flex; align-items: center; gap: 3u; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sf-hud__sb-rolei { display: none; flex: none; width: 1.15em; height: 1.15em; vertical-align: 0; color: var(--role); }
 .sf-hud__sb-respawn { display: none; align-items: center; gap: 3u; flex: none; font-size: var(--sf-fs-xs); color: #ff9c9c; }
 .sf-hud__sb-respawn .sf-i { width: 1.1em; height: 1.1em; vertical-align: 0; }
 .sf-hud__sb-row.is-dead .sf-hud__sb-respawn { display: inline-flex; }
@@ -74,6 +77,8 @@ const CSS = sfCss(`
   .sf-hud__sb-items { grid-column: 1 / -1; justify-self: start !important; padding-left: 37u; }
   .sf-hud__sb-items .sf-slot { --sf-slot: 22u; }
   .sf-hud__sb-hint { display: none; }
+  .sf-hud__sb-name .sf-heroname__role { display: none; }
+  .sf-hud__sb-rolei { display: inline-block; }
 }
 `);
 
@@ -113,6 +118,16 @@ export function createScoreboard(ctx: HudCtx): Scoreboard {
   const rows = new Map<number, Row>();
   const teamSetters: { kills: (n: number) => void; towers: (n: number) => void; gold: (s: string) => void }[] = [];
 
+  /** 「樊哙 · 坦克」(竖屏：职业图标 + 樊哙) */
+  function nameCell(hero: HeroUnit): HTMLElement {
+    const def = HEROES[hero.heroId];
+    const ico = icon(roleIcon(def.role), 'sf-hud__sb-rolei');
+    const el = h('span', 'sf-hud__sb-name', ico, heroNameNode(hero.heroId));
+    el.style.setProperty('--role', ROLE_COLOR[def.role]);
+    el.setAttribute('aria-label', heroFullName(def));
+    return el;
+  }
+
   function makeRow(hero: HeroUnit): Row {
     const lv = h('span', 'sf-hud__sb-lv sf-num');
     const respawnN = h('span', 'sf-num');
@@ -135,7 +150,7 @@ export function createScoreboard(ctx: HudCtx): Scoreboard {
         'span',
         'sf-hud__sb-hero',
         h('span', 'sf-hud__sb-facebox', heroFace(ctx.host, hero, ctx.team), lv),
-        h('span', 'sf-hud__sb-name', hero.name),
+        nameCell(hero),
         hero.isPlayer ? h('span', 'sf-badge sf-badge--me', '你') : null,
         h('span', 'sf-hud__sb-respawn', icon(uiIcon('hourglass')), respawnN),
       ),

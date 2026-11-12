@@ -1,17 +1,26 @@
 /**
  * 选英雄页：左侧英雄卡，中间 3D 立绘 + 对手难度 + 开始按钮，右侧英雄详情。
  * 横屏三栏，竖屏纵向堆叠（详情区内部滚动，立绘始终可见，点技能能看到动作）。
+ *
+ * 英雄一律写「名字 · 职业」(顺序：樊哙 → 程咬金 → 王昭君 → 李广 → 荆轲)，四字称号只在这里和加载页出现。
+ * 详情先给大白话：职业一句话 → 怎么玩 → 技能(图标下是最要紧的类型标签；说明框先标签与一句大白话，后数值与详细描述)
+ * → 能力 → 推荐出装 → 人物出处。
  */
 import { HEROES, SUMMONER, formatSkillDesc } from '../../core/data/heroes';
 import { ITEMS } from '../../core/data/items';
-import type { AbilitySlot, CastSpec, Difficulty, HeroDef, HeroId, ItemDef, ItemId, SkillDef, StatMods, SummonerSlot } from '../../core/types';
+import type { AbilitySlot, Difficulty, HeroDef, HeroId, ItemDef, ItemId, SkillDef, SummonerSlot } from '../../core/types';
 import type { HeroPreview } from '../../render/api';
 import type { MatchChoice, MenuHost } from '../api';
+import { itemTipHtml } from '../hud/itemtip';
+import { castKind, castReach } from '../hud/text';
 import { LANE_NAMES, itemIcon, laneIcon, roleIcon, skillIcon, summonerIcon, uiIcon } from '../icons';
 import type { HeroIconSlot } from '../icons';
 import { openSettingsDialog } from '../settings';
 import { attachTooltip, createBadge, createButton, createIconButton, createSegmented, createSlot, h, hasOpenDialog, icon, injectStyle, isButtonKeyFocused, sfCss } from '../theme';
-import { DIFFICULTIES, DIFFICULTY_META, HERO_ORDER, HERO_RATINGS, RATING_KEYS, RATING_LABELS, ROLE_COLOR, createPortrait, createStars, escapeHtml } from './shared';
+import {
+  DIFFICULTIES, DIFFICULTY_META, HERO_ORDER, HERO_RATINGS, RATING_KEYS, RATING_LABELS, ROLE_BRIEF, ROLE_COLOR,
+  createPortrait, createStars, ensureTagStyle, escapeHtml, heroNameNode, skillKeyTag, skillTagsHtml,
+} from './shared';
 import type { MenuScreen } from './title';
 
 export interface SelectOptions {
@@ -32,8 +41,9 @@ const SUMMONER_SLOTS: SummonerSlot[] = ['flash', 'heal', 'recall'];
 const CSS = sfCss(`
 .sf-select { display: flex; flex-direction: column; padding: max(8u, var(--sf-safe-t)) max(20u, var(--sf-safe-r)) max(14u, var(--sf-safe-b)) max(20u, var(--sf-safe-l)); --hero: #8fe9ff; }
 .sf-select__top { display: flex; align-items: center; gap: 14u; flex: none; height: max(44px, 58u); }
-.sf-select__top .sf-title { font-size: max(19px, 30u); }
-.sf-select__top-right { margin-left: auto; display: flex; align-items: center; gap: 14u; }
+.sf-select__top .sf-title { flex: none; font-size: max(19px, 30u); white-space: nowrap; }
+.sf-select__lead { min-width: 0; margin: 0 0 0 4u; padding-left: 14u; font-size: var(--sf-fs-sm); letter-spacing: 0.1em; color: var(--sf-c-text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; box-shadow: inset 1px 0 0 var(--sf-c-line-strong); }
+.sf-select__top-right { margin-left: auto; flex: none; display: flex; align-items: center; gap: 14u; }
 .sf-select__hint { display: flex; align-items: center; gap: 6u; font-size: var(--sf-fs-xs); color: var(--sf-c-text-3); letter-spacing: 0.08em; white-space: nowrap; }
 .sf-select__main {
   flex: 1; min-height: 0; display: grid; gap: 12u 18u;
@@ -66,9 +76,11 @@ const CSS = sfCss(`
 .sf-hcard__role { position: absolute; right: -7u; bottom: 10%; display: grid; place-items: center; width: max(18px, 24u); height: max(18px, 24u); border-radius: 50%; color: #08101f; background: var(--role); box-shadow: 0 0 0 max(1.5px, 2u) #0a1128; }
 .sf-hcard__role .sf-i { width: 62%; height: 62%; }
 .sf-hcard__info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 5u; }
-.sf-hcard__name { display: flex; align-items: baseline; gap: 8u; font-weight: 800; font-size: max(15px, 22u); line-height: 1.15; letter-spacing: 0.1em; white-space: nowrap; }
-.sf-hcard__name small { font-weight: 500; font-size: var(--sf-fs-xs); color: var(--sf-c-text-3); letter-spacing: 0.06em; overflow: hidden; text-overflow: ellipsis; }
+.sf-hcard__name { font-weight: 800; font-size: max(15px, 22u); line-height: 1.15; letter-spacing: 0.1em; white-space: nowrap; }
+.sf-hcard__name .sf-heroname__role { font-size: 0.62em; font-weight: 700; letter-spacing: 0.06em; }
+.sf-hcard__title { font-size: var(--sf-fs-xs); line-height: 1.2; letter-spacing: 0.22em; color: var(--sf-c-text-3); white-space: nowrap; }
 .sf-hcard.is-active .sf-hcard__name { color: var(--sf-c-gold-100); }
+.sf-hcard.is-active .sf-hcard__title { color: var(--sf-c-text-2); }
 .sf-hcard__meta { display: flex; align-items: center; flex-wrap: wrap; gap: 3u 10u; font-size: var(--sf-fs-xs); color: var(--sf-c-text-2); line-height: 1.2; white-space: nowrap; }
 .sf-hcard__meta > span { display: inline-flex; align-items: center; gap: 4u; }
 .sf-hcard__meta .sf-i { width: 1.2em; height: 1.2em; }
@@ -85,7 +97,7 @@ const CSS = sfCss(`
   animation: sf-spin 48s linear infinite; }
 .sf-select__ring--in { height: min(62%, 72vw); opacity: 0.4; animation-duration: 36s; animation-direction: reverse; }
 /* 画布蒙版三层相交：四角的椭圆渐隐 + 左右两边、底边的线性渐隐。椭圆那层在边的中段几乎不透明，
-   长兵器(赤烬的刀、磐岳的锤)伸出画布时会被边缘一刀切断；加上线性渐隐后是渐渐淡出 */
+   长兵器(程咬金的斧、樊哙的盾)伸出画布时会被边缘一刀切断；加上线性渐隐后是渐渐淡出 */
 .sf-select__canvas {
   position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none;
   -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 9%, #000 91%, transparent 100%), linear-gradient(180deg, #000 0, #000 93%, transparent 100%), radial-gradient(ellipse 72% 78% at 50% 50%, #000 62%, transparent 100%);
@@ -95,8 +107,11 @@ const CSS = sfCss(`
 .sf-select__plate { position: absolute; left: 0; top: 4u; right: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 4u; pointer-events: none; }
 .sf-select__plate.is-swap { animation: sf-plate-in 0.45s var(--sf-ease-out) both; }
 @keyframes sf-plate-in { from { opacity: 0; transform: translateX(-16u); } to { opacity: 1; transform: none; } }
-.sf-select__role { display: inline-flex; align-items: center; gap: 6u; font-weight: 700; font-size: var(--sf-fs-sm); letter-spacing: 0.2em; color: var(--role); text-shadow: 0 1px 4px rgba(0, 0, 0, 0.8); }
-.sf-select__name { margin: 0; font-weight: 900; font-size: max(30px, 62u); line-height: 1.05; letter-spacing: 0.12em; }
+.sf-select__name { display: flex; align-items: baseline; margin: 0; font-weight: 900; font-size: max(30px, 62u); line-height: 1.05; letter-spacing: 0.12em; white-space: nowrap; }
+/* 「 · 坦克」：约 0.5em、职业色，带职业图标 */
+.sf-select__name-role { display: inline-flex; align-items: center; gap: 0.18em; margin-left: 0.1em; font-size: 0.5em; font-weight: 800; letter-spacing: 0.1em; color: var(--role); text-shadow: 0 1px 4px rgba(0, 0, 0, 0.8); }
+.sf-select__name-role .sf-i { width: 1em; height: 1em; vertical-align: 0; }
+.sf-select__name-role::before { content: '·'; margin-right: 0.1em; color: var(--sf-c-text-3); }
 .sf-select__sub { display: flex; align-items: center; gap: 10u; font-size: var(--sf-fs-md); letter-spacing: 0.3em; color: var(--sf-c-text); text-shadow: 0 1px 4px rgba(0, 0, 0, 0.9); }
 .sf-select__sub::before { content: ''; width: 26u; height: 2px; background: linear-gradient(90deg, var(--hero), transparent); }
 .sf-select__nav { position: absolute; top: 50%; transform: translateY(-50%); }
@@ -127,6 +142,9 @@ const CSS = sfCss(`
 .sf-select__tags { display: flex; flex-wrap: wrap; align-items: center; gap: 6u; }
 .sf-select__tags .sf-stars { margin-left: 2u; }
 .sf-select__lore { margin: 0; padding-left: 10u; font-size: var(--sf-fs-sm); line-height: 1.65; color: var(--sf-c-text-2); box-shadow: inset max(2px, 2u) 0 0 color-mix(in srgb, var(--hero) 70%, transparent); }
+/* 职业一句大白话：详情的第一句话 */
+.sf-select__rolebrief { margin: 0; font-size: var(--sf-fs-md); font-weight: 700; line-height: 1.45; color: var(--sf-c-text); }
+.sf-select__rolebrief b { color: var(--role); font-weight: 800; }
 .sf-select__tips { margin: 0; display: flex; gap: 8u; padding: 7u 10u; font-size: var(--sf-fs-sm); line-height: 1.6; color: var(--sf-c-text); }
 .sf-select__tips .sf-i { flex: none; margin-top: 0.2em; color: var(--sf-c-gold-300); }
 .sf-select__abil { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 4u 14u; }
@@ -147,9 +165,16 @@ const CSS = sfCss(`
 .sf-skill:active .sf-slot { transform: scale(0.94); }
 .sf-skill.is-active { color: var(--sf-c-gold-200); }
 .sf-skill.is-active .sf-slot { box-shadow: 0 0 0 1px rgba(8, 13, 31, 0.95), 0 0 0 max(2px, 2.5u) var(--sf-c-gold-100), 0 0 16u color-mix(in srgb, var(--hero) 80%, transparent); }
+.sf-skill__tag { font-weight: 700; }
 .sf-skilldesc { padding: 9u 12u 10u; min-height: 6.6em; }
 .sf-skilldesc__head { display: flex; align-items: center; flex-wrap: wrap; gap: 4u 8u; margin-bottom: 5u; }
 .sf-skilldesc__name { font-weight: 800; font-size: var(--sf-fs-lg); color: var(--sf-c-gold-100); letter-spacing: 0.1em; margin-right: 2u; }
+.sf-skilldesc__slot { margin-left: auto; font-size: var(--sf-fs-xs); color: var(--sf-c-text-3); letter-spacing: 0.08em; white-space: nowrap; }
+.sf-skilldesc__tags { display: flex; flex-wrap: wrap; align-items: center; gap: 4u 8u; }
+.sf-skilldesc__cast { font-size: var(--sf-fs-xs); color: var(--sf-c-text-3); letter-spacing: 0.06em; }
+/* 一句大白话：比正文大一号、主文字色，排在数值与详细描述前面 */
+.sf-skilldesc__brief { margin: 5u 0 0; font-size: var(--sf-fs-md); font-weight: 700; line-height: 1.5; color: var(--sf-c-text); }
+.sf-skilldesc__meta { display: flex; flex-wrap: wrap; gap: 4u 6u; margin: 7u 0 5u; padding-top: 7u; box-shadow: inset 0 1px 0 var(--sf-c-line); }
 .sf-skilldesc__text { margin: 0; font-size: var(--sf-fs-sm); line-height: 1.7; color: var(--sf-c-text-2); }
 .sf-skilldesc__text b { font-family: var(--sf-font-num); font-weight: 700; color: var(--sf-c-gold-200); }
 .sf-skilldesc__text i { font-style: normal; font-weight: 600; white-space: nowrap; }
@@ -166,7 +191,8 @@ const CSS = sfCss(`
   .sf-select__main { gap: 8u 12u; }
   .sf-hcard { gap: 9u; padding: 0 8u 0 7u; }
   .sf-hcard__info { gap: 3u; }
-  .sf-hcard__name small { display: none; }
+  .sf-hcard__title { display: none; }
+  .sf-select__lead { display: none; }
   .sf-select__name { font-size: max(26px, 46u); }
   .sf-select__main { grid-template-columns: clamp(150px, 232u, 26vw) minmax(0, 1fr) clamp(272px, 400u, 37vw); }
   .sf-select__go { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: 'seg btn' 'desc desc'; align-items: center; gap: 5u 9u; padding: 7u 9u 6u; }
@@ -178,6 +204,11 @@ const CSS = sfCss(`
   .sf-select__go .sf-btn--lg { grid-area: btn; --sf-btn-h: max(40px, 50u); padding: 0 18u; font-size: max(15px, 20u); letter-spacing: 0.14em; }
   .sf-select__detail-body { padding: 12u 14u; gap: 10u; }
   .sf-select__hint { display: none; }
+  /* 详情栏窄：技能图标与通用技能收小一点，四个技能 + 三个通用技能排在同一行 */
+  .sf-skills { gap: 6px 6px; }
+  .sf-skill .sf-slot { --sf-slot: 40px; }
+  .sf-skills__sum { gap: 3px; height: 40px; padding-left: 7px; }
+  .sf-skills__sum .sf-slot { --sf-slot: 22px; }
 }
 
 /* ── 小横屏（如 667×375）：英雄卡只留头像与名字，给立绘和详情腾地方 ── */
@@ -190,6 +221,7 @@ const CSS = sfCss(`
   .sf-hcard__role { display: none; }
   .sf-hcard__info { flex: none; align-items: center; }
   .sf-hcard__name { font-size: var(--sf-fs-sm); letter-spacing: 0.04em; }
+  .sf-hcard__name .sf-heroname__role { display: none; }
   .sf-hcard__meta { display: none; }
   .sf-select__go .sf-seg__opt { padding: 0 2u; letter-spacing: 0.02em; }
   .sf-select__go .sf-btn--lg { padding: 0 12u; letter-spacing: 0.06em; }
@@ -216,7 +248,9 @@ const CSS = sfCss(`
   .sf-hcard__role { right: -5u; bottom: -3u; }
   .sf-hcard__info { flex: none; align-items: center; gap: 0; }
   .sf-hcard__name { font-size: var(--sf-fs-md); }
-  .sf-hcard__name small, .sf-hcard__meta { display: none; }
+  /* 竖屏的卡片窄：只写名字，职业看头像右下角的职业徽标 */
+  .sf-hcard__name .sf-heroname__role, .sf-hcard__title, .sf-hcard__meta { display: none; }
+  .sf-select__lead { display: none; }
   .sf-select__name { font-size: max(28px, 48u); }
   .sf-select__nav { top: auto; bottom: 2u; transform: none; }
   .sf-select__go { flex-direction: column; gap: 9u; padding: 10u; }
@@ -234,21 +268,6 @@ const fmtRange = (arr: number[]): string => {
   return a === b ? String(a) : `${a}~${b}`;
 };
 
-function castLabel(c: CastSpec): string {
-  switch (c.type) {
-    case 'direction':
-      return `方向 · 距离 ${c.range}`;
-    case 'cone':
-      return `扇形 · 距离 ${c.range}`;
-    case 'position':
-      return `范围 · 射程 ${c.range}`;
-    case 'target':
-      return `指向 · 射程 ${c.range}`;
-    case 'self':
-      return c.radius > 0 ? `自身周围 · 半径 ${c.radius}` : '自身';
-  }
-}
-
 /** 给描述里的数值与加成上色：数字金色，(+x%物攻/法强/生命) 按类型着色 */
 function richDesc(text: string): string {
   return escapeHtml(text).replace(/\(\+[^)]*\)|\d+(?:\.\d+)?%?(?:\/\d+(?:\.\d+)?%?)*/g, (m) => {
@@ -261,33 +280,9 @@ function richDesc(text: string): string {
   });
 }
 
-const STAT_LABELS: [keyof StatMods, string, (v: number) => string][] = [
-  ['ad', '物攻', (v) => `+${v}`],
-  ['ap', '法强', (v) => `+${v}`],
-  ['hp', '生命', (v) => `+${v}`],
-  ['mana', '法力', (v) => `+${v}`],
-  ['armor', '护甲', (v) => `+${v}`],
-  ['mr', '法抗', (v) => `+${v}`],
-  ['attackSpeedPct', '攻速', (v) => `+${Math.round(v * 100)}%`],
-  ['moveSpeed', '移速', (v) => `+${v}`],
-  ['cdr', '冷却缩减', (v) => `+${Math.round(v * 100)}%`],
-  ['lifesteal', '吸血', (v) => `+${Math.round(v * 100)}%`],
-  ['critChance', '暴击率', (v) => `+${Math.round(v * 100)}%`],
-  ['critDamage', '暴击伤害', (v) => `+${Math.round(v * 100)}%`],
-  ['armorPen', '护甲穿透', (v) => `+${Math.round(v * 100)}%`],
-  ['magicPen', '法术穿透', (v) => `+${Math.round(v * 100)}%`],
-  ['apPct', '法强', (v) => `+${Math.round(v * 100)}%`],
-  ['hpRegen', '生命回复', (v) => `+${v}/秒`],
-  ['manaRegen', '法力回复', (v) => `+${v}/秒`],
-];
-
-/** 装备提示浮层内容（菜单与结算页共用） */
+/** 装备提示浮层内容（菜单与结算页共用）：与对局里同一套四层——名字 → 一句大白话 → 属性 → 被动 */
 export function itemTooltipHtml(item: ItemDef): string {
-  const stats = STAT_LABELS.filter(([k]) => item.stats[k] !== undefined)
-    .map(([k, label, fmt]) => `${label} ${fmt(item.stats[k] as number)}`)
-    .join('\u3000');
-  const passive = item.passive ? `<div class="sf-tip__passive"><b>${escapeHtml(item.passive.name)}</b>\u3000${escapeHtml(item.passive.desc)}</div>` : '';
-  return `<div class="sf-tip__title"><span>${escapeHtml(item.name)}</span><span class="sf-tip__meta sf-num">${item.cost} 金币</span></div><div class="sf-tip__stats">${stats}</div>${passive}`;
+  return itemTipHtml(item);
 }
 
 /** 推荐出装的最终 6 件：出了进阶鞋就不再保留基础鞋 */
@@ -336,6 +331,7 @@ function radarSvg(heroId: HeroId): string {
 
 export function createSelectScreen(o: SelectOptions): MenuScreen {
   injectStyle('sf-menu-select', CSS);
+  ensureTagStyle();
   const { host } = o;
   let heroId: HeroId = o.initial.heroId;
   let difficulty: Difficulty = o.initial.difficulty;
@@ -352,6 +348,7 @@ export function createSelectScreen(o: SelectOptions): MenuScreen {
     'sf-select__top',
     createIconButton({ icon: uiIcon('back'), label: '返回标题', sound: 'back', onClick: () => o.onBack() }),
     h('h2', 'sf-title sf-metal', '选择英雄'),
+    h('p', 'sf-select__lead', '星陨高原的坠星之力，召来了不同时代的英杰。'),
     h(
       'div',
       'sf-select__top-right',
@@ -379,12 +376,15 @@ export function createSelectScreen(o: SelectOptions): MenuScreen {
       h(
         'span',
         'sf-hcard__info',
-        h('span', 'sf-hcard__name', def.name, h('small', null, def.title)),
-        h('span', 'sf-hcard__meta', h('span', null, icon(laneIcon(def.lane)), `${def.roleName} · ${LANE_NAMES[def.lane]}`), h('span', null, '上手', createStars(def.difficulty))),
+        // 主行「樊哙 · 坦克」；副行四字称号；再下一行只留分路与上手星级
+        h('span', 'sf-hcard__name', heroNameNode(id)),
+        h('span', 'sf-hcard__title', def.title),
+        h('span', 'sf-hcard__meta', h('span', null, icon(laneIcon(def.lane)), LANE_NAMES[def.lane]), h('span', null, '上手', createStars(def.difficulty))),
       ),
     );
     card.type = 'button';
     card.setAttribute('role', 'option');
+    card.dataset.hero = id;
     card.dataset.sfSnd = 'select';
     card.style.setProperty('--hero', def.palette.glow);
     card.style.setProperty('--role', ROLE_COLOR[def.role]);
@@ -465,25 +465,41 @@ export function createSelectScreen(o: SelectOptions): MenuScreen {
     }
   }
 
+  /**
+   * 技能说明框，自上而下：技能名 + 键位 → 类型标签(含「大招」/「被动」)与施法方式 → 一句大白话(大一号)
+   * → 冷却 / 消耗 / 距离 → 详细描述(全等级数值)。大白话永远排在数值前面。
+   */
   function skillDescNode(def: HeroDef, slot: HeroIconSlot): HTMLElement {
     const box = h('div', 'sf-skilldesc sf-inset');
     const head = h('div', 'sf-skilldesc__head');
+    const tags = h('div', 'sf-skilldesc__tags');
     const text = h('p', 'sf-skilldesc__text');
-    if (slot === 'passive') {
-      head.append(h('span', 'sf-skilldesc__name', def.passive.name), createBadge('被动', 'cyan'));
-      text.innerHTML = richDesc(def.passive.desc);
-    } else {
-      const sk: SkillDef = def.skills[slot];
-      head.append(
-        h('span', 'sf-skilldesc__name', sk.name),
-        h('span', 'sf-kbd', SLOT_KEY[slot]),
-        createBadge(`冷却 ${fmtRange(sk.cooldown)} 秒`, 'cyan', uiIcon('clock')),
-        createBadge(`消耗 ${fmtRange(sk.manaCost)}`, 'blue', uiIcon('mana')),
-        createBadge(castLabel(sk.cast), 'mute'),
+    const sk: SkillDef | null = slot === 'passive' ? null : def.skills[slot];
+    const info = sk ?? def.passive;
+    head.append(h('span', 'sf-skilldesc__name', info.name));
+    if (sk && slot !== 'passive') head.append(h('span', 'sf-kbd', SLOT_KEY[slot]));
+    head.append(h('span', 'sf-skilldesc__slot', SLOT_LABEL[slot]));
+    tags.innerHTML = skillTagsHtml(slot, info.tags);
+    if (sk) tags.append(h('span', 'sf-skilldesc__cast', castKind(sk.cast)));
+    box.append(head, tags);
+    if (info.brief) box.append(h('p', 'sf-skilldesc__brief', info.brief));
+    if (sk) {
+      const reach = castReach(sk.cast);
+      box.append(
+        h(
+          'div',
+          'sf-skilldesc__meta',
+          createBadge(`冷却 ${fmtRange(sk.cooldown)} 秒`, 'cyan', uiIcon('clock')),
+          createBadge(`消耗 ${fmtRange(sk.manaCost)}`, 'blue', uiIcon('mana')),
+          reach ? createBadge(reach, 'mute') : null,
+        ),
       );
       text.innerHTML = richDesc(formatSkillDesc(sk, 0));
+    } else {
+      box.append(h('div', 'sf-skilldesc__meta'));
+      text.innerHTML = richDesc(def.passive.desc);
     }
-    box.append(head, text);
+    box.append(text);
     return box;
   }
 
@@ -499,9 +515,9 @@ export function createSelectScreen(o: SelectOptions): MenuScreen {
 
     // 名牌
     plate.textContent = '';
+    // 大字「樊哙 · 坦克」(职业部分小一半、职业色)，下方四字称号
     plate.append(
-      h('span', 'sf-select__role', icon(roleIcon(def.role)), def.roleName),
-      h('h3', 'sf-select__name sf-metal', def.name),
+      h('h3', 'sf-select__name', h('span', 'sf-metal', def.name), h('small', 'sf-select__name-role', icon(roleIcon(def.role)), def.roleName)),
       h('span', 'sf-select__sub', def.title),
     );
 
@@ -519,6 +535,7 @@ export function createSelectScreen(o: SelectOptions): MenuScreen {
       h('span', 'sf-dim', '上手难度'),
       createStars(def.difficulty),
     );
+    const roleBrief = h('p', 'sf-select__rolebrief', h('b', null, `${def.roleName}：`), ROLE_BRIEF[def.role]);
     const tips = h('p', 'sf-select__tips sf-inset', icon(uiIcon('info')), h('span', null, def.tips));
 
     const radar = h('div', 'sf-radar');
@@ -530,7 +547,7 @@ export function createSelectScreen(o: SelectOptions): MenuScreen {
       ['物攻', String(b.ad)],
       ['攻速', b.attackSpeed.toFixed(2)],
       ['护甲', String(b.armor)],
-      ['法抗', String(b.mr)],
+      ['魔抗', String(b.mr)],
       ['移速', b.moveSpeed.toFixed(1)],
       ['射程', b.attackRange.toFixed(1)],
     ];
@@ -546,7 +563,11 @@ export function createSelectScreen(o: SelectOptions): MenuScreen {
       descHolder.appendChild(skillDescNode(def, slot));
     };
     for (const slot of SLOTS) {
-      const btn = h('button', 'sf-skill', createSlot(skillIcon(heroId, slot)), SLOT_LABEL[slot]);
+      // 图标下的小字：这个技能最要紧的类型标签(被动写「被动」，大招写「大招」)，一排扫过去就知道这名英雄有什么
+      const kt = skillKeyTag(slot, slot === 'passive' ? def.passive.tags : def.skills[slot].tags);
+      const label = h('span', 'sf-skill__tag', kt ? kt.text : SLOT_LABEL[slot]);
+      if (kt) label.style.color = kt.color;
+      const btn = h('button', 'sf-skill', createSlot(skillIcon(heroId, slot)), label);
       btn.type = 'button';
       btn.dataset.slot = slot;
       btn.dataset.sfSnd = 'click';
@@ -559,14 +580,19 @@ export function createSelectScreen(o: SelectOptions): MenuScreen {
       skillsRow.appendChild(btn);
     }
     showSkill(skillSlot);
-    // 三枚通用的召唤师技能：小图标 + 提示浮层
+    // 三枚通用技能(闪现 / 疗伤 / 回城)：小图标 + 提示浮层(先一句大白话，再完整说明)
     const sums = h('div', 'sf-skills__sum');
     for (const s of SUMMONER_SLOTS) {
       const info = SUMMONER[s];
       const slot = createSlot(summonerIcon(s), { round: true, label: info.name });
       slot.tabIndex = 0;
       tipDisposers.push(
-        attachTooltip(slot, () => `<div class="sf-tip__title"><span>${info.name}</span><span class="sf-tip__meta sf-num">召唤师技能 · 冷却 ${info.cooldown} 秒</span></div><div>${escapeHtml(info.desc)}</div>`),
+        attachTooltip(
+          slot,
+          () =>
+            `<div class="sf-tip__title"><span>${info.name}</span><span class="sf-tip__meta sf-num">通用技能 · 冷却 ${info.cooldown} 秒</span></div>` +
+            `<div style="font-weight:700;color:var(--sf-c-text)">${escapeHtml(info.brief)}</div><div>${escapeHtml(info.desc)}</div>`,
+        ),
       );
       sums.appendChild(slot);
     }
@@ -585,17 +611,20 @@ export function createSelectScreen(o: SelectOptions): MenuScreen {
     }
     buildRow.appendChild(h('span', 'sf-build__cost sf-num', icon(uiIcon('gold')), String(cost)));
 
+    // 先大白话(职业一句话、怎么玩、技能)，后数值(能力、出装)，最后是人物出处
     detailBody.append(
       tags,
-      h('p', 'sf-select__lore', def.lore),
+      roleBrief,
       tips,
-      h('h4', 'sf-heading', '能力'),
-      h('div', 'sf-select__abil', radar, statlist),
       h('h4', 'sf-heading', '技能'),
       skillsRow,
       descHolder,
+      h('h4', 'sf-heading', '能力'),
+      h('div', 'sf-select__abil', radar, statlist),
       h('h4', 'sf-heading', '推荐出装'),
       buildRow,
+      h('h4', 'sf-heading', '人物'),
+      h('p', 'sf-select__lore', def.lore),
     );
 
     if (swap) {

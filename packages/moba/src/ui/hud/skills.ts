@@ -99,8 +99,8 @@ const CSS = sfCss(`
 /* 类型标签角标：右上角两个字(键位角标在左上、等级点在下方，互不重叠)。深色半透明底 + 标签色文字，颜色只是辅助 */
 .sf-hud__sk-tag {
   --tag: 243, 207, 133;
-  position: absolute; right: calc(var(--d) * -0.1); top: calc(var(--d) * -0.07); z-index: 1; padding: 0.22em 0.42em 0.24em; border-radius: 99px; pointer-events: none;
-  font-size: max(9px, calc(var(--d) * 0.17)); font-weight: 800; font-style: normal; line-height: 1; letter-spacing: 0.02em; white-space: nowrap;
+  position: absolute; right: calc(var(--d) * -0.07); top: calc(var(--d) * -0.07); z-index: 1; padding: 0.22em 0.42em 0.24em; border-radius: 99px; pointer-events: none;
+  font-size: max(10px, calc(var(--d) * 0.175)); font-weight: 800; font-style: normal; line-height: 1; letter-spacing: 0.02em; white-space: nowrap;
   color: rgb(var(--tag)); background: rgba(6, 10, 24, 0.88); box-shadow: 0 0 0 1px rgba(var(--tag), 0.6), 0 1px 3px rgba(0, 0, 0, 0.6);
   transition: color 0.15s linear, box-shadow 0.15s linear, background 0.15s linear;
 }

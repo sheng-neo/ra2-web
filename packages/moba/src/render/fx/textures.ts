@@ -1,6 +1,6 @@
 /**
  * 特效贴图：全部程序化生成的粒子图集(一张 DataTexture，8×5 格)。
- * 第 5 行(下标 32~39)：32~34 留给英雄特效包(雁 / 音波弧 / 墨溅)，35~39 是通用特效(鳞片 / 吐息雾团 / 阔叶 / 水花环 / 八芒星)。
+ * 第 5 行(下标 32~39)：32~34 是英雄特效包的(雁 / 音波弧 / 墨溅)，35~39 是通用特效(鳞片 / 吐息雾团 / 阔叶 / 水花环 / 八芒星)。
  * 通道约定(线性数据，不用 alpha 通道存数据)：R = 形状/透明度蒙版，G = 明暗细节(乘到颜色上)，B = 亮核(把颜色推向白热)。
  * 图形一律画在格子中央 ~86% 的范围内，四周留黑边，mipmap 不会串格。
  */
@@ -45,7 +45,9 @@ export const SPRITE = {
   bolt: 29, // 眩晕用的折线闪电
   drop: 30, // 水滴/黏液
   soft: 31, // 极柔的大光斑
-  // 32~34：英雄特效包专用(雁形 V 剪影 / 一段音波弧 / 墨溅)，在本文件 DEFS 里补图形即可
+  goose: 32, // 飞雁的俯视剪影(头颈朝 +x，双翼后掠成「人」字)
+  wave: 33, // 一段音波弧(弧顶朝 +x，后面跟一道更短更淡的回声)
+  ink: 34, // 墨溅(不规则墨团 + 几道甩出去的尖 + 零星墨点)
   scale: 35, // 一片龙鳞(圆头菱形，带脊线；尖朝 +x)
   puff: 36, // 吐息雾团(边缘被噪声侵蚀的卷云团，带内部涡纹)
   broadleaf: 37, // 阔叶(带主脉与侧脉，尖朝 +x)
@@ -557,6 +559,103 @@ const DEFS: Record<number, SpriteDef> = {
       const r2 = x * x + y * y;
       o[0] = Math.exp(-r2 * 3.2) * sstep(1, 0.7, Math.sqrt(r2));
       o[1] = 1;
+      o[2] = 0;
+    },
+  },
+  [SPRITE.goose]: {
+    core: 0.22,
+    path: (m, s) => {
+      // 飞雁：长颈前伸、身体修长、双翼后掠；翼展约为身长的 1.25 倍，俯视镜头下第一眼读成「雁」而不是箭头
+      m.fillStyle = '#fff';
+      for (const side of [1, -1]) {
+        m.beginPath();
+        m.moveTo(0.24, 0.05 * side);
+        m.quadraticCurveTo(0.2, 0.5 * side, -0.5, 0.92 * side);
+        m.quadraticCurveTo(-0.34, 0.62 * side, -0.3, 0.44 * side);
+        m.quadraticCurveTo(-0.2, 0.24 * side, -0.26, 0.06 * side);
+        m.closePath();
+        m.fill();
+      }
+      // 身体 + 尾
+      m.beginPath();
+      m.ellipse(-0.04, 0, 0.36, 0.125, 0, 0, TAU);
+      m.fill();
+      m.beginPath();
+      m.moveTo(-0.3, 0.09);
+      m.lineTo(-0.6, 0);
+      m.lineTo(-0.3, -0.09);
+      m.closePath();
+      m.fill();
+      // 颈与头(喙尖到 0.97)
+      m.beginPath();
+      m.moveTo(0.22, 0.085);
+      m.lineTo(0.78, 0.04);
+      m.quadraticCurveTo(0.9, 0.075, 0.97, 0);
+      m.quadraticCurveTo(0.9, -0.075, 0.78, -0.04);
+      m.lineTo(0.22, -0.085);
+      m.closePath();
+      m.fill();
+      // 明暗：身体与翼根亮，翼尖(飞羽)压暗，后缘几道羽缝
+      const g = s.createRadialGradient(0, 0, 0.12, 0, 0, 0.98);
+      g.addColorStop(0, '#ffffff');
+      g.addColorStop(0.55, '#e4e4e4');
+      g.addColorStop(1, '#8a8a8a');
+      s.fillStyle = g;
+      s.fillRect(-1.2, -1.2, 2.4, 2.4);
+      s.strokeStyle = 'rgba(70,70,70,0.6)';
+      s.lineWidth = 0.022;
+      for (const side of [1, -1]) {
+        for (let i = 0; i < 5; i++) {
+          const t = 0.3 + i * 0.13;
+          s.beginPath();
+          s.moveTo(0.12 - t * 0.5, (0.12 + t * 0.62) * side);
+          s.lineTo(-0.22 - t * 0.3, (0.1 + t * 0.86) * side);
+          s.stroke();
+        }
+      }
+    },
+  },
+  [SPRITE.wave]: {
+    pix: (x, y, o) => {
+      // 音波弧：圆心在左侧画面外，弧顶朝 +x，两端收尖；后面再跟一道更短更淡的回声
+      const arc = (cx: number, rad: number, span: number, w: number): number => {
+        const dx = x - cx;
+        const a = Math.atan2(y, dx);
+        if (Math.abs(a) >= span) return 0;
+        const taper = Math.pow(Math.cos((a / span) * Math.PI * 0.5), 0.7);
+        const d = Math.abs(Math.hypot(dx, y) - rad) / (w * taper + 1e-4);
+        return sstep(1, 0.45, d) * taper;
+      };
+      const main = arc(-0.55, 1.36, 0.66, 0.075);
+      const echo = arc(-0.62, 1.06, 0.5, 0.05);
+      o[0] = sat(main + echo * 0.55);
+      o[1] = 1;
+      o[2] = sat(main * main * 0.7);
+    },
+  },
+  [SPRITE.ink]: {
+    pix: (x, y, o) => {
+      // 墨溅：边缘不规则的墨团 + 七道长短不一的甩尖 + 外圈零星墨点；G 通道给一点浓淡
+      const r = Math.hypot(x, y);
+      const a = Math.atan2(y, x);
+      const n = fbm2(x * 2.3 + 1.7, y * 2.3 + 5.1, 3, 61) - 0.5;
+      let edge = 0.34 + n * 0.2;
+      for (let i = 0; i < 7; i++) {
+        const ai = (i / 7) * TAU + Math.sin(i * 5.3) * 0.35;
+        const len = 0.2 + 0.32 * (0.5 + 0.5 * Math.sin(i * 3.1 + 1));
+        let da = a - ai;
+        da = Math.atan2(Math.sin(da), Math.cos(da));
+        edge += len * Math.exp(-da * da * 70);
+      }
+      let m = sstep(edge, edge - 0.07, r);
+      for (let i = 0; i < 9; i++) {
+        const ai = (i / 9) * TAU + Math.sin(i * 7.7) * 0.3 + 0.4;
+        const ri = 0.66 + 0.2 * Math.sin(i * 4.3 + 2);
+        const si = 0.03 + 0.04 * (0.5 + 0.5 * Math.sin(i * 6.1));
+        m = Math.max(m, sstep(si, si * 0.6, Math.hypot(x - Math.cos(ai) * ri, y - Math.sin(ai) * ri)));
+      }
+      o[0] = m * sstep(1, 0.94, r);
+      o[1] = sat(0.78 + n * 0.5);
       o[2] = 0;
     },
   },

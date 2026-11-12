@@ -1,6 +1,6 @@
 /**
  * 状态特效：挂在单位身上的 buff 表现，随 buff 出现而建立、消失而回收，只画对玩家可见的存活单位。
- * 层数类(星辉印记 / 风之眷顾 / 防御塔锁定)用对应数量的图标直接表达层数。
+ * 层数类(余音 / 猿臂连射 / 防御塔锁定)用对应数量的图标直接表达层数。
  */
 import type * as THREE from 'three';
 import { TICK_DT, type Buff, type BuffId } from '../../core/types';
@@ -47,6 +47,18 @@ const SHADOW = THEME.yeque;
 const WIND = THEME.fengling;
 const MARK = THEME.xingli;
 const LOCK = col(0xff3a28);
+/** 程咬金斧刃的赤金 */
+const AXE_GOLD = col(0xffc060);
+/**
+ * 英雄状态的脚环半径 = 单位半径 × 这个倍率：压在队伍环(1.3 倍)以内，不和增益环(1.6 / 1.85 / 2.1 倍)抢位置。
+ */
+const HERO_RING = 1.22;
+
+/** 从 t0 起 0.22 秒的一下闪光(0..1，先快后慢地亮起再熄灭) */
+function glintAt(age: number, t0: number): number {
+  const t = (age - t0) / 0.22;
+  return t <= 0 || t >= 1 ? 0 : Math.sin(t * Math.PI);
+}
 
 /** 按每秒 rate 个的速率，本帧该发射几个(受画质倍率影响)。用返回值驱动循环，不为每帧每个状态分配闭包 */
 function due(k: FxKit, v: StatusView, dt: number, rate: number): number {
@@ -252,22 +264,20 @@ const DEFS: Partial<Record<BuffId, StatusDef>> = {
       }
     },
   },
-  // 不可选中：半透明残影(暗影烟缕裹身 + 脚下影池)
+  // 不可选中(荆轲隐入图卷的那一瞬)：脚下一摊墨 + 身周散开的墨点，不再是紫色影烟
   untargetable: {
     create(k, v) {
       const s = holdDecal(k, v, DECAL.glow, 0.1);
-      k.decals.at(s).params(1.2).color(SHADOW.deep, 0.8, 0.9).under(SHADOW.dark, 0.7);
+      k.decals.at(s).params(1.2).color(C.black, 0, 0.9).under(C.ink, 0.75);
     },
     update(k, v, a, _b, dt) {
-      k.decals.at(v.slots[0]).at(a.x, a.z).radius(a.radius + 0.9);
-      for (let n = due(k, v, dt, 26); n > 0; n--) {
+      k.decals.at(v.slots[0]).at(a.x, a.z).radius(a.radius + 0.8);
+      for (let n = due(k, v, dt, 20); n > 0; n--) {
         const r = k.rnd;
         const t = r.next() * TAU;
-        const d = a.radius * r.range(0.6, 1.2);
-        const x = a.x + Math.cos(t) * d;
-        const z = a.z + Math.sin(t) * d;
-        if (r.chance(0.65)) k.particles.use(P.wisp).spawn(x, a.y + r.range(0.1, 1.4), z, r.signed() * 0.4, r.range(0.8, 1.8), r.signed() * 0.4, 0.5, 0.7, 1.3);
-        else k.particles.use(P.glint).tint(SHADOW.hot, SHADOW.glow).spawn(x, a.y + r.range(0.3, 1.9), z, 0, 0.6, 0, 0.4, 0.3, 0.08);
+        const d = a.radius * r.range(0.5, 1.2);
+        const sz = r.range(0.1, 0.22);
+        k.particles.use(P.inkRise).spawn(a.x + Math.cos(t) * d, a.y + r.range(0.1, 1.5), a.z + Math.sin(t) * d, r.signed() * 0.4, r.range(0.4, 1.2), r.signed() * 0.4, 0.5, sz, sz * 1.6);
       }
     },
   },
@@ -390,25 +400,22 @@ const DEFS: Partial<Record<BuffId, StatusDef>> = {
       }
     },
   },
-  // 星辉印记：1~3 颗星印(头顶的图标由叠加层画在名字上方；这里是绕身飞旋的同样数量的星 + 脚下星印)
+  // 王昭君·余音：脚下 1~3 圈同心细环(圈数 = 层数，压在队伍环以内) + 绕身同样数量的金色音珠(头顶的层数记号由叠加层画)
   xingli_mark: {
     create(k, v) {
-      const s = holdDecal(k, v, DECAL.star, 0.15);
-      k.decals.at(s).params(4, 2.4).color(MARK.glow, 1.5, 0).under(MARK.dark, 0.3);
+      const s = holdDecal(k, v, DECAL.rings, 0.15);
+      k.decals.at(s).y(0.07).params(1, 1).color(MARK.hot, 1.6, 0.9).under(MARK.dark, 0.3);
     },
     update(k, v, a, b) {
       const n = Math.max(1, Math.min(3, b.stacks));
-      // 层数越高，脚下星印越亮；两层以上才显出来
-      k.decals.at(v.slots[0]).at(a.x, a.z).radius(a.radius + 0.75).rot(v.age * 0.9).alpha(n >= 3 ? 1 : n === 2 ? 0.6 : 0.3);
+      k.decals.at(v.slots[0]).at(a.x, a.z).radius(a.radius * HERO_RING).params(n, 1).alpha(n >= 3 ? 1 : 0.8);
       const pop = Math.min(1, v.age * 8);
-      const r = a.radius + 0.55;
+      const r = a.radius + 0.5;
       for (let i = 0; i < n; i++) {
         const ang = v.phase + v.age * 2.6 + (i * TAU) / 3;
-        const s = 0.5 * (i === n - 1 ? 0.6 + 0.4 * pop : 1);
-        const x = a.x + Math.cos(ang) * r;
-        const z = a.z + Math.sin(ang) * r;
+        const s = 0.42 * (i === n - 1 ? 0.6 + 0.4 * pop : 1);
         const y = a.y + a.height * 0.55 + Math.sin(v.age * 3.2 + i * 2.1) * 0.12;
-        k.sprites.icon(SPRITE.star, x, y, z, s * 1.15, ang, MARK.glow, 1.3, 1, 0.2, 0.2);
+        k.sprites.icon(SPRITE.glow, a.x + Math.cos(ang) * r, y, a.z + Math.sin(ang) * r, s * 1.5, 0, MARK.accent, 1.9, 1, 0.5, 0.2);
       }
     },
   },
@@ -429,78 +436,121 @@ const DEFS: Partial<Record<BuffId, StatusDef>> = {
       }
     },
   },
-  // 磐岳：第三击就绪时胸前的琥珀星芒
+  // 樊哙：第三击(覆盾震地)就绪 —— 盾心的盾鼻闪光(盾在左手：取 handL 挂点，拿不到就按朝向估在身前左侧)
   panyue_passive: {
     update(k, v, a, b) {
       if (b.stacks < 2) return;
-      const s = 0.55 + 0.12 * Math.sin(v.age * 9);
-      k.sprites.icon(SPRITE.spark, a.x, a.y + a.height * 0.58, a.z, s * 1.3, v.age * 2, ROOT.glow, 1.5, 0.95, 0.5, a.radius + 0.4);
+      const u = a.unit;
+      const f = u ? u.facing : 0;
+      let x = a.x + Math.cos(f) * 0.55 + Math.sin(f) * 0.38;
+      let y = a.y + a.height * 0.42;
+      let z = a.z + Math.sin(f) * 0.55 - Math.cos(f) * 0.38;
+      if (u && k.anchors.attach?.(u.id, 'handL', k.v)) {
+        x = k.v.x + Math.cos(f) * 0.12;
+        y = k.v.y - 0.12;
+        z = k.v.z + Math.sin(f) * 0.12;
+      }
+      const s = 0.62 + 0.14 * Math.sin(v.age * 9);
+      k.sprites.icon(SPRITE.glow, x, y, z, s * 1.25, 0, ROOT.hot, 1.9, 0.95, 0.6, 0.45);
+      k.sprites.draw(SPRITE.spark, x, y, z, s * 1.15, v.age * 1.5, ROOT.hot, 1.6, 0.9, 0.7, 0.46);
     },
   },
-  // 赤烬：余烬之刃就绪——双刃带火
+  // 程咬金：越砍越勇就绪 —— 斧刃上的赤金闪光 + 少量铁火星(weapon 挂点；拿不到就放右肩上方)
   chijin_ember: {
     update(k, v, a, _b, dt) {
       const u = a.unit;
       const f = u ? u.facing : 0;
-      for (let n = due(k, v, dt, 18); n > 0; n--) {
-        const side = k.rnd.chance(0.5) ? 1 : -1;
-        const x = a.x - Math.sin(f) * side * (a.radius + 0.35) + Math.cos(f) * 0.35;
-        const z = a.z + Math.cos(f) * side * (a.radius + 0.35) + Math.sin(f) * 0.35;
-        k.particles.use(P.flame).spawn(x, a.y + k.rnd.range(0.6, 1.2), z, 0, k.rnd.range(0.8, 1.8), 0, 0.5, 0.85, 0.35);
+      let x = a.x - Math.sin(f) * 0.45;
+      let y = a.y + a.height * 0.95;
+      let z = a.z + Math.cos(f) * 0.45;
+      if (u && k.anchors.attach?.(u.id, 'weapon', k.v)) {
+        x = k.v.x;
+        y = k.v.y;
+        z = k.v.z;
+      }
+      const s = 0.7 + 0.16 * Math.sin(v.age * 11);
+      k.sprites.icon(SPRITE.glow, x, y, z, s * 1.2, 0, AXE_GOLD, 2, 0.95, 0.6, 0.4);
+      k.sprites.draw(SPRITE.spark, x, y, z, s, v.age * 2.2, AXE_GOLD, 1.7, 0.9, 0.7, 0.41);
+      for (let n = due(k, v, dt, 7); n > 0; n--) {
+        const r = k.rnd;
+        k.particles.use(P.spark).tint(AXE_GOLD, EMBER).spawn(x + r.signed() * 0.15, y + r.signed() * 0.15, z + r.signed() * 0.15, r.signed() * 1.6, r.range(0.5, 2.5), r.signed() * 1.6, 0.3, 0.1, 0.03);
       }
     },
   },
-  // 赤烬：炎步后的攻速加成——脚下带火
+  // 程咬金：半路杀出后的攻速加成 —— 脚下卷尘 + 贴地打转的赤色疾风线
   chijin_blaze: {
     update(k, v, a, _b, dt) {
-      for (let n = due(k, v, dt, 16); n > 0; n--) {
+      for (let n = due(k, v, dt, 14); n > 0; n--) {
         const r = k.rnd;
         const t = r.next() * TAU;
-        const d = a.radius + r.range(0.05, 0.4);
-        const x = a.x + Math.cos(t) * d;
-        const z = a.z + Math.sin(t) * d;
-        if (r.chance(0.6)) k.particles.use(P.flame).spawn(x, a.y + 0.25, z, 0, r.range(1, 2), 0, 0.5, 0.85, 0.35);
-        else k.particles.use(P.ember).tint(EMBER_HOT, EMBER).spawn(x, a.y + 0.3, z, r.signed(), r.range(1, 2.5), r.signed(), 0.6, 0.14, 0.05);
+        const d = a.radius + r.range(0.05, 0.35);
+        if (r.chance(0.35)) k.particles.use(P.dust).spawn(a.x + Math.cos(t) * d, a.y + 0.15, a.z + Math.sin(t) * d, Math.sin(t) * 1.2, r.range(0.3, 0.9), -Math.cos(t) * 1.2, 0.45, 0.4, 0.9);
+        else k.particles.use(P.streak).tint(EMBER_HOT, EMBER).orbit(a.x, a.y + r.range(0.12, 0.5), a.z, d, d + 0.25, t, -9, r.range(0.2, 0.8), r.range(0.22, 0.32), 0.14, 0.04);
       }
     },
   },
-  // 风翎：风之眷顾——层数 = 绕身的风叶数，满层脚下起风环
+  // 李广：猿臂连射 —— 层数 = 绕身的白羽数；满层时脚下一圈细的金绿实线环(压在队伍环以内)，白羽转得更快
   fengling_gale: {
     create(k, v) {
-      const s = holdDecal(k, v, DECAL.swirl, 0.2);
-      k.decals.at(s).params(4, 1.6).color(WIND.glow, 1.3, 0).under(C.black, 0);
+      const s = holdDecal(k, v, DECAL.range, 0.2);
+      k.decals.at(s).y(0.07).params(0.035, 0).color(WIND.accent, 1.6, 0).under(C.shadow, 0.25);
     },
     update(k, v, a, b) {
       const n = Math.max(1, Math.min(5, b.stacks));
       const full = n >= 5;
-      k.decals.at(v.slots[0]).at(a.x, a.z).radius(a.radius + 0.85).alpha(full ? 0.85 : 0);
+      k.decals.at(v.slots[0]).at(a.x, a.z).radius(a.radius * HERO_RING).alpha(full ? 0.9 : 0);
       const r = a.radius + 0.5;
       for (let i = 0; i < n; i++) {
-        const ang = v.phase + v.age * (full ? 5.5 : 3.5) + (i * TAU) / n;
-        k.sprites.icon(SPRITE.leaf, a.x + Math.cos(ang) * r, a.y + a.height * 0.42 + Math.sin(ang * 2 + i) * 0.1, a.z + Math.sin(ang) * r, 0.5, -ang, WIND.glow, full ? 1.5 : 1.2, 0.95, 0.2, 0.2);
+        const ang = v.phase + v.age * (full ? 5.5 : 3.2) + (i * TAU) / n;
+        // 羽尖顺着绕行方向
+        k.sprites.icon(SPRITE.feather, a.x + Math.cos(ang) * r, a.y + a.height * 0.42 + Math.sin(ang * 2 + i) * 0.1, a.z + Math.sin(ang) * r, 0.52, -ang - Math.PI / 2, C.plume, full ? 1.35 : 1.15, 0.95, 0.15, 0.2);
       }
     },
   },
-  // 风翎：下一箭必暴——身前的金绿星芒
+  // 李广：下一箭必暴 —— 箭镞处一点金芒(muzzle 挂点；拿不到就在身前 0.7 米)
   fengling_crit: {
     update(k, v, a) {
       const u = a.unit;
       const f = u ? u.facing : 0;
+      let x = a.x + Math.cos(f) * 0.7;
+      let y = a.y + a.height * 0.6;
+      let z = a.z + Math.sin(f) * 0.7;
+      if (u && k.anchors.attach?.(u.id, 'muzzle', k.v)) {
+        x = k.v.x + Math.cos(f) * 0.2;
+        y = k.v.y;
+        z = k.v.z + Math.sin(f) * 0.2;
+      }
       const s = 0.6 + 0.15 * Math.sin(v.age * 10);
-      k.sprites.icon(SPRITE.spark, a.x + Math.cos(f) * 0.7, a.y + a.height * 0.6, a.z + Math.sin(f) * 0.7, s * 1.3, v.age * 3, WIND.accent, 1.5, 1, 0.5, 0.3);
+      k.sprites.icon(SPRITE.spark, x, y, z, s * 1.3, v.age * 3, WIND.accent, 1.6, 1, 0.5, 0.3);
     },
   },
-  // 夜阙：猎影(击杀刷新) —— 身周的紫色影缕
+  // 荆轲：得手后的 3 秒(一、二技能已刷新) —— 脚下一圈墨晕 + 匕首处寒光闪两下 + 少量上升的墨点
   yeque_shadow: {
     create(k, v) {
       const s = holdDecal(k, v, DECAL.glow, 0.2);
-      k.decals.at(s).params(1.3).color(SHADOW.glow, 0.6, 0.8).under(SHADOW.dark, 0.5);
+      k.decals.at(s).params(1.3).color(C.black, 0, 0.8).under(C.ink, 0.55);
     },
     update(k, v, a, _b, dt) {
-      k.decals.at(v.slots[0]).at(a.x, a.z).radius(a.radius + 0.9);
-      for (let n = due(k, v, dt, 7); n > 0; n--) {
+      k.decals.at(v.slots[0]).at(a.x, a.z).radius(a.radius + 0.75);
+      // 两下寒光：出现后 0.1~0.32 秒、0.5~0.72 秒
+      const g = Math.max(glintAt(v.age, 0.1), glintAt(v.age, 0.5));
+      const u = a.unit;
+      if (g > 0 && u) {
+        const f = u.facing;
+        let x = a.x + Math.cos(f) * 0.4 - Math.sin(f) * 0.35;
+        let y = a.y + a.height * 0.5;
+        let z = a.z + Math.sin(f) * 0.4 + Math.cos(f) * 0.35;
+        if (k.anchors.attach?.(u.id, 'weapon', k.v)) {
+          x = k.v.x;
+          y = k.v.y;
+          z = k.v.z;
+        }
+        k.sprites.draw(SPRITE.spark, x, y, z, 0.5 + g * 0.9, 0.4, SHADOW.hot, 2.1, g, 0.75, 0.45);
+      }
+      for (let n = due(k, v, dt, 6); n > 0; n--) {
         const r = k.rnd;
-        k.particles.use(P.wisp).spawn(a.x + r.signed() * a.radius, a.y + r.range(0.1, 0.8), a.z + r.signed() * a.radius, 0, r.range(0.8, 1.6), 0, 0.5, 0.5, 0.9);
+        const sz = r.range(0.08, 0.16);
+        k.particles.use(P.inkRise).spawn(a.x + r.signed() * a.radius, a.y + r.range(0.1, 0.6), a.z + r.signed() * a.radius, 0, r.range(0.5, 1.1), 0, 0.6, sz, sz * 1.3);
       }
     },
   },

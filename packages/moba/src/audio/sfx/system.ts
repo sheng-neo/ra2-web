@@ -135,15 +135,15 @@ export const SYSTEM = {
     const dr = p.drive(3, p.filt('lowpass', 2400, 0.6));
     const lp = p.filt('lowpass', 260, 2, dr);
     p.ramp(lp.frequency, [[0, 260], [d, 1100]]);
-    p.osc({ w: 'sawtooth', f: 58, f1: 104, ft: d, a: d * 0.9, d: 0.1, g: 0.5, vib: 80, vr: 26, vd: 0, to: lp });
-    p.osc({ w: 'sawtooth', f: 87, f1: 156, ft: d, a: d * 0.9, d: 0.1, g: 0.3, vib: 60, vr: 35, vd: 0, to: lp });
+    p.osc({ w: 'sawtooth', f: 58, f1: 104, ft: d, a: d * 0.9, d: 0.1, g: 0.4, vib: 80, vr: 26, vd: 0, to: lp });
+    p.osc({ w: 'sawtooth', f: 87, f1: 156, ft: d, a: d * 0.9, d: 0.1, g: 0.25, vib: 60, vr: 35, vd: 0, to: lp });
     // 腹甲节片由后向前逐节亮起：五下上行的晶音
     [0, 3, 7, 10, 14].forEach((semi, i) => p.fm({ f: mtof(62 + semi), ratio: 2.4, idx: 1.6, idx1: 0.1, t: d * (0.12 + i * 0.17), a: 0.004, d: 0.22, g: 0.09 + i * 0.02 }));
     // 口中聚光：一线越来越尖、颤得越来越快的鸣响——预警的主要识别音，小喇叭上也清楚
     const am = p.gain(0.6);
     p.lfo(am.gain, 9, 0.4, 0, d + 0.1, 22);
-    p.osc({ w: 'softsq', f: 311, f1: 622, ft: d, a: d * 0.92, d: 0.06, g: 0.2, to: p.filt('lowpass', 2600, 1, am) });
-    p.osc({ f: 933, f1: 1866, ft: d, a: d * 0.95, d: 0.05, g: 0.07, to: am });
+    p.osc({ w: 'softsq', f: 311, f1: 622, ft: d, a: d * 0.92, d: 0.06, g: 0.7, to: p.filt('lowpass', 2600, 1, am) });
+    p.osc({ f: 933, f1: 1866, ft: d, a: d * 0.95, d: 0.05, g: 0.2, to: am });
   }, { ...SYS, loud: -18, len: 0.95, gap: 0.5, poly: 1, range: 34, rev: 0.26 }),
   fx_drake_breath: def('状态与系统', '河道巨龙·吐息喷吐', (p) => {
     const d = Math.min(1.6, Math.max(0.3, p.dur));
@@ -153,18 +153,19 @@ export const SYSTEM = {
     p.lfo(jet.gain, 23, 0.25, 0, d + 0.5);
     const bp = p.filt('bandpass', 1500, 0.7, jet);
     p.ramp(bp.frequency, [[0, 2400], [0.12, 1500], [d, 800]]);
-    p.noise({ a: 0.03, h: hold, d: 0.35, g: 2.2, to: bp });
-    p.noise({ k: 'pink', flt: 'lowpass', fc: 520, fc1: 200, a: 0.03, h: hold, d: 0.4, g: 0.7, to: jet });
+    p.noise({ a: 0.03, h: hold, d: 0.35, g: 2.6, to: bp });
+    p.noise({ k: 'pink', flt: 'lowpass', fc: 520, fc1: 200, a: 0.04, h: hold, d: 0.4, g: 0.4, to: jet });
     // 深渊的质感：带水汽的高频嘶声 + 压着嗓子的喉音
     p.noise({ flt: 'bandpass', fc: 5200, q: 2.5, a: 0.05, h: hold, d: 0.3, g: 0.25, to: jet });
-    const dr = p.drive(3, p.filt('lowpass', 1800, 0.6));
+    // (失真器的输出接近满幅，后面压一道增益：喉音只是垫底，不能把峰值顶上去)
+    const dr = p.drive(3, p.filt('lowpass', 1800, 0.6, p.gain(0.4)));
     p.osc({ w: 'sawtooth', f: 74, f1: 52, ft: d, a: 0.03, h: hold, d: 0.3, g: 0.35, vib: 90, vr: 31, vd: 0, to: p.filt('lowpass', 700, 1.5, dr) });
-    p.osc({ f: 62, f1: 40, a: 0.02, h: hold * 0.8, d: 0.5, g: 0.5 });
+    p.osc({ f: 62, f1: 40, a: 0.05, h: hold * 0.8, d: 0.5, g: 0.15 });
     // 张口的一下爆发
-    p.noise({ flt: 'bandpass', fc: 1100, q: 0.6, a: 0.002, d: 0.1, g: 0.9 });
-    // 每一跳伤害：喷流里的一次鼓动
+    p.noise({ flt: 'bandpass', fc: 1100, q: 0.6, a: 0.004, d: 0.1, g: 0.5 });
+    // 之后的每一跳伤害：喷流里的一次鼓动(第一跳就是张口那一下)
     const ticks = Math.max(1, Math.round(MONSTER_RULES.breathTicks));
-    for (let i = 0; i < ticks; i++) p.noise({ k: 'pink', flt: 'bandpass', fc: 700, q: 1, t: (d * i) / ticks, a: 0.01, d: 0.12, g: 0.45 });
+    for (let i = 1; i < ticks; i++) p.noise({ k: 'pink', flt: 'bandpass', fc: 700, q: 1, t: (d * i) / ticks, a: 0.01, d: 0.12, g: 0.4 });
     // 口角余雾
     p.noise({ flt: 'highpass', fc: 3800, t: d, a: 0.08, d: 0.45, g: 0.07 });
   }, { ...SYS, loud: -14, len: 1.3, gap: 0.5, poly: 1, prio: 3, range: 34, rev: 0.3 }),
@@ -255,7 +256,7 @@ export const SYSTEM = {
       });
     } else if (v < 1.5) {
       // 霜晶巨鹿：一声下行的长鸣 + 跪倒 + 鹿角由尖向根碎成冰屑
-      p.sub(1, (q) => {
+      p.sub(0.86, (q) => {
         const bp = q.filt('bandpass', 850, 2.2);
         q.osc({ w: 'reed', f: 330, f1: 165, ft: 0.5, a: 0.03, h: 0.15, d: 0.4, g: 0.5, vib: 30, vr: 7, vd: 0.1, to: bp });
         q.osc({ w: 'softsaw', f: 330, f1: 165, ft: 0.5, a: 0.04, h: 0.12, d: 0.36, g: 0.2, to: bp });
@@ -264,7 +265,7 @@ export const SYSTEM = {
       });
     } else if (v < 2.5) {
       // 炽焰巨熊：人立长嚎 → 前扑趴倒 → 熔核熄灭的嘶声
-      p.sub(1, (q) => {
+      p.sub(0.51, (q) => {
         growl(q, 0, 0.5, 0.8, 120, 62, 400, 1300);
         const dr = q.drive(2);
         q.osc({ f: 92, f1: 34, t: 0.42, a: 0.003, d: 0.4, g: 0.8, to: dr });
@@ -273,7 +274,7 @@ export const SYSTEM = {
       });
     } else {
       // 荧翅蛾：扑翅越来越慢，像落叶一样飘下，碎成鳞粉
-      p.sub(1, (q) => {
+      p.sub(0.75, (q) => {
         const g = q.gain(0.6);
         q.lfo(g.gain, 18, 0.4, 0, 0.45, 5);
         q.noise({ flt: 'bandpass', fc: 1400, fc1: 600, q: 1.5, a: 0.02, d: 0.4, g: 0.7, to: g });
@@ -287,7 +288,7 @@ export const SYSTEM = {
   epic_roar: def('状态与系统', '史诗野怪现身', (p, v) => {
     if (v < 0.5) {
       // 河道巨龙：潭面起旋涡 → 水柱炸开 → 展翼长啸
-      p.sub(1, (q) => {
+      p.sub(0.89, (q) => {
         const sw = q.gain(0.6);
         q.lfo(sw.gain, 2.5, 0.35, 0, 1.1, 7);
         q.noise({ k: 'pink', flt: 'bandpass', fc: 500, fc1: 1500, fct: 1.0, q: 1.2, a: 0.9, d: 0.12, g: 0.9, to: sw });
@@ -320,7 +321,7 @@ export const SYSTEM = {
   epic_fall: def('状态与系统', '史诗野怪倒下', (p, v) => {
     if (v < 0.5) {
       // 河道巨龙：仰天长啸 → 渊珠碎裂 → 侧倒 → 头颈落水 → 鳞片化成上升的光点
-      p.sub(1, (q) => {
+      p.sub(0.85, (q) => {
         dragonRoar(q, 0, 0.75, 0.9, 1.25);
         q.noise({ flt: 'highpass', fc: 4000, t: 0.6, a: 0.001, d: 0.03, g: 0.4 });
         q.scatter(7, 0.6, 0.25, (at) => q.ring(q.rr(2200, 5200), CRYSTAL, { t: at, a: 0.001, d: q.rr(0.08, 0.2), g: 0.1 }));

@@ -152,7 +152,7 @@ export function createTitleScreen(o: TitleOptions): MenuScreen {
     emblem,
     name,
     h('div', 'sf-logo__sub', h('i'), h('b', null, 'STARFALL'), h('i')),
-    h('p', 'sf-logo__tag', '原创 5v5 星陨对决'),
+    h('p', 'sf-logo__tag', '坠星召来历代英杰 · 5v5 对决'),
   );
 
   const start = createButton({ label: '开始对战', variant: 'primary', size: 'lg', pulse: true, sound: 'confirm', onClick: () => o.onStart() });

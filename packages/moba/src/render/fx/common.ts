@@ -73,6 +73,32 @@ export const P = {
   droplet: particleStyle({ scale: 1.1, sprite: SPRITE.drop, add: 0.3, color: 0xeafffb, color2: 0x9fe0e8, intensity: 1.15, gravity: 14, drag: 0.6, rot: 0, fadeIn: 0.02, fadeOut: 0.6 }),
   /** 八芒星(星陨祝福、巨灵相关) */
   star8: particleStyle({ pull: 0.3, scale: 1.3, sprite: SPRITE.star8, add: 0.5, color: 0xfff0b8, color2: 0xffcf60, intensity: 1.8, intensity2: 1.1, drag: 1.8, spin: 1.5, fadeIn: 0.08, fadeOut: 0.5 }),
+
+  // ── 以下是英雄特效包的样式 ──
+  /** 雁影(王昭君)：头朝飞行方向的发光剪影，不随速度拉伸 */
+  goose: particleStyle({ sprite: SPRITE.goose, orient: ORIENT.stretch, stretch: 0, add: 0.4, color: 0xf2f8ff, color2: 0x9cccff, intensity: 1.75, intensity2: 1.0, fadeIn: 0.06, fadeOut: 0.55 }),
+  /** 雁影的深色衬底(遮挡型)：亮地面上白色的雁靠它托出轮廓 */
+  gooseShade: particleStyle({ sprite: SPRITE.goose, orient: ORIENT.stretch, stretch: 0, add: 0, color: 0x1a2458, alpha: 0.6, alpha2: 0.2, fadeIn: 0.06, fadeOut: 0.5 }),
+  /** 音波弧(王昭君)：弧顶朝运动方向 */
+  wave: particleStyle({ sprite: SPRITE.wave, orient: ORIENT.stretch, stretch: 0, add: 0.5, color: 0xf2f8ff, color2: 0x8cc4ff, intensity: 1.8, intensity2: 1.0, drag: 3, fadeIn: 0.04, fadeOut: 0.35 }),
+  /** 金芒(王昭君)：柔和的小金点，代替星形闪烁 */
+  mote: particleStyle({ pull: 0.3, sprite: SPRITE.dot, add: 0.65, color: 0xfff0c8, color2: 0xffc860, intensity: 2.2, intensity2: 1.1, drag: 2.2, fadeIn: 0.1, fadeOut: 0.4 }),
+  /** 弦线(王昭君)：绷直的金色细线，沿速度方向拉长 */
+  string: particleStyle({ sprite: SPRITE.streak, orient: ORIENT.stretch, add: 0.6, color: 0xfff2c8, color2: 0xffc860, intensity: 2.1, intensity2: 1.1, drag: 0.6, stretch: 0.05, fadeIn: 0.0, fadeOut: 0.45 }),
+  /** 墨溅(荆轲)：朝向相机的一团墨，遮挡型 */
+  ink: particleStyle({ sprite: SPRITE.ink, add: 0, color: 0x0e0a16, color2: 0x1c1428, alpha: 0.94, alpha2: 0.45, drag: 3.2, gravity: 1.2, spin: 0.7, fadeIn: 0.03, fadeOut: 0.45, vary: 0.1 }),
+  /** 贴地的墨溅 */
+  inkFlat: particleStyle({ sprite: SPRITE.ink, orient: ORIENT.flat, add: 0, color: 0x0e0a16, color2: 0x1c1428, alpha: 0.88, alpha2: 0.6, fadeIn: 0.02, fadeOut: 0.55 }),
+  /** 飞溅的墨点(受重力) */
+  inkDot: particleStyle({ sprite: SPRITE.ember, add: 0, color: 0x0e0a16, color2: 0x1c1428, alpha: 0.95, alpha2: 0.7, gravity: 12, drag: 1.2, fadeIn: 0.01, fadeOut: 0.7 }),
+  /** 缓缓上升的墨点 */
+  inkRise: particleStyle({ pull: 0.3, sprite: SPRITE.ember, add: 0, color: 0x161022, color2: 0x241a34, alpha: 0.85, alpha2: 0.3, gravity: -1.4, drag: 1.6, fadeIn: 0.12, fadeOut: 0.45 }),
+  /** 帛卷碎片(荆轲)：米白的小布片，飘落 */
+  silk: particleStyle({ sprite: SPRITE.shard, add: 0, color: 0xf2ead4, color2: 0xcfc2a0, gravity: 2.4, drag: 2.8, spin: 5, fadeIn: 0.03, fadeOut: 0.6, vary: 0.12 }),
+  /** 草屑(李广)：被箭风带起的碎草叶，遮挡型 */
+  grass: particleStyle({ sprite: SPRITE.leaf, add: 0, color: 0xa8c060, color2: 0x6f8a3a, gravity: 8, drag: 2.6, spin: 10, fadeIn: 0.02, fadeOut: 0.65, vary: 0.25 }),
+  /** 白羽(李广 / 王昭君)：比通用羽毛更白、落得更慢 */
+  plume: particleStyle({ scale: 1.25, sprite: SPRITE.feather, add: 0.12, color: 0xffffff, color2: 0xf0f2f6, intensity: 1.15, gravity: 1.5, drag: 2.8, spin: 3.2, fadeIn: 0.05, fadeOut: 0.6 }),
 };
 
 export const R = {
@@ -94,6 +120,12 @@ export const R = {
   shadow: ribbonStyle({ width: 1.3, life: 0.45, color: 0x8a5cff, color2: 0x1a1030, intensity: 1.3, intensity2: 0.6, add: 0.35, noise: 0.8, taper: 0.6, core: 0.25, alpha: 0.9, step: 0.3 }),
   /** 烟迹(炮弹) */
   smoke: ribbonStyle({ width: 0.6, life: 0.6, color: 0x8a8690, color2: 0x4a4650, add: 0, noise: 0.9, taper: 1.6, core: 0, alpha: 0.5, step: 0.3 }),
+  /** 墨痕(荆轲)：暗色宽拖尾，边缘被噪声侵蚀成飞白，遮挡型 */
+  ink: ribbonStyle({ width: 1.15, life: 0.5, color: 0x120c1c, color2: 0x0a0810, add: 0, noise: 0.8, taper: 0.85, core: 0, alpha: 0.94, step: 0.3 }),
+  /** 弦光(王昭君)：绷直的金色细弦 */
+  string: ribbonStyle({ width: 0.12, life: 0.14, color: 0xfff2c8, color2: 0xffc860, intensity: 2.1, intensity2: 1.1, add: 0.55, taper: 0.5, core: 0.75, step: 0.2 }),
+  /** 破空白线(李广)：笔直的细白线，尾端收尖 */
+  white: ribbonStyle({ width: 0.2, life: 0.2, color: 0xffffff, color2: 0xd6f2e4, intensity: 1.8, intensity2: 0.9, add: 0.45, taper: 0.05, core: 0.7, step: 0.25 }),
   /** 警示连线(本帧直线)：细芯，靠脉冲闪烁而不是粗度引起注意 */
   warn: ribbonStyle({ width: 0.13, life: 1, color: 0xff3a28, intensity: 1.6, add: 0.45, noise: 0.25, core: 0.7 }),
   /** 锁定连线 */
@@ -342,4 +374,76 @@ export function boulders(k: FxKit, x: number, z: number, count: number, speed: n
     m.ease = 3;
     m.rot(r.next() * 3, r.next() * 6, r.next() * 3).spin(r.range(-7, 7), r.range(-5, 5), r.range(-7, 7));
   }
+}
+
+// ───────────────────────── 英雄特效包的积木 ─────────────────────────
+
+/**
+ * 盾影(樊哙)：一面立着的双弧盾，盾面朝 facing(模拟层角度)，底边在 (x, y, z)，高 height。
+ * yaw 为相对 facing 的偏转(「侧其盾」)，lean 为向后仰的角度。返回实例可继续改(follow、vel、delay…)。
+ */
+export function shieldPlate(k: FxKit, x: number, y: number, z: number, facing: number, height: number, life: number, c: THREE.Color, intensity = 1.6, alpha = 0.9, fill = 0.16, yaw = 0, lean = 0): FxMesh {
+  return k.glow.spawn(SHAPE.shield, MODE.plate, life).at(x, y, z).scale(height * 0.72, height).rot(0, -(facing + yaw), lean).color(c, intensity * K_SLASH, alpha).fade(0.06, 0.45).opt(0.25, fill, 2);
+}
+
+/** 音波环(王昭君)：贴地的 count 道同心细环，由内向外依次荡开(inward = 由外向内收拢)。半径精确到 radius */
+export function waveRings(k: FxKit, x: number, z: number, radius: number, life: number, c: THREE.Color, count = 3, intensity = 1.6, inward = false, stagger = 0.16, delay = 0): void {
+  const pen = k.decals.add(DECAL.rings, x, z, radius, life).params(count, inward ? -stagger : stagger).color(c, intensity).under(C.shadow, 0.3);
+  if (delay > 0) pen.delay(delay);
+}
+
+/** 碎土块(樊哙)：夯土色的小块被震起来 */
+export function clods(k: FxKit, x: number, z: number, count: number, speed: number, up: number, radius = 0.3, size = 0.3): void {
+  debris(k, x, z, count, speed, up, radius, C.earth, C.earthDark, size);
+}
+
+/** 铁火星(程咬金)：比通用火花更小、更短命，偏向 (dx, dz) 方向甩出去 */
+export function ironSparks(k: FxKit, x: number, y: number, z: number, count: number, speed: number, c0: THREE.Color, c1: THREE.Color, dx = 0, dz = 0, bias = 0): void {
+  sparks(k, x, y, z, count, speed, c0, c1, dx, dz, bias, 0.28, 0.11);
+}
+
+/** 白羽：几片缓缓飘落的白色羽毛 */
+export function plumes(k: FxKit, x: number, y: number, z: number, count: number, speed: number, vx = 0, vz = 0, delay = 0): void {
+  const p = k.particles.use(P.plume);
+  const r = k.rnd;
+  const n = k.n(count);
+  for (let i = 0; i < n; i++) {
+    const a = r.next() * TAU;
+    const s = speed * r.range(0.4, 1);
+    p.spawn(x, y + r.signed() * 0.3, z, Math.cos(a) * s + vx, r.range(0.6, 2.4), Math.sin(a) * s + vz, r.range(0.9, 1.4), 0.42, 0.34, delay + r.next() * 0.05);
+  }
+}
+
+/** 墨点飞溅(荆轲)：从一点甩出去的墨点，(dx, dz) 为主方向，spread 为张角(弧度) */
+export function inkDots(k: FxKit, x: number, y: number, z: number, count: number, speed: number, dx = 0, dz = 0, spread = Math.PI, delay = 0, tint: THREE.Color | null = null): void {
+  const p = k.particles.use(P.inkDot);
+  if (tint) p.tint(tint);
+  const r = k.rnd;
+  const n = k.n(count);
+  const base = dx === 0 && dz === 0 ? r.next() * TAU : Math.atan2(dz, dx);
+  for (let i = 0; i < n; i++) {
+    const a = base + r.signed() * spread;
+    const s = speed * r.range(0.4, 1);
+    const sz = r.range(0.08, 0.2);
+    p.spawn(x, y, z, Math.cos(a) * s, r.range(0.2, 1) * s * 0.5, Math.sin(a) * s, r.range(0.35, 0.6), sz, sz * 0.7, delay + r.next() * 0.04);
+  }
+}
+
+/** 一团墨溅(荆轲)：朝向相机的墨团(一闪即淡) + 贴地留下的墨渍 */
+export function inkSplat(k: FxKit, x: number, y: number, z: number, size: number, ground = true, delay = 0): void {
+  k.particles.use(P.ink).spawn(x, y, z, 0, 0.4, 0, 0.42, size * 0.6, size, delay);
+  if (ground) k.particles.use(P.inkFlat).spawn(x + k.rnd.signed() * 0.2, 0.07, z + k.rnd.signed() * 0.2, 0, 0, 0, 1.1, size * 0.5, size * 0.9, delay + 0.03);
+}
+
+/** 墨迹笔触贴花(荆轲)：从 (ax, az) 到 (bx, bz) 的一笔，width 为全宽，sweep 为行笔所占的寿命比例(0 = 立即全显) */
+export function inkStroke(k: FxKit, ax: number, az: number, bx: number, bz: number, width: number, life: number, sweep = 0, glint: THREE.Color = C.black, glintK = 0, strength = 0.75): void {
+  const dx = bx - ax;
+  const dz = bz - az;
+  const half = Math.hypot(dx, dz) * 0.5 || 0.01;
+  k.decals
+    .add(DECAL.ink, (ax + bx) * 0.5, (az + bz) * 0.5, half, life)
+    .rot(Math.atan2(dz, dx), (width * 0.5) / half)
+    .params(sweep > 0 ? 1 / sweep : 0, glintK)
+    .color(glint, 1.6)
+    .under(C.ink, strength);
 }

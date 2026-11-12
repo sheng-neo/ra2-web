@@ -23,13 +23,13 @@ export const COMBAT = {
   atk_panyue_hit: def('英雄普攻', '樊哙·剑盾命中', (p) => {
     // 主体过一道软失真：压低峰值、加厚质感，同样的峰值下听起来更重
     const dr = p.drive(2.5);
-    p.osc({ f: 118, f1: 40, ft: 0.1, a: 0.002, d: 0.28, g: 0.8, to: dr });
+    p.osc({ f: 118, f1: 40, ft: 0.1, a: 0.002, d: 0.28, g: 0.55, to: dr });
     p.osc({ w: 'triangle', f: 260, f1: 120, ft: 0.06, a: 0.001, d: 0.12, g: 0.5, to: dr });
     p.noise({ flt: 'highpass', fc: 2800, a: 0.001, d: 0.012, g: 0.3 });
     p.noise({ flt: 'bandpass', fc: 1300, q: 0.8, a: 0.001, d: 0.08, g: 0.6, to: dr });
     // 厚木盾沿的一磕 + 青铜剑身的短鸣
-    p.noise({ k: 'pink', flt: 'bandpass', fc: 520, q: 1.4, a: 0.001, d: 0.05, g: 0.5, to: dr });
-    p.ring(620, [1, 1.52, 2.27], { a: 0.002, d: 0.24, g: 0.16 });
+    p.noise({ k: 'pink', flt: 'bandpass', fc: 520, q: 1.4, a: 0.001, d: 0.05, g: 0.7 });
+    p.ring(620, [1, 1.52, 2.27], { a: 0.002, d: 0.24, g: 0.3 });
   }, { loud: -16, len: 0.55, gap: 0.08, rev: 0.14 }),
 
   // ───────────── 程咬金：大斧 ─────────────
@@ -41,9 +41,9 @@ export const COMBAT = {
   atk_chijin_hit: def('英雄普攻', '程咬金·斧劈命中', (p) => {
     // 「哐」：生铁砍实的闷响
     const dr = p.drive(2);
-    p.osc({ w: 'triangle', f: 170, f1: 60, a: 0.002, d: 0.14, g: 0.6, to: dr });
-    p.noise({ flt: 'bandpass', fc: 1800, q: 0.9, a: 0.001, d: 0.05, g: 0.7, to: dr });
-    iron(p, 430, 0, 0.9, 0.2);
+    p.osc({ w: 'triangle', f: 170, f1: 60, a: 0.002, d: 0.14, g: 0.4, to: dr });
+    p.noise({ flt: 'bandpass', fc: 1800, q: 0.9, a: 0.001, d: 0.05, g: 0.6, to: dr });
+    iron(p, 430, 0, 0.9, 0.22);
     p.noise({ flt: 'highpass', fc: 4500, a: 0.001, d: 0.01, g: 0.3 });
     p.noise({ k: 'pink', flt: 'bandpass', fc: 1000, fc1: 450, q: 0.8, a: 0.01, d: 0.14, g: 0.25 });
   }, { loud: -17, len: 0.45, gap: 0.07 }),
@@ -52,7 +52,7 @@ export const COMBAT = {
   atk_xingli_charge: def('英雄普攻', '王昭君·按弦', (p) => {
     // 手指按上弦：很轻的擦弦声 + 一点泛音
     p.noise({ flt: 'bandpass', fc: 2600, fc1: 3800, q: 3, a: 0.04, d: 0.08, g: 0.3 });
-    p.osc({ w: 'string', f: E6, a: 0.03, d: 0.1, g: 0.08 });
+    p.osc({ w: 'string', f: E6, a: 0.03, d: 0.1, g: 0.2 });
   }, { loud: -30, len: 0.3, gap: 0.12, jitter: 0 }),
   atk_xingli_launch: def('英雄普攻', '王昭君·扫弦出手', (p, v) => {
     // v = 乐句里的第几个音(引擎按每位王昭君各自的普攻次数递增)
@@ -64,10 +64,10 @@ export const COMBAT = {
   }, { loud: -21, len: 0.4, gap: 0.07, rev: 0.18, jitter: 0, variants: [{ label: '乐句第 1 音', v: 0 }, { label: '乐句第 5 音', v: 4 }] }),
   atk_xingli_hit: def('英雄普攻', '王昭君·音波命中', (p) => {
     // 音波环打在身上：一声泛音 + 小小的一震
-    p.osc({ w: 'string', f: E6, a: 0.001, d: 0.3, g: 0.35 });
+    p.osc({ w: 'string', f: E6, a: 0.001, d: 0.3, g: 0.8 });
     p.osc({ f: B6, t: 0.01, a: 0.001, d: 0.22, g: 0.14 });
     p.noise({ flt: 'bandpass', fc: 4200, q: 1, a: 0.001, d: 0.05, g: 0.4 });
-    p.osc({ f: 240, f1: 130, a: 0.002, d: 0.08, g: 0.5 });
+    p.osc({ f: 240, f1: 130, a: 0.002, d: 0.08, g: 0.3 });
   }, { loud: -18, len: 0.5, gap: 0.07, rev: 0.22, jitter: 0 }),
 
   // ───────────── 李广：弓弦与箭矢 ─────────────
@@ -144,7 +144,7 @@ export const COMBAT = {
   monster_swing: def('小兵与野怪', '野怪·出手', (p, v) => {
     if (v < 0.5) {
       // 苔背獾：短促的嘶吼 + 前爪扒击
-      p.sub(1, (q) => {
+      p.sub(0.41, (q) => {
         growl(q, 0, 0.16, 0.6, 150, 105, 500, 1300);
         q.noise({ flt: 'bandpass', fc: 900, fc1: 2400, q: 2, t: 0.03, a: 0.03, d: 0.07, g: 0.5 });
       });
@@ -157,19 +157,19 @@ export const COMBAT = {
       });
     } else if (v < 2.5) {
       // 炽焰巨熊：沉重的挥掌 + 低吼
-      p.sub(1, (q) => {
+      p.sub(0.52, (q) => {
         growl(q, 0, 0.24, 0.7, 92, 66, 380, 1000);
         whoosh(q, 0.02, 0.2, 0.3, 200, 900, 400, 1, 'pink');
       });
     } else if (v < 3.5) {
       // 河道巨龙：缩颈吸气的嘶声 + 喉音
-      p.sub(1, (q) => {
+      p.sub(0.36, (q) => {
         q.noise({ flt: 'bandpass', fc: 1200, fc1: 3200, q: 2.5, a: 0.1, d: 0.1, g: 0.7 });
         growl(q, 0, 0.26, 0.6, 70, 52, 300, 800);
       });
     } else {
       // 远古巨灵：巨拳破风 + 陨铁关节的低鸣
-      p.sub(1, (q) => {
+      p.sub(0.77, (q) => {
         whoosh(q, 0, 0.3, 0.5, 110, 520, 200, 0.9, 'brown');
         q.osc({ w: 'softsaw', f: 55, f1: 82, a: 0.12, d: 0.16, g: 0.3, to: q.filt('lowpass', 300, 1) });
         q.ring(310, METAL, { t: 0.02, a: 0.02, d: 0.2, g: 0.06 });
@@ -179,25 +179,25 @@ export const COMBAT = {
   monster_hit: def('小兵与野怪', '野怪·命中', (p, v) => {
     if (v < 0.5) {
       // 苔背獾：两道爪痕
-      p.sub(1, (q) => {
+      p.sub(0.7, (q) => {
         q.noise({ flt: 'bandpass', fc: 1600, q: 1, a: 0.001, d: 0.06, g: 0.6 });
         q.noise({ flt: 'bandpass', fc: 2600, q: 2, t: 0.02, a: 0.001, d: 0.04, g: 0.4 });
-        q.osc({ f: 145, f1: 60, a: 0.002, d: 0.12, g: 0.7 });
+        q.osc({ f: 145, f1: 60, a: 0.002, d: 0.12, g: 0.5 });
       });
     } else if (v < 1.5) {
       // 霜晶巨鹿：角挑的脆响 + 冰屑飞溅
       p.sub(1, (q) => {
-        q.osc({ f: 150, f1: 60, a: 0.002, d: 0.14, g: 0.7 });
+        q.osc({ f: 150, f1: 60, a: 0.002, d: 0.14, g: 0.45 });
         q.noise({ flt: 'bandpass', fc: 2400, q: 1.2, a: 0.001, d: 0.04, g: 0.6 });
         q.scatter(4, 0.01, 0.14, (at) => q.ring(q.rr(2600, 5200), CRYSTAL, { t: at, a: 0.001, d: q.rr(0.05, 0.12), g: 0.07 }));
       });
     } else {
       // 炽焰巨熊：巨掌拍实 + 迸出的火星
-      p.sub(1, (q) => {
+      p.sub(0.44, (q) => {
         const dr = q.drive(2);
-        q.osc({ f: 120, f1: 44, a: 0.002, d: 0.2, g: 0.8, to: dr });
+        q.osc({ f: 120, f1: 44, a: 0.002, d: 0.2, g: 0.55, to: dr });
         q.noise({ k: 'pink', flt: 'lowpass', fc: 1500, fc1: 300, a: 0.002, d: 0.14, g: 0.6, to: dr });
-        q.noise({ flt: 'bandpass', fc: 1400, q: 0.8, a: 0.001, d: 0.05, g: 0.5 });
+        q.noise({ flt: 'bandpass', fc: 1400, q: 0.8, a: 0.001, d: 0.06, g: 0.7 });
         q.scatter(4, 0.02, 0.16, (at) => q.noise({ flt: 'highpass', fc: q.rr(3000, 6000), t: at, a: 0.001, d: 0.012, g: 0.2 }));
       });
     }
@@ -221,22 +221,24 @@ export const COMBAT = {
     if (v < 0.5) {
       // 河道巨龙噬咬 / 尾扫：上下颌合拢的脆响 + 沉闷的一撞 + 带起的水花
       p.sub(1, (q) => {
-        const dr = q.drive(2.5);
-        q.osc({ f: 80, f1: 30, a: 0.003, d: 0.5, g: 0.9, to: dr });
+        const dr = q.drive(2.5, q.gain(0.55));
+        q.osc({ f: 80, f1: 30, a: 0.003, d: 0.5, g: 0.8, to: dr });
         q.osc({ w: 'triangle', f: 230, f1: 70, a: 0.002, d: 0.18, g: 0.5, to: dr });
         q.noise({ flt: 'bandpass', fc: 2200, q: 1.2, a: 0.001, d: 0.03, g: 0.9 });
+        q.noise({ k: 'pink', flt: 'bandpass', fc: 900, q: 0.8, a: 0.002, d: 0.14, g: 1 });
         q.noise({ k: 'pink', flt: 'lowpass', fc: 1500, fc1: 220, a: 0.003, d: 0.36, g: 0.6, to: dr });
         q.noise({ flt: 'bandpass', fc: 3000, fc1: 1500, q: 0.9, t: 0.03, a: 0.02, d: 0.3, g: 0.35 });
       });
     } else {
       // 远古巨灵的陨铁巨拳：更沉的一砸 + 陨铁的鸣响 + 崩落的碎石
-      p.sub(1, (q) => {
-        const dr = q.drive(2.5);
-        q.osc({ f: 66, f1: 26, a: 0.003, d: 0.6, g: 0.9, to: dr });
+      p.sub(0.85, (q) => {
+        const dr = q.drive(2.5, q.gain(0.55));
+        q.osc({ f: 66, f1: 26, a: 0.003, d: 0.6, g: 0.8, to: dr });
         q.osc({ w: 'triangle', f: 200, f1: 60, a: 0.002, d: 0.22, g: 0.5, to: dr });
         q.noise({ k: 'pink', flt: 'lowpass', fc: 1300, fc1: 180, a: 0.003, d: 0.45, g: 0.7, to: dr });
         q.noise({ flt: 'bandpass', fc: 1200, q: 0.7, a: 0.001, d: 0.07, g: 0.8 });
-        q.ring(230, METAL, { a: 0.002, d: 0.4, g: 0.16 });
+        q.noise({ k: 'pink', flt: 'bandpass', fc: 700, q: 0.8, a: 0.002, d: 0.16, g: 1 });
+        q.ring(330, METAL, { a: 0.002, d: 0.4, g: 0.25 });
         q.scatter(4, 0.06, 0.3, (at) => q.noise({ flt: 'bandpass', fc: q.rr(350, 1100), q: 2, t: at, a: 0.001, d: q.rr(0.04, 0.09), g: q.rr(0.2, 0.35) }));
       });
     }
@@ -244,7 +246,7 @@ export const COMBAT = {
   monster_spawn: def('小兵与野怪', '野怪·刷新', (p, v) => {
     if (v < 0.5) {
       // 苔背獾：从地洞里钻出来——刨土声 + 两声嗅地
-      p.sub(1, (q) => {
+      p.sub(0.89, (q) => {
         q.scatter(5, 0, 0.4, (at) => q.noise({ k: 'pink', flt: 'bandpass', fc: q.rr(500, 1300), q: 1.5, t: at, a: 0.004, d: q.rr(0.04, 0.08), g: q.rr(0.3, 0.6) }));
         [0.5, 0.66].forEach((t) => q.noise({ flt: 'bandpass', fc: 1700, q: 3, t, a: 0.02, d: 0.05, g: 0.3 }));
         growl(q, 0.78, 0.18, 0.4, 170, 120, 500, 1200);
@@ -260,14 +262,14 @@ export const COMBAT = {
       });
     } else if (v < 2.5) {
       // 炽焰巨熊：拱开碎石 → 仰头咆哮
-      p.sub(1, (q) => {
+      p.sub(0.55, (q) => {
         q.scatter(6, 0, 0.45, (at) => q.noise({ flt: 'bandpass', fc: q.rr(300, 1000), q: 2, t: at, a: 0.001, d: q.rr(0.05, 0.1), g: q.rr(0.3, 0.5) }));
         q.noise({ k: 'brown', flt: 'lowpass', fc: 260, a: 0.2, d: 0.4, g: 0.6 });
         growl(q, 0.5, 0.6, 0.9, 105, 70, 350, 1300);
       });
     } else {
       // 荧翅蛾：从灯花里飞出，扑翅声由远及近
-      p.sub(1, (q) => {
+      p.sub(0.64, (q) => {
         const g = q.gain(0.6);
         q.lfo(g.gain, 9, 0.4, 0, 0.9, 14);
         q.noise({ flt: 'bandpass', fc: 900, fc1: 1600, q: 1.5, a: 0.5, d: 0.3, g: 0.7, to: g });
@@ -338,15 +340,15 @@ export const COMBAT = {
   xingli_s1_fly: def('技能弹道', '一弦穿云·飞行', (p) => {
     // 绷直的弦音在飞：持续颤动的两根弦 + 一层气声
     const lp = p.filt('lowpass', 4200, 1);
-    p.osc({ w: 'string', f: mtof(76), a: 0.03, d: 0.42, g: 0.3, vib: 35, vr: 13, vd: 0, to: lp });
-    p.osc({ w: 'string', f: mtof(83), a: 0.04, d: 0.36, g: 0.14, vib: 35, vr: 13, vd: 0, to: lp });
+    p.osc({ w: 'string', f: mtof(76), a: 0.03, d: 0.42, g: 0.7, vib: 35, vr: 13, vd: 0, to: lp });
+    p.osc({ w: 'string', f: mtof(83), a: 0.04, d: 0.36, g: 0.35, vib: 35, vr: 13, vd: 0, to: lp });
     p.noise({ flt: 'bandpass', fc: 1400, fc1: 3600, q: 2, a: 0.04, d: 0.42, g: 0.4 });
   }, { loud: -26, len: 0.6, gap: 0.1, poly: 2, rev: 0.2, jitter: 0 }),
   xingli_s1_hit: def('技能弹道', '一弦穿云·贯穿命中', (p) => {
     pipa(p, E6, 0, 0.36, 0.9);
     pipa(p, B6, 0.02, 0.3, 0.5);
     p.noise({ flt: 'bandpass', fc: 4000, q: 0.8, a: 0.001, d: 0.08, g: 0.5 });
-    p.osc({ f: 210, f1: 80, a: 0.002, d: 0.14, g: 0.7 });
+    p.osc({ f: 210, f1: 80, a: 0.002, d: 0.14, g: 0.45 });
   }, { loud: -17, len: 0.6, gap: 0.07, rev: 0.24, jitter: 0 }),
   fengling_s1_fly: def('技能弹道', '白羽没石·破空', (p) => {
     // 「咻」：又干又直的箭啸
@@ -355,14 +357,16 @@ export const COMBAT = {
   }, { loud: -26, len: 0.55, gap: 0.1, poly: 2, rev: 0.12 }),
   fengling_s1_hit: def('技能弹道', '白羽没石·命中', (p, v) => {
     // 重箭钉入的「笃」+ 箭杆的余颤
-    const dr = p.drive(2);
+    const dr = p.drive(2, p.gain(0.7));
     thunk(p, 0, 1.1, 0.85, dr);
-    p.osc({ f: 180, f1: 70, a: 0.001, d: 0.12, g: 0.7, to: dr });
+    p.osc({ f: 230, f1: 110, a: 0.001, d: 0.1, g: 0.3, to: dr });
+    // 箭头没进去的那一下拖得稍长：「笃——」
+    p.osc({ w: 'triangle', f: 430, f1: 300, a: 0.001, d: 0.12, g: 0.5 });
     p.osc({ w: 'triangle', f: 172, a: 0.004, d: 0.18, g: 0.2, vib: 90, vr: 38, vd: 0 });
     if (v > 0.5) {
       // 命中英雄：「没石」——石面迸裂的「喀」+ 几粒石屑
-      p.noise({ flt: 'highpass', fc: 1800, a: 0.001, d: 0.02, g: 0.9 });
-      p.noise({ flt: 'bandpass', fc: 950, q: 1.2, t: 0.006, a: 0.001, d: 0.05, g: 0.7 });
+      p.noise({ flt: 'highpass', fc: 1800, t: 0.004, a: 0.001, d: 0.02, g: 0.6 });
+      p.noise({ flt: 'bandpass', fc: 950, q: 1.2, t: 0.008, a: 0.001, d: 0.05, g: 0.55 });
       p.scatter(5, 0.03, 0.22, (at) => p.noise({ flt: 'bandpass', fc: p.rr(1400, 3600), q: 3, t: at, a: 0.001, d: p.rr(0.012, 0.03), g: p.rr(0.2, 0.4) }));
     }
   }, { loud: -17, len: 0.45, gap: 0.07, rev: 0.16, variants: [{ label: '钉入', v: 0 }, { label: '命中英雄(石裂)', v: 1 }] }),
@@ -382,7 +386,7 @@ export const COMBAT = {
   proj_fizzle: def('技能弹道', '弹道落空', (p, v) => {
     if (v > 0.5) {
       // 匕首落空：钉进地面的一声闷响 + 刃身的余颤
-      p.sub(1, (q) => {
+      p.sub(0.85, (q) => {
         thunk(q, 0, 0.8, 1.2);
         q.ring(2900, DAGGER, { t: 0.004, a: 0.001, d: 0.12, g: 0.07 });
       });
