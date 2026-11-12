@@ -1,0 +1,22 @@
+{
+  "name": "@ra2web/moba",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "星陨战纪 Starfall — 原创 5v5 网页 MOBA（three.js，全程序化美术，1 名玩家 + 9 个 AI）",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "build:single": "vite build --mode single",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "three": "^0.180.0"
+  },
+  "devDependencies": {
+    "@types/three": "^0.180.0",
+    "vite": "^7.0.0",
+    "vite-plugin-singlefile": "^2.3.0"
+  }
+}
