@@ -1097,6 +1097,44 @@ PLAYS.set('dbg:new', () => {
   m.k = 2.6;
   m.progress = 0;
 });
+PLAYS.set('dbg:hero', () => {
+  // 英雄特效包新增的基元：盾影(正面 / 侧面) / 匕首 / 墨迹笔触 / 帛卷 / 音波环(一次性外扩、常驻点亮、涟漪) / 盾印 / 圆月 / 雁 · 音波弧 · 墨溅三个精灵
+  const kit = fxModule.kit;
+  const ink = new THREE.Color(0x0e0a16);
+  [0, 1.2].forEach((yaw, i) => {
+    const p = at(-6.4 + i * 2.2, -3.2);
+    const m = kit.glow.hold(SHAPE.shield, MODE.plate);
+    m.at(p.x, 0.05, p.y).scale(2.4).rot(0, -(stageDir + Math.PI * 0.5 + yaw), 0.08).color(new THREE.Color(0xffc44e), 1.2, 0.95);
+    m.add = 0.25;
+    m.k = 0.18;
+    m.progress = 0.45;
+  });
+  [0, 0.9].forEach((roll, i) => {
+    const p = at(-1.6 + i * 2.2, -3.4);
+    const m = kit.glow.hold(SHAPE.dagger, MODE.solid);
+    m.at(p.x, 1.1, p.y).scale(1.5).rot(roll, -stageDir - 0.5, 0.15).color(new THREE.Color(0xe8f0ff), 1.5, 1);
+    m.add = 0.2;
+  });
+  const d = kit.decals;
+  const hold = (type: number, f: number, r: number, radius: number) => {
+    const p = at(f, r);
+    return d.at(d.hold(type, 0)).at(p.x, p.y).radius(radius);
+  };
+  hold(DECAL.ink, -5.2, 0.2, 2.6).rot(stageDir, 0.22).params(0, 1).color(new THREE.Color(0xe8f0ff), 1.6, 1).under(ink, 0.8);
+  // 帛卷是按寿命铺开的：用一次性贴花(寿命很长，铺开只占开头一瞬)才看得到全貌
+  const sp = at(0.4, 0.2);
+  d.add(DECAL.scroll, sp.x, sp.y, 2.6, 120).rot(stageDir, 0.12).params(0.002, 1.3).color(ink, 1, 1).under(new THREE.Color(0xf0e6cc), 0.6);
+  hold(DECAL.rings, 5.2, -2.8, 1.6).params(4, 0.6).color(new THREE.Color(0xf2f8ff), 1.5, 1).under(new THREE.Color(0x141a3c), 0.3);
+  hold(DECAL.rings, 5.2, 0.9, 1.6).params(3, 2).color(new THREE.Color(0x8cc4ff), 1.3, 1).under(new THREE.Color(0x141a3c), 0.3);
+  hold(DECAL.shieldMark, -5.6, 3.4, 1.7).rot(stageDir, 0.72).params(1, 0.4).color(new THREE.Color(0xffc44e), 1.8, 1).under(new THREE.Color(0x120c20), 0.8);
+  hold(DECAL.moon, -1.8, 3.4, 1.7).params(0.72, 1).color(new THREE.Color(0xf2f8ff), 1.5, 1).under(new THREE.Color(0x141a3c), 0.35);
+  for (let i = 32; i < 35; i++) {
+    const p = at(1.6 + (i - 32) * 2.2, 3.4);
+    const dark = i === 34;
+    const st = particleStyle({ sprite: i, add: dark ? 0 : 0.4, color: dark ? 0x0e0a16 : 0xf2f8ff, intensity: dark ? 1 : 1.6, fadeIn: 0.01, fadeOut: 0.98, rot: 0 });
+    kit.particles.use(st).spawn(p.x, 1.2, p.y, 0, 0, 0, 60, 1.9, 1.9);
+  }
+});
 PLAYS.set('dbg:sprites', () => {
   // 图集里的每个图形各发一个长寿命粒子
   const kit = fxModule.kit;

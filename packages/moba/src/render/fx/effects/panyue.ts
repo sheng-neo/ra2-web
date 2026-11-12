@@ -194,8 +194,8 @@ const ultLand: FxHandler = (k, e, env) => {
   const R0 = e.radius ?? 4.5;
   const r = k.rnd;
   const facing = facingOf(k, e.unitId, r.next() * TAU);
-  k.particles.use(P.hitFlash).tint(C.white, T.hot).spawn(x, 0.8, z, 0, 0, 0, FX_RULES.flashBig, R0 * 0.7, R0 * 1.15);
-  k.particles.use(P.burst).tint(T.hot).spawn(x, 0.8, z, 0, 0, 0, 0.18, R0 * 0.6, R0 * 1.3);
+  k.particles.use(P.hitFlash).tint(T.hot, T.glow).spawn(x, 0.8, z, 0, 0, 0, FX_RULES.flashBig, R0 * 0.4, R0 * 0.7);
+  k.particles.use(P.burst).tint(T.hot).spawn(x, 0.8, z, 0, 0, 0, 0.18, R0 * 0.5, R0 * 1.1);
   // 大盾印：连人带盾砸出来的印子，盾顶朝跃击方向
   k.decals.add(DECAL.shieldMark, x, z, R0 * 0.6, 1.9).rot(facing, 0.72).params(1, 0.55).color(T.hot, 2).under(C.shadow, 0.85);
   // 三道同心冲击弧

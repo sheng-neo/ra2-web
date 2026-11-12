@@ -565,51 +565,65 @@ const DEFS: Record<number, SpriteDef> = {
   [SPRITE.goose]: {
     core: 0.22,
     path: (m, s) => {
-      // 飞雁：长颈前伸、身体修长、双翼后掠；翼展约为身长的 1.25 倍，俯视镜头下第一眼读成「雁」而不是箭头
+      // 飞雁的俯视剪影：长颈前伸、身体丰圆、短尾；双翼向两侧平展，外半段才后掠收尖(「M」形前缘)。
+      // 翼展约为身长的 1.2 倍——对局镜头下第一眼要读成「雁」，而不是燕子或箭头
       m.fillStyle = '#fff';
       for (const side of [1, -1]) {
         m.beginPath();
-        m.moveTo(0.24, 0.05 * side);
-        m.quadraticCurveTo(0.2, 0.5 * side, -0.5, 0.92 * side);
-        m.quadraticCurveTo(-0.34, 0.62 * side, -0.3, 0.44 * side);
-        m.quadraticCurveTo(-0.2, 0.24 * side, -0.26, 0.06 * side);
+        m.moveTo(0.2, 0.1 * side);
+        m.quadraticCurveTo(0.34, 0.36 * side, 0.2, 0.56 * side);
+        m.quadraticCurveTo(0.08, 0.8 * side, -0.26, 0.95 * side);
+        m.quadraticCurveTo(-0.1, 0.72 * side, -0.16, 0.56 * side);
+        m.quadraticCurveTo(-0.26, 0.4 * side, -0.2, 0.3 * side);
+        m.quadraticCurveTo(-0.3, 0.22 * side, -0.28, 0.1 * side);
         m.closePath();
         m.fill();
       }
-      // 身体 + 尾
+      // 身体 + 扇形短尾
       m.beginPath();
-      m.ellipse(-0.04, 0, 0.36, 0.125, 0, 0, TAU);
+      m.ellipse(-0.06, 0, 0.36, 0.15, 0, 0, TAU);
       m.fill();
       m.beginPath();
-      m.moveTo(-0.3, 0.09);
-      m.lineTo(-0.6, 0);
-      m.lineTo(-0.3, -0.09);
+      m.moveTo(-0.32, 0.1);
+      m.lineTo(-0.62, 0.11);
+      m.lineTo(-0.56, 0);
+      m.lineTo(-0.62, -0.11);
+      m.lineTo(-0.32, -0.1);
       m.closePath();
       m.fill();
-      // 颈与头(喙尖到 0.97)
+      // 颈与头(喙尖到 0.98)
       m.beginPath();
-      m.moveTo(0.22, 0.085);
-      m.lineTo(0.78, 0.04);
-      m.quadraticCurveTo(0.9, 0.075, 0.97, 0);
-      m.quadraticCurveTo(0.9, -0.075, 0.78, -0.04);
-      m.lineTo(0.22, -0.085);
+      m.moveTo(0.24, 0.1);
+      m.quadraticCurveTo(0.5, 0.045, 0.78, 0.04);
+      m.quadraticCurveTo(0.87, 0.085, 0.92, 0.03);
+      m.lineTo(0.98, 0);
+      m.lineTo(0.92, -0.03);
+      m.quadraticCurveTo(0.87, -0.085, 0.78, -0.04);
+      m.quadraticCurveTo(0.5, -0.045, 0.24, -0.1);
       m.closePath();
       m.fill();
-      // 明暗：身体与翼根亮，翼尖(飞羽)压暗，后缘几道羽缝
-      const g = s.createRadialGradient(0, 0, 0.12, 0, 0, 0.98);
+      // 明暗：身体与翼根亮，翼尖(飞羽)压暗；翼与身体之间、翼的后半各有一道暗线分出层次
+      const g = s.createRadialGradient(0, 0, 0.1, 0, 0, 1);
       g.addColorStop(0, '#ffffff');
-      g.addColorStop(0.55, '#e4e4e4');
-      g.addColorStop(1, '#8a8a8a');
+      g.addColorStop(0.5, '#e8e8e8');
+      g.addColorStop(1, '#808080');
       s.fillStyle = g;
       s.fillRect(-1.2, -1.2, 2.4, 2.4);
-      s.strokeStyle = 'rgba(70,70,70,0.6)';
-      s.lineWidth = 0.022;
+      s.lineCap = 'round';
       for (const side of [1, -1]) {
-        for (let i = 0; i < 5; i++) {
-          const t = 0.3 + i * 0.13;
+        s.strokeStyle = 'rgba(60,60,60,0.55)';
+        s.lineWidth = 0.035;
+        s.beginPath();
+        s.moveTo(0.2, 0.16 * side);
+        s.quadraticCurveTo(-0.05, 0.2 * side, -0.28, 0.14 * side);
+        s.stroke();
+        s.strokeStyle = 'rgba(70,70,70,0.5)';
+        s.lineWidth = 0.022;
+        for (let i = 0; i < 4; i++) {
+          const t = i / 3;
           s.beginPath();
-          s.moveTo(0.12 - t * 0.5, (0.12 + t * 0.62) * side);
-          s.lineTo(-0.22 - t * 0.3, (0.1 + t * 0.86) * side);
+          s.moveTo(0.08 - t * 0.12, (0.42 + t * 0.2) * side);
+          s.lineTo(-0.18 - t * 0.06, (0.44 + t * 0.4) * side);
           s.stroke();
         }
       }
@@ -626,8 +640,8 @@ const DEFS: Record<number, SpriteDef> = {
         const d = Math.abs(Math.hypot(dx, y) - rad) / (w * taper + 1e-4);
         return sstep(1, 0.45, d) * taper;
       };
-      const main = arc(-0.55, 1.36, 0.66, 0.075);
-      const echo = arc(-0.62, 1.06, 0.5, 0.05);
+      const main = arc(-0.55, 1.36, 0.66, 0.09);
+      const echo = arc(-0.62, 1.06, 0.5, 0.06);
       o[0] = sat(main + echo * 0.55);
       o[1] = 1;
       o[2] = sat(main * main * 0.7);
@@ -635,23 +649,28 @@ const DEFS: Record<number, SpriteDef> = {
   },
   [SPRITE.ink]: {
     pix: (x, y, o) => {
-      // 墨溅：边缘不规则的墨团 + 七道长短不一的甩尖 + 外圈零星墨点；G 通道给一点浓淡
+      // 墨溅：边缘凹凸的墨团 + 五道粗短不一的甩尖(尖端带一滴) + 外圈零星墨点；G 通道给一点浓淡
       const r = Math.hypot(x, y);
       const a = Math.atan2(y, x);
       const n = fbm2(x * 2.3 + 1.7, y * 2.3 + 5.1, 3, 61) - 0.5;
-      let edge = 0.34 + n * 0.2;
-      for (let i = 0; i < 7; i++) {
-        const ai = (i / 7) * TAU + Math.sin(i * 5.3) * 0.35;
-        const len = 0.2 + 0.32 * (0.5 + 0.5 * Math.sin(i * 3.1 + 1));
+      let edge = 0.4 + n * 0.26 + 0.05 * Math.sin(a * 5 + 1.3);
+      let m = 0;
+      for (let i = 0; i < 5; i++) {
+        const ai = (i / 5) * TAU + Math.sin(i * 5.3) * 0.4 + 0.3;
+        const len = 0.14 + 0.26 * (0.5 + 0.5 * Math.sin(i * 3.1 + 1));
         let da = a - ai;
         da = Math.atan2(Math.sin(da), Math.cos(da));
-        edge += len * Math.exp(-da * da * 70);
+        edge += len * Math.exp(-da * da * 34);
+        // 甩尖顶端的墨滴
+        const tr = 0.52 + len * 0.95;
+        const ts = 0.045 + 0.03 * Math.sin(i * 2.7 + 0.5);
+        m = Math.max(m, sstep(ts, ts * 0.6, Math.hypot(x - Math.cos(ai) * tr, y - Math.sin(ai) * tr)));
       }
-      let m = sstep(edge, edge - 0.07, r);
-      for (let i = 0; i < 9; i++) {
-        const ai = (i / 9) * TAU + Math.sin(i * 7.7) * 0.3 + 0.4;
-        const ri = 0.66 + 0.2 * Math.sin(i * 4.3 + 2);
-        const si = 0.03 + 0.04 * (0.5 + 0.5 * Math.sin(i * 6.1));
+      m = Math.max(m, sstep(edge, edge - 0.08, r));
+      for (let i = 0; i < 8; i++) {
+        const ai = (i / 8) * TAU + Math.sin(i * 7.7) * 0.3 + 0.9;
+        const ri = 0.7 + 0.18 * Math.sin(i * 4.3 + 2);
+        const si = 0.025 + 0.035 * (0.5 + 0.5 * Math.sin(i * 6.1));
         m = Math.max(m, sstep(si, si * 0.6, Math.hypot(x - Math.cos(ai) * ri, y - Math.sin(ai) * ri)));
       }
       o[0] = m * sstep(1, 0.94, r);

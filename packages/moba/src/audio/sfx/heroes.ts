@@ -341,7 +341,9 @@ export const HEROES_SFX = {
     // 匕首的寒光
     p.ring(2900, DAGGER, { t: 0.05, a: 0.001, d: 0.18, g: 0.1 });
     p.osc({ f: 98, f1: 52, a: 0.004, d: 0.16, g: 0.35 });
-  }, { ...FX, loud: -17, len: 0.5 }),
+    // 人过之后留下的一缕易水寒风：缓慢扫频的窄带噪声
+    p.noise({ flt: 'bandpass', fc: 700, fc1: 1500, fct: 0.5, q: 5, t: 0.08, a: 0.15, d: 0.4, g: 0.16 });
+  }, { ...FX, loud: -17, len: 0.7 }),
   fx_yeque_s2_cast: def('技能特效', '荆轲·掷匕', (p) => {
     // 三声轻的「嗖」
     [0, 0.035, 0.07].forEach((t, i) => p.noise({ flt: 'bandpass', fc: 2800 + i * 300, fc1: 5600 + i * 400, q: 3, t, a: 0.004, d: 0.045, g: 0.7 }));

@@ -183,14 +183,19 @@ void main() {
     // 盾影：uv.x 横跨盾面、uv.y 沿长轴，四条边就是 0 / 1；包边亮、盾面淡，中央一枚盾鼻
     float ex = abs(vUv.x * 2.0 - 1.0);
     float ey = abs(vUv.y * 2.0 - 1.0);
-    float rim = max(smoothstep(0.84, 0.95, ex), smoothstep(0.92, 0.975, ey));
-    float inner = max(1.0 - smoothstep(0.0, 0.05, abs(ex - 0.66)), 1.0 - smoothstep(0.0, 0.03, abs(ey - 0.8))) * step(ex, 0.71) * step(ey, 0.83);
+    float rim = max(smoothstep(0.76, 0.9, ex), smoothstep(0.88, 0.95, ey));
+    float inner = max(1.0 - smoothstep(0.0, 0.06, abs(ex - 0.56)), 1.0 - smoothstep(0.0, 0.035, abs(ey - 0.74))) * step(ex, 0.62) * step(ey, 0.78);
     float bd = length(vec2((vUv.x - 0.5) * 0.62, vUv.y - 0.5));
-    float boss = (1.0 - smoothstep(0.0, 0.02, abs(bd - 0.1))) + (1.0 - smoothstep(0.03, 0.05, bd));
+    float boss = (1.0 - smoothstep(0.0, 0.028, abs(bd - 0.1))) + (1.0 - smoothstep(0.035, 0.055, bd));
     float sheen = pr >= 0.0 ? (1.0 - smoothstep(0.0, 0.16, abs(vUv.y + ex * 0.25 - mix(-0.25, 1.35, pr)))) : 0.0;
-    float fill = k * (0.55 + 0.45 * ey) + sheen * 0.35;
-    a *= min(1.0, rim + inner * 0.45 + boss * 0.8 + fill);
-    hot = rim * 0.45 + boss * 0.35 + sheen * 0.4;
+    float fill = k * (0.6 + 0.4 * max(ex, ey)) + sheen * 0.3;
+    float line = min(1.0, rim + inner * 0.55 + boss * 0.85);
+    a *= min(1.0, line + fill);
+    // 盾面比包边暗一档：线是亮铜色，面是半透明的深铜；最外沿再压一道深色的轮廓线，亮地面上才托得住
+    c *= mix(0.45, 1.0, min(1.0, line + sheen));
+    float outl = max(smoothstep(0.9, 0.96, ex), smoothstep(0.955, 0.985, ey));
+    c *= 1.0 - outl * 0.88;
+    hot = (rim * 0.5 + boss * 0.35 + sheen * 0.4) * (1.0 - outl);
   } else {
     // 吐息：两层反向滚动的噪声沿锥体流出；越往外越稀、边缘被侵蚀，收尾时整体由根部向外溶解
     float u = vUv.x;

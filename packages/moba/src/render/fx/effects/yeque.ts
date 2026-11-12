@@ -14,7 +14,7 @@ const S1 = HEROES.yeque.skills.s1;
 const S2 = HEROES.yeque.skills.s2;
 const ULT = HEROES.yeque.skills.ult;
 /** 帛卷：最长铺多远、全宽、铺开用时 */
-const SCROLL = { max: 8, width: 0.62, unroll: 0.3 };
+const SCROLL = { max: 8, width: 0.8, unroll: 0.3 };
 
 /** 风萧易水 from → to：一笔横扫的浓墨(边缘飞白) + 中心一线寒白；地面留下一道墨迹笔触，沿途甩出墨点和两三道淡白风线 */
 const s1Dash: FxHandler = (k, e, env) => {
@@ -153,8 +153,8 @@ const ultStrike: FxHandler = (k, e, env) => {
   // 五道墨溅：以出手方向为中心的扇面上向外放射
   for (let i = 0; i < 5; i++) {
     const a = facing + (i - 2) * 0.62 + r.signed() * 0.18;
-    const l = r.range(1.3, 2.2) * (i === 2 ? 1.25 : 1);
-    inkStroke(k, x + Math.cos(a) * 0.35, z + Math.sin(a) * 0.35, x + Math.cos(a) * (0.35 + l), z + Math.sin(a) * (0.35 + l), 0.42, 1.5, 0.08);
+    const l = r.range(1.1, 1.9) * (i === 2 ? 1.3 : 1);
+    inkStroke(k, x + Math.cos(a) * 0.3, z + Math.sin(a) * 0.3, x + Math.cos(a) * (0.3 + l), z + Math.sin(a) * (0.3 + l), r.range(0.5, 0.75), 1.5, 0.08);
   }
   inkSplat(k, x, y, z, 1.9);
   inkDots(k, x, y, z, 10, 7, dx, dz, 1.3);

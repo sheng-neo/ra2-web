@@ -217,7 +217,7 @@ export class Kit {
       else if (name === 'glass') im[n] = glass[n] ?? 0;
       else if (name === 'reed') im[n] = reed[n] ?? 0;
       // 拨弦点在弦长 13% 处：第 n 次泛音的强度 ∝ sin(nπβ)/n^k，拨弦点的整数倍泛音自然缺失
-      else if (name === 'string') im[n] = Math.sin(n * Math.PI * 0.13) / Math.pow(n, 1.1);
+      else if (name === 'string') im[n] = Math.sin(n * Math.PI * 0.13) / Math.pow(n, 1.2);
       else im[n] = (Math.sin(n * Math.PI * 0.29) / Math.pow(n, 0.85)) * (n % 2 ? 1 : 0.5);
     }
     w = this.ctx.createPeriodicWave(re, im);

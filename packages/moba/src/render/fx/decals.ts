@@ -522,13 +522,13 @@ void main() {
   } else if (type < 17.5) {
     // ── 墨迹笔触：起笔一顿(略粗) → 行笔 → 收笔渐细出锋；越到笔尾飞白越多。墨是遮挡层(B 色)，A 色只是中线上一闪而过的寒光 ──
     float u = p.x * 0.5 + 0.5;
-    float wid = (0.56 + 0.3 * exp(-u * u * 40.0) + 0.07 * sin(u * 9.0 + seed * 20.0)) * (1.0 - smoothstep(0.5, 1.0, u) * 0.88);
+    float wid = (0.7 + 0.22 * exp(-u * u * 40.0) + 0.07 * sin(u * 9.0 + seed * 20.0)) * (1.0 - smoothstep(0.5, 1.0, u) * 0.88);
     wid *= smoothstep(0.0, 0.03, u);
     float edgeN = fbm(vec2(p.x * vW.z * 1.3 + seed * 17.0, p.y * 3.0 + seed * 3.0)) - 0.5;
     float d = abs(p.y) - wid * (1.0 + edgeN * 0.4);
-    float body = 1.0 - smoothstep(-0.1, 0.02, d);
+    float body = 1.0 - smoothstep(-0.07, 0.02, d);
     float dry = fbm(vec2(p.x * vW.z * 0.9 + seed * 5.0, p.y * vW.w * 26.0 + seed * 9.0));
-    float th = 0.64 - 0.32 * u - 0.14 * abs(p.y) / max(wid, 0.05);
+    float th = 0.8 - 0.34 * u - 0.14 * abs(p.y) / max(wid, 0.05);
     float gaps = smoothstep(th, th + 0.18, dry);
     float sweep = p0 > 0.0 ? 1.0 - smoothstep(-0.08, 0.03, u - min(1.0, t * p0) * 1.12) : 1.0;
     float fade = 1.0 - smoothstep(0.5, 1.0, t + (dry - 0.5) * 0.3);
@@ -545,7 +545,9 @@ void main() {
     float cloth = (1.0 - smoothstep(wob - 0.07, wob, ay)) * smoothstep(0.0, 0.012, u) * (1.0 - smoothstep(front - 0.006, front + 0.006, u));
     float du = 0.07 / max(vW.z, 0.3);
     float roll = (1.0 - smoothstep(du * 0.55, du, abs(u - front + du * 0.4))) * (1.0 - smoothstep(0.93, 1.0, ay)) * step(0.02, front);
-    float border = band(ay - (wob - 0.17), 0.03, 0.03);
+    float border = band(ay - (wob - 0.15), 0.04, 0.03);
+    // 帛边外侧一圈淡墨的投影：米白的帛铺在浅色石板上，靠它托出轮廓
+    float shade = (1.0 - smoothstep(wob, 1.0, ay)) * smoothstep(wob - 0.05, wob, ay) * smoothstep(0.0, 0.012, u) * (1.0 - smoothstep(front - 0.006, front + 0.006, u));
     float xs = u * vW.z * 2.0;
     float river = band(p.y - 0.3 * sin(xs * 1.5 + p1) - 0.1 * sin(xs * 3.7 + p1 * 2.3), 0.05, 0.05);
     float peak = abs(fract(xs * 0.55 + p1 * 0.3) - 0.5) * 2.0;
@@ -553,7 +555,7 @@ void main() {
     float dis = vnoise(wp * 3.0 + seed * 7.0);
     float fade = 1.0 - smoothstep(0.62, 1.0, t + (dis - 0.5) * 0.35);
     cov = cloth * 0.92 * fade;
-    fil = max(max(border * 0.55, (river * 0.5 + hills * 0.42) * (1.0 - smoothstep(0.45, 0.62, ay))) * cloth, roll * 0.9) * fade;
+    fil = max(max(max(border * 0.8, (river * 0.5 + hills * 0.42) * (1.0 - smoothstep(0.45, 0.62, ay))) * cloth, roll * 0.9), shade * 0.5) * fade;
   } else if (type < 19.5) {
     // ── 音波环：若干道同心细环，带一点细微的颤动 ──
     float n = clamp(floor(p0 + 0.5), 1.0, 5.0);
@@ -602,8 +604,8 @@ void main() {
     float d = max((sa - hwm) * 0.533, max(ym - topm, botm - ym) * 1.72);
     float ad = fwidth(d) * 1.2 + 1e-4;
     float inside = 1.0 - smoothstep(-ad, ad, d);
-    float outline = band(d + 0.034, 0.03, ad);
-    float inner = band(d + 0.14, 0.011, ad);
+    float outline = band(d + 0.045, 0.042, ad);
+    float inner = band(d + 0.16, 0.014, ad);
     float bq = length(q);
     float boss = band(bq - 0.15, 0.016, ad) + (1.0 - smoothstep(0.05, 0.07, bq));
     float stripe = band(abs(q.y) - 0.085, 0.011, ad) * inside * step(0.19, bq) * (1.0 - smoothstep(-0.2, -0.12, d));
@@ -623,10 +625,10 @@ void main() {
     float body = discM * (0.6 + 0.4 * smoothstep(0.35, 0.7, mare)) * (0.8 + 0.2 * (1.0 - r / mr));
     float limb = band(r - (mr - 0.03), 0.02, aa);
     float halo = band(r - 0.95, 0.012, aa) * p1 + exp(-(r - mr) * 9.0) * step(mr, r) * 0.22 * disc;
-    fil = body * 0.42 * appear;
-    e = (limb * 0.8 + halo * 0.9 + body * 0.12) * appear;
-    hot = limb * 0.15 * appear;
-    cov = discM * 0.12 * appear;
+    fil = body * 0.78 * appear;
+    e = (limb * 0.55 + halo * 0.6 + body * 0.2) * appear;
+    hot = limb * 0.1 * appear;
+    cov = discM * 0.15 * appear;
   }
 
   float alpha = vC0.a * uAlpha;

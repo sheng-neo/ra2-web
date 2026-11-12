@@ -69,7 +69,8 @@ export function whoosh(p: Patch, t: number, d: number, g: number, f0: number, fP
  */
 export function pipa(p: Patch, f: number, t: number, d: number, g: number, f1?: number, to?: AudioNode): void {
   const lp = p.filt('lowpass', 2000, 1.3, to);
-  const top = Math.min(15000, f * 10 + 2000);
+  // 起音的亮度封顶在 9kHz：再亮的话高音区每个周期的陡沿会接近采样级跳变，听起来发毛
+  const top = Math.min(9000, f * 7 + 1500);
   p.ramp(lp.frequency, [[t, top], [t + 0.045, Math.max(1500, f * 3.5)], [t + Math.max(0.1, d), Math.max(800, f * 1.6)]]);
   // 弦被拨开的瞬间张力略高：音高从稍高处落回。
   // (string 波形按峰值归一，泛音多、基音只占两成多，所以增益给得比正弦层大)
