@@ -85,7 +85,8 @@ const STYLE = sfCss(`
 .sf-hud__fps.is-low { color: var(--sf-c-red); }
 
 /* ── 开局操作提示条 ── */
-.sf-hud__tips { position: absolute; left: 50%; bottom: calc(var(--hud-b) + var(--hud-lift) + max(96px, 116u)); z-index: 5; transform: translateX(-50%); display: none; align-items: center; gap: 4u; max-width: min(94vw, 880u); padding: 6u 4u 6u 14u; border-radius: 10u; pointer-events: auto;
+/* width: max-content：绝对定位 + left:50% 时可用宽度只剩半屏，不写的话内容会被挤成一列(竖屏尤其明显)；上限仍由 max-width 管 */
+.sf-hud__tips { position: absolute; left: 50%; bottom: calc(var(--hud-b) + var(--hud-lift) + max(96px, 116u)); z-index: 5; transform: translateX(-50%); display: none; align-items: center; gap: 4u; width: max-content; max-width: min(94vw, 880u); padding: 6u 4u 6u 14u; border-radius: 10u; pointer-events: auto;
   background: var(--hud-plate); box-shadow: inset 0 0 0 1px rgba(232, 199, 122, 0.45), 0 6u 18u rgba(2, 4, 12, 0.55); }
 .sf-hud__tips.is-on { display: flex; animation: sf-hud-tips-in 0.4s var(--sf-ease-out) both; }
 .sf-hud__tips.is-out { animation: sf-hud-tips-out 0.35s var(--sf-ease-in) both; }

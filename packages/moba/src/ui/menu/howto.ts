@@ -110,9 +110,12 @@ function touchPane(): HTMLElement {
     '<path d="M30 68L68 30" stroke="#b9a2ff" stroke-width="1.400" opacity=".7"/>' +
     // 比分条
     '<rect x="150" y="18" width="100" height="16" rx="8" fill="rgba(150,178,235,.16)" stroke="rgba(150,178,235,.35)"/>' +
-    // 取消区
-    '<rect x="296" y="20" width="76" height="24" rx="12" fill="#ff8a7a" fill-opacity=".14" stroke="#ff8a7a" stroke-width="1.400" stroke-dasharray="4 3"/>' +
-    '<text x="334" y="36.500" text-anchor="middle" font-size="12" fill="#ff8a7a">取消</text>' +
+    // 右上角：记分板 / 暂停
+    '<rect x="330" y="18" width="20" height="16" rx="4" fill="#b9a2ff" fill-opacity=".2" stroke="#b9a2ff" stroke-width="1.400"/>' +
+    '<rect x="356" y="18" width="20" height="16" rx="4" fill="#b9a2ff" fill-opacity=".2" stroke="#b9a2ff" stroke-width="1.400"/>' +
+    // 取消区：拖动瞄准时出现在技能区左上方
+    '<circle cx="196" cy="74" r="19" fill="#ff8a7a" fill-opacity=".14" stroke="#ff8a7a" stroke-width="1.400" stroke-dasharray="4 3"/>' +
+    '<text x="196" y="78.500" text-anchor="middle" font-size="12" fill="#ff8a7a">取消</text>' +
     // 摇杆
     '<circle cx="74" cy="140" r="34" fill="#5cd6f7" fill-opacity=".1" stroke="#5cd6f7" stroke-width="1.600"/>' +
     '<circle cx="86" cy="130" r="14" fill="#5cd6f7" fill-opacity=".7"/>' +
@@ -123,7 +126,7 @@ function touchPane(): HTMLElement {
     '<rect x="22" y="88" width="34" height="18" rx="6" fill="#b9a2ff" fill-opacity=".2" stroke="#b9a2ff" stroke-width="1.400"/>' +
     // 拖动瞄准示意
     '<path d="M340 86L306 52" stroke="#f3cf85" stroke-width="1.800" stroke-dasharray="3.500 3"/><path d="M301 47l2.500 10 7.500-7.500z" fill="#f3cf85"/>' +
-    mark(74, 140, '1', '#5cd6f7') + mark(340, 150, '2', '#ff8a7a') + mark(340, 86, '3', '#f3cf85') + mark(246, 140, '4', '#6fe3a1') + mark(49, 49, '5', '#b9a2ff') + mark(39, 97, '6', '#b9a2ff') +
+    mark(74, 140, '1', '#5cd6f7') + mark(340, 150, '2', '#ff8a7a') + mark(340, 86, '3', '#f3cf85') + mark(246, 140, '4', '#6fe3a1') + mark(49, 49, '5', '#b9a2ff') + mark(39, 97, '6', '#b9a2ff') + mark(353, 40, '7', '#b9a2ff') +
     '</svg>';
   const list = h(
     'ul',
