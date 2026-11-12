@@ -109,6 +109,13 @@ const CSS = sfCss(`
   .sf-hud__banner.is-t4 { padding-left: 78u; padding-right: 78u; --fs: min(max(24px, 34u), 6.6vw); }
   .sf-hud__banner.is-t4 .sf-hud__banner-title { letter-spacing: 0.14em; margin-right: -0.14em; }
 }
+/* 横屏手机(屏高不足 480px)：横幅正下方紧挨着玩家英雄头顶的血条(英雄脚在屏高约 46% 处)。各档压矮一号并上提，别盖到自己头上 */
+@media (orientation: landscape) and (max-height: 480px) {
+  .sf-hud__banner-wrap { top: calc(var(--hud-t) + 46px); }
+  .sf-hud__banner.is-t2 { --fs: 15px; --face: 30px; padding-top: 3px; padding-bottom: 4px; }
+  .sf-hud__banner.is-t3 { --fs: 18px; --face: 34px; padding-top: 3px; padding-bottom: 4px; }
+  .sf-hud__banner.is-t4 { --fs: 21px; --face: 38px; padding-top: 4px; padding-bottom: 5px; }
+}
 `);
 
 interface Item {
