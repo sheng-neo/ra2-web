@@ -3,7 +3,7 @@
  * 不出现火舌、火柱、火旋风和焦痕。
  */
 import { HEROES } from '../../../core/data/heroes';
-import { FX_RULES, P, R, SLASH_SPAN, dustRing, hitBurst, ironSparks, ring, slashArc } from '../common';
+import { FX_RULES, P, R, SLASH_SPAN, dustRing, hitBurst, ironSparks, ring, slashArc, swipeArc } from '../common';
 import { DECAL } from '../decals';
 import type { FxMesh } from '../glow';
 import type { FxKit } from '../kit';
@@ -17,19 +17,20 @@ const ULT = HEROES.chijin.skills.ult;
 const GOLD = col(0xffc060);
 
 /**
- * 一道厚重的斧弧 = 赤红弧身 + 叠在上面、先一步淡去的赤金刃光。flip = 自右向左扫(否则自左向右)。
- * 返回弧身实例(刃光与它同步)，调用方可以再改 spin / follow / k。
+ * 一道厚重的斧弧：赤金的斧刃沿弧扫过，赤红的弧身随即亮起再淡去。flip = 自右向左扫(否则自左向右)。
+ * 返回弧身实例，into 里拿得到弧身与刃光两个实例(要整体 follow / delay 时用)。
  */
-function axeArc(k: FxKit, x: number, y: number, z: number, facing: number, radius: number, life: number, span: number, tilt: number, sweep: boolean, flip: boolean, into?: FxMesh[]): FxMesh {
-  const roll = flip ? Math.PI + tilt : tilt;
-  const body = slashArc(k, x, y, z, facing, radius, life, T.glow, 2.3, roll, sweep);
-  body.scale(radius * 0.78, radius).k = span / SLASH_SPAN;
-  // 刃光：同一道弧再叠一层赤金，略大一圈、先于弧身淡去——刚抡出来的一瞬是金的，随后只剩赤红的余势
-  const edge = slashArc(k, x, y + 0.04, z, facing, radius * 1.03, life * 0.8, GOLD, 2.6, roll, sweep, 0.95);
-  edge.scale(radius * 0.8, radius * 1.03).k = span / SLASH_SPAN;
-  edge.fade(0.02, 0.3);
-  if (into) into.push(body, edge);
-  return body;
+function axeArc(k: FxKit, x: number, y: number, z: number, facing: number, radius: number, life: number, span: number, tilt: number, flip: boolean, into?: FxMesh[]): FxMesh {
+  return swipeArc(k, x, y, z, facing, radius, life, T.glow, GOLD, span, tilt, flip, 2.3, into);
+}
+
+/** 不扫过、整道常亮的斧影(大招里绕身飞转的那两道)：赤红弧身 + 叠在上面先一步淡去的赤金 */
+function axeGhost(k: FxKit, x: number, y: number, z: number, facing: number, radius: number, life: number, span: number, tilt: number, into: FxMesh[]): void {
+  const body = slashArc(k, x, y, z, facing, radius, life, T.glow, 2.3, tilt, false);
+  body.k = span / SLASH_SPAN;
+  const edge = slashArc(k, x, y + 0.04, z, facing, radius * 1.03, life * 0.8, GOLD, 2.5, tilt, false, 0.9);
+  edge.k = span / SLASH_SPAN;
+  into.push(body, edge);
 }
 
 /** 沿弧线依次扬起的尘土与火星：from → to 是扫过的角度区间(模拟层角度)，dur 内依次出现 */
@@ -62,7 +63,7 @@ const passiveHit: FxHandler = (k, e, env) => {
   const dx = Math.cos(facing);
   const dz = Math.sin(facing);
   // 竖劈：把水平的斩弧滚转 90° 立起来，自上而下扫过
-  axeArc(k, x - dx * 1.25, y + 0.25, z - dz * 1.25, facing, 2.0, 0.2, 2.1, Math.PI / 2, true, false);
+  axeArc(k, x - dx * 1.25, y + 0.25, z - dz * 1.25, facing, 2.0, 0.26, 2.1, Math.PI / 2, false);
   hitBurst(k, x, y, z, 1.7, GOLD, T.deep, dx, dz, 9, FX_RULES.flashSkill, 10);
   ironSparks(k, x, y - 0.2, z, 8, 8, GOLD, T.deep, dx, dz, 0.5);
   // 斧刃劈进地里的一道短痕
@@ -82,9 +83,9 @@ const s1Slash: FxHandler = (k, e, env) => {
   const angle = e.angle ?? 1.92;
   const half = angle / 2;
   const r = k.rnd;
-  k.decals.add(DECAL.cone, x, z, R0, 0.6).rot(facing).params(half, 0).color(T.glow, 1.8).under(T.dark, 0.5);
+  k.decals.add(DECAL.cone, x, z, R0, 0.6).rot(facing).params(half, 0.35).color(T.glow, 1.8).under(T.dark, 0.4);
   // 斧弧：从身体右侧抡到左侧(俯视下 = 角度从 +half 到 −half)，0.22 秒扫完
-  axeArc(k, x, 1.0, z, facing, R0, 0.3, angle, 0.06, true, true);
+  axeArc(k, x, 1.0, z, facing, R0, 0.34, angle, 0.06, true);
   sweepDust(k, x, z, R0, facing + half, facing - half, 0.13, 14);
   // 劲风：几道贴着弧走的白色风线
   const p = k.particles.use(P.streak).tint(C.white, T.hot);
@@ -131,8 +132,9 @@ const s2Dash: FxHandler = (k, e, env) => {
     const f = 0.28 + i * 0.26;
     const px = from.x + dx * dist * f;
     const pz = from.y + dz * dist * f;
-    const m = axeArc(k, px - dx * 0.7, 1.05, pz - dz * 0.7, facing, 1.35, 0.3, 1.9, (i % 2 === 0 ? 1 : -1) * 1.05, true, i % 2 === 1);
-    m.delay(f * dur);
+    const parts: FxMesh[] = [];
+    axeArc(k, px - dx * 0.7, 1.05, pz - dz * 0.7, facing, 1.35, 0.3, 1.9, (i % 2 === 0 ? 1 : -1) * 1.05, i % 2 === 1, parts);
+    for (const m of parts) m.delay(f * dur);
     ironSparks(k, px, 0.9, pz, 2, 6, GOLD, T.deep, dx, dz, 0.6);
   }
   k.after(dur, () => {
@@ -162,7 +164,7 @@ const ultStart: FxHandler = (k, e, env) => {
   const a0 = has && k.a.unit ? k.a.unit.facing : 0;
   for (let i = 0; i < 2; i++) {
     const parts: FxMesh[] = [];
-    axeArc(k, has ? 0 : x, 1.0 + i * 0.3, has ? 0 : z, a0 + i * Math.PI, R0 * 0.75, 0.4, 1.9, i === 0 ? 0.1 : -0.1, false, false, parts);
+    axeGhost(k, has ? 0 : x, 1.0 + i * 0.3, has ? 0 : z, a0 + i * Math.PI, R0 * 0.75, 0.4, 1.9, i === 0 ? 0.1 : -0.1, parts);
     for (const m of parts) {
       m.spin(0, 13, 0).scale(R0 * 0.35, R0 * 0.95).fade(0.1, 0.5);
       if (has) m.follow(id);
@@ -187,7 +189,7 @@ const ultTick: FxHandler = (k, e) => {
   const a0 = r.next() * TAU;
   for (let i = 0; i < 2; i++) {
     const parts: FxMesh[] = [];
-    axeArc(k, has ? 0 : x, 0.95 + i * 0.4, has ? 0 : z, a0 + i * Math.PI, R0 * 0.97, 0.32, 2.0, i === 0 ? 0.1 : -0.1, false, false, parts);
+    axeGhost(k, has ? 0 : x, 0.95 + i * 0.4, has ? 0 : z, a0 + i * Math.PI, R0 * 0.97, 0.32, 2.0, i === 0 ? 0.1 : -0.1, parts);
     for (const m of parts) {
       m.spin(0, 15, 0).fade(0.12, 0.45);
       if (has) m.follow(id);

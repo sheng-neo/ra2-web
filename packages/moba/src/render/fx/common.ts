@@ -386,6 +386,21 @@ export function shieldPlate(k: FxKit, x: number, y: number, z: number, facing: n
   return k.glow.spawn(SHAPE.shield, MODE.plate, life).at(x, y, z).scale(height * 0.72, height).rot(0, -(facing + yaw), lean).color(c, intensity * K_SLASH, alpha).fade(0.06, 0.45).opt(0.25, fill, 2);
 }
 
+/**
+ * 「抡 / 划」出来的弧：先是一道亮色的锋沿弧扫过，整道弧随即亮起、再淡去。
+ * 只用 slashArc 自带的扫过时，任一帧里只看得到弧上的一小段；这里补上整道弧的余势，定格下也读得出是一道完整的弧。
+ * span = 弧的张角(弧度)，roll = 绕前进轴的滚转(π/2 = 立起来、自上而下)，reverse = 反向扫。返回弧身(调用方可再改 follow / delay / scale)。
+ */
+export function swipeArc(k: FxKit, x: number, y: number, z: number, facing: number, radius: number, life: number, body: THREE.Color, edge: THREE.Color, span: number, roll = 0, reverse = false, intensity = 2.3, into?: FxMesh[]): FxMesh {
+  const rx = reverse ? roll + Math.PI : roll;
+  const b = slashArc(k, x, y, z, facing, radius, life, body, intensity, rx, false).fade(0.2, 0.45);
+  b.scale(radius * 0.85, radius).k = span / SLASH_SPAN;
+  const e = slashArc(k, x, y, z, facing, radius * 1.02, life * 0.55, edge, intensity * 1.15, rx, true).fade(0.02, 0.6);
+  e.scale(radius * 0.88, radius * 1.02).k = span / SLASH_SPAN;
+  if (into) into.push(b, e);
+  return b;
+}
+
 /** 音波环(王昭君)：贴地的 count 道同心细环，由内向外依次荡开(inward = 由外向内收拢)。半径精确到 radius */
 export function waveRings(k: FxKit, x: number, z: number, radius: number, life: number, c: THREE.Color, count = 3, intensity = 1.6, inward = false, stagger = 0.16, delay = 0): void {
   const pen = k.decals.add(DECAL.rings, x, z, radius, life).params(count, inward ? -stagger : stagger).color(c, intensity).under(C.shadow, 0.3);

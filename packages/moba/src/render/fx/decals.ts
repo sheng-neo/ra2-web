@@ -23,7 +23,7 @@ export const DECAL = {
   ring: 0,
   /** 柔光斑：p0 衰减指数 */
   glow: 1,
-  /** 扇形：p0 半角(弧度)，p1 = 0 一次性刀气 / 1 常驻指示器。朝向 = rot */
+  /** 扇形：p0 半角(弧度)，p1 < 0.5 一次性刀气(p1 = 填充减淡量 0..0.49，0 = 原样，0.35 = 只剩三成填充) / 1 常驻指示器。朝向 = rot */
   cone: 2,
   /** 地裂：p1 额外亮度 */
   cracks: 3,
@@ -249,7 +249,7 @@ void main() {
       float lead = band(r - front + 0.03, 0.05, 0.03) * (1.0 - smoothstep(0.3, 0.45, t));
       float n = fbm(wp * 1.25 + vec2(seed * 7.0, -now * 0.5));
       float burn = smoothstep(t * 1.3 - 0.2, t * 1.3 + 0.25, n * 0.8 + r * 0.45);
-      float fill = (0.3 + 0.7 * r * r) * swept * burn;
+      float fill = (0.3 + 0.7 * r * r) * swept * burn * (1.0 - p1 * 2.0);
       float edge = max(band(da + 0.012, 0.014, aa), band(r - 0.975, 0.02, aa)) * swept;
       float fade = 1.0 - smoothstep(0.6, 1.0, t);
       fil = fill * 0.5 * inside * fade;
