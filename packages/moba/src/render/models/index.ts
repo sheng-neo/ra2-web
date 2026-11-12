@@ -9,6 +9,7 @@ import { createPanyue } from './heroes/panyue';
 import { createXingli } from './heroes/xingli';
 import { createYeque } from './heroes/yeque';
 import { createMeleeMinion, createRangedMinion, createSiegeMinion, createSuperMinion } from './minions';
+import { structureFactories } from './structures';
 import type { ModelDef } from './types';
 
 export type { AnimInput, AnimOutput, AttachName, ModelDef } from './types';
@@ -25,6 +26,7 @@ const factories: Record<string, () => ModelDef> = {
   'minion:ranged': createRangedMinion,
   'minion:siege': createSiegeMinion,
   'minion:super': createSuperMinion,
+  ...structureFactories,
 };
 
 const cache = new Map<string, ModelDef>();

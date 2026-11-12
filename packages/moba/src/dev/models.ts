@@ -72,7 +72,7 @@ function keysFor(show: string): string[] {
     case 'minions':
       return pick('minion:');
     case 'structures':
-      return [...pick('tower:'), ...pick('core:')];
+      return [...pick('tower:'), ...pick('core:'), ...pick('ruin:')];
     case 'monsters':
       return pick('monster:');
     case 'all':
@@ -114,7 +114,7 @@ if (single && hasModel(single)) {
     x += w;
   }
   keys.forEach((k, i) => {
-    const t: 0 | 1 | 2 = k.startsWith('monster:') ? 2 : k.startsWith('tower:') || k.startsWith('core:') ? (Number(k.split(':').pop()) as 0 | 1) : team;
+    const t: 0 | 1 | 2 = k.startsWith('monster:') ? 2 : k.startsWith('tower:') || k.startsWith('core:') || k.startsWith('ruin:') ? (Number(k.split(':').pop()) as 0 | 1) : team;
     addSlot(k, base.x + xs[i] - x / 2, base.y, fixedP, anim, t, 0.13 + i * 0.21);
   });
 }

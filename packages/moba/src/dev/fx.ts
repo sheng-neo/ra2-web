@@ -10,7 +10,7 @@
  *   t=<秒>           与 play 连用：快进到该时刻后定格(逐个截图用)
  *   hero=<HeroId>    玩家英雄(缺省按 play 的键名前缀自动选)
  *   quality=low|medium|high      (缺省 high)
- *   x=&y=            舞台中心(模拟坐标)
+ *   x=&y=&dir=       舞台中心(模拟坐标)与朝向(度，0 = 朝东)
  *   overlay=1        叠加层演示：直接用 createMockState 的整张假对局，并定时注入伤害/治疗/金币事件
  *   panel=0 / hud=0  隐藏按钮面板 / 统计
  *   loop=<秒>        每隔几秒重播
@@ -54,10 +54,12 @@ const heroId: HeroId = isHero(heroParam) ? heroParam : isHero(prefix) ? prefix :
 // ───────────────────────── 舞台 ─────────────────────────
 
 const state: GameState = createMockState(heroId);
-/** 舞台的「前方」= 东北(敌方基地方向)，「右方」= 东南 */
-const F: Vec2 = { x: Math.SQRT1_2, y: -Math.SQRT1_2 };
-const RT: Vec2 = { x: Math.SQRT1_2, y: Math.SQRT1_2 };
-const center: Vec2 = { x: num('x') ?? -22, y: num('y') ?? 14.5 };
+/** 舞台的「前方」(玩家 → 敌人的方向，缺省朝东)与「右方」 */
+const stageDir = ((num('dir') ?? 0) * Math.PI) / 180;
+const F: Vec2 = { x: Math.cos(stageDir), y: Math.sin(stageDir) };
+const RT: Vec2 = { x: -F.y, y: F.x };
+// 默认舞台：下路中段(砂岩路 + 两侧草地，附近没有塔)。?x=-3&y=3&dir=-45 可以换到中路河道渡口看水面上的效果
+const center: Vec2 = { x: num('x') ?? 10, y: num('y') ?? 51.5 };
 const at = (f: number, r: number): Vec2 => ({ x: center.x + F.x * f + RT.x * r, y: center.y + F.y * f + RT.y * r });
 
 const player = state.heroes.find((h) => h.id === state.playerId) as HeroUnit;

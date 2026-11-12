@@ -440,7 +440,7 @@ export function createSuperMinion(): ModelDef {
   b.paint(C.gold, { gloss: 1 });
   b.g(X(0, 1.36, 0.385, -8, 0, 0), () => b.torus(0.15, 0.03, 0.03, 8, 4, { crease: 30 }));
   b.g(X(0, 1.36, 0.38, 82, 0, 0), () => b.torus(0.15, 0.03, 0.026, 8, 4, { crease: 30 }));
-  b.paint(0xffffff, { team: 1, glow: 0.85 });
+  b.paint(0xffffff, { team: 1, glow: 0.6 });
   b.g(X(0, 1.27, 0.4, 0, 0, 0, 1, 1, 0.7), () => b.crystal(0.1, 0.2, 4, 0.5, 0.5, 1));
   // 头：带角的盔
   b.bone(head).paint(C.steelDark, { c2: C.steel, gloss: 0.8 });
@@ -457,7 +457,7 @@ export function createSuperMinion(): ModelDef {
       b.lathe([[-0.1, 0.3, 0.28], [0, 0.3, 0.28], [0.12, 0.22, 0.2], [0.18, 0.06, 0.06]], { seg: 8, crease: 34 });
       b.paint(C.gold, { gloss: 1 });
       trim(b, 0, -0.09, 0, 0.305, 0.285, 0.02, 0.026, 8);
-      b.paint(0xffffff, { team: 1, glow: 0.6 });
+      b.paint(0xffffff, { team: 1, glow: 0.4 });
       b.g(X(0.04, 0.1, 0, 0, 0, -10), () => b.crystal(0.075, 0.36, 5, 0.5, 0.1));
       b.g(X(0.16, 0.06, 0, 0, 0, -40), () => b.crystal(0.055, 0.24, 5, 0.5, 0.1));
     });
@@ -475,7 +475,7 @@ export function createSuperMinion(): ModelDef {
     b.tube([[0, 0, -0.4, 0.04], [0, 0, 1.0, 0.045]], { seg: 6 });
     b.paint(C.gold, { gloss: 1 });
     b.tube([[0, 0, 0.9, 0.16], [0, 0, 1.0, 0.2], [0, 0, 1.32, 0.2], [0, 0, 1.4, 0.14]], { seg: 6, crease: 30 });
-    b.paint(0xffffff, { team: 1, glow: 0.75 });
+    b.paint(0xffffff, { team: 1, glow: 0.5 });
     b.g(X(0, 0, 1.38, 90, 0, 0), () => b.crystal(0.11, 0.34, 5, 0.6, 0.15));
     for (let i = 0; i < 4; i++) b.g(X(0, 0, 1.16, 0, 0, i * 90 + 45), () => b.g(X(0, 0.16, 0), () => b.crystal(0.08, 0.26, 4, 0.6, 0.1)));
   });

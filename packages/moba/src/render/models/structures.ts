@@ -6,7 +6,7 @@
  */
 import { PALETTE } from '../materials';
 import { bump, seg } from './humanoid';
-import { ModelBuilder, X, lerp, mixCol, shade } from './kit';
+import { ModelBuilder, X, lerp, shade } from './kit';
 import { trim } from './parts';
 import { type Pose, Rig } from './rig';
 import type { AnimInput, AnimOutput, ModelDef } from './types';
@@ -23,7 +23,7 @@ interface Look {
 }
 
 const LOOKS: [Look, Look] = [
-  { stone: PALETTE.blue.stone, stoneDark: PALETTE.blue.stoneDark, stoneLight: 0xf2f5fb, trim: PALETTE.blue.trim, crystal: 0x2f9cff, crystalHot: 0xa8dcff, spiky: false },
+  { stone: 0xc2cbdc, stoneDark: 0x8e9cba, stoneLight: 0xe6ebf5, trim: PALETTE.blue.trim, crystal: 0x2f9cff, crystalHot: 0xa8dcff, spiky: false },
   { stone: 0x5e5059, stoneDark: 0x352b33, stoneLight: 0x7c6c76, trim: PALETTE.red.trim, crystal: 0xff4a30, crystalHot: 0xffb08a, spiky: true },
 ];
 
@@ -64,7 +64,7 @@ function createTower(tier: 1 | 2 | 3, team: 0 | 1): ModelDef {
   if (tier >= 2) {
     for (let i = 0; i < 4; i++) {
       const a = (i * Math.PI) / 2 + Math.PI / 4;
-      b.paint(L.crystal, { c2: L.crystalHot, glow: 0.3, glow2: 0.55, gloss: 1, line: 1 });
+      b.paint(L.crystal, { c2: L.crystalHot, glow: 0.18, glow2: 0.36, gloss: 1, line: 1 });
       b.g(X(Math.cos(a) * 1.3, 0.55, Math.sin(a) * 1.3, 0, 0, 0), () => b.g(X(0, 0, 0, Math.sin(a) * 14, 0, -Math.cos(a) * 14), () => b.crystal(0.2, 0.9 + (tier - 2) * 0.3, 5, 0.5, 0.1)));
     }
   }
@@ -84,7 +84,7 @@ function createTower(tier: 1 | 2 | 3, team: 0 | 1): ModelDef {
   for (let i = 0; i < 4; i++) {
     const a = (i * Math.PI) / 2;
     for (const [bone, y0, y1] of [[lower, 1.4, 2.36], [upper, 2.7, H - 0.5]] as [number, number, number][]) {
-      b.bone(bone).paint(L.crystal, { c2: L.crystalHot, glow: 0.5, glow2: 0.8 });
+      b.bone(bone).paint(L.crystal, { c2: L.crystalHot, glow: 0.3, glow2: 0.5 });
       const ym = (y0 + y1) / 2;
       b.g(X(Math.cos(a) * (colR(ym) * 0.925 + 0.02), ym, Math.sin(a) * (colR(ym) * 0.925 + 0.02), 0, 90 - (a * 180) / Math.PI, 0), () =>
         b.g(X(0, 0, 0, -((0.36 / (H - 0.95)) * 180) / Math.PI, 0, 0), () => b.extrude([[-0.07, -(y1 - y0) / 2], [0.07, -(y1 - y0) / 2], [0.1, 0], [0.07, (y1 - y0) / 2], [-0.07, (y1 - y0) / 2], [-0.1, 0]], 0.06, 0.02)));
@@ -111,15 +111,15 @@ function createTower(tier: 1 | 2 | 3, team: 0 | 1): ModelDef {
         b.paint(L.stoneDark, { c2: L.stone });
         b.g(X(0, 1.0, out + 0.18, 70, 0, 0), () => b.crystal(0.09, 0.5, 4, 0.8, 0.1));
       }
-      b.paint(L.crystal, { c2: L.crystalHot, glow: 0.45, gloss: 1, line: 1 });
+      b.paint(L.crystal, { c2: L.crystalHot, glow: 0.3, gloss: 1, line: 1 });
       b.g(X(0, 1.25, out + 0.2, 60, 0, 0), () => b.crystal(0.07, 0.24, 4, 0.6, 0.3));
     });
   }
   // 核心：悬浮的大晶体 + 更亮的内核
-  b.bone(core).paint(L.crystal, { c2: L.crystalHot, glow: 0.42, glow2: 0.7, gloss: 1, line: 1 });
+  b.bone(core).paint(L.crystal, { c2: L.crystalHot, glow: 0.26, glow2: 0.46, gloss: 1, line: 1 });
   const cr = 0.5 + tier * 0.05;
   b.g(X(0, coreY - 0.85, 0), () => b.crystal(cr, 1.7, 6, 0.5, 0.5, 1));
-  b.paint(L.crystalHot, { glow: 0.9 });
+  b.paint(L.crystalHot, { glow: 0.6 });
   b.g(X(0, coreY - 0.45, 0), () => b.crystal(cr * 0.45, 0.9, 4, 0.5, 0.5, 1));
   // 符环：扁金环 + 发光晶钉
   rings.forEach((r, i) => {
@@ -127,7 +127,7 @@ function createTower(tier: 1 | 2 | 3, team: 0 | 1): ModelDef {
     b.bone(r).paint(L.trim, { gloss: 1 });
     b.g(X(0, coreY - 0.15 + i * 0.2, 0), () => {
       b.torus(R, 0.09, 0.035, 20, 4, { crease: 30 });
-      b.paint(L.crystal, { c2: L.crystalHot, glow: 0.7 });
+      b.paint(L.crystal, { c2: L.crystalHot, glow: 0.45 });
       for (let k = 0; k < 4; k++) {
         const a = (k * Math.PI) / 2 + i * 0.6;
         b.g(X(Math.cos(a) * R, 0, Math.sin(a) * R, 0, -(a * 180) / Math.PI, 0), () => b.box(0, 0, 0, 0.12, 0.09, 0.22, 0.03));
@@ -135,13 +135,13 @@ function createTower(tier: 1 | 2 | 3, team: 0 | 1): ModelDef {
     });
   });
   // 冠顶：一圈绕转的碎晶 + 尖顶
-  b.bone(orbit).paint(L.crystal, { c2: L.crystalHot, glow: 0.5, gloss: 1, line: 1 });
+  b.bone(orbit).paint(L.crystal, { c2: L.crystalHot, glow: 0.3, gloss: 1, line: 1 });
   const shardN = 3 + tier;
   for (let k = 0; k < shardN; k++) {
     const a = (k / shardN) * Math.PI * 2;
     b.g(X(Math.cos(a) * 0.62, coreY + 1.3 + (k % 2) * 0.16, Math.sin(a) * 0.62, 0, 0, 0), () => b.g(X(0, -0.14, 0, hash(k, 1) * 20 - 10, 0, hash(k, 2) * 20 - 10), () => b.crystal(0.09, 0.3 + hash(k, 3) * 0.14, 4, 0.5, 0.4)));
   }
-  b.bone(tip).paint(L.crystal, { c2: L.crystalHot, glow: 0.5, glow2: 0.85, gloss: 1, line: 1 });
+  b.bone(tip).paint(L.crystal, { c2: L.crystalHot, glow: 0.3, glow2: 0.55, gloss: 1, line: 1 });
   b.g(X(0, coreY + 1.2, 0), () => b.crystal(0.16, 1.0 + tier * 0.25, 4, 0.75, 0.15));
   if (tier === 3) {
     // 高地塔：柱身两侧的翼形石鳍
@@ -314,7 +314,7 @@ function createCore(team: 0 | 1): ModelDef {
   b.lathe([[0.27, 2.78], [0.34, 2.78], [0.345, 2.45]], { seg: 8, phase: 22.5, cap0: false, cap1: false });
   b.lathe([[0.59, 2.43], [0.66, 2.43], [0.665, 2.05]], { seg: 8, phase: 22.5, cap0: false, cap1: false });
   // 台面中央的聚能井(发光)
-  b.paint(L.crystal, { c2: L.crystalHot, glow: 0.5 });
+  b.paint(L.crystal, { c2: L.crystalHot, glow: 0.32 });
   b.lathe([[0.95, 1.0], [0.97, 0.94], [1.02, 0.5], [1.03, 0.02]], { seg: 8, phase: 22.5, cap0: false });
   b.paint(L.trim, { gloss: 1 });
   b.g(X(0, 0.97, 0), () => b.torus(1.08, 0.08, 0.05, 16, 4, { crease: 30 }));
@@ -333,25 +333,25 @@ function createCore(team: 0 | 1): ModelDef {
         b.g(X(0, 1.3, -0.34, -70, 0, 0), () => b.crystal(0.14, 0.8, 4, 0.8, 0.1));
         b.g(X(0, 2.3, -0.2, -60, 0, 0), () => b.crystal(0.1, 0.6, 4, 0.8, 0.1));
       }
-      b.paint(L.crystal, { c2: L.crystalHot, glow: 0.45, gloss: 1, line: 1 });
+      b.paint(L.crystal, { c2: L.crystalHot, glow: 0.3, gloss: 1, line: 1 });
       b.g(X(0, 3.2, 0.82, 40, 0, 0), () => b.crystal(0.16, 0.6, 5, 0.6, 0.3));
     });
   });
   // 星核：巨大的多面晶体，向六个方向伸出星芒
-  b.bone(star).paint(L.crystal, { c2: L.crystalHot, glow: 0.4, glow2: 0.7, gloss: 1, line: 1 });
+  b.bone(star).paint(L.crystal, { c2: L.crystalHot, glow: 0.24, glow2: 0.44, gloss: 1, line: 1 });
   b.g(X(0, coreY - 1.45, 0), () => b.crystal(1.0, 2.9, 6, 0.5, 0.5, 1));
   for (let k = 0; k < 6; k++) {
     const a = (k / 6) * Math.PI * 2;
     b.g(X(0, coreY, 0, 0, -(a * 180) / Math.PI, 0), () => b.g(X(0.72, 0, 0, 0, 0, -90), () => b.crystal(0.3, 1.25, 4, 0.8, 0.05)));
   }
-  b.bone(inner).paint(L.crystalHot, { glow: 0.95 });
+  b.bone(inner).paint(L.crystalHot, { glow: 0.6 });
   b.g(X(0, coreY - 0.7, 0), () => b.crystal(0.46, 1.4, 4, 0.5, 0.5, 1));
   // 两道陀螺环
   for (const [r, R] of [[ringA, 1.95], [ringB, 2.3]] as [number, number][]) {
     b.bone(r).paint(L.trim, { gloss: 1 });
     b.g(X(0, coreY, 0), () => {
       b.torus(R, 0.11, 0.045, 28, 4, { crease: 30 });
-      b.paint(L.crystal, { c2: L.crystalHot, glow: 0.7 });
+      b.paint(L.crystal, { c2: L.crystalHot, glow: 0.45 });
       for (let k = 0; k < 6; k++) {
         const a = (k / 6) * Math.PI * 2;
         b.g(X(Math.cos(a) * R, 0, Math.sin(a) * R, 0, -(a * 180) / Math.PI, 0), () => b.box(0, 0, 0, 0.14, 0.12, 0.3, 0.04));
@@ -359,14 +359,13 @@ function createCore(team: 0 | 1): ModelDef {
     });
   }
   // 绕转的碎晶
-  b.bone(orbit).paint(L.crystal, { c2: L.crystalHot, glow: 0.5, gloss: 1, line: 1 });
+  b.bone(orbit).paint(L.crystal, { c2: L.crystalHot, glow: 0.3, gloss: 1, line: 1 });
   for (let k = 0; k < 7; k++) {
     const a = (k / 7) * Math.PI * 2;
     const y = coreY + (hash(k, 3) - 0.5) * 2.4;
     b.g(X(Math.cos(a) * 1.5, y, Math.sin(a) * 1.5, hash(k, 4) * 40 - 20, 0, hash(k, 5) * 40 - 20), () => b.g(X(0, -0.2, 0), () => b.crystal(0.12, 0.44 + hash(k, 6) * 0.3, 4, 0.5, 0.4)));
   }
   b.bakeGrounding(6, 0.75, 0.9);
-  void mixCol;
 
   const animate = (pose: Pose, a: AnimInput, out: AnimOutput): void => {
     const t = a.time + a.seed * 10;
