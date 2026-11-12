@@ -8,7 +8,7 @@ import { arena, damageTo, dist, dummyAt, enemyAt, fxOf, mitigate, val } from './
 
 const P = HEROES.fengling.passive.values;
 
-describe('风翎 · 被动 风之眷顾', () => {
+describe('李广 · 被动 猿臂连射', () => {
   it('普攻命中叠层：每层 +6% 攻速；满 5 层 +10% 移速且普攻附带 20(+每级4) 物理伤害；3 秒不续则消失', () => {
     const { sim, hero } = arena('fengling', 3);
     const d = dummyAt(sim, 5, 0, 'siege');
@@ -58,7 +58,7 @@ describe('风翎 · 被动 风之眷顾', () => {
   });
 });
 
-describe('风翎 · S1 贯风矢', () => {
+describe('李广 · S1 白羽没石', () => {
   it('穿透小兵(60% 伤害)，命中第一个敌方英雄即停：全额物理伤害 + 减速；其后的敌人不受影响', () => {
     const { sim, hero } = arena('fengling', 1, -7, 0);
     const m1 = dummyAt(sim, -3, 0);
@@ -107,7 +107,7 @@ describe('风翎 · S1 贯风矢', () => {
   });
 });
 
-describe('风翎 · S2 逐风步', () => {
+describe('李广 · S2 飞将腾身', () => {
   it('轻点朝面向/移动方向翻跃(不会冲向敌人)；落地后 +20% 移速 2 秒，下一次普攻必暴且只一次', () => {
     const { sim, hero } = arena('fengling', 2);
     const e = enemyAt(sim, 'panyue', 0, 5);
@@ -182,7 +182,7 @@ describe('风翎 · S2 逐风步', () => {
   });
 });
 
-describe('风翎 · 大招 千羽天幕', () => {
+describe('李广 · 大招 箭锁阴山', () => {
   it('预警 0.5 秒 → 箭雨 3 秒共 6 跳：物理伤害 + 减速 35%', () => {
     const { sim, hero } = arena('fengling', 4);
     const a = enemyAt(sim, 'panyue', 8, 3);

@@ -12,6 +12,7 @@ import { heroOf, place, quietWorld } from '../testkit';
 import type { GameEvent, HeroId, HeroUnit } from '../types';
 import { createWorld } from '../world';
 import { HeroBot } from './bot';
+import { inCone } from './geom';
 import { fallbackBotFactory, setDefaultBotFactory } from './index';
 import { buildCost, nextBuildItem } from './shop';
 import { teamBrain } from './team';
@@ -27,9 +28,38 @@ describe('Bot：整局', () => {
     let monstersKilled = 0;
     let epics = 0;
     let level4At = Infinity;
+    // 河道巨龙吐息：预警开始时站在扇形里的英雄，有多少在喷吐结束前一跳没挨(走出去了)
+    let breaths = 0;
+    let caught = 0;
+    let escaped = 0;
+    let dodgeLabels = 0;
+    let watching: Map<number, number> | null = null;
     const r = runHeadless({ seed: 2024, playerHero: 'fengling', difficulty: 'normal', autoPlay: true }, {
       maxTime: 25 * 60,
       onTick(sim, events) {
+        for (const e of events) {
+          if (e.type === 'fx' && e.key === 'drake_breath_warn') {
+            breaths++;
+            watching = new Map();
+            const cone = sim.cones.find((c) => c.ownerId === e.unitId);
+            if (cone) for (const h of sim.heroes) if (h.alive && inCone(h.pos, h.radius, cone)) watching.set(h.id, 0);
+          } else if (e.type === 'damage' && e.skill && watching && watching.has(e.targetId)) {
+            const src = sim.byId.get(e.sourceId);
+            if (src && src.kind === 'monster') watching.set(e.targetId, (watching.get(e.targetId) ?? 0) + 1);
+          }
+        }
+        if (watching && sim.cones.length > 0) {
+          for (const id of watching.keys()) {
+            const h = sim.byId.get(id);
+            if (h && h.kind === 'hero' && h.h.controller instanceof HeroBot && h.h.controller.label === 'dodge') dodgeLabels++;
+          }
+        } else if (watching) {
+          for (const n of watching.values()) {
+            caught++;
+            if (n === 0) escaped++;
+          }
+          watching = null;
+        }
         for (const e of events) {
           if (e.type === 'heroKill') kills[e.killerId] = (kills[e.killerId] ?? 0) + 1;
           else if (e.type === 'towerDestroyed') towers++;
@@ -71,6 +101,11 @@ describe('Bot：整局', () => {
     expect(skillHitsOnHeroes).toBeGreaterThan(100);
     expect(monstersKilled).toBeGreaterThan(20);
     expect(epics + flashes).toBeGreaterThan(0);
+    // 打龙时巨龙会吐息；被扇形罩住的 Bot 至少有人走了出去(普通难度不是每次都躲)
+    expect(breaths).toBeGreaterThanOrEqual(2);
+    expect(caught).toBeGreaterThanOrEqual(2);
+    expect(escaped).toBeGreaterThanOrEqual(1);
+    expect(dodgeLabels).toBeGreaterThan(0);
     for (const h of st.heroes) {
       // 每个英雄都在成长、都买了装备；线上英雄有补刀
       expect(h.level, `${h.heroId}@${h.team} level`).toBeGreaterThanOrEqual(7);

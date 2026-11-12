@@ -23,9 +23,9 @@ export interface CastContext {
   sim: Sim;
   caster: SimHero;
   slot: SkillSlot;
-  /** 技能等级（召唤师技能恒为 1） */
+  /** 技能等级（通用技能恒为 1） */
   level: number;
-  /** 技能数据；召唤师技能为 null */
+  /** 技能数据；通用技能为 null */
   def: SkillDef | null;
   /** 施法瞬间施法者的位置（快照，不随之后的位移变化） */
   origin: Vec2;
@@ -38,7 +38,7 @@ export interface CastContext {
   targetPos: Vec2;
   /** target 型的目标单位；其余类型为 null */
   target: SimUnit | null;
-  /** 技能的施放方式（data/heroes.ts 的 cast；召唤师技能见 SUMMONER_CAST） */
+  /** 技能的施放方式（data/heroes.ts 的 cast；通用技能见 SUMMONER_CAST） */
   spec: CastSpec;
   /** 从 spec 里取出的常用几何量，该类型没有的为 0：射程 / 影响半径 / 判定宽度 / 扇形全角(弧度) */
   range: number;
@@ -89,7 +89,7 @@ export function registerSkill(heroId: HeroId, slot: AbilitySlot, impl: SkillImpl
   skills.set(`${heroId}:${slot}`, impl);
 }
 
-/** 注册召唤师技能（所有英雄通用） */
+/** 注册通用技能（所有英雄通用） */
 export function registerSummoner(slot: SummonerSlot, impl: SkillImpl): void {
   skills.set(`*:${slot}`, impl);
 }
@@ -130,7 +130,7 @@ export function getItemHooks(item: ItemDef): HeroHooks | undefined {
   return hooks;
 }
 
-/** 召唤师技能的施放方式（英雄技能的在 data/heroes.ts） */
+/** 通用技能的施放方式（英雄技能的在 data/heroes.ts） */
 export const SUMMONER_CAST: Record<SummonerSlot, CastSpec> = {
   recall: { type: 'self', radius: 0 },
   heal: { type: 'self', radius: 0 },

@@ -22,7 +22,7 @@ import type { Sim } from './world';
 
 /** 前摇期间目标可以跑出射程多远而不取消这次出手 */
 const WINDUP_LEEWAY = 2;
-/** 炽焰之力的灼烧/减速时长 */
+/** 红buff的灼烧/减速时长 */
 const EMBER_BURN_TIME = 2;
 const EMBER_SLOW_TIME = 1;
 const BURN_TICK = 0.5;
@@ -122,7 +122,7 @@ export function dealDamage(
     pos: { x: target.pos.x, y: target.pos.y }, skill: kind === 'skill',
   });
 
-  // 受伤打断：回城被任何伤害打断；恢复被英雄/建筑伤害打断
+  // 受伤打断：回城被任何伤害打断；疗伤被英雄/建筑伤害打断
   if (target.kind === 'hero') {
     if (hasBuff(target, 'recall')) removeBuff(sim, target, 'recall');
     if (source && (source.kind === 'hero' || isStructure(source)) && hasBuff(target, 'restore')) removeBuff(sim, target, 'restore');
@@ -292,7 +292,7 @@ function burnTick(sim: Sim, unit: SimUnit, buff: SimBuff): void {
 
 const mod: BasicAttackMod = { mult: 1, bonus: 0, bonusPhysical: 0, bonusMagic: 0, bonusTrue: 0, forceCrit: false, noCrit: false };
 
-/** 英雄普攻命中：暴击、被动/装备修正、炽焰之力、吸血(在 dealDamage 内) */
+/** 英雄普攻命中：暴击、被动/装备修正、红buff、吸血(在 dealDamage 内) */
 function heroBasicHit(sim: Sim, hero: SimHero, target: SimUnit): void {
   mod.mult = 1;
   mod.bonus = 0;
@@ -320,7 +320,7 @@ function heroBasicHit(sim: Sim, hero: SimHero, target: SimUnit): void {
   if (bp > 0) dealDamage(sim, hero, target, bp, 'physical', 'proc');
   if (bm > 0) dealDamage(sim, hero, target, bm, 'magic', 'proc');
   if (bt > 0) dealDamage(sim, hero, target, bt, 'true', 'proc');
-  // 炽焰之力：普攻附带灼烧与减速
+  // 红buff：普攻附带灼烧与减速
   if (!structure && target.alive && hasBuff(hero, 'ember_might')) {
     addBuff(sim, target, 'burn', {
       sourceId: hero.id, duration: EMBER_BURN_TIME, merge: 'replace', key: 'ember',

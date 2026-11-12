@@ -777,3 +777,83 @@ export function setSpaceRot(pose: Pose, j: number, parentQ: Arr, x: number, y: n
   _q2[3] = parentQ[3];
   qmul(_q2, 0, _q, 0, pose.q, j * 4);
 }
+
+// ───────────── 动作小工具(各模型的程序动画共用) ─────────────
+
+const sat01 = (v: number): number => (v < 0 ? 0 : v > 1 ? 1 : v);
+
+/** 把 p 在 [a, b] 这一段映射到 0..1(段外截断) */
+export const seg = (p: number, a: number, b: number): number => sat01((p - a) / (b - a));
+/** 以 c 为中心、半宽 w 的平滑鼓包 0..1 */
+export const bump = (p: number, c: number, w: number): number => {
+  const d = Math.abs(p - c) / w;
+  return d >= 1 ? 0 : 1 - d * d * (3 - 2 * d);
+};
+/** 缓动：平滑进出 / 快出 / 快进 / 过冲回弹 */
+export const easeIO = (x: number): number => x * x * (3 - 2 * x);
+export const easeOut = (x: number): number => 1 - (1 - x) * (1 - x);
+export const easeIn = (x: number): number => x * x;
+export const easeBack = (x: number): number => {
+  const c = 1.70158;
+  const t = x - 1;
+  return 1 + (c + 1) * t * t * t + c * t * t;
+};
+/**
+ * 出手动作的时间重映射：把模拟层给的「命中点占比 windup」对齐到动画里固定的 0.35 命中帧，
+ * 这样各模型的出手关键帧可以按统一节奏(0~0.27 蓄力、0.35 命中、之后收招)来写。
+ */
+export function strikeWarp(p: number, windup: number): number {
+  const w = Math.min(0.6, Math.max(0.15, windup));
+  return p < w ? (p / w) * 0.35 : 0.35 + ((p - w) / (1 - w)) * 0.65;
+}
+
+/** 柔性蒙皮函数(与 kit.ts 的 SoftBind 同形)：[骨骼0, 骨骼1, 骨骼0 的权重] */
+export type SkinFn = (x: number, y: number, z: number, g: number) => [number, number, number];
+
+/**
+ * 沿一串首尾相接的关节做柔性蒙皮：顶点投影到最近的一段骨骼上，段中部刚性跟随该骨骼，
+ * 靠近关节处与相邻骨骼各半混合(blend = 混合带占段长的比例)。脖子 / 尾巴 / 四肢 / 翼指 / 触须都用它。
+ * tip 为末节之后的虚拟末端(绑定空间坐标)；不给时末节之后的顶点全部跟随末节。
+ */
+export function chainSkin(rig: Rig, joints: number[], blend = 0.6, tip?: number[]): SkinFn {
+  const n = joints.length;
+  const P: number[][] = joints.map((j) => [rig.bx(j), rig.by(j), rig.bz(j)]);
+  if (tip) P.push(tip);
+  const last = P.length - 2;
+  const h = Math.max(1e-3, blend * 0.5);
+  return (x, y, z) => {
+    if (last < 0) return [joints[0], joints[0], 1];
+    let best = 0;
+    let bestT = 0;
+    let bestD = Infinity;
+    for (let i = 0; i <= last; i++) {
+      const a = P[i];
+      const b = P[i + 1];
+      const dx = b[0] - a[0];
+      const dy = b[1] - a[1];
+      const dz = b[2] - a[2];
+      const l2 = dx * dx + dy * dy + dz * dz || 1e-9;
+      const t = ((x - a[0]) * dx + (y - a[1]) * dy + (z - a[2]) * dz) / l2;
+      const tc = t < 0 ? 0 : t > 1 ? 1 : t;
+      const qx = a[0] + dx * tc - x;
+      const qy = a[1] + dy * tc - y;
+      const qz = a[2] + dz * tc - z;
+      const d = qx * qx + qy * qy + qz * qz;
+      if (d < bestD) {
+        bestD = d;
+        best = i;
+        // 末段允许越过末端关节(没有虚拟末端时，末节之后的顶点逐渐完全归末节)
+        bestT = i === last ? Math.max(0, t) : tc;
+      }
+    }
+    const i = best;
+    const t = bestT;
+    if (t > 1 - h && i + 1 < n) {
+      const u = (t - 1) / h;
+      if (u >= 0) return [joints[i + 1], joints[i], Math.min(1, 0.5 + 0.5 * u)];
+      return [joints[i], joints[i + 1], 0.5 - 0.5 * u];
+    }
+    if (t < h && i > 0) return [joints[i], joints[i - 1], 0.5 + (0.5 * t) / h];
+    return [joints[i], joints[i], 1];
+  };
+}

@@ -54,46 +54,68 @@ export interface TeamPalette {
   stoneDark: number;
   /** 金属饰边 */
   trim: number;
+  /** 基地地台的铺地石(中明度：水晶、塔、英雄站在上面要分得出来) */
+  plaza: number;
 }
 
+/**
+ * 调色板(sRGB 十六进制)。第二阶段「暖石青林」：午后斜阳，受光暖、背光冷；草木收成橄榄绿到青绿，石色暖灰米，
+ * 河水青碧；发光的东西少而准。明度阶梯：墙体/树冠(暗) < 可走地面(中) < 单位(亮) < 特效核心(最亮)。
+ * 环境里不出现纯蓝纯红(留给队伍色)。色值出处：design/art-v2.md §2.1。
+ */
 export const PALETTE = {
-  blue: { main: 0x3f8fff, light: 0xa8d4ff, dark: 0x1d3f9a, glow: 0x38a8ff, stone: 0xd3dae8, stoneDark: 0x9aa8c4, trim: 0xf0c050 } as TeamPalette,
-  red: { main: 0xff4b3e, light: 0xffb09a, dark: 0x8e1f1c, glow: 0xff5a36, stone: 0x4a3f46, stoneDark: 0x2a2228, trim: 0xf09a3c } as TeamPalette,
-  neutral: { main: 0xe2c66a, light: 0xfff0b0, dark: 0x7a6230, glow: 0xffd870, stone: 0x9aa0a8, stoneDark: 0x5c626c, trim: 0xd8c690 } as TeamPalette,
+  blue: { main: 0x3f8fff, light: 0xa8d4ff, dark: 0x1d3f9a, glow: 0x38a8ff, stone: 0xc3cde0, stoneDark: 0x8494b6, trim: 0xe8b84a, plaza: 0x8fa2c6 } as TeamPalette,
+  red: { main: 0xff4b3e, light: 0xffb09a, dark: 0x8e1f1c, glow: 0xff5a36, stone: 0x5a4a50, stoneDark: 0x2e2529, trim: 0xf09a3c, plaza: 0x5a4a50 } as TeamPalette,
+  neutral: { main: 0xe2c66a, light: 0xfff0b0, dark: 0x7a6230, glow: 0xffd870, stone: 0x9aa0a8, stoneDark: 0x5c626c, trim: 0xd8c690, plaza: 0x8c8a88 } as TeamPalette,
   /** 玩家自己：金绿色 */
-  player: { main: 0xb6ff5c, light: 0xe6ffb0, dark: 0x4f8f1c, glow: 0xd8ff7a, stone: 0xe6ebf5, stoneDark: 0xa9b6cf, trim: 0xf0c050 } as TeamPalette,
+  player: { main: 0xb6ff5c, light: 0xe6ffb0, dark: 0x4f8f1c, glow: 0xd8ff7a, stone: 0xe6ebf5, stoneDark: 0xa9b6cf, trim: 0xf0c050, plaza: 0x8fa2c6 } as TeamPalette,
   env: {
-    sun: 0xfff0d6,
-    sky: 0xdae5ff,
-    bounce: 0xc2b99a,
-    fog: 0xb8dcf0,
+    // 光：主光暖金 / 天光(半球光上半) / 地面反光(半球光下半) / 雾与远景 / 屏幕上沿的远景薄霾
+    sun: 0xffe6b4,
+    sky: 0xb6d0ff,
+    bounce: 0xc2ae84,
+    fog: 0xcfe2f0,
+    haze: 0xd7e6f5,
     horizon: 0xdff1ff,
     zenith: 0x5fa8ee,
     cloud: 0xffffff,
     cloudShade: 0xa9c4e6,
-    grass: 0x6aad4e,
-    grassWarm: 0xa5c458,
-    grassCool: 0x4a9c66,
-    grassDark: 0x41864a,
-    lane: 0xdcc394,
-    laneDark: 0xa98e63,
-    dirt: 0xa98c5e,
-    dirtDark: 0x7d6747,
+    // 草：主 / 日晒暖 / 近水冷 / 暗；崖顶草两色(比地面草暗一档)
+    grass: 0x6f9d4a,
+    grassWarm: 0xa3b458,
+    grassCool: 0x4f8f62,
+    grassDark: 0x3d7046,
+    cliffGrass: 0x5a9150,
+    cliffGrassLight: 0x7fae55,
+    // 兵线石：石板 / 交替石板 / 夯土(路边) / 石缝
+    lane: 0xc0b08d,
+    laneAlt: 0xb0a592,
+    laneDark: 0x94784f,
+    laneGrout: 0x6e5a44,
+    // 野区土：腐殖土亮 / 暗
+    dirt: 0x8a7350,
+    dirtDark: 0x6e5a44,
     sand: 0xcabf96,
-    rock: 0x8a8a93,
-    rockDark: 0x67656b,
-    rockLight: 0xbab9c0,
-    rockWarm: 0x8a8378,
-    moss: 0x4f9a5c,
-    water: 0x4fd2e2,
-    waterDeep: 0x1f7fb4,
-    foam: 0xf4ffff,
-    reed: 0x9fb93c,
-    reedTip: 0xf0e48c,
+    // 断崖岩：中 / 暗 / 亮 / 暖沿 / 苔
+    rock: 0x7f7c86,
+    rockDark: 0x5b5a68,
+    rockLight: 0xa9a39f,
+    rockWarm: 0xc9bfa6,
+    moss: 0x5a8a52,
+    // 水：浅 / 中 / 深 / 泡沫 / 焦散
+    waterShallow: 0x7fe0d6,
+    water: 0x2fa7c4,
+    waterDeep: 0x1b6f9c,
+    foam: 0xf2fffb,
+    caustic: 0xc8fff0,
+    // 高草(草丛)
+    reed: 0x8fae4a,
+    reedTip: 0xd9d98a,
     reedDark: 0x4d7a2c,
-    canopy: 0x3fa26a,
-    canopyLight: 0xa6d85c,
-    canopyDark: 0x257a5c,
+    // 树冠：中层 / 顶层亮 / 底层暗；树干
+    canopy: 0x3f8f5e,
+    canopyLight: 0x9ccf5a,
+    canopyDark: 0x1f5f4c,
     trunk: 0x6e4d3c,
     crystal: 0x35c4ff,
     crystalDeep: 0x5a6cff,
@@ -101,7 +123,18 @@ export const PALETTE = {
     ember: 0xff7a3c,
     frost: 0x6fd0ff,
     abyss: 0xa070ff,
+    // 野区点缀(故意避开纯蓝纯红)：琥珀灯果 / 荧青菌 / 紫罗兰晶 / 花白 / 花粉
+    amber: 0xffb347,
+    glowCyan: 0x5fe8c8,
+    violet: 0xa47cff,
+    petalWhite: 0xfff3e0,
+    petalPink: 0xffd1e0,
     outline: 0x1b2233,
+    // 光影常量：单位暗部乘色 / 岩石暗部乘色 / 受光侧暖边 / 背光侧冷边
+    shadeUnit: 0xc4d0ff,
+    shadeRock: 0xd2d8ff,
+    rimWarm: 0xffe9c4,
+    kickCool: 0xbfe2ff,
   },
 } as const;
 
@@ -116,17 +149,107 @@ export function linearColor(hex: THREE.ColorRepresentation): THREE.Color {
 
 // ───────────────────────────── 全局共享 uniform ─────────────────────────────
 
-/** 风向为世界 xz 平面单位向量；z=强度(0..1.5)；w=节奏倍率 */
+/** 环境染色贴图覆盖的世界半径(米)：贴图覆盖 [-64, 64]²，1 米 / texel(128²) */
+export const LIGHT_TINT_EXTENT = 64;
+/** 环境染色贴图 RGB → 附加辐照度的倍率 */
+export const LIGHT_TINT_GAIN = 1.6;
+
+/** 1×1 的中性染色贴图：不加色、不遮天光。主引擎不在绘制时(选人立绘、头像等独立小场景)采到的就是它 */
+const NEUTRAL_LIGHT_TINT = /* @__PURE__ */ (() => {
+  const t = new THREE.DataTexture(new Uint8Array([0, 0, 0, 255]), 1, 1, THREE.RGBAFormat, THREE.UnsignedByteType);
+  t.name = 'moba.lightTint.neutral';
+  t.colorSpace = THREE.NoColorSpace;
+  t.minFilter = t.magFilter = THREE.NearestFilter;
+  t.generateMipmaps = false;
+  t.needsUpdate = true;
+  return t;
+})();
+
+/**
+ * 全局共享 uniform(引用同一个对象，不要 clone)：
+ *   uTime / uWind          全局动画时钟与风(风向为世界 xz 平面单位向量；z = 强度 0..1.5；w = 节奏倍率)
+ *   uShadeTint             暗部乘色(单位、默认的 Toon 材质)：线性空间里约 (0.55, 0.63, 1.0)，暗部压暗并偏冷紫
+ *   uShadeTintGround       地表类大面积表面的暗部乘色(线性值，只偏色不压暗；把纯天光的蓝往青紫上带一点)：地表、水面、贴花读它
+ *   uKickDir / uKickColor  背光侧冷色边缘光的方向(视图空间 xy，指向屏幕右上)与颜色(HDR)
+ *   tLightTint             环境染色贴图(见 engine/lighttint.ts)；litUniforms() 会自动带上它和上面几项
+ * 调全局的阴影色 / 冷边色只改这里一处。
+ */
 export const SHARED = {
   uTime: { value: 0 },
   uWind: { value: new THREE.Vector4(0.82, -0.57, 1, 1) },
+  uShadeTint: { value: new THREE.Color(PALETTE.env.shadeUnit) },
+  uShadeTintGround: { value: new THREE.Color().setRGB(1.0, 0.95, 1.1) },
+  uKickDir: { value: new THREE.Vector2(0.78, 0.62).normalize() },
+  uKickColor: { value: new THREE.Color(PALETTE.env.kickCool).multiplyScalar(1.15) },
+  tLightTint: { value: NEUTRAL_LIGHT_TINT as THREE.Texture },
 };
+
+/** 把环境染色贴图挂到共享 uniform 上；传 null 换回中性贴图 */
+export function setSharedLightTint(tex: THREE.Texture | null): void {
+  SHARED.tLightTint.value = tex ?? NEUTRAL_LIGHT_TINT;
+}
 
 /** 每帧由引擎调用一次 */
 export function tickShared(dt: number): void {
   // 限幅：切后台回来时不让动画跳变过大
   SHARED.uTime.value += Math.min(dt, 0.1);
 }
+
+// ───────────────────────────── 色调映射 ─────────────────────────────
+
+/**
+ * 全工程统一的色调映射曲线：Khronos Neutral 的高光段，去掉它的暗部偏移。
+ *
+ * three 自带的 NeutralToneMapping 会先从三个通道里各减掉最多 0.04(低于 0.08 的部分按平方趾部压下去)——那是给产品展示图
+ * 去掉 4% 菲涅尔底色用的。放在游戏里，阴影(线性值 0.03~0.1)会被压掉一半以上，而且哪个通道最小就先死哪个：
+ * 偏冷的阴影红通道归零，变成又黑又艳的深蓝，谁也没法照着亮度表对色。
+ * 所以这里只保留它真正有用的部分：峰值低于 0.76 时完全线性(中间调不偏色、不改饱和)，以上按峰值收拢并略去饱和
+ * (石板、白石和青白色特效不再被压成一片白)。暗部是纯线性的：阴影色 = 反照率 × 环境光 × 暗部乘色，所见即所算。
+ *
+ * 做法是 three 官方的自定义色调映射入口：把 ShaderChunk 里 CustomToneMapping 的空实现换成我们的，
+ * 渲染器选 THREE.CustomToneMapping。low 档直出(材质内映射)与走后期(FinalPass 里映射)是同一个函数。
+ * 只影响选了 CustomToneMapping 的渲染器；本模块一加载就装好，重复调用无副作用。
+ */
+export const TONE_MAPPING = THREE.CustomToneMapping;
+/**
+ * 直出屏幕(low 档，没有后期)时烘在色调映射里的基础调色：与 engine.ts 里 grade 的默认值一致的 对比 / 饱和 / 自然饱和。
+ * 逐像素的颜色变换放在材质里做和放在全屏通道里做结果相同(不透明物体完全一致)，所以 low 档不需要后期也能和高档同一个色调；
+ * 色彩分离、薄霾、暗角这些与屏幕位置有关或可有可无的项仍只在后期里。
+ */
+export const BASE_GRADE = { contrast: 1.08, pivot: 0.42, saturation: 1.06, vibrance: 0.12 } as const;
+const TONE_MAPPING_GLSL = /* glsl */ `vec3 CustomToneMapping( vec3 color ) {
+	const float StartCompression = 0.76;
+	const float Desaturation = 0.15;
+	color *= toneMappingExposure;
+	float peak = max( color.r, max( color.g, color.b ) );
+	if ( peak >= StartCompression ) {
+		float d = 1.0 - StartCompression;
+		float newPeak = 1.0 - d * d / ( peak + d - StartCompression );
+		color *= newPeak / peak;
+		float g = 1.0 - 1.0 / ( Desaturation * ( peak - newPeak ) + 1.0 );
+		color = mix( color, vec3( newPeak ), g );
+	}
+	#ifdef TONE_MAPPING
+	// 只有直出屏幕的材质定义了 TONE_MAPPING：把基础调色并进来(走后期时由 FinalPass 调色)
+	const float Pivot = ${Math.pow(BASE_GRADE.pivot, 2.2).toFixed(4)};
+	color = Pivot * pow( max( color, vec3( 0.0 ) ) / Pivot, vec3( ${BASE_GRADE.contrast.toFixed(3)} ) );
+	float l = dot( color, vec3( 0.2126, 0.7152, 0.0722 ) );
+	float mx = max( color.r, max( color.g, color.b ) );
+	float mn = min( color.r, min( color.g, color.b ) );
+	color = max( mix( vec3( l ), color, ${BASE_GRADE.saturation.toFixed(3)} + ${BASE_GRADE.vibrance.toFixed(3)} * ( 1.0 - ( mx - mn ) / max( mx, 1e-4 ) ) ), vec3( 0.0 ) );
+	#endif
+	return color;
+}`;
+export function installToneMapping(): void {
+  const chunk = THREE.ShaderChunk.tonemapping_pars_fragment;
+  if (chunk.includes('StartCompression = 0.76')) return;
+  const stub = 'vec3 CustomToneMapping( vec3 color ) { return color; }';
+  // three 换了这段源码的写法时(找不到空实现)：追加一个同名函数会重定义报错，所以只在找得到时替换；
+  // 找不到就保持原样(画面退回「不做色调映射」的线性直出，偏亮但不会坏)，并在控制台留一条提示
+  if (chunk.includes(stub)) THREE.ShaderChunk.tonemapping_pars_fragment = chunk.replace(stub, TONE_MAPPING_GLSL);
+  else console.warn('[moba] 未找到 CustomToneMapping 的默认实现，色调映射未安装');
+}
+installToneMapping();
 
 // ───────────────────────────── 种子随机 / CPU 噪声 ─────────────────────────────
 
@@ -744,9 +867,51 @@ export const GLSL_OUTPUT_FRAGMENT = /* glsl */ `
 #include <fog_fragment>
 `;
 
-/** 合并 three 的灯光/雾 uniform 与自定义 uniform（自定义项保持引用，不被克隆） */
+/**
+ * 背光侧冷色边缘光的形状函数：`float kitKick(vec3 N, vec3 V, vec2 dir)`，N / V 为视图空间的法线与视线方向。
+ * 返回 0..1：一道贴着轮廓、宽度约为半径一成多的硬边亮带(卡通式的轮廓光，不是又细又虚的菲涅尔)，
+ * 只出现在法线朝 dir(屏幕右上)的那一侧。调用方再乘「不受光」的权重、强度与 uKickColor。
+ */
+export const GLSL_KICK = /* glsl */ `
+float kitKick(vec3 N, vec3 V, vec2 dir) {
+  float edge = smoothstep(0.42, 0.64, 1.0 - saturate(dot(N, V)));
+  return edge * smoothstep(0.05, 0.6, dot(N.xy, dir));
+}
+`;
+
+/**
+ * 环境染色贴图的采样片段(顶点、片元着色器都能用)：
+ *   vec4 kitLightTint(vec2 worldXZ)            —— rgb = 附加的彩色环境光(未乘增益)，a = 天空光可见度
+ *   vec3 kitTintAmbient(vec3 ambient, vec4 lt) —— ambient * lt.a + lt.rgb * KIT_LIGHT_TINT_GAIN
+ * 用法：`vec4 lt = kitLightTint(vWorldPos.xz); vec3 irr = kitTintAmbient(kitAmbient(N) * ao, lt) + 主光…`
+ * uniform tLightTint 由 litUniforms() 自动提供；没走 litUniforms 的材质自己加 `tLightTint: SHARED.tLightTint`。
+ */
+export const GLSL_LIGHT_TINT = /* glsl */ `
+#define KIT_LIGHT_TINT_GAIN ${LIGHT_TINT_GAIN.toFixed(2)}
+uniform sampler2D tLightTint;
+vec4 kitLightTint(vec2 worldXZ) {
+  return texture2D(tLightTint, worldXZ * ${(0.5 / LIGHT_TINT_EXTENT).toFixed(8)} + 0.5);
+}
+vec3 kitTintAmbient(vec3 ambient, vec4 lt) {
+  return ambient * lt.a + lt.rgb * KIT_LIGHT_TINT_GAIN;
+}
+`;
+
+/**
+ * 合并 three 的灯光/雾 uniform 与自定义 uniform（自定义项保持引用，不被克隆）。
+ * 同时带上全局共享的光影 uniform：tLightTint / uShadeTintGround / uKickDir / uKickColor
+ * (着色器里声明了同名 uniform 就能直接用；custom 里的同名项优先)。
+ */
 export function litUniforms(custom: Record<string, THREE.IUniform>): Record<string, THREE.IUniform> {
-  return { ...THREE.UniformsUtils.clone(THREE.UniformsLib.lights), ...THREE.UniformsUtils.clone(THREE.UniformsLib.fog), ...custom };
+  return {
+    ...THREE.UniformsUtils.clone(THREE.UniformsLib.lights),
+    ...THREE.UniformsUtils.clone(THREE.UniformsLib.fog),
+    tLightTint: SHARED.tLightTint,
+    uShadeTintGround: SHARED.uShadeTintGround,
+    uKickDir: SHARED.uKickDir,
+    uKickColor: SHARED.uKickColor,
+    ...custom,
+  };
 }
 
 // ───────────────────────────── 风格化受光材质 ─────────────────────────────
@@ -764,22 +929,44 @@ export interface ToonMaterialOptions {
   mapGain?: number;
   /** true：aFx.z 不再是队伍色蒙版，而是「贴图强度」(0 = 不叠贴图，1 = 全强度)。地形用它让岩面有肌理、草顶保持干净 */
   mapMask?: boolean;
+  /**
+   * 顶面贴图：法线朝上(世界 y > 0.55~0.8 过渡)的片元按世界 xz 平铺采样这张贴图并乘到底色上，让崖顶/台面与地面草地用同一套纹理。
+   * mapMask 模式下还会乘 (1 - aFx.z)：岩面(aFx.z 高)不受影响。贴图应是均值约 0.47 的中性明暗贴图(如地表草贴图)。
+   */
+  mapTop?: THREE.Texture | null;
+  /** 顶面贴图每米的重复数。默认 0.1(与地表草贴图一致：10 米一铺) */
+  mapTopScale?: number;
+  /** 顶面贴图亮度增益。默认 2.1(把均值 0.47 的贴图拉回 1，不改变整体明度) */
+  mapTopGain?: number;
+  /** 顶面的大块色斑(日晒发黄 / 背阴发青)强度 0..1。默认 1 */
+  mapTopPatch?: number;
+  /** 色斑用的噪声贴图(makeNoiseTexture 的四通道噪声，R/G 两个通道)。不给时用解析的低频波纹代替 */
+  mapTopNoise?: THREE.Texture | null;
+  /** 顶面细节(第二尺度采样 + 色斑)。默认 true；low 档传 false(只采一次)，也可以之后调 setMapTopDetail() */
+  mapTopDetail?: boolean;
   vertexColors?: boolean;
   /** 自发光颜色与强度(强度 > 1 会触发 bloom) */
   emissive?: THREE.ColorRepresentation;
   emissiveIntensity?: number;
   /** aFx.y 的自发光倍率(底色 × aFx.y × glowBoost)。默认 3 */
   glowBoost?: number;
-  /** 明暗阶数：1 = 平滑(环境物)，2 = 明/暗两阶(默认)，3 = 明/中/暗三阶(角色) */
+  /** 明暗阶数：1 = 平滑(植被)，2 = 明/暗两阶(默认)，3 = 明/中/暗三阶(角色、岩石、建筑) */
   steps?: 1 | 2 | 3;
+  /**
+   * 三阶明暗的自定义阈值 [暗→灰的 N·L 阈值, 灰→亮的 N·L 阈值, 灰阶亮度 0..1]。给了它就按三阶算(steps 不用再传)。
+   * 岩石/建筑/构件用 [0.05, 0.42, 0.55] 配 softness 0.10：在主光方向下 顶面 / 西立面 = 亮，朝镜头的南立面 = 灰，东立面 = 暗。
+   */
+  ramp?: [number, number, number];
   /** 阶梯边缘柔和度 0.02(硬)..0.3(软)。默认 0.08 */
   softness?: number;
-  /** 暗部色偏(乘在暗部上，默认偏冷的 #c4d0ff) */
+  /** 暗部乘色。不传 = 跟随全局 SHARED.uShadeTint(#c4d0ff)；岩石用 PALETTE.env.shadeRock(#d2d8ff) */
   shadeTint?: THREE.ColorRepresentation;
-  /** 轮廓光强度(0 关闭)、颜色、指数 */
+  /** 轮廓光(受光侧暖边)强度(0 关闭)、颜色、指数 */
   rim?: number;
   rimColor?: THREE.ColorRepresentation;
   rimPower?: number;
+  /** 背光侧冷色边缘光强度(0 = 关，默认)：只出现在朝屏幕右上、且不受光的轮廓上，把暗面和地面分开。岩石 0.10，建筑 0.3 */
+  kicker?: number;
   /** 风格化高光强度(0 关闭) 与锐度 */
   specular?: number;
   gloss?: number;
@@ -792,6 +979,8 @@ export interface ToonMaterialOptions {
   windByHeight?: number;
   /** 是否读取 aFx 顶点属性(默认 true；几何体没有该属性时等价于 0,0,0,1) */
   fx?: boolean;
+  /** 是否采样环境染色贴图(发光体/基地/河道对周围的染色 + 树冠下的天光遮蔽)。默认 true */
+  lightTint?: boolean;
   side?: THREE.Side;
   /** 真透明混合(默认 false：淡出用抖动镂空) */
   transparent?: boolean;
@@ -844,7 +1033,7 @@ varying vec3 vViewPosition;
 uniform float uMapScale;
 varying vec2 vUv;
 #endif
-#ifdef TOON_TRIPLANAR
+#ifdef TOON_WORLD_POS
 varying vec3 vWorldPos;
 #endif
 void main() {
@@ -866,7 +1055,7 @@ void main() {
   #ifdef TOON_WIND
   worldPosition.xyz += windOffset(worldPosition.xyz, uSway * (vFx.x + max(position.y, 0.0) * uSwayHeight));
   #endif
-  #ifdef TOON_TRIPLANAR
+  #ifdef TOON_WORLD_POS
   vWorldPos = worldPosition.xyz;
   #endif
   ${GLSL_LIGHT_VERTEX_TAIL}
@@ -878,6 +1067,10 @@ const TOON_FRAGMENT = /* glsl */ `
 ${GLSL_LIGHT_PARS_FRAGMENT}
 #include <color_pars_fragment>
 ${GLSL_DITHER}
+${GLSL_KICK}
+#ifdef TOON_LIGHT_TINT
+${GLSL_LIGHT_TINT}
+#endif
 uniform vec3 uColor;
 uniform vec3 uTint;
 uniform float uOpacity;
@@ -891,6 +1084,11 @@ uniform vec2 uSpec;
 uniform vec3 uTeamColor;
 uniform float uFlash;
 uniform vec3 uFlashColor;
+#ifdef TOON_KICKER
+uniform float uKick;
+uniform vec2 uKickDir;
+uniform vec3 uKickColor;
+#endif
 #ifdef TOON_MAP
 uniform sampler2D tMap;
 varying vec2 vUv;
@@ -898,6 +1096,15 @@ varying vec2 vUv;
 #ifdef TOON_TRIPLANAR
 uniform sampler2D tMap;
 uniform float uTriScale;
+#endif
+#ifdef TOON_MAP_TOP
+uniform sampler2D tMapTop;
+uniform vec3 uMapTop;
+#ifdef TOON_MAP_TOP_NOISE
+uniform sampler2D tMapTopNoise;
+#endif
+#endif
+#ifdef TOON_WORLD_POS
 varying vec3 vWorldPos;
 #endif
 uniform float uMapGain;
@@ -936,8 +1143,11 @@ void main() {
   vec4 texel = texture2D(tMap, vUv);
   base *= vec4(texel.rgb * uMapGain, texel.a);
   #endif
+  #if defined(TOON_TRIPLANAR) || defined(TOON_MAP_TOP)
+  vec3 Nw = inverseTransformDirection(N, viewMatrix);
+  #endif
   #ifdef TOON_TRIPLANAR
-  vec3 tw = abs(inverseTransformDirection(N, viewMatrix));
+  vec3 tw = abs(Nw);
   tw = tw * tw * tw * tw;
   tw /= tw.x + tw.y + tw.z;
   vec3 tp = vWorldPos * uTriScale;
@@ -947,6 +1157,27 @@ void main() {
   #else
   base.rgb *= triTex;
   #endif
+  #endif
+  #ifdef TOON_MAP_TOP
+  // 顶面：按世界 xz 平铺的草贴图 + 大块色斑(与地表草地同一套做法，崖顶和地面连成一片)
+  float topW = smoothstep(0.55, 0.8, Nw.y);
+  #ifdef TOON_MAP_MASK
+  topW *= 1.0 - vFx.z;
+  #endif
+  vec2 tuv = vWorldPos.xz * uMapTop.x;
+  vec3 tg = texture2D(tMapTop, tuv).rgb * uMapTop.y;
+  #ifdef TOON_MAP_TOP_DETAIL
+  tg *= texture2D(tMapTop, vec2(tuv.y, -tuv.x) * 0.371 + 0.4).rgb * 0.8 + 0.62;
+  #ifdef TOON_MAP_TOP_NOISE
+  vec2 tn = texture2D(tMapTopNoise, vWorldPos.xz * 0.0213).rg;
+  #else
+  vec2 tn = 0.5 + 0.5 * vec2(sin(vWorldPos.x * 0.13 + sin(vWorldPos.z * 0.11) * 1.7), sin(vWorldPos.z * 0.17 - vWorldPos.x * 0.09 + 1.3));
+  #endif
+  vec3 patch = mix(vec3(0.84, 0.97, 1.06), vec3(1.0), smoothstep(0.34, 0.62, tn.x));
+  patch = mix(patch, vec3(1.16, 1.07, 0.8), smoothstep(0.5, 0.74, tn.y) * 0.6);
+  tg *= mix(vec3(1.0), patch, uMapTop.z);
+  #endif
+  base.rgb *= mix(vec3(1.0), tg, topW);
   #endif
   #ifdef TOON_MAP_MASK
   base.rgb *= uTint;
@@ -969,13 +1200,21 @@ void main() {
   float lit = toonRamp(ndl) * kitShadow();
   vec3 sun = kitSunColor();
 
-  vec3 irradiance = kitAmbient(N) * vFx.w + sun * lit + kitPointLights(N, -vViewPosition);
+  vec3 amb = kitAmbient(N);
+  #ifdef TOON_LIGHT_TINT
+  amb = kitTintAmbient(amb, kitLightTint(vWorldPos.xz));
+  #endif
+  vec3 irradiance = amb * vFx.w + sun * lit + kitPointLights(N, -vViewPosition);
   vec3 col = base.rgb * RECIPROCAL_PI * irradiance;
   col *= mix(uShadeTint, vec3(1.0), lit);
 
-  // 轮廓光：受光侧更强，暗部保留一点冷色勾边
+  // 轮廓光：受光侧暖边(暗部只留一点)
   float fres = pow(1.0 - saturate(dot(N, V)), uRim.y);
   col += uRimColor * (fres * uRim.x * (0.3 + 0.7 * lit));
+  #ifdef TOON_KICKER
+  // 背光侧冷边：只在朝屏幕右上、且不受光的轮廓上出现，把暗面从地面上分出来
+  col += uKickColor * (kitKick(N, V, uKickDir) * (1.0 - 0.6 * lit) * uKick);
+  #endif
 
   #ifdef TOON_SPECULAR
   vec3 H = normalize(L + V);
@@ -998,9 +1237,11 @@ export class ToonMaterial extends THREE.ShaderMaterial {
   constructor(opts: ToonMaterialOptions = {}) {
     super();
     this.opts = { ...opts };
-    const steps = opts.steps ?? 2;
+    const steps = opts.ramp ? 3 : (opts.steps ?? 2);
     const soft = opts.softness ?? 0.08;
     const emissive = new THREE.Color(opts.emissive ?? 0x000000).multiplyScalar(opts.emissive !== undefined ? (opts.emissiveIntensity ?? 1) : 0);
+    // x/y = 暗→中 / 中→亮 的 N·L 阈值，z = 中间调亮度，w = 柔和度
+    const ramp = opts.ramp ? new THREE.Vector4(opts.ramp[0], opts.ramp[1], opts.ramp[2], soft) : new THREE.Vector4(steps === 3 ? -0.08 : 0.06, 0.5, 0.58, soft);
     this.uniforms = litUniforms({
       uTime: SHARED.uTime,
       uWind: SHARED.uWind,
@@ -1011,11 +1252,12 @@ export class ToonMaterial extends THREE.ShaderMaterial {
       uOpacity: { value: opts.opacity ?? 1 },
       uEmissive: { value: emissive },
       uGlowBoost: { value: opts.glowBoost ?? 3 },
-      // x/y = 暗→中 / 中→亮 的 N·L 阈值，z = 中间调亮度，w = 柔和度
-      uRamp: { value: new THREE.Vector4(steps === 3 ? -0.08 : 0.06, 0.5, 0.58, soft) },
-      uShadeTint: { value: new THREE.Color(opts.shadeTint ?? 0xc4d0ff) },
-      uRimColor: { value: new THREE.Color(opts.rimColor ?? 0xfff2d8) },
+      uRamp: { value: ramp },
+      // 没指定暗部色的材质共用全局那一个(引用同一个 uniform 对象：改 SHARED.uShadeTint 即全体生效)
+      uShadeTint: opts.shadeTint !== undefined ? { value: new THREE.Color(opts.shadeTint) } : SHARED.uShadeTint,
+      uRimColor: { value: new THREE.Color(opts.rimColor ?? PALETTE.env.rimWarm) },
       uRim: { value: new THREE.Vector2(opts.rim ?? 0.25, opts.rimPower ?? 3) },
+      uKick: { value: opts.kicker ?? 0 },
       uSpec: { value: new THREE.Vector2(opts.specular ?? 0, opts.gloss ?? 40) },
       uTeamColor: { value: new THREE.Color(opts.teamColor ?? 0xffffff) },
       uFlash: { value: 0 },
@@ -1024,15 +1266,29 @@ export class ToonMaterial extends THREE.ShaderMaterial {
       uMapScale: { value: opts.mapScale ?? 1 },
       uTriScale: { value: opts.triplanar ?? 0 },
       uMapGain: { value: opts.mapGain ?? 1 },
+      tMapTop: { value: opts.mapTop ?? null },
+      tMapTopNoise: { value: opts.mapTopNoise ?? null },
+      // x = 每米重复数，y = 亮度增益，z = 色斑强度
+      uMapTop: { value: new THREE.Vector3(opts.mapTopScale ?? 0.1, opts.mapTopGain ?? 2.1, opts.mapTopPatch ?? 1) },
     });
     const defines: Record<string, string | number> = { TOON_STEPS: steps };
+    const tri = !!opts.map && (opts.triplanar ?? 0) > 0;
+    const lightTint = opts.lightTint ?? true;
     if (opts.fx ?? true) defines.TOON_FX = '';
-    if (opts.map && (opts.triplanar ?? 0) > 0) defines.TOON_TRIPLANAR = '';
+    if (tri) defines.TOON_TRIPLANAR = '';
     else if (opts.map) defines.TOON_MAP = '';
     if (opts.mapMask) defines.TOON_MAP_MASK = '';
+    if (opts.mapTop) {
+      defines.TOON_MAP_TOP = '';
+      if (opts.mapTopDetail ?? true) defines.TOON_MAP_TOP_DETAIL = '';
+      if (opts.mapTopNoise) defines.TOON_MAP_TOP_NOISE = '';
+    }
+    if (lightTint) defines.TOON_LIGHT_TINT = '';
+    if (tri || opts.mapTop || lightTint) defines.TOON_WORLD_POS = '';
     if (opts.flat) defines.TOON_FLAT = '';
     if ((opts.wind ?? 0) > 0) defines.TOON_WIND = '';
     if ((opts.specular ?? 0) > 0) defines.TOON_SPECULAR = '';
+    if ((opts.kicker ?? 0) > 0) defines.TOON_KICKER = '';
     if (!opts.transparent) defines.TOON_DITHER_FADE = '';
     this.defines = defines;
     this.vertexShader = TOON_VERTEX;
@@ -1086,6 +1342,17 @@ export class ToonMaterial extends THREE.ShaderMaterial {
   private baseFade = 1;
   private dirtyFromParams = false;
 
+  /** 开关顶面贴图的细节(第二尺度 + 色斑)：画质切到 low 时关掉。没有 mapTop 的材质调用无效果 */
+  setMapTopDetail(on: boolean): void {
+    if (!this.opts.mapTop) return;
+    const has = this.defines.TOON_MAP_TOP_DETAIL !== undefined;
+    if (has === on) return;
+    this.opts.mapTopDetail = on;
+    if (on) this.defines.TOON_MAP_TOP_DETAIL = '';
+    else delete this.defines.TOON_MAP_TOP_DETAIL;
+    this.needsUpdate = true;
+  }
+
   override onBeforeRender(_r: THREE.WebGLRenderer, _s: THREE.Scene, _c: THREE.Camera, _g: THREE.BufferGeometry, object: THREE.Object3D): void {
     const p = object.userData.toon as ToonParams | undefined;
     const u = this.uniforms;
@@ -1114,14 +1381,20 @@ export class ToonMaterial extends THREE.ShaderMaterial {
     const m = new ToonMaterial(this.opts) as this;
     const src = this.uniforms;
     const dst = m.uniforms;
-    for (const k of ['uColor', 'uEmissive', 'uShadeTint', 'uRimColor', 'uTeamColor', 'uTint', 'uFlashColor'] as const) (dst[k].value as THREE.Color).copy(src[k].value as THREE.Color);
+    for (const k of ['uColor', 'uEmissive', 'uRimColor', 'uTeamColor', 'uTint', 'uFlashColor'] as const) (dst[k].value as THREE.Color).copy(src[k].value as THREE.Color);
+    // 暗部色：共用全局的那份不拷(同一个对象)，自带的才拷
+    if (dst.uShadeTint !== SHARED.uShadeTint) (dst.uShadeTint.value as THREE.Color).copy(src.uShadeTint.value as THREE.Color);
     (dst.uRamp.value as THREE.Vector4).copy(src.uRamp.value as THREE.Vector4);
     (dst.uRim.value as THREE.Vector2).copy(src.uRim.value as THREE.Vector2);
     (dst.uSpec.value as THREE.Vector2).copy(src.uSpec.value as THREE.Vector2);
+    (dst.uMapTop.value as THREE.Vector3).copy(src.uMapTop.value as THREE.Vector3);
+    dst.uKick.value = src.uKick.value;
     dst.uSway.value = src.uSway.value;
     dst.uSwayHeight.value = src.uSwayHeight.value;
     dst.uGlowBoost.value = src.uGlowBoost.value;
     dst.tMap.value = src.tMap.value;
+    dst.tMapTop.value = src.tMapTop.value;
+    dst.tMapTopNoise.value = src.tMapTopNoise.value;
     m.flash = this.baseFlash;
     m.fade = this.baseFade;
     return m;

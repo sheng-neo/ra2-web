@@ -52,7 +52,7 @@ describe('终局加速', () => {
 describe('史诗野怪仇恨', () => {
   it('第一个被盯上的人撤走后，仇恨交给还在打它的人，而不是整只脱战回血', () => {
     const sim = createWorld({ seed: 3, playerHero: 'panyue', difficulty: 'normal' }, { noBots: true, noWaves: true });
-    // 等深渊鳞兽刷新
+    // 等河道巨龙刷新
     stepFor(sim, 121);
     const drake = sim.units.find((u) => u.kind === 'monster' && u.monsterType === 'abyss_drake');
     expect(drake).toBeDefined();

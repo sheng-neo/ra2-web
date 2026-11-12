@@ -17,15 +17,19 @@ import { type ScatterResult, trs } from './scatter';
 const ROCK_DARK = rgb(PALETTE.env.rockDark);
 const ROCK = rgb(PALETTE.env.rock);
 const ROCK_LIGHT = rgb(PALETTE.env.rockLight);
-const ROCK_WARM = rgb(0xcdc7b6);
-const MOSS = rgb(0x4d9259);
-const FOREST_FLOOR = rgb(0x2f6a40);
-const FOREST_FLOOR_LIGHT = rgb(0x4c8c46);
+const ROCK_WARM = rgb(PALETTE.env.rockWarm);
+const MOSS = rgb(PALETTE.env.moss);
+const FOREST_FLOOR = rgb(0x2f5f40);
+const FOREST_FLOOR_LIGHT = rgb(0x4f8448);
 const DEEP = rgb(0x4b5878);
 const EARTH = rgb(0x6f6a44);
+const FOG = rgb(PALETTE.env.fog);
 
 /** 崖顶基准高度 */
 const BAND_H = 2.7;
+/** 基地外侧的城垣：墙顶高度(整齐，不随噪声起伏)与墙面相对边界线的后退量(墙脚留一道矮台阶，扶壁立在上面) */
+export const BASE_WALL_H = BAND_H + 0.2;
+export const BASE_WALL_SETBACK = 0.55;
 /** 南侧低台地的高度 */
 const LOW_Y = -1.95;
 
@@ -94,7 +98,7 @@ export function buildBorder(field: MapField, info: BorderInfo, root: THREE.Objec
   const n = outline.length;
   const blueStone = rgb(PALETTE.blue.stone);
   const blueStoneDark = rgb(PALETTE.blue.stoneDark);
-  const redStone = rgb(0x5a4c55);
+  const redStone = rgb(0x6a5a62);
   const redStoneDark = rgb(PALETTE.red.stoneDark);
 
   const ring = (p: OutlinePoint, i: number, k: number): { t: number; y: number; color: RGB; ao?: number; tex?: number } => {
@@ -102,10 +106,10 @@ export function buildBorder(field: MapField, info: BorderInfo, root: THREE.Objec
     const seedI = i * 13 + 7;
     const j = (hash2(seedI, k, 5) - 0.5) * 0.1;
     const crack = hash2(i, 77, 3) < 0.15 ? 1 : 0;
-    const H = BAND_H + (fbm2(p.s * 0.2, 3.3, 3, 15) - 0.5) * 0.8;
-    const ledge = 0.9 + (fbm2(p.s * 0.45, 8.1, 2, 21) - 0.5) * 0.9;
-    // 是否位于基地外侧：换成队伍石材并砌得更规整
+    // 是否位于基地外侧：换成队伍石材并砌成整齐的城垣
     const inBase = field.baseDist(p.x - p.nx * 0.5, p.z - p.nz * 0.5) < 0.4;
+    const H = inBase ? BASE_WALL_H : BAND_H + (fbm2(p.s * 0.2, 3.3, 3, 15) - 0.5) * 0.8;
+    const ledge = 0.9 + (fbm2(p.s * 0.45, 8.1, 2, 21) - 0.5) * 0.9;
     const red = p.x - p.z > 0;
     const stone = red ? redStone : blueStone;
     const stoneDark = red ? redStoneDark : blueStoneDark;
@@ -119,14 +123,24 @@ export function buildBorder(field: MapField, info: BorderInfo, root: THREE.Objec
     const tone = 0.9 + hash2(i, 31, 9) * 0.2;
     if (k <= 5) {
       // 高崖剖面 / 矮石沿剖面，按 sw 混合
-      const hi: [number, number][] = [
-        [0, -0.05],
-        [0.08 + j * 0.6 + crack * 0.1, ledge - 0.1],
-        [0.28 + j + crack * 0.08, ledge + 0.06],
-        [0.36 + j + crack * 0.14, lerp(ledge, H, 0.55)],
-        [0.55 + j + crack * 0.1, H - 0.12],
-        [0.95, H],
-      ];
+      const hi: [number, number][] = inBase
+        ? [
+            // 城垣：墙脚一道矮台阶，墙面后退、笔直，墙顶收一个小倒角
+            [0, -0.05],
+            [0.03, 0.13],
+            [BASE_WALL_SETBACK - 0.07, 0.15],
+            [BASE_WALL_SETBACK, H * 0.5],
+            [BASE_WALL_SETBACK + 0.02, H - 0.03],
+            [BASE_WALL_SETBACK + 0.12, H],
+          ]
+        : [
+            [0, -0.05],
+            [0.08 + j * 0.6 + crack * 0.1, ledge - 0.1],
+            [0.28 + j + crack * 0.08, ledge + 0.06],
+            [0.36 + j + crack * 0.14, lerp(ledge, H, 0.55)],
+            [0.55 + j + crack * 0.1, H - 0.12],
+            [0.95, H],
+          ];
       const curb = 0.42 * (1 - notch);
       const lo: [number, number][] = [
         [0, -0.05],
@@ -136,8 +150,7 @@ export function buildBorder(field: MapField, info: BorderInfo, root: THREE.Objec
         [0.58, curb * 0.5 - notch * 0.5 - 0.1],
         [0.78, lerp(-0.9, LOW_Y, 0.6)],
       ];
-      const inBaseK = inBase ? 0.25 : 1;
-      t = lerp(hi[k][0] * (inBase && k < 5 ? inBaseK * 0.6 + 0.4 : 1), lo[k][0], sw);
+      t = lerp(hi[k][0], lo[k][0], sw);
       y = lerp(hi[k][1], lo[k][1], sw);
       const rockCols: RGB[] = [mixRgb(ROCK_DARK, ROCK, 0.2), mixRgb(ROCK_DARK, ROCK, 0.65 - crack * 0.3), mixRgb(ROCK_LIGHT, MOSS, hash2(i, 5, 51) * 0.4), ROCK, mixRgb(ROCK, ROCK_LIGHT, 0.55), mixRgb(ROCK_LIGHT, ROCK_WARM, 0.6)];
       const stoneCols: RGB[] = [scaleRgb(stoneDark, 0.75), mixRgb(stoneDark, stone, 0.5), stone, mixRgb(stoneDark, stone, 0.7), stone, scaleRgb(stone, 1.05)];
@@ -166,7 +179,9 @@ export function buildBorder(field: MapField, info: BorderInfo, root: THREE.Objec
         // 林地：深浅草色 + 成片的落叶土；南侧低台整体压暗一些，把视线留给对局区
         let c = mixRgb(FOREST_FLOOR, FOREST_FLOOR_LIGHT, g);
         c = mixRgb(c, EARTH, smoothstep(0.55, 0.75, patch) * 0.6);
-        c = scaleRgb(c, lerp(1, 0.78, sw));
+        c = scaleRgb(c, lerp(1, 0.6, sw));
+        // 空气透视：离边界越远越向雾色靠
+        c = mixRgb(c, FOG, smoothstep(4, 40, t) * 0.55);
         if (k === 6) c = mixRgb(mixRgb(ROCK_LIGHT, MOSS, 0.6 + sw * 0.3), c, 0.4);
         if (k === 13) c = mixRgb(ROCK_LIGHT, ROCK_WARM, 0.5);
         if (inBase && k === 6) c = mixRgb(stone, c, 0.3);
@@ -201,7 +216,7 @@ export function buildBorder(field: MapField, info: BorderInfo, root: THREE.Objec
     }
     const b = new MeshBuilder();
     extrudeRings(b, slice, false, RING_COUNT, (p, i, k) => ring(p, idxMap[i], k));
-    b.computeNormals();
+    b.computeNormals(35);
     const mesh = new THREE.Mesh(b.build(), material);
     mesh.name = `border:${s}`;
     mesh.castShadow = true;
@@ -249,8 +264,10 @@ export function scatterBorder(batch: SceneryBatcher, lib: PropLibrary, field: Ma
         placed.push([px, pz, 1]);
         const pine = rng.chance(0.42 + (pz < 0 ? 0.2 : 0));
         const warm = fbm2(px * 0.04 + 9, pz * 0.04, 2, 88);
-        const v = rng.range(0.85, 1.08);
-        const tint: RGB = [v * (0.95 + warm * 0.25), v, v * (1.0 - warm * 0.25)];
+        const v = rng.range(0.85, 1.08) * (sw > 0.5 ? 0.72 : 1);
+        // 空气透视：越远的树越向雾色靠(乘色近似)
+        const haze = smoothstep(4, 34, t) * 0.5;
+        const tint: RGB = [v * (0.95 + warm * 0.25) * (1 + haze * 0.5), v * (1 + haze * 0.62), v * (1.0 - warm * 0.25) * (1 + haze * 1.1)];
         if (pine) {
           const sc = rng.range(0.85, 1.35) * (sw > 0.5 ? 0.8 : 1);
           batch.add(rng.pick(lib.pines), trs(px, y - 0.1, pz, rng.range(0, 6.28), sc, sc * rng.range(0.9, 1.2)), { tint });
@@ -288,8 +305,8 @@ export function scatterBorder(batch: SceneryBatcher, lib: PropLibrary, field: Ma
       if (field.riverDist(px, pz) < 1.2) continue;
       if (!r2.chance(0.7)) continue;
       const y = info.heightAt(px, pz) - 0.04;
-      if (r2.chance(0.14)) batch.add(r2.pick(lib.flowers), trs(px, y, pz, r2.range(0, 6.28), r2.range(1.4, 2.2)), { tint: r2.pick(flowerTints), shadow: false, maskedTint: true });
-      else batch.add(r2.pick(lib.tufts), trs(px, y, pz, r2.range(0, 6.28), r2.range(1.5, 2.6)), { shadow: false, tint: [0.8, 0.95, 0.75] });
+      if (r2.chance(0.06)) batch.add(r2.pick(lib.flowers), trs(px, y, pz, r2.range(0, 6.28), r2.range(1.6, 2.4)), { tint: r2.pick(flowerTints), shadow: false, maskedTint: true });
+      else if (r2.chance(0.55)) batch.add(r2.pick(lib.tufts), trs(px, y, pz, r2.range(0, 6.28), r2.range(1.5, 2.6)), { shadow: false, tint: [0.8, 0.95, 0.75] });
     }
   }
 }

@@ -4,7 +4,8 @@
  * - 新单位创建视图；离场的小兵/野怪/建筑先播完死亡演出再销毁(塔留下废墟)；英雄阵亡倒地后淡出，复活时重现。
  * - 位置按 lerp(prevPos, pos, alpha) 插值(瞬移时 prevPos = pos，自然不插值)，朝向平滑转向，按 unit.anim 驱动程序动画。
  * - 对玩家队伍不可见的敌方单位淡出隐藏；草丛内、不可选中的单位半透明；受击闪白(lastHitTime)。
- * - 脚下：接触阴影 + 队伍色光环(玩家自己金绿色)。
+ * - 脚下：两层接触阴影(脚下的实芯 + 顺着太阳投影方向偏出去的椭圆软影) + 队伍色光环(玩家自己金绿色)。
+ * - 动画输入除了动作与进度，还有：出生演出(对局中新刷出的野怪)、距上次受击的时间、警戒 / 特殊出手 / 建筑无敌等状态位。
  * - 同一种模型的所有实例一次 draw call(骨骼贴图实例化，见 models/shading.ts)；镜头外的单位不解算也不提交。
  * - 对外提供单位的渲染位置 / 头顶高度 / 包围半径 / 挂点查询(特效、血条、拾取都从这里取)，并接管 ctx.unitQuery。
  */
@@ -13,6 +14,7 @@ import { HEROES } from '../../core/data/heroes';
 import { type GameState, type HeroId, TICK_DT, type Unit, type UnitAnim, type UnitKind } from '../../core/types';
 import type { FrameInfo, RenderContext, RenderModule } from '../engine/context';
 import type { QualitySettings } from '../engine/quality';
+import { SUN_DIR } from '../engine/lighting';
 import { PALETTE } from '../materials';
 import { type AttachName, type InstanceLook, type ModelDef, Puppet, RigBatch, allModelKeys, coreKey, createInstanceLook, getModel, hasModel, heroKey, minionKey, monsterKey, ruinKey, towerKey } from '../models';
 import { getFallbackModel } from '../models/fallback';
@@ -36,6 +38,10 @@ export interface UnitViewInfo {
   facing: number;
   /** false = 已离场，正在播放死亡演出 */
   alive: boolean;
+  /** 当前出手序号(每次普攻出手 +1)：特效层据此区分左右手 / 第三击等动作变体 */
+  variant: number;
+  /** 正在播放出生演出(对局中新刷出的野怪)：特效层可据此配合出生特效、暂不画血条等 */
+  spawning: boolean;
 }
 
 export interface UnitsModule extends RenderModule {
@@ -94,7 +100,15 @@ interface View {
   hp: number;
   ring: number;
   tintAmount: number;
+  /** 外部(特效层)要求的整体染色；模型自己的染色(出生冰封、死亡变灰)更强时以模型为准 */
+  tintColor: THREE.Color;
   windup: number;
+  /** 出生演出已播秒数；不在演出中为 -1 */
+  spawnT: number;
+  /** 距上次受击的秒数 */
+  hitT: number;
+  /** 动画状态位(见 AnimInput.mode) */
+  mode: number;
   /** 本次普攻是强化的一击(出手时锁定) */
   special: boolean;
 }
@@ -152,18 +166,23 @@ function fallbackFor(u: Unit): ModelDef {
 }
 
 function deathDuration(u: View): number {
+  if (u.kind === 'core') return Infinity;
+  if (u.kind === 'hero') return 0;
+  if (u.def.deathDur !== undefined) return u.def.deathDur;
   switch (u.kind) {
     case 'minion':
-      return 1.0;
+      return 1.2;
     case 'monster':
       return u.radius >= 1.8 ? 2.8 : 1.5;
-    case 'tower':
-      return 2.4;
-    case 'core':
-      return Infinity;
     default:
-      return 0;
+      return 2.4;
   }
+}
+
+/** 描边线宽(CSS 像素)：模型自己给了就用模型的；否则英雄 1.5、小兵 1.2、其余 1.5 */
+function outlineFor(def: ModelDef): number {
+  if (def.outline !== undefined) return def.outline;
+  return def.key.startsWith('minion:') ? 1.2 : 1.5;
 }
 
 function capacityFor(key: string): number {
@@ -194,7 +213,12 @@ export function createUnitsModule(ctx: RenderContext): UnitsModule {
   const batches = new Map<string, RigBatch>();
   const batchList: RigBatch[] = [];
   const ruins: Ruin[] = [];
-  const rings = new RingBatch(200);
+  const rings = new RingBatch(320);
+  // 接触阴影的软影顺着太阳的水平投影方向偏出去
+  const sunLen = Math.hypot(SUN_DIR.x, SUN_DIR.z) || 1;
+  const shadowDx = -SUN_DIR.x / sunLen;
+  const shadowDz = -SUN_DIR.z / sunLen;
+  const shadowAngle = Math.atan2(shadowDz, shadowDx);
   root.add(rings.mesh);
 
   let outlines = ctx.settings.name !== 'low';
@@ -221,6 +245,8 @@ export function createUnitsModule(ctx: RenderContext): UnitsModule {
     neutral: new THREE.Color(PALETTE.neutral.main),
     player: new THREE.Color(PALETTE.player.main),
     shadow: new THREE.Color(0x0a1020),
+    /** 红方小兵的本体乘色(线性)：钢蓝灰 → 玄铁 */
+    redIron: new THREE.Color(0.42, 0.25, 0.24),
     deadTint: new THREE.Color(0x8890a0),
     // 透视剪影色(与血条的敌我配色一致)
     xSelf: new THREE.Color(0x9dff5a),
@@ -236,7 +262,7 @@ export function createUnitsModule(ctx: RenderContext): UnitsModule {
     if (!b) {
       // 会动的单位(英雄/小兵/野怪)被地形挡住时画透视剪影；建筑够高，不需要
       const xray = def.key.startsWith('hero:') || def.key.startsWith('minion:') || def.key.startsWith('monster:');
-      b = new RigBatch(def.geometry, def.rig.count, capacityFor(def.key), { outline: 1.5, xray }, def.key);
+      b = new RigBatch(def.geometry, def.rig.count, capacityFor(def.key), { outline: outlineFor(def), xray }, def.key);
       b.setShadows(shadows);
       b.setOutlineVisible(outlines);
       b.addTo(root);
@@ -253,6 +279,8 @@ export function createUnitsModule(ctx: RenderContext): UnitsModule {
     const seed = (u.id * 0.618034) % 1;
     const look = createInstanceLook();
     look.team.copy(teamColor(u.team));
+    // 两队小兵共用几何：红方把石铁本体压成暖调的玄铁(布件与发光缝走队伍色蒙版，不受影响)
+    if (u.kind === 'minion' && u.team === 1) look.body.copy(colors.redIron);
     const scale = VIEW_SCALE[u.kind] * (u.kind === 'hero' ? (HERO_VIEW_TRIM[u.heroId] ?? 1) : 1);
     const v: View = {
       id: u.id,
@@ -293,6 +321,11 @@ export function createUnitsModule(ctx: RenderContext): UnitsModule {
       hp: 1,
       ring: u.kind === 'hero' ? (u.id === st.playerId ? RING_PLAYER : RING_HERO) : u.kind === 'minion' ? RING_MINION : -1,
       tintAmount: 0,
+      tintColor: new THREE.Color(1, 1, 1),
+      // 对局中新刷出来的野怪播出生演出；开局 / 读档 / 时间轴跳变后已在场的不播
+      spawnT: booted && u.kind === 'monster' && (def.spawnDur ?? 0) > 0 && u.alive ? 0 : -1,
+      hitT: 99,
+      mode: 0,
       special: false,
       windup: u.kind === 'hero' ? HEROES[u.heroId].basicAttack.windup : STATIC_KINDS[u.kind] ? 0.3 : 0.35,
     };
@@ -443,7 +476,25 @@ export function createUnitsModule(ctx: RenderContext): UnitsModule {
     inp.windup = v.windup;
     inp.deathT = -1;
     inp.variant = v.variant;
+    inp.team = v.team;
     inp.mode = 0;
+    v.hitT = since >= 0 ? since : 99;
+    inp.hitT = v.hitT;
+    if (v.spawnT >= 0) {
+      // 出生演出：播完或中途受击就结束(立刻切回战斗姿态)
+      const dur = v.def.spawnDur ?? 0;
+      if (v.spawnT >= dur || since < v.spawnT || !u.alive) v.spawnT = -1;
+    }
+    inp.spawnT = v.spawnT;
+    if (u.kind === 'monster') {
+      // 每第三次出手用特殊动作(出手时锁定)；有仇恨目标 = 警戒
+      if (newSwing) v.special = v.variant % 3 === 0;
+      if (v.special && u.anim === 'attack') inp.mode |= 1;
+      if (u.targetId >= 0) inp.mode |= 2;
+    } else if (u.kind === 'tower' || u.kind === 'core') {
+      if (u.invulnerable) inp.mode |= 1;
+      if (u.targetId >= 0 && views.get(u.targetId)?.kind === 'hero') inp.mode |= 2;
+    }
     if (u.kind === 'hero') {
       for (let i = 0; i < u.buffs.length; i++) {
         const b = u.buffs[i];
@@ -453,6 +504,7 @@ export function createUnitsModule(ctx: RenderContext): UnitsModule {
       }
       if (v.special && u.anim === 'attack') inp.mode |= 1;
     }
+    v.mode = inp.mode;
 
     // 腾空高度：跃击按进度走抛物线；击飞高度随时长
     if (u.anim === 'leap') v.lift = 4 * 3.4 * inp.p * (1 - inp.p);
@@ -486,6 +538,7 @@ export function createUnitsModule(ctx: RenderContext): UnitsModule {
       v.speed += (moved / dt - v.speed) * Math.min(1, dt * 12);
     }
 
+    if (v.spawnT >= 0) v.spawnT += dt;
     if (v.opacity <= 0.01 || !inView(v.x, v.z, v.radius, v.height + v.lift)) {
       v.culled = true;
       v.fresh = false;
@@ -501,17 +554,27 @@ export function createUnitsModule(ctx: RenderContext): UnitsModule {
       inp.p = Number.isFinite(v.deathDur) ? Math.min(1, v.dying / v.deathDur) : Math.min(1, v.dying / 3);
       inp.deathT = v.dying;
       inp.hp = 0;
+      inp.spawnT = -1;
+      inp.hitT = 99;
     }
     if (v.culled || v.fresh) v.puppet.snap();
     v.culled = false;
     v.fresh = false;
-    v.puppet.update(v.lastStart, dt, v.x, v.y + v.lift, v.z, v.yaw, v.scale);
+    // 过渡键：同一种动作的又一次开始、状态位变化(警戒 / 举盾)、出生演出的起止，都从上一帧的定格姿态平滑过渡
+    v.puppet.update(v.lastStart + v.mode * 1e-4 + (inp.spawnT >= 0 ? 5e-4 : 0), dt, v.x, v.y + v.lift, v.z, v.yaw, v.scale);
 
     const look = v.look;
+    const po = v.puppet.output;
     look.opacity = v.opacity;
     look.flash = v.flash;
-    look.glow = v.puppet.output.glow;
-    look.tintAmount = v.tintAmount;
+    look.glow = po.glow;
+    if (po.tint > v.tintAmount) {
+      look.tint.setHex(po.tintColor);
+      look.tintAmount = po.tint;
+    } else {
+      look.tint.copy(v.tintColor);
+      look.tintAmount = v.tintAmount;
+    }
     // 透视剪影：敌红友蓝己绿、野怪金；倒地/离场的不画
     look.xrayAmount = v.alive && v.dying < 0 ? 1 : 0;
     look.xray.copy(v.isPlayer ? colors.xSelf : v.team === 2 ? colors.xNeutral : v.team === playerTeam ? colors.xAlly : colors.xEnemy);
@@ -527,9 +590,12 @@ export function createUnitsModule(ctx: RenderContext): UnitsModule {
     if (!STATIC_KINDS[v.kind] && v.dying < 0) {
       const water = ctx.terrain.inWater(v.x, v.z);
       const gy = water ? ctx.terrain.waterLevel + 0.03 : v.y / 0.6 + 0.05;
-      const fade = v.opacity;
+      const fade = v.opacity * (shadows ? 1 : 1.4);
       const squash = 1 / (1 + v.lift * 0.35);
-      rings.push(v.x, gy, v.z, v.radius * 1.25 * squash, colors.shadow, (shadows ? 0.3 : 0.5) * fade * squash, RING_BLOB);
+      // 两层：脚下小而实的芯 + 顺着投影方向偏出去的椭圆软影(腾空时芯变淡、软影甩得更远)
+      const off = v.radius * 0.25 + v.lift * 0.5;
+      rings.push(v.x, gy, v.z, v.radius * 0.62 * squash, colors.shadow, 0.45 * fade * squash, RING_BLOB);
+      rings.push(v.x + shadowDx * off, gy, v.z + shadowDz * off, v.radius * 1.5 * squash, colors.shadow, 0.3 * fade * squash, RING_BLOB, shadowAngle, 1.45);
       if (v.ring >= 0 && v.alive) {
         const c = v.isPlayer ? colors.player : teamColor(v.team);
         rings.push(v.x, gy + 0.01, v.z, v.radius * (v.kind === 'hero' ? 1.3 : 1.15), c, (v.kind === 'hero' ? 0.85 : 0.6) * fade, v.ring, Math.PI / 2 - v.yaw);
@@ -701,6 +767,8 @@ export function createUnitsModule(ctx: RenderContext): UnitsModule {
       out.opacity = v.opacity;
       out.facing = Math.PI / 2 - v.yaw;
       out.alive = v.dying < 0 && v.alive;
+      out.variant = v.variant;
+      out.spawning = v.spawnT >= 0 && v.dying < 0;
       return true;
     },
     getAttach(id, name, out) {
@@ -713,7 +781,7 @@ export function createUnitsModule(ctx: RenderContext): UnitsModule {
     setTint(id, color, amount) {
       const v = views.get(id);
       if (!v) return;
-      v.look.tint.set(color);
+      v.tintColor.set(color);
       v.tintAmount = amount;
     },
     reset() {

@@ -8,7 +8,7 @@ import { arena, damageTo, dist, dummyAt, enemyAt, fxOf, mitigate, val } from './
 
 const P = HEROES.panyue.passive.values;
 
-describe('磐岳 · 被动 磐石之躯', () => {
+describe('樊哙 · 被动 覆盾震地', () => {
   it('每第三次普攻：额外 4% 最大生命的法术伤害 + 减速；层数 1 → 2 → 清零', () => {
     const { sim, hero } = arena('panyue');
     const d = dummyAt(sim, 2.5, 0, 'siege');
@@ -56,7 +56,7 @@ describe('磐岳 · 被动 磐石之躯', () => {
   });
 });
 
-describe('磐岳 · S1 裂地冲撞', () => {
+describe('樊哙 · S1 侧盾闯帐', () => {
   it('撞到第一个敌方英雄即停，在该处震击：物理伤害 + 击飞；远处的敌人不受影响', () => {
     const { sim, hero } = arena('panyue', 1, -4, 0);
     const a = enemyAt(sim, 'xingli', 0, 0);
@@ -172,7 +172,7 @@ describe('磐岳 · S1 裂地冲撞', () => {
   });
 });
 
-describe('磐岳 · S2 不动壁垒', () => {
+describe('樊哙 · S2 拥盾怒目', () => {
   it('护盾 = shield + 9% 最大生命，持续 4 秒；周围敌人受法术伤害并减速；特效与区域齐全', () => {
     const { sim, hero } = arena('panyue', 3);
     const inside = enemyAt(sim, 'chijin', 3, 0);
@@ -248,7 +248,7 @@ describe('磐岳 · S2 不动壁垒', () => {
   });
 });
 
-describe('磐岳 · 大招 山崩地裂', () => {
+describe('樊哙 · 大招 死且不避', () => {
   it('跃起(霸体, leap 动画) → 落地物理伤害 + 击飞 1 秒 → 留下 3 秒减速裂隙', () => {
     const { sim, hero } = arena('panyue', 4);
     const a = enemyAt(sim, 'chijin', 6, 1);

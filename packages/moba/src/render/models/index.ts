@@ -9,8 +9,12 @@ import { createPanyue } from './heroes/panyue';
 import { createXingli } from './heroes/xingli';
 import { createYeque } from './heroes/yeque';
 import { createMeleeMinion, createRangedMinion, createSiegeMinion, createSuperMinion } from './minions';
-import { createAbyssDrake, createGlimwing, createMossback } from './monsters/beasts';
-import { createEmberGolem, createFrostGolem, createStarColossus } from './monsters/giants';
+import { createMossBadger } from './monsters/badger';
+import { createAbyssDrake } from './monsters/drake';
+import { createGlimMoth } from './monsters/moth';
+import { createEmberBear } from './monsters/bear';
+import { createStarColossus } from './monsters/colossus';
+import { createFrostStag } from './monsters/stag';
 import { structureFactories } from './structures';
 import type { ModelDef } from './types';
 
@@ -29,10 +33,10 @@ const factories: Record<string, () => ModelDef> = {
   'minion:siege': createSiegeMinion,
   'minion:super': createSuperMinion,
   ...structureFactories,
-  'monster:mossback': createMossback,
-  'monster:glimwing': createGlimwing,
-  'monster:frost_golem': createFrostGolem,
-  'monster:ember_golem': createEmberGolem,
+  'monster:mossback': createMossBadger,
+  'monster:glimwing': createGlimMoth,
+  'monster:frost_golem': createFrostStag,
+  'monster:ember_golem': createEmberBear,
   'monster:abyss_drake': createAbyssDrake,
   'monster:star_colossus': createStarColossus,
 };

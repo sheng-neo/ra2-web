@@ -10,7 +10,7 @@ import { arena, damageTo, dist, dummyAt, enemyAt, fxOf, mitigate, val } from './
 const P = HEROES.chijin.passive.values;
 const DEG = Math.PI / 180;
 
-describe('赤烬 · 被动 余烬之刃', () => {
+describe('程咬金 · 被动 越砍越勇', () => {
   it('放技能后 4 秒内的下一次普攻：+80(+50%物攻) 物理伤害并回复 5% 最大生命，只触发一次', () => {
     const { sim, hero } = arena('chijin');
     const d = dummyAt(sim, 2.5, 0, 'siege');
@@ -32,7 +32,7 @@ describe('赤烬 · 被动 余烬之刃', () => {
     expect(hasBuff(hero, 'chijin_ember')).toBe(false);
   });
 
-  it('窗口过期后不再强化；召唤师技能不触发', () => {
+  it('窗口过期后不再强化；通用技能不触发', () => {
     const { sim, hero } = arena('chijin');
     const d = dummyAt(sim, 2.5, 0, 'siege');
     sim.command(hero.id, { type: 'cast', slot: 'heal' });
@@ -48,7 +48,7 @@ describe('赤烬 · 被动 余烬之刃', () => {
   });
 });
 
-describe('赤烬 · S1 烈焰斩', () => {
+describe('程咬金 · S1 拦腰一斧', () => {
   it('在出手点结算：110° 扇形内的敌人受物理伤害并减速，扇形外/射程外不受影响', () => {
     const { sim, hero } = arena('chijin');
     const front = enemyAt(sim, 'xingli', 4, 0);
@@ -102,7 +102,7 @@ describe('赤烬 · S1 烈焰斩', () => {
   });
 });
 
-describe('赤烬 · S2 炎步', () => {
+describe('程咬金 · S2 半路杀出', () => {
   it('突进 5.5 米，路径上的敌人各受一次物理伤害；获得 40% 攻速 4 秒', () => {
     const { sim, hero } = arena('chijin', 2, -3, 0);
     const onPath = dummyAt(sim, -1, 0.5);
@@ -149,7 +149,7 @@ describe('赤烬 · S2 炎步', () => {
   });
 });
 
-describe('赤烬 · 大招 焚天旋舞', () => {
+describe('程咬金 · 大招 抡圆了砍', () => {
   it('3 秒内 10 跳物理伤害；spin 动画；可移动、区域跟随；免疫减速、减伤 30%、不能普攻', () => {
     const { sim, hero } = arena('chijin', 4);
     const a = enemyAt(sim, 'panyue', 3, 0);
@@ -244,7 +244,7 @@ describe('赤烬 · 大招 焚天旋舞', () => {
     expect(fxOf(after, 'chijin_ult_tick').length).toBe(0);
   });
 
-  it('旋舞中可以放烈焰斩，施法动作结束后回到 spin', () => {
+  it('旋斧中可以放拦腰一斧，施法动作结束后回到 spin', () => {
     const { sim, hero } = arena('chijin', 4);
     enemyAt(sim, 'panyue', 3, 0);
     sim.command(hero.id, { type: 'cast', slot: 'ult' });

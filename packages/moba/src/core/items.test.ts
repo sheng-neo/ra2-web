@@ -31,7 +31,7 @@ describe('装备被动', () => {
     for (const it of withPassive) expect(getItemHooks(it), it.id).toBeDefined();
   });
 
-  it('灼光(onhit_magic)：普攻额外 45 法术伤害；同名被动只生效一份；对建筑无效', () => {
+  it('附带法伤(onhit_magic)：普攻额外 45 法术伤害；同名被动只生效一份；对建筑无效', () => {
     const { sim, hero } = arena('chijin');
     const d = dummyAt(sim, 2.5, 0, 'siege');
     buy(sim, hero, 'sunchaser_bow', 'sunchaser_bow');
@@ -47,7 +47,7 @@ describe('装备被动', () => {
     expect(damageTo(sim.drainEvents(), hero, tower).every((h) => h.dtype === 'physical')).toBe(true);
   });
 
-  it('反震(thorns)：受到普攻时对攻击者造成其伤害 18% 的法术伤害；技能伤害不触发', () => {
+  it('反伤(thorns)：受到普攻时对攻击者造成其伤害 18% 的法术伤害；技能伤害不触发', () => {
     const { sim, hero } = arena('panyue');
     const e = enemyAt(sim, 'chijin', 2, 0);
     const m = dummyAt(sim, 0, 2);
@@ -67,7 +67,7 @@ describe('装备被动', () => {
     expect(damageTo(sim.drainEvents(), hero, e).length).toBe(0);
   });
 
-  it('霜蚀(spell_slow)：技能伤害使目标减速 20% 1 秒；普攻不触发', () => {
+  it('技能减速(spell_slow)：技能伤害使目标减速 20% 1 秒；普攻不触发', () => {
     const { sim, hero } = arena('xingli');
     const e = enemyAt(sim, 'chijin', 5, 0);
     buy(sim, hero, 'winter_scepter');
@@ -83,7 +83,7 @@ describe('装备被动', () => {
     expect(hasBuff(e, 'slow')).toBe(false);
   });
 
-  it('生生不息(regen_ooc)：脱战后每秒回复 2% 最大生命；受伤后 5 秒内不生效', () => {
+  it('脱战回血(regen_ooc)：脱战后每秒回复 2% 最大生命；受伤后 5 秒内不生效', () => {
     const { sim, hero } = arena('panyue');
     const e = enemyAt(sim, 'chijin', 9, 0);
     buy(sim, hero, 'undying_heart');
@@ -117,7 +117,7 @@ describe('装备被动', () => {
     expect(hero.hp).toBe(s.maxHp);
   });
 
-  it('寒铁(cripple_aura)：用普攻打我的敌人攻速 -20% 持续 2 秒；技能不触发', () => {
+  it('减攻速(cripple_aura)：用普攻打我的敌人攻速 -20% 持续 2 秒；技能不触发', () => {
     const { sim, hero } = arena('panyue');
     const e = enemyAt(sim, 'fengling', 3, 0);
     buy(sim, hero, 'guardian_plate');
@@ -125,7 +125,7 @@ describe('装备被动', () => {
     dealDamage(sim, e, hero, 100, 'physical', 'skill');
     expect(e.stats.attackSpeed).toBeCloseTo(as0, 6);
     basicHit(sim, e, hero);
-    // 风翎自己的被动会给她叠一层攻速：两者相加
+    // 李广自己的被动会给他叠一层攻速：两者相加
     const gale = HEROES.fengling.passive.values.asPerStack;
     expect(e.stats.attackSpeed).toBeCloseTo(HEROES.fengling.base.attackSpeed * (1 - 0.2 + gale), 6);
     const cripple = findBuff(e, 'attack_speed');
@@ -135,7 +135,7 @@ describe('装备被动', () => {
     expect(hasBuff(e, 'attack_speed')).toBe(false);
   });
 
-  it('坠星(execute_bonus)：对生命低于 50% 的敌人伤害 +15%；对建筑无效', () => {
+  it('收割(execute_bonus)：对生命低于 50% 的敌人伤害 +15%；对建筑无效', () => {
     const { sim, hero } = arena('chijin');
     const e = enemyAt(sim, 'panyue', 3, 0);
     buy(sim, hero, 'starfall_blade');
@@ -150,7 +150,7 @@ describe('装备被动', () => {
     expect(dealDamage(sim, hero, tower, 100, 'true')).toBeCloseTo(100, 6);
   });
 
-  it('星幕(spell_shield)：低于 35% 生命时获得 600(+每级60) 护盾 4 秒，冷却 60 秒', () => {
+  it('保命盾(spell_shield)：低于 35% 生命时获得 600(+每级60) 护盾 4 秒，冷却 60 秒', () => {
     const { sim, hero } = arena('panyue', 5);
     const e = enemyAt(sim, 'chijin', 9, 0);
     buy(sim, hero, 'starweave_cloak');
@@ -194,7 +194,7 @@ describe('装备属性', () => {
     buy(sim, hero, 'boots_arcane', 'starfall_blade');
     expect(hero.stats.cdr).toBeCloseTo(0.35, 6);
     addBuff(sim, hero, 'frost_insight', { duration: 30, key: 'camp' });
-    // 0.35 + 霜晶之智 0.2 → 封顶 0.4
+    // 0.35 + 蓝buff 0.2 → 封顶 0.4
     expect(MONSTER_RULES.frostCdr).toBe(0.2);
     expect(hero.stats.cdr).toBe(0.4);
     sim.command(hero.id, { type: 'cast', slot: 'ult', pos: { x: 5, y: 0 } });
@@ -249,13 +249,13 @@ describe('装备属性', () => {
   it('生命/护甲/法抗/攻速/移速等基础加成直接相加', () => {
     const { sim, hero } = arena('panyue');
     const base = { ...hero.stats };
-    buy(sim, hero, 'guardian_plate', 'starweave_cloak', 'boots_fury', 'thorn_mail', 'iron_blade', 'swift_bow');
+    buy(sim, hero, 'guardian_plate', 'starweave_cloak', 'boots_fury', 'thorn_mail', 'piercing_spear', 'sunchaser_bow');
     const s = hero.stats;
     expect(s.maxHp).toBeCloseTo(base.maxHp + 1000 + 1000 + 500, 6);
     expect(s.armor).toBeCloseTo(base.armor + 210 + 170, 6);
     expect(s.mr).toBeCloseTo(base.mr + 200, 6);
-    expect(s.ad).toBeCloseTo(base.ad + 20, 6);
-    expect(s.attackSpeed).toBeCloseTo(base.attackSpeed * (1 + 0.25 + 0.15), 6);
-    expect(s.moveSpeed).toBeCloseTo(base.moveSpeed + 0.6, 6);
+    expect(s.ad).toBeCloseTo(base.ad + 75, 6);
+    expect(s.attackSpeed).toBeCloseTo(base.attackSpeed * (1 + 0.25 + 0.35), 6);
+    expect(s.moveSpeed).toBeCloseTo(base.moveSpeed + 0.6 + 0.25, 6);
   });
 });

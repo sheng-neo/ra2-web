@@ -2,8 +2,7 @@
  * 简易兜底 AI：沿分路推进、打最近的敌人、塔下没兵就退、残血回泉水、按推荐出装买装备。
  * 目的只是让引擎在正式 Bot(ai/index.ts 里替换工厂)完成之前就能无头跑完整对局；它不会打野、不会配合。
  */
-import { HEROES } from '../data/heroes';
-import { ITEMS, SELL_RATIO } from '../data/items';
+import { buildCost, canAutoBuy, nextBuildItem } from '../build';
 import { LanePath } from '../lanes';
 import type { AbilitySlot, CoreUnit, HeroUnit, LaneId, TowerUnit, Unit, Vec2 } from '../types';
 import type { BotController, BotView } from './types';
@@ -38,7 +37,6 @@ export class FallbackBot implements BotController {
   private readonly retreatHp: number;
   /** 站位的前后随机偏移（米） */
   private readonly anchorJitter: number;
-  private buildIdx = 0;
   private lastGoal: Vec2 = { x: 1e9, y: 1e9 };
   private readonly tmp: Vec2 = { x: 0, y: 0 };
 
@@ -208,26 +206,11 @@ export class FallbackBot implements BotController {
     if (me.hp < me.stats.maxHp * 0.45 && v.skillReady('heal')) v.command({ type: 'cast', slot: 'heal' });
   }
 
-  /** 按推荐出装顺序购买，钱够就买 */
+  /** 按推荐出装顺序购买，钱够就买(「下一件」的推算与正式 Bot、自动出装同源) */
   private shop(v: BotView): void {
     const me = v.hero;
-    const build = HEROES[me.heroId].build;
-    if (this.buildIdx >= build.length) return;
-    const id = build[this.buildIdx];
-    const item = ITEMS[id];
-    let cost = item.cost;
-    const ownedBoots = me.items.find((it) => it !== null && ITEMS[it].category === 'boots');
-    if (item.category === 'boots' && ownedBoots) {
-      if (ownedBoots === id || item.tier === 1) {
-        this.buildIdx++;
-        return;
-      }
-      cost -= Math.floor(ITEMS[ownedBoots].cost * SELL_RATIO);
-    } else if (me.items.indexOf(null) < 0) {
-      return;
-    }
-    if (me.gold < cost) return;
+    const id = nextBuildItem(me);
+    if (!id || !canAutoBuy(me, id) || me.gold < buildCost(me, id)) return;
     v.command({ type: 'buy', itemId: id });
-    this.buildIdx++;
   }
 }

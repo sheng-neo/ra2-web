@@ -37,7 +37,7 @@ export interface SkillMobility {
   kind: 'dash' | 'leap' | 'blink';
   /** 最大位移距离 */
   distance: number;
-  /** 位移耗时（秒）；blink 为遁影时间 */
+  /** 位移耗时（秒）；blink 为隐身时间 */
   duration: number;
   /** 会被墙挡住 */
   wallBlocked: boolean;
@@ -59,7 +59,7 @@ export interface SkillDamage {
   hits: number;
   /** 多段之间的间隔（秒）；同时命中为 0 */
   interval: number;
-  /** 第 2 段起的伤害比例（影刃的重复命中）；普通多段为 1 */
+  /** 第 2 段起的伤害比例（匕首的重复命中）；普通多段为 1 */
   repeatRatio: number;
   /** 对小兵/野怪的伤害比例 */
   nonHeroRatio: number;
@@ -94,7 +94,7 @@ export interface SkillIntent {
   hitsNonHeroes: boolean;
   /** 持续效果(区域/旋转/护盾)的总时长；瞬时为 0 */
   duration: number;
-  /** 施放后自身被占用(动作锁/位移/遁影)、不能做别的事的时间 */
+  /** 施放后自身被占用(动作锁/位移/隐身)、不能做别的事的时间 */
   lock: number;
   /** 给自己的增益 */
   selfBuffs: BuffId[];
@@ -225,7 +225,7 @@ export const SKILL_INTENTS: Record<HeroId, Record<AbilitySlot, SkillIntent>> = {
       delay: v('xingli', 's2', 'delay'),
       dodgeable: true,
     }),
-    // 预警 delay 秒后，duration 秒内落 waves 波(每波叠一层印记，三层眩晕)
+    // 预警 delay 秒后，duration 秒内落 waves 波(每波叠一层余音，三层眩晕)
     ult: build('xingli', 'ult', {
       roles: ['burst', 'zone', 'waveclear'],
       damage: dmg('magic', {
@@ -291,7 +291,7 @@ export const SKILL_INTENTS: Record<HeroId, Record<AbilitySlot, SkillIntent>> = {
       stopsAtFirstHero: true,
       dodgeable: true,
     }),
-    // 指向英雄：遁影 vanish 秒(不可选中)后出现在目标身后处决，目标越残伤害越高
+    // 指向英雄：隐身 vanish 秒(不可选中)后出现在目标身后处决，目标越残伤害越高
     ult: build('yeque', 'ult', {
       roles: ['execute', 'chase', 'burst'],
       damage: dmg('physical', { ad: 'adRatio', missing: 'missingRatio' }),
@@ -316,9 +316,9 @@ export const SKILL_INTENT_LIST: SkillIntent[] = HERO_IDS.flatMap((id) => [SKILL_
 
 /**
  * 推荐连招顺序（先手控制 → 伤害 → 收割）。Bot 可以按顺序放「已就绪且够得着」的技能。
- * 磐岳：大招或冲撞进场 → 壁垒减速黏人；赤烬：炎步贴身 → 旋舞 → 烈焰斩留人；
- * 星璃：星环拉住 → 星陨覆盖 → 流星矢补层数；风翎：贯风矢减速 → 箭雨 → 逐风步留着走位；
- * 夜阙：飞刃减速 → 瞬影斩贴脸 → 处决收割。
+ * 樊哙：大招或冲撞进场 → 拥盾怒目减速黏人；程咬金：半路杀出贴身 → 旋斧 → 拦腰一斧留人；
+ * 王昭君：音环拉住 → 大招覆盖 → 一弦穿云补层数；李广：白羽没石减速 → 箭雨 → 飞将腾身留着走位；
+ * 荆轲：掷匕减速 → 风萧易水贴脸 → 图穷匕见收割。
  */
 export const COMBOS: Record<HeroId, AbilitySlot[]> = {
   panyue: ['ult', 's1', 's2'],
@@ -379,7 +379,7 @@ export function skillRawDamage(hero: HeroUnit, slot: AbilitySlot, target?: Unit,
   return n <= 0 ? 0 : one * (1 + (n - 1) * d.repeatRatio);
 }
 
-/** 英雄自身被动带来的伤害倍率（目前只有夜阙的「猎影」；装备被动不计） */
+/** 英雄自身被动带来的伤害倍率（目前只有荆轲的「一去不还」；装备被动不计） */
 function passiveMultiplier(hero: HeroUnit, target: Unit): number {
   if (hero.heroId !== 'yeque' || target.kind === 'tower' || target.kind === 'core') return 1;
   const p = HEROES.yeque.passive.values;
@@ -390,8 +390,8 @@ function passiveMultiplier(hero: HeroUnit, target: Unit): number {
 }
 
 /**
- * 估算技能打在 target 身上的实际伤害(全部 hits 段命中)：计入护甲/法抗/穿透、目标的减伤 buff、夜阙被动。
- * 不计护盾、装备被动、星辉印记引爆、以及多段期间目标血量变化。
+ * 估算技能打在 target 身上的实际伤害(全部 hits 段命中)：计入护甲/法抗/穿透、目标的减伤 buff、荆轲被动。
+ * 不计护盾、装备被动、余音引爆、以及多段期间目标血量变化。
  */
 export function estimateSkillDamage(hero: HeroUnit, slot: AbilitySlot, target: Unit, hits?: number): number {
   const d = SKILL_INTENTS[hero.heroId][slot].damage;

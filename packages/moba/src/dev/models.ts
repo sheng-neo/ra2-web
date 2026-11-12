@@ -12,6 +12,9 @@
  *   ?bg=map&x=&y=                                   放到真实地图上看(默认是中性影棚地面)
  *   ?spin=1                                         模型缓慢自转
  *   ?hp=0..1 / ?death=<秒>|sheet                    建筑受损程度 / 被毁演出的时间点(sheet = 配合 ?sheet=N 按时间排开)
+ *   ?turn=<N>                                       同一个模型摆 N 个、各转 360/N 度(一张图看正 / 侧 / 背)
+ *   ?spawn=<秒>|sheet  ?hit=<秒>  ?bits=<n>          出生演出的时间点(sheet 同上) / 距上次受击的秒数 / AnimInput.mode 状态位
+ *   ?clock=<秒>                                     把循环时基(呼吸、漂浮)定在某一刻(截图可复现)
  *   ?mode=game[&x=&y=]                              用假对局状态 + 正式的单位视图模块渲染(集成观感/性能)
  *   ?mode=sim[&ff=秒&pause=秒&seed=&speed=&follow=英雄下标]   跑真实模拟(全 AI 对局)，检查实际对局状态流下的表现；?top=1 俯瞰全图
  *   ?portraits=1[&play=attack|cast_s1|cast_s2|cast_ult]  头像九宫格 + 五个立绘展示画布
@@ -69,6 +72,7 @@ const anim: UnitAnim = animParam && ANIMS.includes(animParam) ? animParam : 'idl
 const fixedP = num('t');
 const sheet = num('sheet');
 const variant = num('variant') ?? 0;
+const turn = num('turn');
 
 function keysFor(show: string): string[] {
   const all = allModelKeys();
@@ -98,16 +102,19 @@ function addSlot(key: string, x: number, z: number, p: number | null, a: UnitAni
   const puppet = new Puppet(def, seed);
   const look = createInstanceLook();
   look.team.copy(t === 0 ? new THREE.Color(PALETTE.blue.main) : t === 1 ? new THREE.Color(PALETTE.red.main) : new THREE.Color(PALETTE.neutral.main));
+  // 与单位视图一致：红方小兵的石铁本体压成玄铁
+  if (t === 1 && key.startsWith('minion:')) look.body.setRGB(0.42, 0.25, 0.24);
   slots.push({ key, def, puppet, look, x, z, yaw: ((num('face') ?? 0) * Math.PI) / 180, anim: a, p, team: t });
 }
 
 if (single && hasModel(single)) {
   const def = getModel(single);
-  const n = sheet ?? 1;
+  const n = turn ?? sheet ?? 1;
   const gap = Math.max(1.6, def.radius * 2.6 * def.scale) * (num('gap') ?? 1);
   for (let i = 0; i < n; i++) {
-    const p = n > 1 ? (num('from') ?? 0) + ((num('to') ?? 1) - (num('from') ?? 0)) * (i / (n - 1)) : fixedP;
-    addSlot(single, base.x + (i - (n - 1) / 2) * gap, base.y, p, anim, team, 0.37);
+    const p = n > 1 && !turn ? (num('from') ?? 0) + ((num('to') ?? 1) - (num('from') ?? 0)) * (i / (n - 1)) : fixedP;
+    addSlot(single, base.x + (i - (n - 1) / 2) * gap, base.y, p, anim, single.startsWith('monster:') ? 2 : team, 0.37);
+    if (turn) slots[slots.length - 1].yaw += (i / n) * Math.PI * 2;
   }
 } else {
   const keys = keysFor(params.get('show') ?? 'heroes');
@@ -122,6 +129,8 @@ if (single && hasModel(single)) {
   keys.forEach((k, i) => {
     const t: 0 | 1 | 2 = k.startsWith('monster:') ? 2 : k.startsWith('tower:') || k.startsWith('core:') || k.startsWith('ruin:') ? (Number(k.split(':').pop()) as 0 | 1) : team;
     addSlot(k, base.x + xs[i] - x / 2, base.y, fixedP, anim, t, 0.13 + i * 0.21);
+    // 小兵：后面再摆一排另一队的(两队共用几何，靠队伍色与本体乘色区分)
+    if (k.startsWith('minion:') && params.get('both') !== '0') addSlot(k, base.x + xs[i] - x / 2, base.y - 2.6, fixedP, anim, team === 0 ? 1 : 0, 0.5 + i * 0.17);
   });
 }
 void teamColor;
@@ -143,9 +152,9 @@ if (slots.length === 0) {
   maxH = 2;
 }
 const cam = {
-  pitch: num('pitch') ?? (gameView ? 52 : 14),
+  pitch: num('pitch') ?? (gameView ? 46 : 14),
   yaw: num('yaw') ?? (gameView ? 0 : 18),
-  fov: num('fov') ?? (gameView ? 35 : 28),
+  fov: num('fov') ?? (gameView ? 32 : 28),
   dist: num('dist') ?? 0,
   h: num('h') ?? (gameView ? 0 : maxH * 0.5),
   cx: (minX + maxX) / 2,
@@ -188,7 +197,7 @@ const createStudio: RenderModuleFactory = (ctx): RenderModule => {
   const batches = new Map<string, RigBatch>();
   for (const s of slots) {
     if (!batches.has(s.key)) {
-      const b = new RigBatch(s.def.geometry, s.def.rig.count, 4, { outline: num('outline') ?? 1.5 }, s.key);
+      const b = new RigBatch(s.def.geometry, s.def.rig.count, 4, { outline: num('outline') ?? s.def.outline ?? 1.5 }, s.key);
       batches.set(s.key, b);
       b.addTo(root);
     }
@@ -205,7 +214,7 @@ const createStudio: RenderModuleFactory = (ctx): RenderModule => {
       const tanH = Math.tan((cam.fov * Math.PI) / 360);
       const fitW = ((maxX - minX) / 2 + 0.6) / (tanH * aspect);
       const fitH = (maxH * 0.62 + 0.5) / tanH;
-      const dist = cam.dist > 0 ? cam.dist : gameView ? 33 : Math.max(fitW, fitH);
+      const dist = cam.dist > 0 ? cam.dist : gameView ? 27.5 : Math.max(fitW, fitH);
       const pr = (cam.pitch * Math.PI) / 180;
       const yr = (cam.yaw * Math.PI) / 180;
       camera.fov = cam.fov;
@@ -220,13 +229,18 @@ const createStudio: RenderModuleFactory = (ctx): RenderModule => {
       for (const s of slots) {
         const a = s.puppet.input;
         a.anim = s.anim;
-        a.time = time;
+        a.time = num('clock') ?? time;
         a.variant = variant;
         a.hp = hp;
+        a.mode = num('bits') ?? 0;
+        a.team = s.team;
+        a.hitT = num('hit') ?? 99;
+        a.spawnT = params.get('spawn') === 'sheet' ? (s.p ?? 0) * (num('dur') ?? s.def.spawnDur ?? 1) : (num('spawn') ?? -1);
         // ?death=sheet：配合 ?sheet=N 把被毁演出按时间排开
         a.deathT = params.get('death') === 'sheet' ? (s.p ?? 0) * (num('dur') ?? 2.4) : (deathT ?? -1);
         a.windup = 0.35;
-        const dur = num('dur') ?? (s.anim === 'attack' ? 0.8 : s.anim === 'dead' ? 2.2 : 1.0);
+        const dur = num('dur') ?? (s.anim === 'attack' ? 0.8 : s.anim === 'dead' ? (s.def.deathDur ?? 2.2) : s.anim === 'cast_s1' && s.key === 'monster:abyss_drake' ? 1.7 : 1.0);
+        if (s.anim === 'dead') a.deathT = (s.p ?? Math.min(1, (time % (dur + 0.5)) / dur)) * dur;
         if (s.p !== null) {
           a.p = Math.min(1, Math.max(0, s.p));
           a.t = s.p * dur;
@@ -280,7 +294,7 @@ function startStudio(): void {
     hud.style.display = 'none';
     help.style.display = 'none';
   }
-  help.textContent = '?show=heroes|minions|structures|monsters|all  ?hero=&anim=&t=  ?sheet=8  ?view=game  ?team=1\n拖动旋转 · 滚轮缩放';
+  help.textContent = '?show=heroes|minions|structures|monsters|all  ?hero=&anim=&t=  ?sheet=8  ?turn=4  ?view=game  ?team=1\n拖动旋转 · 滚轮缩放';
 
   let dragX: number | null = null;
   let dragY = 0;

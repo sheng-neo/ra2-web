@@ -71,6 +71,8 @@ export function createHero(sim: Sim, index: number, team: PlayerTeam, heroId: He
     level: 1, xp: 0, xpToNext: xpToNext(1), gold: ECONOMY.startGold, goldEarned: ECONOMY.startGold,
     kills: 0, deaths: 0, assists: 0, cs: 0, streak: 0, skills, items: [null, null, null, null, null, null],
     respawnIn: 0, dmgDealt: 0, dmgTaken: 0, dmgTower: 0, inCombat: false,
+    // 自动出装只给玩家英雄：其余英雄由 Bot 自己买
+    autoBuy: isPlayer && sim.state.config.autoBuy === true,
     buffs: [],
     rt: newRt(def.radius, 2, VISION.hero, heroStatsAt(def, 1), atk),
     h: {
@@ -152,7 +154,7 @@ export function createMonster(sim: Sim, camp: CampRt, slot: number): SimMonster 
     ...newBase(sim, 2, home, facing, d.radius, stats),
     kind: 'monster', team: 2, monsterType: def.monsterType, campId: def.id, buffs: [],
     rt: newRt(d.radius, d.epic ? 0 : 3, VISION.monster, { ...stats }, atk),
-    mon: { home, state: MON_IDLE, camp },
+    mon: { home, state: MON_IDLE, camp, specialAt: -1, breath: null },
   };
   return hideFields(monster, 'rt', 'mon');
 }

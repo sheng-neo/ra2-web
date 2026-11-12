@@ -97,6 +97,7 @@ export function createRendererCore(container: HTMLElement, state: GameState, opt
     camera: engine.rig.camera,
     rig: engine.rig,
     lights: engine.lights,
+    lightTint: engine.lightTint,
     grade: engine.grade,
     layers,
     map: state.map,

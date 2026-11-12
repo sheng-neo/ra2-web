@@ -14,7 +14,7 @@ import { createWorld } from './world';
 const LANES: LaneId[] = ['top', 'mid', 'bot'];
 
 describe('世界初始化', () => {
-  it('10 英雄(玩家排第一)、18 塔、2 水晶；外塔可打、内塔与水晶无敌', () => {
+  it('10 英雄(玩家排第一)、18 塔、2 水晶；一塔可打、内塔与水晶无敌', () => {
     const sim = createWorld({ seed: 3, playerHero: 'xingli', difficulty: 'hard' });
     const st = sim.state;
     expect(st.heroes.length).toBe(10);
@@ -242,7 +242,7 @@ describe('防御塔与水晶', () => {
     sim.step();
     expect(sim.getUnit(t1.id)).toBeUndefined();
     expect(sim.nav.isFree(t1.pos.x, t1.pos.y, 0.6)).toBe(true);
-    // 其他路的中塔仍然无敌
+    // 其他路的二塔仍然无敌
     const midT2 = sim.towers[1].mid[1];
     expect(midT2 && midT2.invulnerable).toBe(true);
     dealDamage(sim, hero, t2, 1e6, 'true');
@@ -390,7 +390,7 @@ describe('野怪', () => {
     const cs = sim.state.camps[frost.def.id];
     expect(cs.alive).toBe(false);
     expect(cs.respawnIn).toBeCloseTo(frost.def.respawn, 1);
-    // 炽焰之力：普攻附带灼烧与减速
+    // 红buff：普攻附带灼烧与减速
     dealDamage(sim, hero, ember.members[0], 1e6, 'true');
     expect(hasBuff(hero, 'ember_might')).toBe(true);
     const dummy = spawnMinionAt(sim, 1, 'siege', hero.pos.x + 2, hero.pos.y, 'mid', 1e6);
@@ -590,7 +590,7 @@ describe('整局冒烟', () => {
           const ok = Number.isFinite(u.pos.x) && Number.isFinite(u.pos.y) && Number.isFinite(u.hp) && Number.isFinite(u.mana) && Number.isFinite(u.facing);
           if (!ok) throw new Error(`NaN in unit ${u.id} (${u.kind}) at t=${st.time}`);
           if (u.kind === 'tower' || u.kind === 'core') continue;
-          // 跃击(磐岳大招)途中在墙体上方是合法的
+          // 跃击(樊哙大招)途中在墙体上方是合法的
           if (u.rt.dash && u.rt.dash.ignoreWalls) continue;
           if (!isWalkableTerrain(st.map, u.pos)) throw new Error(`unit ${u.id} (${u.kind}) inside terrain at (${u.pos.x}, ${u.pos.y}) t=${st.time}`);
           if (u.alive && (u.hp <= 0 || u.hp > u.stats.maxHp + 1e-6)) throw new Error(`bad hp ${u.hp}/${u.stats.maxHp} on unit ${u.id}`);

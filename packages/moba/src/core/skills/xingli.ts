@@ -1,12 +1,12 @@
 /**
- * 星璃 · 星语术士（法师）
+ * 王昭君 · 落雁出塞（法师）
  *
- * 被动 星辉印记：技能每次命中给敌人叠一层 xingli_mark，满层引爆：按目标最大生命的法术伤害(非英雄有上限) + 眩晕。
- * S1 流星矢：穿透直线弹，沿途法术伤害。
- * S2 引力星环：落点出现星环(预警)，延迟后收束：法术伤害 + 拉向中心 + 减速。
- * 大招 星陨天降：预警后星域持续落星，逐波对整个区域造成法术伤害 + 减速(每波都叠印记)。
- *   陨星的落点只是表现(种子随机)，伤害判定是整个圆。
- * 已放出的星环/星域不随星璃阵亡而消失。
+ * 被动 余音：技能每次命中给敌人叠一层 xingli_mark，满层引爆：按目标最大生命的法术伤害(非英雄有上限) + 眩晕。
+ * S1 一弦穿云：穿透直线弹，沿途法术伤害。
+ * S2 回环收弦：落点出现音环(预警)，延迟后收束：法术伤害 + 拉向中心 + 减速。
+ * 大招 雁落平沙：预警后雁落区域持续落雁，逐波对整个区域造成法术伤害 + 减速(每波都叠余音)。
+ *   雁影的落点只是表现(种子随机)，伤害判定是整个圆。
+ * 已放出的音环/雁落区域不随王昭君阵亡而消失。
  */
 import { HEROES } from '../data/heroes';
 import { isStructure } from '../entity';
@@ -19,10 +19,10 @@ import * as tk from './toolkit';
 
 const P = HEROES.xingli.passive.values;
 const S1_POINT = castPoint('xingli', 's1');
-/** 每波落下几颗陨星、单颗的爆炸半径(仅表现) */
+/** 每波落下几颗雁影、单颗的爆炸半径(仅表现) */
 const METEORS_PER_WAVE = 3;
 const METEOR_RADIUS = 1.7;
-/** 大招自动瞄准时比预警时间多看一点：让目标落在星域靠里的位置而不是边缘 */
+/** 大招自动瞄准时比预警时间多看一点：让目标落在雁落区域靠里的位置而不是边缘 */
 const ULT_EXTRA_LEAD = 0.2;
 
 tk.registerHeroHooks('xingli', {
@@ -82,7 +82,7 @@ tk.registerSkill('xingli', 's2', {
   },
 });
 
-/** 区域内均匀随机的一点（留出陨星自身的半径，爆炸不画到圈外太多） */
+/** 区域内均匀随机的一点（留出雁影自身的半径，爆炸不画到圈外太多） */
 function meteorSpot(sim: Sim, center: Vec2, radius: number): Vec2 {
   const r = Math.sqrt(sim.rng.next()) * Math.max(0, radius - METEOR_RADIUS * 0.5);
   const a = sim.rng.next() * Math.PI * 2;

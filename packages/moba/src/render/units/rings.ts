@@ -1,5 +1,5 @@
 /**
- * 单位脚下的贴地标记：接触阴影(柔和暗斑) + 队伍色光环(英雄带朝向指示，玩家自己是金绿色双环)。
+ * 单位脚下的贴地标记：接触阴影(柔和暗斑，可拉成椭圆) + 队伍色光环(英雄带朝向指示，玩家自己是金绿色双环)。
  * 全部实例合成一个 draw call；预乘透明度混合：暗斑正常压暗地面，光环部分带一点叠加发光。
  */
 import * as THREE from 'three';
@@ -46,7 +46,11 @@ void main() {
   float alpha = 0.0;
   vec3 glow = vec3(0.0);
   if (style < 0.5) {
-    // 接触阴影
+    // 接触阴影：vStyle.z > 1 时是沿 vStyle.y 方向拉长的椭圆(长轴 = 标称半径，短轴 = 半径 / z)
+    float cs0 = cos(vStyle.y);
+    float sn0 = sin(vStyle.y);
+    vec2 e = vec2(p.x * cs0 + p.y * sn0, (-p.x * sn0 + p.y * cs0) * max(1.0, vStyle.z));
+    r = length(e);
     float a = 1.0 - smoothstep(0.15, 1.05, r);
     alpha = a * a * vCol.a;
     col = vCol.rgb;
@@ -143,8 +147,8 @@ export class RingBatch {
     this.count = 0;
   }
 
-  /** style 见 RING_*；angle 为朝向(世界 xz 平面内，atan2(z, x)) */
-  push(x: number, y: number, z: number, radius: number, color: THREE.Color, alpha: number, style: number, angle = 0): void {
+  /** style 见 RING_*；angle 为朝向(世界 xz 平面内，atan2(z, x))；stretch > 1 时接触阴影沿 angle 方向拉成椭圆(长短轴之比) */
+  push(x: number, y: number, z: number, radius: number, color: THREE.Color, alpha: number, style: number, angle = 0, stretch = 1): void {
     if (this.count >= this.capacity) return;
     const i = this.count++;
     const p = this.posR.array as Float32Array;
@@ -160,6 +164,7 @@ export class RingBatch {
     const s = this.style.array as Float32Array;
     s[i * 4] = style;
     s[i * 4 + 1] = angle;
+    s[i * 4 + 2] = stretch;
   }
 
   end(): void {

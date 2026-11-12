@@ -100,6 +100,16 @@ export const SYSTEM = {
     p.noise({ k: 'pink', flt: 'lowpass', fc: 900, fc1: 250, a: 0.003, d: 0.28, g: 0.6 });
     p.noise({ k: 'pink', flt: 'bandpass', fc: 1400, q: 0.8, t: 0.03, a: 0.03, d: 0.3, g: 0.35 });
   }, { ...SYS, loud: -20, len: 0.6, jitter: 0.05 }),
+  // 河道巨龙吐息(C1 临时配方，待音频层重做)：预警 = 上行的低吼吸气；喷吐 = 一段带低频的气流
+  fx_drake_breath_warn: def('状态与系统', '河道巨龙·吐息预警', (p) => {
+    p.osc({ w: 'softsaw', f: 62, f1: 110, a: 0.12, h: 0.45, d: 0.3, g: 0.5 });
+    p.noise({ k: 'pink', flt: 'bandpass', fc: 300, fc1: 1400, q: 1.1, a: 0.3, h: 0.3, d: 0.25, g: 0.45 });
+  }, { ...SYS, loud: -19, len: 0.95, gap: 0.5, poly: 1, range: 34, rev: 0.26 }),
+  fx_drake_breath: def('状态与系统', '河道巨龙·吐息喷吐', (p) => {
+    p.noise({ flt: 'bandpass', fc: 1800, fc1: 500, q: 0.7, a: 0.04, h: 0.45, d: 0.4, g: 0.8 });
+    p.noise({ k: 'pink', flt: 'lowpass', fc: 500, fc1: 180, a: 0.03, h: 0.4, d: 0.4, g: 0.6 });
+    p.osc({ f: 70, f1: 42, a: 0.02, h: 0.3, d: 0.5, g: 0.5 });
+  }, { ...SYS, loud: -15, len: 1.0, gap: 0.5, poly: 1, prio: 3, range: 34, rev: 0.3 }),
   fx_buff_gain: def('状态与系统', '获得野区增益', (p) => {
     const lp = p.filt('lowpass', 800, 1);
     p.ramp(lp.frequency, [[0, 800], [0.3, 3200], [0.8, 1000]]);

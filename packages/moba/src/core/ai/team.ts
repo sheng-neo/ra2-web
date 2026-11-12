@@ -386,7 +386,7 @@ export class TeamBrain {
   // ───────────────────────── 中期游走 ─────────────────────────
 
   /**
-   * 对线期结束到抱团期之间：打野和中单每隔一阵结伴去一条外塔还在的边路，以多打少逼团/推塔，
+   * 对线期结束到抱团期之间：打野和中单每隔一阵结伴去一条一塔还在的边路，以多打少逼团/推塔，
    * 打完一波(或时间到)再回去发育。对面的回防逻辑会派人来接，中期的小规模团战就是这么来的。
    */
   private refreshSquad(v: BotView): void {
@@ -398,7 +398,7 @@ export class TeamBrain {
     }
     if (this.squadLane) {
       const ls = this.lanes[this.squadLane];
-      // 时间到 / 那条路的外塔已经拿下 / 自家中路吃紧 → 收队
+      // 时间到 / 那条路的一塔已经拿下 / 自家中路吃紧 → 收队
       if (time >= this.squadUntil || ls.foeTowers < 3 || this.lanes.mid.threat >= 3) {
         this.squadLane = null;
         this.nextSquadAt = time + TUNE.squadRest * (1.3 - 0.5 * this.profile.teamwork);
@@ -451,7 +451,7 @@ export class TeamBrain {
       } else if (h.lane === 'jungle') {
         task = { kind: 'jungle', lane: home, campId: -1 };
       } else if (this.phase === 'mid' && this.lanes[home].foeTowers < 3) {
-        // 本路外塔已破：转去主推路集合
+        // 本路一塔已破：转去主推路集合
         task = { kind: 'push', lane: this.pushLane, campId: -1 };
       } else {
         task = { kind: 'lane', lane: home, campId: -1 };

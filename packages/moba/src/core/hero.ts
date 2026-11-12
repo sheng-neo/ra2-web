@@ -4,6 +4,7 @@
  */
 import { setAction } from './anim';
 import { addBuff, hasBuff, removeBuff } from './buffs';
+import { buildCost, canAutoBuy, isBuildItem, nextBuildItem } from './build';
 import { cancelWindup, engage, inRange, reveal, tickAttack } from './combat';
 import { skillValue, SUMMONER } from './data/heroes';
 import { ITEMS, SELL_RATIO } from './data/items';
@@ -33,6 +34,8 @@ const CAST_BUFFER = 0.6;
 const PREDICT_MAX_SPEED = 12;
 const DEFAULT_AIM_LEAD = 0.3;
 const RESPAWN_GUARD_TIME = 2;
+/** 自动出装的检查间隔（tick）：每 0.5 秒看一次钱够不够 */
+const AUTO_BUY_TICKS = 15;
 
 function reject(sim: Sim, hero: SimHero, reason: RejectReason, silent = false): false {
   // 拒绝提示只发给玩家
@@ -72,8 +75,11 @@ function onItemsChanged(sim: Sim, hero: SimHero): void {
   recomputeStats(sim, hero);
 }
 
-/** 购买装备（随时随地可买）。鞋子互斥：升级鞋会替换已有的鞋并抵扣其售价 */
-export function buyItem(sim: Sim, hero: SimHero, itemId: ItemId): boolean {
+/**
+ * 购买装备（随时随地可买）。鞋子互斥：进阶鞋会替换已有的鞋并抵扣其售价。
+ * auto = 由自动出装发起：失败时不发 reject 提示，成功的 itemBought 事件带 auto 标记。
+ */
+export function buyItem(sim: Sim, hero: SimHero, itemId: ItemId, auto = false): boolean {
   const def = ITEMS[itemId];
   if (!def) return false;
   const items = hero.items;
@@ -84,30 +90,45 @@ export function buyItem(sim: Sim, hero: SimHero, itemId: ItemId): boolean {
     if (owned >= 0) {
       const old = ITEMS[items[owned] as ItemId];
       // 已有鞋时：不能再买基础鞋，也不能重复买同一双
-      if (def.tier === 1 || old.id === def.id) return reject(sim, hero, 'full');
+      if (def.tier === 1 || old.id === def.id) return reject(sim, hero, 'full', auto);
       slot = owned;
       cost -= Math.floor(old.cost * SELL_RATIO);
     }
   }
   if (slot < 0) slot = items.indexOf(null);
-  if (slot < 0) return reject(sim, hero, 'full');
-  if (hero.gold < cost) return reject(sim, hero, 'gold');
+  if (slot < 0) return reject(sim, hero, 'full', auto);
+  if (hero.gold < cost) return reject(sim, hero, 'gold', auto);
   hero.gold -= cost;
   items[slot] = itemId;
   onItemsChanged(sim, hero);
-  sim.emit({ type: 'itemBought', unitId: hero.id, itemId });
+  if (auto) sim.emit({ type: 'itemBought', unitId: hero.id, itemId, auto: true });
+  else sim.emit({ type: 'itemBought', unitId: hero.id, itemId });
   return true;
 }
 
-/** 出售装备栏第 index 格，返还 60% */
+/**
+ * 出售装备栏第 index 格，返还 60%。
+ * 卖掉的是推荐出装里的装备时，本局自动出装随之关闭(否则 0.5 秒后会原价买回来，白亏 40%)；想继续自动买，再用 autoBuy 命令打开。
+ */
 export function sellItem(sim: Sim, hero: SimHero, index: number): boolean {
   if (!Number.isInteger(index) || index < 0 || index >= hero.items.length) return false;
   const id = hero.items[index];
   if (!id) return false;
   hero.gold += Math.floor(ITEMS[id].cost * SELL_RATIO);
   hero.items[index] = null;
+  if (hero.autoBuy && isBuildItem(hero.heroId, id)) hero.autoBuy = false;
   onItemsChanged(sim, hero);
   return true;
+}
+
+/**
+ * 自动出装的一步：金币够、栏位允许，就买推荐出装的下一件(鞋的升级是原地替换并抵扣旧鞋)。
+ * 栏位满而下一件不是换鞋时什么都不做 —— 暂停，不代卖，也不发拒绝提示；腾出格子后自动继续。
+ */
+function autoBuyStep(sim: Sim, hero: SimHero): void {
+  const id = nextBuildItem(hero);
+  if (!id || !canAutoBuy(hero, id) || hero.gold < buildCost(hero, id)) return;
+  buyItem(sim, hero, id, true);
 }
 
 // ───────────────────────── 普攻指令 ─────────────────────────
@@ -390,7 +411,7 @@ export function requestCast(sim: Sim, hero: SimHero, cmd: CastCommand, buffered 
   const def = summoner ? null : hero.h.def.skills[slot as AbilitySlot];
   const level = skill.level;
   hero.mana -= skill.cost;
-  // 冷却缩减只作用于英雄技能，不作用于召唤师技能
+  // 冷却缩减只作用于英雄技能，不作用于通用技能
   skill.cdMax = def ? def.cooldown[level - 1] * (1 - hero.stats.cdr) : SUMMONER[slot as keyof typeof SUMMONER].cooldown;
   skill.cd = skill.cdMax;
   cancelWindup(hero);
@@ -438,13 +459,17 @@ function breakForMove(sim: Sim, hero: SimHero): void {
 
 export function heroCommand(sim: Sim, hero: SimHero, cmd: PlayerCommand): void {
   if (sim.state.over) return;
-  // 买卖不受死亡影响
+  // 买卖与自动出装开关不受死亡影响
   if (cmd.type === 'buy') {
     buyItem(sim, hero, cmd.itemId);
     return;
   }
   if (cmd.type === 'sell') {
     sellItem(sim, hero, cmd.index);
+    return;
+  }
+  if (cmd.type === 'autoBuy') {
+    hero.autoBuy = cmd.enabled === true;
     return;
   }
   if (!hero.alive) return;
@@ -540,6 +565,8 @@ export function updateHero(sim: Sim, hero: SimHero, dt: number): void {
     if (s.cd > 0) s.cd = s.cd > dt ? s.cd - dt : 0;
   }
   hero.inCombat = time - h.lastCombatTime < COMBAT_WINDOW;
+  // 自动出装：随时随地、阵亡时也照买(按英雄下标错开检查的 tick)
+  if (hero.autoBuy && (st.tick + h.index) % AUTO_BUY_TICKS === 0) autoBuyStep(sim, hero);
 
   if (!hero.alive) {
     hero.respawnIn -= dt;

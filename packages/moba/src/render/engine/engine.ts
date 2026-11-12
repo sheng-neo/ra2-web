@@ -1,14 +1,16 @@
 /**
- * 渲染引擎：WebGLRenderer 初始化(sRGB 输出、ACES 色调映射)、画质档切换、相机/灯光装置、
+ * 渲染引擎：WebGLRenderer 初始化(sRGB 输出、统一的 Neutral 高光段色调映射)、画质档切换、相机/灯光装置、环境染色贴图、
  * 后期管线、坐标换算、尺寸适配、统计与彻底释放。不含任何游戏内容(由 RenderModule 往场景里加)。
  */
 import * as THREE from 'three';
 import type { Vec2 } from '../../core/types';
 import type { Quality, RendererStats } from '../api';
-import { PALETTE, disposeSharedTextures, tickShared } from '../materials';
+import { BASE_GRADE, PALETTE, TONE_MAPPING, disposeSharedTextures, installToneMapping, tickShared } from '../materials';
+import { setUnitPatternsEnabled } from '../models/shading';
 import { CameraRig } from './camera';
 import { disposeObject3D } from './dispose';
 import { LightRig } from './lighting';
+import { LightTint } from './lighttint';
 import { PostPipeline, supportsHdrTargets, type GradeParams } from './post';
 import { QUALITY, type QualitySettings } from './quality';
 
@@ -103,6 +105,8 @@ export class RenderEngine {
   readonly scene: THREE.Scene;
   readonly rig: CameraRig;
   readonly lights: LightRig;
+  /** 环境染色贴图(发光体/基地/河道对周围的染色 + 天空光遮蔽)。地形模块在场景构建时盖印并 bake */
+  readonly lightTint = new LightTint();
   readonly grade: GradeParams;
   readonly viewport = { width: 1, height: 1, dpr: 1 };
   quality: Quality;
@@ -146,7 +150,10 @@ export class RenderEngine {
     const renderer = acquireRenderer();
     this.renderer = renderer;
     renderer.outputColorSpace = THREE.SRGBColorSpace;
-    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    // 统一的色调映射(materials.ts 的 TONE_MAPPING：Neutral 的高光段、暗部线性)。
+    // low 档直出时由材质内的色调映射执行，走后期时由 FinalPass 执行，两条路是同一个函数
+    installToneMapping();
+    renderer.toneMapping = TONE_MAPPING;
     renderer.toneMappingExposure = 1;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.shadowMap.needsUpdate = true;
@@ -171,13 +178,18 @@ export class RenderEngine {
     this.rig = new CameraRig();
     this.lights = new LightRig(this.scene);
     this.grade = {
-      exposure: 1.22,
-      bloomStrength: 0.75,
-      saturation: 1.12,
-      contrast: 1.04,
-      vignette: 0.26,
-      shadowTint: new THREE.Color(-0.006, 0.0, 0.014),
-      highlightTint: new THREE.Color(0.016, 0.006, -0.012),
+      exposure: 0.98,
+      bloomStrength: 0.55,
+      // 对比 / 饱和的基础值与 low 档直出时烘在色调映射里的那份是同一组常量
+      saturation: BASE_GRADE.saturation,
+      vibrance: BASE_GRADE.vibrance,
+      contrast: BASE_GRADE.contrast,
+      pivot: BASE_GRADE.pivot,
+      vignette: 0.2,
+      shadowTint: new THREE.Color(-0.01, -0.002, 0.022),
+      highlightTint: new THREE.Color(0.018, 0.008, -0.014),
+      haze: 0.06,
+      hazeColor: new THREE.Color(PALETTE.env.haze),
       desaturate: 0,
       dim: 0,
     };
@@ -198,8 +210,16 @@ export class RenderEngine {
     const s = (this.settings = this.effective(this.quality));
     const r = this.renderer;
     r.shadowMap.enabled = s.shadows;
+    // 阴影滤波类型是渲染器级的开关(进所有受光着色器的宏)：medium = PCFSoft，high = PCF + 半径(更宽更软、固定图样无噪点)
+    const shadowType = s.shadowType === 'pcf' ? THREE.PCFShadowMap : THREE.PCFSoftShadowMap;
+    if (r.shadowMap.type !== shadowType) {
+      r.shadowMap.type = shadowType;
+      r.shadowMap.needsUpdate = true;
+    }
     this.lights.applyQuality(s);
+    setUnitPatternsEnabled(s.unitPatterns);
     this.grade.bloomStrength = s.bloom;
+    this.grade.haze = s.haze;
     if (s.post) {
       if (!this.post) this.post = new PostPipeline(r, this.scene, this.rig.camera, this.grade, s);
       else this.post.applyQuality(s);
@@ -306,6 +326,7 @@ export class RenderEngine {
         culled.push(o);
       }
     });
+    this.lightTint.bind(true);
     try {
       this.lights.fitShadow(this.rig.camera);
       const r = this.renderer;
@@ -319,6 +340,7 @@ export class RenderEngine {
         }
       }
     } finally {
+      this.lightTint.bind(false);
       for (const o of hidden) o.visible = false;
       for (const o of culled) o.frustumCulled = true;
     }
@@ -347,11 +369,14 @@ export class RenderEngine {
     if (this.frame - this.rectFrame >= 60) this.readRect();
     const r = this.renderer;
     r.info.reset();
+    // 环境染色贴图只在主场景绘制期间挂在共享 uniform 上(立绘/头像这些独立小场景采到的是中性贴图)
+    this.lightTint.bind(true);
     if (this.post) this.post.render(dt);
     else {
       r.setRenderTarget(null);
       r.render(this.scene, this.rig.camera);
     }
+    this.lightTint.bind(false);
     this.stats.drawCalls = r.info.render.calls;
     this.stats.triangles = r.info.render.triangles;
     this.fpsAccum += dt;
@@ -423,6 +448,7 @@ export class RenderEngine {
     this.post?.dispose();
     this.post = null;
     this.lights.dispose();
+    this.lightTint.dispose();
     this.scene.clear();
     this.canvas.removeEventListener('webglcontextrestored', this.handleRestored);
     this.canvas.style.filter = '';

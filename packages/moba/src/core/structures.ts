@@ -23,7 +23,7 @@ const FOUNTAIN_HIT_INTERVAL = 0.5;
 
 const near: SimUnit[] = [];
 
-/** 根据各路外塔存活情况刷新塔与水晶的无敌状态 */
+/** 根据各路一塔存活情况刷新塔与水晶的无敌状态 */
 export function refreshInvulnerability(sim: Sim): void {
   for (const team of [0, 1] as PlayerTeam[]) {
     let highGroundDown = false;

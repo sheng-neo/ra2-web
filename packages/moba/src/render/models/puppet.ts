@@ -8,7 +8,7 @@ import { type AnimInput, type AnimOutput, type AttachName, type ModelDef, create
 
 export class Puppet {
   readonly input: AnimInput = createAnimInput();
-  readonly output: AnimOutput = { glow: 1 };
+  readonly output: AnimOutput = { glow: 1, tint: 0, tintColor: 0xffffff };
   readonly pose: Pose;
   readonly skeleton: Skeleton;
   private readonly from: Pose;
@@ -47,6 +47,7 @@ export class Puppet {
     this.lastAnim = a.anim;
     this.lastKey = key;
     this.output.glow = 1;
+    this.output.tint = 0;
     this.pose.reset();
     def.animate(this.pose, a, this.output);
     if (this.blendT < this.blendDur) {

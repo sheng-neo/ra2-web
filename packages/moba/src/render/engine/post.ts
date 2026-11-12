@@ -1,8 +1,10 @@
 /**
- * 后期管线(EffectComposer)：场景 → HDR(半浮点 + MSAA) → bloom(只取高亮/自发光) → 色调映射 + 调色 + 暗角 → 屏幕。
- * bloom 用降采样/升采样金字塔(dual filter)，比逐级高斯省一半以上的全屏绘制，适合手机。
- * R3/R4 如需追加全屏效果：`post.composer.insertPass(pass, index)` 插在 finalPass 之前；
- * 调色参数在 `post.grade` 上直接改(exposure/saturation/contrast/vignette/desaturate…)。
+ * 后期管线(EffectComposer)：场景 → HDR(半浮点 + MSAA) → bloom(只取高亮/自发光) → 色调映射 + 调色 + 远景薄霾 + 暗角 → 屏幕。
+ * bloom 用降采样/升采样金字塔(dual filter)，比逐级高斯省一半以上的全屏绘制，适合手机；升采样时越粗的层权重越低，
+ * 光晕收在发光体周围(通透)，不会糊成一大片雾。
+ * 色调映射用 materials.ts 装好的统一曲线(Khronos Neutral 的高光段、暗部线性)：中间调不偏色、不压饱和，只在高光处收拢——
+ * 石板、白石与青白色特效不再被压成白色。
+ * 全屏通道数固定(场景 + bloom 金字塔 + 合成)，不要再往里加全屏 Pass；调色参数在 `post.grade` 上直接改。
  */
 import * as THREE from 'three';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
@@ -30,7 +32,8 @@ void main() {
          + texture2D(tDiffuse, vUv + uTexel * vec2(-1.0, 1.0)).rgb
          + texture2D(tDiffuse, vUv + uTexel * vec2(1.0, 1.0)).rgb;
   c *= 0.25;
-  c = min(c, vec3(24.0));
+  // 钳位：个别极亮的像素(高光/特效核心)不至于在降采样后炸成一大团
+  c = min(c, vec3(12.0));
   float br = max(c.r, max(c.g, c.b));
   // 软拐点：阈值附近平滑过渡，避免高亮边缘闪烁
   float knee = uThreshold.y;
@@ -55,12 +58,13 @@ void main() {
 }
 `;
 
-/** 帐篷滤波升采样，并与同级降采样结果相加 */
+/** 帐篷滤波升采样，并与同级降采样结果按权重相加(uWeight.x = 上一级的权重，uWeight.y = 本级的权重) */
 const UP_FRAGMENT = /* glsl */ `
 uniform sampler2D tDiffuse;
 uniform sampler2D tBase;
 uniform vec2 uTexel;
 uniform float uSpread;
+uniform vec2 uWeight;
 varying vec2 vUv;
 void main() {
   vec2 d = uTexel * uSpread;
@@ -72,16 +76,18 @@ void main() {
   c += texture2D(tDiffuse, vUv + vec2(d.x, d.y)).rgb * 2.0;
   c += texture2D(tDiffuse, vUv + vec2(-d.x, -d.y)).rgb * 2.0;
   c += texture2D(tDiffuse, vUv + vec2(d.x, -d.y)).rgb * 2.0;
-  gl_FragColor = vec4(c / 12.0 + texture2D(tBase, vUv).rgb, 1.0);
+  gl_FragColor = vec4(c * (uWeight.x / 12.0) + texture2D(tBase, vUv).rgb * uWeight.y, 1.0);
 }
 `;
 
 const MAX_LEVELS = 6;
+/** 各级(由细到粗)在合成里的权重：细的层贴着发光体，粗的层只留一点点氛围 */
+const LEVEL_WEIGHTS = [1.0, 0.85, 0.6, 0.4, 0.25, 0.15];
 
 /** 计算 bloom 贴图(不改动读缓冲)，结果在 `texture` 上，由 FinalPass 合成 */
 export class BloomPyramidPass extends Pass {
-  /** x = 阈值(线性 HDR 亮度)，y = 软拐点宽度 */
-  readonly threshold = new THREE.Vector2(1.12, 0.3);
+  /** x = 阈值(线性 HDR 亮度)，y = 软拐点宽度。受光的白石/石板不得越过阈值；发光件的 HDR 亮度定在 1.6~3.0 */
+  readonly threshold = new THREE.Vector2(1.35, 0.25);
   levels = 5;
   private down: THREE.WebGLRenderTarget[] = [];
   private up: THREE.WebGLRenderTarget[] = [];
@@ -98,7 +104,7 @@ export class BloomPyramidPass extends Pass {
       new THREE.ShaderMaterial({ vertexShader: FS_VERTEX, fragmentShader, uniforms, depthTest: false, depthWrite: false, toneMapped: false });
     this.prefilter = mk(PREFILTER_FRAGMENT, { tDiffuse: { value: null }, uTexel: { value: new THREE.Vector2() }, uThreshold: { value: this.threshold } });
     this.downMat = mk(DOWN_FRAGMENT, { tDiffuse: { value: null }, uTexel: { value: new THREE.Vector2() } });
-    this.upMat = mk(UP_FRAGMENT, { tDiffuse: { value: null }, tBase: { value: null }, uTexel: { value: new THREE.Vector2() }, uSpread: { value: 1 } });
+    this.upMat = mk(UP_FRAGMENT, { tDiffuse: { value: null }, tBase: { value: null }, uTexel: { value: new THREE.Vector2() }, uSpread: { value: 1 }, uWeight: { value: new THREE.Vector2(1, 1) } });
     this.black = new THREE.DataTexture(new Uint8Array([0, 0, 0, 255]), 1, 1);
     this.black.needsUpdate = true;
     for (let i = 0; i < MAX_LEVELS; i++) {
@@ -154,6 +160,8 @@ export class BloomPyramidPass extends Pass {
       this.upMat.uniforms.tDiffuse.value = prev.texture;
       this.upMat.uniforms.tBase.value = this.down[i].texture;
       (this.upMat.uniforms.uTexel.value as THREE.Vector2).set(0.5 / prev.width, 0.5 / prev.height);
+      // 最粗的一级第一次被读到时乘上它自己的权重；之后的累加结果已含权重，原样带上去
+      (this.upMat.uniforms.uWeight.value as THREE.Vector2).set(i === n - 2 ? LEVEL_WEIGHTS[n - 1] : 1, LEVEL_WEIGHTS[i]);
       renderer.setRenderTarget(this.up[i]);
       quad.render(renderer);
       prev = this.up[i];
@@ -177,13 +185,25 @@ export interface GradeParams {
   /** 曝光倍率(色调映射前) */
   exposure: number;
   bloomStrength: number;
+  /** 整体饱和度倍率 */
   saturation: number;
+  /** 自然饱和：只给本来不太艳的颜色加饱和(已经很艳的不再加)，0 = 关 */
+  vibrance: number;
+  /**
+   * 对比度与支点。幂函数式对比：c = p · (c / p)^contrast，纯黑保持纯黑、支点 p 处亮度不变——
+   * 不会像「(c - 0.5)·k + 0.5」那样把暗部整体减掉一截(阴影里的细节会被压成死黑)。
+   * pivot 按显示值(sRGB 编码后的 0..1)给，0.42 约等于受光草地的亮度。
+   */
   contrast: number;
+  pivot: number;
   /** 暗角强度 0..1 */
   vignette: number;
   /** 暗部/亮部分离调色(线性 RGB 偏移，围绕 0) */
   shadowTint: THREE.Color;
   highlightTint: THREE.Color;
+  /** 远景薄霾：屏幕上沿(远处)向 hazeColor 混合的最大比例，0 = 关 */
+  haze: number;
+  hazeColor: THREE.Color;
   /** 去色 0..1(阵亡灰屏)。low 档没有后期，界面层可改用 CSS filter */
   desaturate: number;
   /** 画面整体压暗 0..1(暂停/过场) */
@@ -196,11 +216,14 @@ uniform sampler2D tDiffuse;
 uniform sampler2D tBloom;
 uniform float uBloom;
 uniform float uSaturation;
-uniform float uContrast;
+uniform float uVibrance;
+uniform vec2 uContrast;
 uniform float uVignette;
 uniform float uAspect;
 uniform vec3 uShadowTint;
 uniform vec3 uHighlightTint;
+uniform float uHaze;
+uniform vec3 uHazeColor;
 uniform float uDesaturate;
 uniform float uDim;
 #include <tonemapping_pars_fragment>
@@ -214,12 +237,22 @@ float hash(vec2 p) {
 void main() {
   vec3 c = texture2D(tDiffuse, vUv).rgb;
   c += texture2D(tBloom, vUv).rgb * uBloom;
-  c = ACESFilmicToneMapping(c);
+  c = CustomToneMapping(c);
   #ifdef GRADE
+  // 对比：幂函数式，围绕支点(线性值)拉开；纯黑不动，暗部不会被整体减掉一截
+  c = uContrast.y * pow(max(c, 0.0) / uContrast.y, vec3(uContrast.x));
+  // 饱和 + 自然饱和
   float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
-  c = mix(vec3(l), c, uSaturation);
-  c = (c - 0.5) * uContrast + 0.5;
-  c += uShadowTint * (1.0 - l) * (1.0 - l) + uHighlightTint * l * l;
+  float mx = max(c.r, max(c.g, c.b));
+  float mn = min(c.r, min(c.g, c.b));
+  float sat = (mx - mn) / max(mx, 1e-4);
+  c = max(mix(vec3(l), c, uSaturation + uVibrance * (1.0 - sat)), 0.0);
+  // 色彩分离：暗部偏青紫、亮部偏暖
+  float lc = clamp(l, 0.0, 1.0);
+  c += uShadowTint * (1.0 - lc) * (1.0 - lc) + uHighlightTint * lc * lc;
+  // 远景薄霾：屏幕上沿就是远处，给一点冷亮的空气感
+  float hz = smoothstep(0.55, 1.0, vUv.y);
+  c = mix(c, uHazeColor, uHaze * hz * sqrt(hz));
   vec2 q = (vUv - 0.5) * vec2(min(uAspect, 1.8) / 1.8, 1.0);
   float v = smoothstep(0.38, 0.95, length(q));
   c *= 1.0 - uVignette * v * v;
@@ -233,7 +266,7 @@ void main() {
 }
 `;
 
-/** 合成 bloom + ACES 色调映射 + 调色/暗角 + sRGB 输出 */
+/** 合成 bloom + 色调映射 + 调色/薄霾/暗角 + sRGB 输出 */
 export class FinalPass extends Pass {
   readonly material: THREE.RawShaderMaterial;
   private quad: FullScreenQuad;
@@ -263,11 +296,14 @@ export class FinalPass extends Pass {
         toneMappingExposure: { value: 1 },
         uBloom: { value: 0 },
         uSaturation: { value: 1 },
-        uContrast: { value: 1 },
+        uVibrance: { value: 0 },
+        uContrast: { value: new THREE.Vector2(1, 0.148) },
         uVignette: { value: 0 },
         uAspect: { value: 1 },
         uShadowTint: { value: grade.shadowTint },
         uHighlightTint: { value: grade.highlightTint },
+        uHaze: { value: 0 },
+        uHazeColor: { value: grade.hazeColor },
         uDesaturate: { value: 0 },
         uDim: { value: 0 },
       },
@@ -294,9 +330,12 @@ export class FinalPass extends Pass {
     u.toneMappingExposure.value = g.exposure;
     u.uBloom.value = this.bloom.enabled ? g.bloomStrength : 0;
     u.uSaturation.value = g.saturation;
-    u.uContrast.value = g.contrast;
+    u.uVibrance.value = g.vibrance;
+    // 支点从显示值换算成线性值
+    (u.uContrast.value as THREE.Vector2).set(g.contrast, Math.pow(Math.max(0.02, g.pivot), 2.2));
     u.uVignette.value = g.vignette;
     u.uAspect.value = read.width / Math.max(1, read.height);
+    u.uHaze.value = g.haze;
     u.uDesaturate.value = g.desaturate;
     u.uDim.value = g.dim;
     renderer.setRenderTarget(this.renderToScreen ? null : write);
@@ -334,6 +373,7 @@ export class PostPipeline {
   applyQuality(q: QualitySettings): void {
     this.bloomPass.enabled = q.bloom > 0;
     this.bloomPass.levels = q.bloomLevels;
+    this.bloomPass.threshold.x = q.bloomThreshold;
     this.finalPass.setGradeEnabled(q.grade);
     for (const rt of [this.composer.renderTarget1, this.composer.renderTarget2]) {
       if (rt.samples !== q.msaa) {

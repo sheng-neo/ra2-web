@@ -257,7 +257,7 @@ function walkthrough(): GameEvent[][] {
   out.push([{ type: 'death', unitId: tower.id, kind: 'tower', team: 1, killerId: pid, pos: near(8) }, { type: 'towerDestroyed', unitId: tower.id, team: 1, lane: 'mid', tier: 1, pos: near(8) }, { type: 'fx', key: 'tower_destroyed', pos: near(8), team: 1 }, { type: 'gold', unitId: pid, amount: 120, pos: player.pos, reason: 'tower' }]);
   out.push([{ type: 'levelUp', unitId: pid, level: 6 }, { type: 'fx', key: 'level_up', pos: player.pos, team: 0, unitId: pid }]);
   out.push([{ type: 'respawn', unitId: pid, pos: player.pos }, { type: 'fx', key: 'respawn', pos: player.pos, team: 0, unitId: pid }]);
-  out.push([{ type: 'itemBought', unitId: pid, itemId: 'iron_blade' }]);
+  out.push([{ type: 'itemBought', unitId: pid, itemId: 'boots' }]);
   out.push([{ type: 'heal', targetId: pid, amount: 400, pos: player.pos }]);
   out.push([{ type: 'reject', unitId: pid, reason: 'mana' }]);
   out.push([{ type: 'waveSpawn', wave: 3 }]);

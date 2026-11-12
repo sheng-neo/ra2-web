@@ -10,7 +10,7 @@ import { arena, damageTo, dist, dummyAt, enemyAt, fxOf, mitigate, val } from './
 
 const P = HEROES.xingli.passive.values;
 
-/** 朝 +x 放一发流星矢并等它飞完 */
+/** 朝 +x 放一发一弦穿云并等它飞完 */
 function fireS1(sim: Sim, hero: SimHero): GameEvent[] {
   hero.skills.s1.cd = 0;
   hero.mana = hero.stats.maxMana;
@@ -18,7 +18,7 @@ function fireS1(sim: Sim, hero: SimHero): GameEvent[] {
   return sim.drainEvents().concat(stepFor(sim, 0.8));
 }
 
-describe('星璃 · 被动 星辉印记', () => {
+describe('王昭君 · 被动 余音', () => {
   it('技能命中叠层(持续 5 秒)；第三层引爆：6% 最大生命法术伤害 + 眩晕 0.75 秒', () => {
     const { sim, hero } = arena('xingli');
     const a = enemyAt(sim, 'panyue', 5, 0);
@@ -52,7 +52,7 @@ describe('星璃 · 被动 星辉印记', () => {
     stepFor(sim, 1);
     fireS1(sim, hero);
     expect(buffStacks(a, 'xingli_mark')).toBe(1);
-    // 5 秒没有续上：印记消失
+    // 5 秒没有续上：余音消失
     stepFor(sim, P.duration - 1);
     expect(hasBuff(a, 'xingli_mark')).toBe(true);
     stepFor(sim, 1);
@@ -73,11 +73,12 @@ describe('星璃 · 被动 星辉印记', () => {
   });
 });
 
-describe('星璃 · S1 流星矢', () => {
+describe('王昭君 · S1 一弦穿云', () => {
   it('出手点放出穿透弹：沿途敌人各受一次 280(+55%法强) 法术伤害，射程 12', () => {
     const { sim, hero } = arena('xingli', 1, -6, 0);
-    sim.command(hero.id, { type: 'buy', itemId: 'spell_tome' });
-    expect(hero.stats.ap).toBe(40);
+    hero.gold = 5000;
+    sim.command(hero.id, { type: 'buy', itemId: 'astral_staff' });
+    expect(hero.stats.ap).toBe(180);
     const m1 = dummyAt(sim, -2, 0);
     const a = enemyAt(sim, 'chijin', 2, 0.3);
     const m2 = dummyAt(sim, 5.5, 0);
@@ -98,7 +99,7 @@ describe('星璃 · S1 流星矢', () => {
     expect(cast[0].dir).toEqual({ x: 1, y: 0 });
     ev = ev.concat(stepFor(sim, 0.6));
     const raw = val(hero, 's1', 'damage') + val(hero, 's1', 'apRatio') * hero.stats.ap;
-    expect(raw).toBeCloseTo(280 + 0.55 * 40, 6);
+    expect(raw).toBeCloseTo(280 + 0.55 * 180, 6);
     for (const t of [m1, a, m2] as SimUnit[]) {
       const hit = damageTo(ev, hero, t);
       expect(hit.length).toBe(1);
@@ -127,7 +128,7 @@ describe('星璃 · S1 流星矢', () => {
   });
 });
 
-describe('星璃 · S2 引力星环', () => {
+describe('王昭君 · S2 回环收弦', () => {
   it('预警 0.6 秒后收束：法术伤害、拉向中心 1.6 米(不越过中心)、减速 45% 2 秒', () => {
     const { sim, hero } = arena('xingli', 2);
     const a = enemyAt(sim, 'chijin', 8, 0);
@@ -183,7 +184,7 @@ describe('星璃 · S2 引力星环', () => {
   });
 });
 
-describe('星璃 · 大招 星陨天降', () => {
+describe('王昭君 · 大招 雁落平沙', () => {
   function castUlt(): { sim: Sim; hero: SimHero; a: SimHero; out: SimHero } {
     const { sim, hero } = arena('xingli', 4);
     const a = enemyAt(sim, 'panyue', 8, 4.5);
@@ -193,7 +194,7 @@ describe('星璃 · 大招 星陨天降', () => {
     return { sim, hero, a, out };
   }
 
-  it('预警 0.5 秒 → 2.5 秒内 5 波：每波对整个区域法术伤害 + 减速 + 印记(第三波引爆)', () => {
+  it('预警 0.5 秒 → 2.5 秒内 5 波：每波对整个区域法术伤害 + 减速 + 余音(第三波引爆)', () => {
     const { sim, hero, a, out } = castUlt();
     let ev = sim.drainEvents();
     expect(fxOf(ev, 'xingli_ult_cast').length).toBe(1);
@@ -220,13 +221,13 @@ describe('星璃 · 大招 星陨天降', () => {
     expect(raw).toBe(160);
     const waves = damageTo(all, hero, a).filter((d) => d.skill);
     for (const w of waves) expect(w.amount).toBeCloseTo(mitigate(raw, a.stats.mr), 4);
-    // 目标站在圈边(离中心 4.5 米)：伤害判定是整个区域，与陨星落点无关
+    // 目标站在圈边(离中心 4.5 米)：伤害判定是整个区域，与雁影落点无关
     expect(damageTo(all, hero, out).length).toBe(0);
-    // 三层印记引爆一次，之后的两波再叠两层
+    // 三层余音引爆一次，之后的两波再叠两层
     expect(fxOf(all, 'xingli_passive_burst').length).toBe(1);
     expect(damageTo(all, hero, a).filter((d) => !d.skill).length).toBe(1);
     expect(buffStacks(a, 'xingli_mark')).toBe(2);
-    // 陨星：每波 3 颗，落点都在星域内
+    // 雁影：每波 3 颗，落点都在雁落区域内
     const meteors = fxOf(all, 'xingli_meteor');
     expect(meteors.length).toBe(15);
     for (const m of meteors) {
@@ -238,7 +239,7 @@ describe('星璃 · 大招 星陨天降', () => {
     expect(sim.areas.length).toBe(0);
   });
 
-  it('每波减速 30% 持续 1 秒；陨星落点由种子随机决定(可复现)', () => {
+  it('每波减速 30% 持续 1 秒；雁影落点由种子随机决定(可复现)', () => {
     const run = (): { spots: Vec2[]; slow: number } => {
       const { sim, a } = castUlt();
       let slow = 0;
@@ -258,7 +259,7 @@ describe('星璃 · 大招 星陨天降', () => {
     expect(r2.spots).toEqual(r1.spots);
   });
 
-  it('星域放出后不随星璃阵亡而消失，击杀仍归她', () => {
+  it('雁落区域放出后不随王昭君阵亡而消失，击杀仍归她', () => {
     const { sim, hero, a } = castUlt();
     stepFor(sim, 0.2);
     killUnit(sim, hero, null);

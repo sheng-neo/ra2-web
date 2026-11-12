@@ -18,6 +18,26 @@ export interface LastSeen {
   time: number;
 }
 
+/**
+ * 扇形危险区（目前只有河道巨龙的吐息）：先预警 warn 秒，之后到 duration 为止持续造成伤害。
+ * 敌我都看得见(画面上是地面的扇形预警)，所以对双方的 Bot 都算「敌方」危险。
+ */
+export interface ConeHazard {
+  /** 每次吐息一个新 id（Bot 用它记「这一次躲不躲」） */
+  readonly id: number;
+  readonly ownerId: number;
+  /** 扇形顶点与朝向(单位向量) */
+  readonly pos: Vec2;
+  readonly dir: Vec2;
+  readonly radius: number;
+  /** 全角（弧度） */
+  readonly angle: number;
+  /** 已存在时间：< warn 为预警阶段，之后为伤害阶段 */
+  age: number;
+  readonly warn: number;
+  readonly duration: number;
+}
+
 /** 公共对局信息（比分、野怪刷新、兵线波次等记分板级别的信息，双方都能看到） */
 export type PublicState = Readonly<Pick<GameState, 'time' | 'tick' | 'teams' | 'camps' | 'wave' | 'nextWaveIn' | 'over' | 'winner'>>;
 
@@ -89,6 +109,8 @@ export interface BotView {
   hostileAreas(): readonly AreaEffect[];
   /** 敌方的飞行弹道，仅本队视野内的 */
   hostileProjectiles(): readonly Projectile[];
+  /** 野怪的扇形危险区(河道巨龙吐息的预警与喷吐)，仅本队视野内的 */
+  hostileCones(): readonly ConeHazard[];
 
   // ── 自身技能 ──
   castSpec(slot: SkillSlot): CastSpec;

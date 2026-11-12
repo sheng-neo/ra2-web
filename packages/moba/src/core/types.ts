@@ -32,12 +32,12 @@ export type HeroId = 'panyue' | 'chijin' | 'xingli' | 'fengling' | 'yeque';
 export type HeroRole = 'tank' | 'fighter' | 'mage' | 'marksman' | 'assassin';
 export type MinionType = 'melee' | 'ranged' | 'siege' | 'super';
 export type MonsterType =
-  | 'mossback' // 苔背兽：小野怪(单只)
-  | 'glimwing' // 荧翼蜥：小野怪(成对)
-  | 'frost_golem' // 霜晶魔像：增益野怪(冷却/回蓝)
-  | 'ember_golem' // 炽焰魔像：增益野怪(灼烧/减速)
-  | 'abyss_drake' // 深渊鳞兽：河道史诗野怪 A(团队金币经验)
-  | 'star_colossus'; // 星陨巨灵：河道史诗野怪 B(团队增益)
+  | 'mossback' // 小野怪 · 苔背獾(单只)
+  | 'glimwing' // 小野怪 · 荧翅蛾(成对)
+  | 'frost_golem' // 蓝buff · 霜晶巨鹿：增益野怪(冷却/回蓝)
+  | 'ember_golem' // 红buff · 炽焰巨熊：增益野怪(灼烧/减速)
+  | 'abyss_drake' // 河道巨龙 · 深渊鳞龙：河道史诗野怪 A(团队金币经验；会吐息)
+  | 'star_colossus'; // 远古巨灵 · 星陨巨灵：河道史诗野怪 B(团队增益)
 export type DamageType = 'physical' | 'magic' | 'true';
 export type AbilitySlot = 's1' | 's2' | 'ult';
 export type SummonerSlot = 'recall' | 'heal' | 'flash';
@@ -99,26 +99,26 @@ export type BuffId =
   | 'dmg_reduction' // 减伤：value=比例
   | 'untargetable' // 不可选中、免疫伤害
   | 'unstoppable' // 免疫控制
-  | 'burn' // 持续灼烧(炽焰之力普攻附带)：value=每跳伤害
+  | 'burn' // 持续灼烧(红buff 普攻附带)：value=每跳伤害
   // 系统
   | 'recall' // 回城引导中
-  | 'restore' // 「恢复」技能持续回复中
+  | 'restore' // 通用技能「疗伤」持续回复中
   | 'fountain' // 泉水回复
   | 'respawn_guard' // 复活后 2 秒无敌
   // 野区/史诗增益
-  | 'frost_insight' // 霜晶之智：+20% 冷却缩减、回蓝
-  | 'ember_might' // 炽焰之力：普攻附带灼烧+减速
-  | 'star_blessing' // 星陨祝福：全队 +伤害、回复
+  | 'frost_insight' // 蓝buff：+20% 冷却缩减、回蓝
+  | 'ember_might' // 红buff：普攻附带灼烧+减速
+  | 'star_blessing' // 巨灵buff(星陨祝福)：全队 +伤害、回复
   // 英雄专属
-  | 'panyue_passive' // 磐岳：普攻计数(stacks 0..2)，第三下强化
-  | 'panyue_bulwark' // 磐岳 S2 持续期间（配合 shield）
-  | 'chijin_ember' // 赤烬：技能后下一次普攻强化
-  | 'chijin_blaze' // 赤烬 S2 攻速加成期间
-  | 'chijin_spin' // 赤烬大招旋舞中
-  | 'xingli_mark' // 星璃：星辉印记(stacks 1..3，挂在敌人身上)
-  | 'fengling_gale' // 风翎：风之眷顾层数(stacks 1..5)
-  | 'fengling_crit' // 风翎 S2 后下一次普攻必暴
-  | 'yeque_shadow' // 夜阙：脱战移速 / 击杀后刷新提示
+  | 'panyue_passive' // 樊哙「覆盾震地」：普攻计数(stacks 0..2)，第三下强化
+  | 'panyue_bulwark' // 樊哙 S2「拥盾怒目」持续期间（配合 shield；期间只有护盾，减速只在施放瞬间）
+  | 'chijin_ember' // 程咬金「越砍越勇」：技能后下一次普攻强化
+  | 'chijin_blaze' // 程咬金 S2「半路杀出」攻速加成期间
+  | 'chijin_spin' // 程咬金大招「抡圆了砍」旋转中
+  | 'xingli_mark' // 王昭君「余音」(stacks 1..3，挂在敌人身上)
+  | 'fengling_gale' // 李广「连射」层数(stacks 1..5)
+  | 'fengling_crit' // 李广 S2「飞将腾身」后下一次普攻必暴
+  | 'yeque_shadow' // 荆轲「得手」：击杀后一、二技能已刷新的提示(无属性效果)
   | 'tower_focus'; // 被防御塔锁定(连续命中增伤层数)
 
 export interface Buff {
@@ -138,12 +138,12 @@ export type UnitAnim =
   | 'idle'
   | 'move'
   | 'attack' // 普攻：animDur 为整个出手动作(前摇+后摇)，命中/出弹发生在 ~35% 处
-  | 'cast_s1'
+  | 'cast_s1' // 英雄一技能；野怪的特殊攻击也用它(河道巨龙吐息：animDur = 预警 + 喷吐，见 FxKey drake_breath_warn)
   | 'cast_s2'
   | 'cast_ult'
   | 'dash' // 位移途中（前倾冲刺姿态）
   | 'leap' // 跃起落下（渲染层按 progress 画抛物线高度）
-  | 'spin' // 持续旋转（赤烬大招）
+  | 'spin' // 持续旋转（程咬金大招）
   | 'channel' // 引导（回城）
   | 'stunned'
   | 'airborne' // 被击飞（渲染层按 progress 画抛起）
@@ -181,7 +181,7 @@ export interface UnitBase {
   visible: [boolean, boolean];
   /** 所在草丛 id（MapData.bushes 的下标），不在草丛为 -1 */
   bushId: number;
-  /** 无敌（外塔未破时的内塔/水晶、复活保护等）：不可被选为目标、不受伤害 */
+  /** 无敌（前一座塔未破时的后一座塔/水晶、复活保护等）：不可被选为目标、不受伤害 */
   invulnerable: boolean;
   /** 最近一次受到伤害的模拟时间（用于受击闪白、脱战判定）；从未受击为 -999 */
   lastHitTime: number;
@@ -232,6 +232,12 @@ export interface HeroUnit extends UnitBase {
   dmgTower: number;
   /** 最近是否在战斗中（5 秒内对英雄造成或受到英雄/塔伤害） */
   inCombat: boolean;
+  /**
+   * 本局自动出装是否生效（界面只读；用 PlayerCommand 'autoBuy' 切换）。
+   * 初值：玩家英雄取 MatchConfig.autoBuy，其余英雄恒为 false(Bot 自己买)。
+   * 玩家卖出一件推荐装备时模拟层会把它置为 false(否则马上又原价买回来)。
+   */
+  autoBuy?: boolean;
 }
 
 export interface MinionUnit extends UnitBase {
@@ -245,7 +251,7 @@ export interface TowerUnit extends UnitBase {
   kind: 'tower';
   team: PlayerTeam;
   lane: LaneId;
-  /** 1 = 外塔，2 = 中塔，3 = 高地塔 */
+  /** 1 = 一塔，2 = 二塔，3 = 高地塔 */
   tier: 1 | 2 | 3;
 }
 
@@ -267,16 +273,16 @@ export type Unit = HeroUnit | MinionUnit | TowerUnit | CoreUnit | MonsterUnit;
 
 /** 投射物外观键。渲染层按键画模型/拖尾，并在 projectileHit / projectileEnd 事件处画命中特效。 */
 export type ProjectileVisual =
-  | 'xingli_basic' // 星璃普攻：小星辉弹
-  | 'xingli_s1' // 流星矢：拖尾的蓝白流星(穿透)
-  | 'fengling_basic' // 风翎普攻：箭矢
-  | 'fengling_s1' // 贯风矢：带气旋的大箭
-  | 'yeque_s2' // 影刃飞旋：旋转的暗紫飞刃
+  | 'xingli_basic' // 王昭君普攻：小月牙音波
+  | 'xingli_s1' // 一弦穿云：穿透的弦音音波
+  | 'fengling_basic' // 李广普攻：箭矢
+  | 'fengling_s1' // 白羽没石：重箭(贯穿小兵)
+  | 'yeque_s2' // 引匕一掷：直飞的匕首
   | 'minion_ranged' // 远程兵的能量弹（按 team 着色）
   | 'minion_siege' // 攻城兵的炮弹（抛物线）
   | 'tower_bolt' // 防御塔光弹（按 team 着色，追踪）
   | 'core_bolt' // 水晶光弹
-  | 'monster_spit'; // 野怪吐息弹
+  | 'monster_spit'; // 远程小野怪(荧翅蛾)的磷粉弹
 
 export interface Projectile {
   id: number;
@@ -299,12 +305,12 @@ export interface Projectile {
 /** 区域效果外观键（持续存在一段时间的地面/跟随特效）。 */
 export type AreaVisual =
   | 'telegraph' // 通用预警圈（延迟技能落地前，敌我都可见）
-  | 'panyue_s2_aura' // 不动壁垒：跟随自身的岩环减速场
-  | 'panyue_ult_fissure' // 山崩地裂落地后的裂隙减速场
-  | 'chijin_ult_spin' // 焚天旋舞：跟随自身的火焰旋风
-  | 'xingli_s2_well' // 引力星环：延迟后收束
-  | 'xingli_ult_storm' // 星陨天降：持续落星的星域
-  | 'fengling_ult_rain' // 千羽天幕：持续箭雨
+  | 'panyue_s2_aura' // 拥盾怒目：跟随自身的护盾光环
+  | 'panyue_ult_fissure' // 死且不避落地后的震裂减速场
+  | 'chijin_ult_spin' // 抡圆了砍：跟随自身的斧影旋风
+  | 'xingli_s2_well' // 回环收弦：延迟后收束
+  | 'xingli_ult_storm' // 雁落平沙：雁影分波俯冲的区域
+  | 'fengling_ult_rain' // 箭锁阴山：持续箭雨
   | 'fountain_zone'; // 泉水（常驻，可由渲染层直接按地图画，不必依赖此项）
 
 export interface AreaEffect {
@@ -345,39 +351,44 @@ export type FxKey =
   | 'core_destroyed' // 水晶爆炸 @pos
   | 'monster_slain' // 野怪倒地 @pos
   | 'buff_gain' // 获得野区增益 @unit
-  // 磐岳
-  | 'panyue_passive_hit' // 第三击震地 @target
-  | 'panyue_s1_dash' // 冲撞起步尘土 @pos, dir
+  // 河道巨龙吐息(野怪特殊攻击；team 恒为 2，敌我都可见)。两个键字段相同：
+  //   unitId = 巨龙, pos = 扇形顶点(巨龙位置), dir = 扇形朝向(单位向量，起手时锁定、之后不变), radius = 7.5, angle = 全角(弧度，约 1.047)
+  //   吐息全程巨龙原地不动，unit.anim = 'cast_s1'(animStart = 预警开始，animDur = 预警 + 喷吐)；数值见 data/units.ts 的 MONSTER_RULES.breath*
+  | 'drake_breath_warn' // 吐息预警开始 @pos, dir, radius, angle；value = 预警秒数(之后紧接喷吐)；targetId = 起手时的仇恨目标
+  | 'drake_breath' // 吐息喷吐开始 @pos, dir, radius, angle；value = 喷吐秒数(期间分几跳结算范围法术伤害，第一跳就在此刻)
+  // 樊哙(panyue)
+  | 'panyue_passive_hit' // 覆盾震地：第三击盾砸地 @target
+  | 'panyue_s1_dash' // 侧盾闯帐起步尘土 @pos, dir
   | 'panyue_s1_impact' // 冲撞终点震击 @pos, radius
-  | 'panyue_s2_cast' // 壁垒升起 @unit, radius
-  | 'panyue_ult_leap' // 起跳 from → to
-  | 'panyue_ult_land' // 落地山崩 @pos, radius
-  // 赤烬
-  | 'chijin_passive_hit' // 余烬强化普攻 @target
-  | 'chijin_s1_slash' // 扇形烈焰斩 @pos, dir, radius, angle
-  | 'chijin_s2_dash' // 炎步 from → to（火焰残影）
-  | 'chijin_ult_start' // 旋舞起手 @unit
-  | 'chijin_ult_tick' // 每跳火环 @pos, radius
-  // 星璃
-  | 'xingli_passive_burst' // 三层印记引爆 @target
-  | 'xingli_s1_cast' // 流星矢出手 @pos, dir
-  | 'xingli_s2_burst' // 引力星环收束爆发 @pos, radius
-  | 'xingli_ult_cast' // 大招吟唱 @unit
-  | 'xingli_meteor' // 单颗陨星落地 @pos, radius
-  // 风翎
-  | 'fengling_s1_cast' // 贯风矢出手 @pos, dir
-  | 'fengling_s2_dash' // 逐风步 from → to（风痕）
-  | 'fengling_ult_cast' // 朝天射击 @unit
+  | 'panyue_s2_cast' // 拥盾怒目：盾影与震慑环 @unit, radius
+  | 'panyue_ult_leap' // 死且不避起跳 from → to
+  | 'panyue_ult_land' // 落地砸地 @pos, radius
+  // 程咬金(chijin)
+  | 'chijin_passive_hit' // 越砍越勇：强化重斧 @target
+  | 'chijin_s1_slash' // 拦腰一斧：扇形斧弧 @pos, dir, radius, angle
+  | 'chijin_s2_dash' // 半路杀出 from → to（斧影残痕）
+  | 'chijin_ult_start' // 抡圆了砍起手 @unit
+  | 'chijin_ult_tick' // 每跳斧环 @pos, radius
+  // 王昭君(xingli)
+  | 'xingli_passive_burst' // 余音三叠：三层引爆 @target
+  | 'xingli_s1_cast' // 一弦穿云出手 @pos, dir
+  | 'xingli_s2_burst' // 回环收弦收束爆发 @pos, radius
+  | 'xingli_ult_cast' // 雁落平沙起手 @unit
+  | 'xingli_meteor' // 单只雁影俯冲落地 @pos, radius
+  // 李广(fengling)
+  | 'fengling_s1_cast' // 白羽没石出手 @pos, dir
+  | 'fengling_s2_dash' // 飞将腾身 from → to（残痕）
+  | 'fengling_ult_cast' // 箭锁阴山：仰射 @unit
   | 'fengling_ult_tick' // 一波箭雨落地 @pos, radius
-  // 夜阙
-  | 'yeque_s1_dash' // 瞬影斩 from → to（暗影斩痕）
-  | 'yeque_s2_cast' // 掷出飞刃 @pos, dir
-  | 'yeque_ult_vanish' // 隐没 @pos(原地残影)
-  | 'yeque_ult_strike'; // 背后处决 @target, from → to
+  // 荆轲(yeque)
+  | 'yeque_s1_dash' // 风萧易水 from → to（墨痕）
+  | 'yeque_s2_cast' // 引匕一掷：掷出匕首 @pos, dir
+  | 'yeque_ult_vanish' // 图穷匕见：隐去身形 @pos(原地墨渍)，targetId = 目标
+  | 'yeque_ult_strike'; // 背后一匕 @target, from → to
 
 export type AnnounceKey =
-  | 'match_start' // 「战斗开始」
-  | 'minions_spawn' // 「小兵出击」
+  | 'match_start' // 「对战开始」
+  | 'minions_spawn' // 「小兵出发」
   | 'first_blood' // 首杀
   | 'double_kill'
   | 'triple_kill'
@@ -389,7 +400,7 @@ export type AnnounceKey =
   | 'shutdown' // 终结
   | 'ace' // 团灭
   | 'tower_destroyed'
-  | 'epic_spawn' // 史诗野怪出现
+  | 'epic_spawn' // 史诗野怪(河道巨龙 / 远古巨灵)刷新
   | 'epic_slain' // 史诗野怪被击杀
   | 'super_minions' // 超级兵出击
   | 'victory'
@@ -411,7 +422,7 @@ export type GameEvent =
       skill: boolean;
     }
   | { type: 'heal'; targetId: number; amount: number; pos: Vec2 }
-  /** 技能施放（英雄主动技能 + 召唤师技能）。渲染层播放施法动作特效，音频层配音 */
+  /** 技能施放（英雄主动技能 + 通用技能 回城/疗伤/闪现）。渲染层播放施法动作特效，音频层配音 */
   | {
       type: 'skillCast';
       unitId: number;
@@ -473,7 +484,8 @@ export type GameEvent =
   | { type: 'levelUp'; unitId: number; level: number }
   | { type: 'respawn'; unitId: number; pos: Vec2 }
   | { type: 'gold'; unitId: number; amount: number; pos: Vec2; reason: 'lasthit' | 'kill' | 'assist' | 'tower' | 'monster' | 'passive' }
-  | { type: 'itemBought'; unitId: number; itemId: ItemId }
+  /** 购买成功。auto = true 表示由自动出装买入(界面提示「已自动购买」，音效可压低)；手动购买不带该字段 */
+  | { type: 'itemBought'; unitId: number; itemId: ItemId; auto?: boolean }
   | { type: 'towerDestroyed'; unitId: number; team: PlayerTeam; lane: LaneId; tier: 1 | 2 | 3; pos: Vec2 }
   | { type: 'waveSpawn'; wave: number }
   | { type: 'monsterSpawn'; campId: number; monsterType: MonsterType; pos: Vec2 }
@@ -495,6 +507,9 @@ export type GameEvent =
  *   近处无目标则朝最近敌人走过去）。
  * - cast：施放技能。dir/pos/targetId 省略时模拟层自动瞄准（轻点施放）。
  *   dir 用于方向型，pos 用于范围型，targetId 用于指向型。
+ * - buy / sell / autoBuy：买卖与自动出装开关，阵亡时也可以下达。
+ * - autoBuy：切换本局自动出装(HeroUnit.autoBuy)。开启后每 0.5 秒检查一次，金币够就买推荐出装的下一件
+ *   (见 core/build.ts 的 nextBuildItem)；栏位满时暂停、不会代卖；卖出推荐装备会自动关闭。
  */
 export type PlayerCommand =
   | { type: 'move'; dir: Vec2 }
@@ -503,7 +518,8 @@ export type PlayerCommand =
   | { type: 'attack'; targetId?: number }
   | { type: 'cast'; slot: SkillSlot; dir?: Vec2; pos?: Vec2; targetId?: number }
   | { type: 'buy'; itemId: ItemId }
-  | { type: 'sell'; index: number };
+  | { type: 'sell'; index: number }
+  | { type: 'autoBuy'; enabled: boolean };
 
 // ───────────────────────────── 地图 ─────────────────────────────
 
@@ -573,7 +589,7 @@ export interface TeamState {
   towersDestroyed: number;
   /** 全队累计金币 */
   gold: number;
-  /** 史诗增益「星陨祝福」剩余时间 */
+  /** 史诗增益「巨灵buff(星陨祝福)」剩余时间 */
   blessingLeft: number;
 }
 
@@ -590,6 +606,8 @@ export interface MatchConfig {
   difficulty: Difficulty;
   /** 测试用：true 时玩家英雄也由 AI 控制（无头对局/演示模式） */
   autoPlay?: boolean;
+  /** 玩家英雄的自动出装初值（HeroUnit.autoBuy）。缺省 false：老调用方行为不变 */
+  autoBuy?: boolean;
 }
 
 export interface GameState {
@@ -634,11 +652,8 @@ export interface World {
 
 // ───────────────────────────── 数据定义（英雄/装备） ─────────────────────────────
 
+/** 17 件：鞋 4(基础鞋 + 3 双进阶鞋) / 攻击 5 / 法术 4 / 防御 4。没有合成树，也没有小件 */
 export type ItemId =
-  | 'iron_blade'
-  | 'swift_bow'
-  | 'spell_tome'
-  | 'cloth_armor'
   | 'boots'
   | 'boots_guard'
   | 'boots_arcane'
@@ -696,8 +711,10 @@ export interface ItemDef {
   id: ItemId;
   name: string;
   category: 'attack' | 'magic' | 'defense' | 'boots';
-  /** 1 = 基础小件，2 = 成装 */
+  /** 1 = 基础鞋，2 = 其它(进阶鞋与全部成装) */
   tier: 1 | 2;
+  /** 一句大白话简介(≤16 字，不带数值)：卡片与浮层里紧跟名字显示 */
+  brief?: string;
   cost: number;
   stats: StatMods;
   passive?: { id: ItemPassiveId; name: string; desc: string; value: number; value2?: number };
@@ -718,9 +735,20 @@ export type CastSpec =
   /** 自身周围：立即施放，radius 为影响半径（0 = 仅自身） */
   | { type: 'self'; radius: number };
 
+/**
+ * 技能类型标签(固定 8 个，界面显示文字见 data/heroes.ts 的 SKILL_TAG_NAME)：
+ * dash 位移 / control 控制(眩晕、击飞、拉拽等硬控) / slow 减速 / burst 爆发 / dot 持续伤害 / shield 护盾 / heal 回复 / buff 增益。
+ * 「大招」「被动」不在词表里：界面按槽位自动加。
+ */
+export type SkillTag = 'dash' | 'control' | 'slow' | 'burst' | 'dot' | 'shield' | 'heal' | 'buff';
+
 export interface SkillDef {
   slot: AbilitySlot;
   name: string;
+  /** 一句大白话(≤18 字，不带数值、不带 {占位符})：技能浮层与选英雄页先显示它，再显示 desc */
+  brief?: string;
+  /** 1~2 个类型标签，最重要的放第一个(技能键角标取第一个) */
+  tags?: SkillTag[];
   /** 描述模板：{key} 替换为 values[key] 当前等级数值；{key%} 以百分比显示 */
   desc: string;
   maxLevel: number;
@@ -781,11 +809,11 @@ export interface HeroDef {
     projectile?: ProjectileVisual;
     projectileSpeed?: number;
   };
-  passive: { name: string; desc: string; values: Record<string, number> };
+  passive: { name: string; desc: string; values: Record<string, number>; brief?: string; tags?: SkillTag[] };
   skills: Record<AbilitySlot, SkillDef>;
   /** 推荐出装顺序（Bot 照此购买；玩家的「一键购买」也按此推荐） */
   build: ItemId[];
-  /** 美术主色（十六进制 #rrggbb）：主体 / 辅色 / 点缀 / 技能辉光 */
+  /** 界面身份色（十六进制 #rrggbb）：主体 / 辅色 / 点缀 / 技能辉光。头像底、小地图点、图标底用；模型用色以各模型文件为准 */
   palette: { primary: string; secondary: string; accent: string; glow: string };
   /** 美术设定描述（给渲染层建模用） */
   look: string;

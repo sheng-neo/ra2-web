@@ -1,12 +1,12 @@
 /**
- * 夜阙 · 夜隐刺客（刺客）
+ * 荆轲 · 易水壮士（刺客）
  *
- * 被动 猎影：对低血量敌人增伤、对野怪增伤(乘算)；参与击杀英雄后刷新 S1/S2、回血，并挂 yeque_shadow 作为刷新提示。
- * S1 瞬影斩：穿过路径上的敌人各造成一次物理伤害；命中过英雄则返还一次冷却。
- * S2 影刃飞旋：扇形掷出若干飞刃(相邻夹角 = spread)，各自命中第一个敌人：物理伤害 + 减速；
- *   同一目标被这次施放的后续飞刃命中时只受部分伤害。
- * 大招 幽夜处决：遁影(untargetable)后出现在目标身后：物理伤害 + 目标已损生命比例伤害。
- *   遁影期间目标阵亡则处决落空(原地现身)；目标只是位移/闪现则照样追到它身后。
+ * 被动 一去不还：对低血量敌人增伤、对野怪增伤(乘算)；参与击杀英雄后刷新 S1/S2、回血，并挂 yeque_shadow 作为刷新提示。
+ * S1 风萧易水：穿过路径上的敌人各造成一次物理伤害；命中过英雄则返还一次冷却。
+ * S2 引匕一掷：扇形掷出若干匕首(相邻夹角 = spread)，各自命中第一个敌人：物理伤害 + 减速；
+ *   同一目标被这次施放的后续匕首命中时只受部分伤害。
+ * 大招 图穷匕见：隐身(untargetable)后出现在目标身后：物理伤害 + 目标已损生命比例伤害。
+ *   隐身期间目标阵亡则这一匕落空(原地现身)；目标只是位移/闪现则照样追到它身后。
  */
 import { HEROES } from '../data/heroes';
 import { isStructure } from '../entity';
@@ -103,7 +103,7 @@ tk.registerSkill('yeque', 'ult', {
     if (!target) return;
     const from = copyVec(caster.pos);
     tk.fx(sim, 'yeque_ult_vanish', from, caster.team, { unitId: caster.id, targetId: target.id });
-    // 遁影结束的那一刻现身并处决：挂在 buff 到期回调上，「不可选中」与「现身」之间不会有空档
+    // 隐身结束的那一刻现身并处决：挂在 buff 到期回调上，「不可选中」与「现身」之间不会有空档
     tk.addBuff(sim, caster, 'untargetable', {
       duration: ctx.val('vanish'),
       sourceId: caster.id,

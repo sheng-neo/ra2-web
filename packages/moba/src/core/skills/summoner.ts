@@ -1,5 +1,5 @@
 /**
- * 召唤师技能（所有英雄通用）：回城 / 恢复 / 闪现。同时也是技能脚本的写法示例。
+ * 通用技能（所有英雄都有）：回城 / 疗伤 / 闪现(内部槽位名 recall / heal / flash)。同时也是技能脚本的写法示例。
  */
 import { setAction } from '../anim';
 import { addBuff, hasBuff } from '../buffs';
@@ -10,7 +10,7 @@ import { stopMove, teleport } from '../movement';
 import type { Sim } from '../world';
 import { registerSummoner } from './registry';
 
-/** 「恢复」的回复跳间隔 */
+/** 「疗伤」的回复跳间隔 */
 const RESTORE_TICK = 0.5;
 
 function recallDone(sim: Sim, unit: SimUnit): void {
@@ -42,7 +42,7 @@ function restoreTick(sim: Sim, unit: SimUnit, _buff: SimBuff): void {
   unit.mana = Math.min(unit.stats.maxMana, unit.mana + (unit.stats.maxMana * S.manaRatio) / ticks);
 }
 
-// 恢复：持续回复生命与法力。受到英雄/建筑伤害时由 combat.ts 移除 restore buff 打断
+// 疗伤：持续回复生命与法力。受到英雄/建筑伤害时由 combat.ts 移除 restore buff 打断
 registerSummoner('heal', {
   cast(ctx) {
     const { sim, caster } = ctx;

@@ -13,12 +13,13 @@ import type {
 } from '../types';
 import { bushIndexAt } from '../vision';
 import type { Sim } from '../world';
-import type { BotView, LastSeen, PublicState } from './types';
+import type { BotView, ConeHazard, LastSeen, PublicState } from './types';
 
 /** safePath 的 A* 启发权重 */
 const SAFE_PATH_GREED = 1.6;
 /** 感知敌方区域/弹道的距离（约等于英雄视野） */
 const PERCEPTION_RANGE = 13;
+const NO_CONES: readonly ConeHazard[] = [];
 
 export class SimBotView implements BotView {
   readonly hero: HeroUnit;
@@ -245,6 +246,14 @@ export class SimBotView implements BotView {
       if (a.team === this.team || a.dead) continue;
       if (this.perceivesPoint(a.pos.x, a.pos.y, a.radius)) out.push(a);
     }
+    return out;
+  }
+
+  hostileCones(): readonly ConeHazard[] {
+    const cones = this.sim.cones;
+    if (cones.length === 0) return NO_CONES;
+    const out: ConeHazard[] = [];
+    for (const c of cones) if (this.perceivesPoint(c.pos.x, c.pos.y, c.radius)) out.push(c);
     return out;
   }
 

@@ -2,7 +2,8 @@
  * 程序化建模工具：把回转体 / 路径管 / 倒角盒 / 多面晶体 / 挤出板 / 布片等基本形体写进同一条带蒙皮信息的顶点流。
  *
  * 模型空间约定：+Z 朝前，+Y 朝上，+X 是角色的左手侧；单位米；原点在两脚之间的地面上。
- * 顶点格式：position / normal / color(线性) / aFx(x=高光强度 y=自发光 z=队伍色蒙版 w=AO) / aSkin(骨骼0, 骨骼1, 骨骼0 的权重)。
+ * 顶点格式：position / normal / color(线性) / aFx(x=高光强度 y=自发光 z=队伍色蒙版 w=AO) / aSkin(骨骼0, 骨骼1, 骨骼0 的权重)
+ *   / aMat(x=纹样号/8 y=每米格数/32 z=纹样强度 w=材质类别/8；见 MAT / PATTERN，着色器侧在 shading.ts)。
  * 法线按「折痕角」自动处理：相邻面夹角小于折痕角的平滑过渡，大于的保留硬边——所以倒角盒/晶体自然是切面，
  * 肢体/布料自然是圆润的，不需要每个形体单独操心。
  */
@@ -48,6 +49,20 @@ export function X(x = 0, y = 0, z = 0, rx = 0, ry = 0, rz = 0, sx = 1, sy = sx, 
   return m.compose(new THREE.Vector3(x, y, z), q, new THREE.Vector3(sx, sy, sz));
 }
 
+/**
+ * 材质类别(写进 aMat.w)：决定着色器里的明暗软硬、高光宽窄、透射等。
+ * 不指定时按 gloss / glow 推断(见 ModelBuilder.paint)，所以旧模型不改也能得到大致正确的分类。
+ */
+export const MAT = { cloth: 0, skin: 1, leather: 2, metal: 3, crystal: 4, fur: 5, rock: 6 } as const;
+export type MatClass = (typeof MAT)[keyof typeof MAT];
+
+/** 程序纹样号(写进 aMat.x)：在绑定姿态的物体空间里由着色器计算，不用贴图 */
+export const PATTERN = { none: 0, scale: 1, strata: 2, fur: 3, weave: 4, bark: 5, lava: 6, vein: 7, meteor: 8 } as const;
+export type PatternId = (typeof PATTERN)[keyof typeof PATTERN];
+
+/** 自定义渐变参数：入参为模型空间位置、形体自带的渐变参数 g、模型空间法线；返回 0..1 */
+export type GradFn = (x: number, y: number, z: number, g: number, nx: number, ny: number, nz: number) => number;
+
 /** 柔性蒙皮：按顶点的模型空间位置(与形体自身的渐变参数 g)给出 [骨骼0, 骨骼1, 骨骼0 权重] */
 export type SoftBind = (x: number, y: number, z: number, g: number) => [number, number, number];
 
@@ -66,6 +81,16 @@ export interface PaintOpts {
   ao2?: number;
   /** 描边粗细倍率 0..1(默认 1；强发光体默认 0，五官等细节建议 0) */
   line?: number;
+  /** 材质类别(MAT.*)。不给时按 gloss / glow 推断：高光强 = 金属(带发光 = 晶体)，中等 = 皮革，否则 = 布 */
+  mat?: MatClass;
+  /** 程序纹样(PATTERN.*)、每米格数(0..32，默认 4)、强度 0..1(默认 0.5) */
+  pattern?: PatternId;
+  patternScale?: number;
+  patternAmt?: number;
+  /** 自定义渐变参数：代替形体自带的 g 去混合 c→c2 / glow→glow2 / ao→ao2(背深腹浅、条纹、斑块等) */
+  by?: GradFn;
+  /** 逐顶点明度扰动幅度 0..1(毛皮、岩石、树皮的斑驳感；同一位置的顶点扰动相同) */
+  grain?: number;
 }
 
 export interface LatheOpts {
@@ -163,6 +188,8 @@ export class ModelBuilder {
   readonly fx: number[] = [];
   readonly skin: number[] = [];
   readonly line: number[] = [];
+  /** aMat：每顶点 4 个 0..1 的数(纹样号/8, 每米格数/32, 强度, 类别/8) */
+  readonly mat: number[] = [];
   readonly idx: number[] = [];
 
   /** 默认折痕角(度) */
@@ -179,6 +206,12 @@ export class ModelBuilder {
   private ao = 1;
   private ao2 = -1;
   private lineW = 1;
+  private matX = 0;
+  private matY = 0;
+  private matZ = 0;
+  private matW = 0;
+  private by: GradFn | null = null;
+  private grain = 0;
   private boneId = 0;
   private soft: SoftBind | null = null;
   private m = new THREE.Matrix4();
@@ -204,6 +237,14 @@ export class ModelBuilder {
     this.ao = o.ao ?? 1;
     this.ao2 = o.ao2 ?? -1;
     this.lineW = o.line ?? (this.glow > 0.5 ? 0 : 1);
+    const cls = o.mat ?? (this.gloss >= 0.75 ? (this.glow > 0.05 ? MAT.crystal : MAT.metal) : this.gloss >= 0.3 ? MAT.leather : MAT.cloth);
+    const pat = o.pattern ?? 0;
+    this.matX = pat / 8;
+    this.matY = pat > 0 ? sat((o.patternScale ?? 4) / 32) : 0;
+    this.matZ = pat > 0 ? sat(o.patternAmt ?? 0.5) : 0;
+    this.matW = cls / 8;
+    this.by = o.by ?? null;
+    this.grain = o.grain ?? 0;
     return this;
   }
 
@@ -349,15 +390,19 @@ export class ModelBuilder {
     }
   }
 
-  private writeVertex(x: number, y: number, z: number, nx: number, ny: number, nz: number, g: number): void {
+  private writeVertex(x: number, y: number, z: number, nx: number, ny: number, nz: number, g0: number): void {
     this.pos.push(x, y, z);
     this.nor.push(nx, ny, nz);
     const c = this.c;
     const c2 = this.c2;
-    if (c2) this.col.push(c[0] + (c2[0] - c[0]) * g, c[1] + (c2[1] - c[1]) * g, c[2] + (c2[2] - c[2]) * g);
-    else this.col.push(c[0], c[1], c[2]);
+    const g = this.by ? sat(this.by(x, y, z, g0, nx, ny, nz)) : g0;
+    let k = 1;
+    if (this.grain > 0) k = 1 + (posHash(Math.round(x * 400), Math.round(y * 400), Math.round(z * 400), 7) - 0.5) * 2 * this.grain;
+    if (c2) this.col.push((c[0] + (c2[0] - c[0]) * g) * k, (c[1] + (c2[1] - c[1]) * g) * k, (c[2] + (c2[2] - c[2]) * g) * k);
+    else this.col.push(c[0] * k, c[1] * k, c[2] * k);
     this.fx.push(this.gloss, this.glow2 >= 0 ? lerp(this.glow, this.glow2, g) : this.glow, this.team, this.ao2 >= 0 ? lerp(this.ao, this.ao2, g) : this.ao);
     this.line.push(this.lineW);
+    this.mat.push(this.matX, this.matY, this.matZ, this.matW);
     if (this.soft) {
       const s = this.soft(x, y, z, g);
       this.skin.push(s[0], s[1], s[2]);
@@ -779,6 +824,9 @@ export class ModelBuilder {
     for (let i = 0; i < fx.length; i++) fx[i] = Math.round(sat(this.fx[i]) * 255);
     g.setAttribute('aFx', new THREE.BufferAttribute(fx, 4, true));
     g.setAttribute('aSkin', new THREE.Float32BufferAttribute(this.skin, 3));
+    const mat = new Uint8Array(this.mat.length);
+    for (let i = 0; i < mat.length; i++) mat[i] = Math.round(sat(this.mat[i]) * 255);
+    g.setAttribute('aMat', new THREE.BufferAttribute(mat, 4, true));
     const n = this.pos.length / 3;
     // 描边法线：同一位置的所有顶点取平均法线，硬边处外扩后的壳才不会裂开。w = 粗细倍率
     const sum = new Map<string, number[]>();

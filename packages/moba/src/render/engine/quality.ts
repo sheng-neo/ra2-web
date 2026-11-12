@@ -1,6 +1,7 @@
 /**
  * 画质档定义与默认档检测。
- * high = 阴影 2048 + bloom + 调色 + MSAA，DPR≤2；medium = 阴影 1024 + 轻 bloom，DPR≤1.5；low = 无阴影无后期，DPR 1。
+ * high = 阴影 2048(PCF 半径 2.5) + bloom + 调色 + 4×MSAA，DPR≤2；medium = 阴影 1024(PCFSoft) + 轻 bloom + 2×MSAA，DPR≤1.5；
+ * low = 无阴影贴图(静态烘焙影 + 单位圆斑)、无后期，DPR 1。三档共用同一套主光方向、三阶明暗、环境染色、冷暖边缘光与 Neutral 色调映射。
  */
 import type { Quality } from '../api';
 
@@ -27,12 +28,97 @@ export interface QualitySettings {
   groundDetail: 0 | 1 | 2;
   /** 环境粒子(萤火/星屑)数量倍率 */
   motes: number;
+  /**
+   * 主光阴影的滤波方式：'pcfsoft' = three 的 PCFSoftShadowMap(medium)；'pcf' = PCFShadowMap + shadowRadius(high，固定 17 次采样，
+   * 半影宽度由 shadowRadius 决定，无噪点)。整个渲染器只能有一种类型，切档时由引擎切换。
+   */
+  shadowType: 'pcf' | 'pcfsoft';
+  /** 'pcf' 时的半影半径(texel)；'pcfsoft' 下不生效 */
+  shadowRadius: number;
+  /** 远景薄霾强度(屏幕上沿向冷亮色混合的最大比例)。0 = 关 */
+  haze: number;
+  /** bloom 亮度阈值(线性 HDR)。只有自发光件与特效核心应越过它 */
+  bloomThreshold: number;
+  /** 体积光束与雾片(terrain/atmos.ts)：0 = 关，1 = 数量减半，2 = 全部 */
+  atmos: 0 | 1 | 2;
+  /** 水面与河床细节：0 = 无折射晃动/焦散、单条泡沫，1 = 折射 + 单层焦散 + 两条泡沫，2 = 再加双层焦散/碎闪/涟漪圈/坑内旋涡 */
+  waterDetail: 0 | 1 | 2;
+  /** 单位材质的程序纹样(鳞/岩层/毛笔触/织纹…)。false 时只保留材质类别的高光与明暗差异 */
+  unitPatterns: boolean;
+  /** 装饰构件的附属效果(星灯柱光晕、构件环境粒子等)倍率 0..1 */
+  props: number;
 }
 
 export const QUALITY: Record<Quality, QualitySettings> = {
-  low: { name: 'low', dprCap: 1, shadows: false, shadowMapSize: 0, post: false, msaa: 0, bloom: 0, bloomLevels: 0, grade: false, pointLights: 0, foliage: 0.5, groundDetail: 0, motes: 0.4 },
-  medium: { name: 'medium', dprCap: 1.5, shadows: true, shadowMapSize: 1024, post: true, msaa: 2, bloom: 0.5, bloomLevels: 4, grade: true, pointLights: 2, foliage: 0.75, groundDetail: 1, motes: 0.7 },
-  high: { name: 'high', dprCap: 2, shadows: true, shadowMapSize: 2048, post: true, msaa: 4, bloom: 0.75, bloomLevels: 5, grade: true, pointLights: 4, foliage: 1, groundDetail: 2, motes: 1 },
+  low: {
+    name: 'low',
+    dprCap: 1,
+    shadows: false,
+    shadowMapSize: 0,
+    post: false,
+    msaa: 0,
+    bloom: 0,
+    bloomLevels: 0,
+    grade: false,
+    pointLights: 0,
+    foliage: 0.5,
+    groundDetail: 0,
+    motes: 0.4,
+    shadowType: 'pcfsoft',
+    shadowRadius: 1,
+    haze: 0,
+    bloomThreshold: 1.35,
+    atmos: 0,
+    waterDetail: 0,
+    unitPatterns: false,
+    props: 0.5,
+  },
+  medium: {
+    name: 'medium',
+    dprCap: 1.5,
+    shadows: true,
+    shadowMapSize: 1024,
+    post: true,
+    msaa: 2,
+    bloom: 0.4,
+    bloomLevels: 4,
+    grade: true,
+    pointLights: 2,
+    foliage: 0.75,
+    groundDetail: 1,
+    motes: 0.7,
+    shadowType: 'pcfsoft',
+    shadowRadius: 1,
+    haze: 0.05,
+    bloomThreshold: 1.35,
+    atmos: 1,
+    waterDetail: 1,
+    unitPatterns: true,
+    props: 0.75,
+  },
+  high: {
+    name: 'high',
+    dprCap: 2,
+    shadows: true,
+    shadowMapSize: 2048,
+    post: true,
+    msaa: 4,
+    bloom: 0.55,
+    bloomLevels: 5,
+    grade: true,
+    pointLights: 4,
+    foliage: 1,
+    groundDetail: 2,
+    motes: 1,
+    shadowType: 'pcf',
+    shadowRadius: 2.5,
+    haze: 0.06,
+    bloomThreshold: 1.35,
+    atmos: 2,
+    waterDetail: 2,
+    unitPatterns: true,
+    props: 1,
+  },
 };
 
 /** 读一次显卡名(小写)；拿不到 WebGL 返回 null */

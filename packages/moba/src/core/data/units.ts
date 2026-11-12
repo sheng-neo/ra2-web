@@ -11,6 +11,7 @@ import type { MinionType, MonsterType } from '../types';
 export const ARMOR_K = 600;
 
 export interface MinionDef {
+  /** 显示名用品类通用叫法：近战兵 / 远程兵 / 攻城兵 / 超级兵 */
   name: string;
   hp: number;
   /** 每分钟成长 */
@@ -33,10 +34,10 @@ export interface MinionDef {
 }
 
 export const MINIONS: Record<MinionType, MinionDef> = {
-  melee: { name: '星卫', hp: 1100, hpPerMin: 75, ad: 58, adPerMin: 4, armor: 40, mr: 40, attackSpeed: 0.8, attackRange: 1.9, moveSpeed: 4.0, radius: 0.5, projectileSpeed: 0, gold: 56, xp: 95, towerMult: 0.6 },
-  ranged: { name: '星术兵', hp: 720, hpPerMin: 45, ad: 84, adPerMin: 6, armor: 20, mr: 20, attackSpeed: 0.75, attackRange: 6.5, moveSpeed: 4.0, radius: 0.45, projectileSpeed: 18, gold: 45, xp: 70, towerMult: 0.6 },
-  siege: { name: '攻城兽', hp: 2000, hpPerMin: 140, ad: 150, adPerMin: 10, armor: 80, mr: 80, attackSpeed: 0.5, attackRange: 8.0, moveSpeed: 3.8, radius: 0.8, projectileSpeed: 14, gold: 104, xp: 160, towerMult: 1.6 },
-  super: { name: '星陨巨卫', hp: 4500, hpPerMin: 300, ad: 220, adPerMin: 14, armor: 120, mr: 120, attackSpeed: 0.85, attackRange: 2.3, moveSpeed: 4.0, radius: 0.9, projectileSpeed: 0, gold: 118, xp: 180, towerMult: 1.2 },
+  melee: { name: '近战兵', hp: 1100, hpPerMin: 75, ad: 58, adPerMin: 4, armor: 40, mr: 40, attackSpeed: 0.8, attackRange: 1.9, moveSpeed: 4.0, radius: 0.5, projectileSpeed: 0, gold: 56, xp: 95, towerMult: 0.6 },
+  ranged: { name: '远程兵', hp: 720, hpPerMin: 45, ad: 84, adPerMin: 6, armor: 20, mr: 20, attackSpeed: 0.75, attackRange: 6.5, moveSpeed: 4.0, radius: 0.45, projectileSpeed: 18, gold: 45, xp: 70, towerMult: 0.6 },
+  siege: { name: '攻城兵', hp: 2000, hpPerMin: 140, ad: 150, adPerMin: 10, armor: 80, mr: 80, attackSpeed: 0.5, attackRange: 8.0, moveSpeed: 3.8, radius: 0.8, projectileSpeed: 14, gold: 104, xp: 160, towerMult: 1.6 },
+  super: { name: '超级兵', hp: 4500, hpPerMin: 300, ad: 220, adPerMin: 14, armor: 120, mr: 120, attackSpeed: 0.85, attackRange: 2.3, moveSpeed: 4.0, radius: 0.9, projectileSpeed: 0, gold: 118, xp: 180, towerMult: 1.2 },
 };
 
 export const WAVES = {
@@ -61,7 +62,7 @@ export interface TowerDef {
   attackRange: number;
   radius: number;
   projectileSpeed: number;
-  /** 摧毁后敌方全队每人获得的金币 / 最后一击者额外金币 */
+  /** 摧毁后敌方全队每人获得的金币 / 最后一击者额外金币。(塔的叫法：tier 1 = 一塔，2 = 二塔，3 = 高地塔；基地核心一律叫「水晶」) */
   teamGold: number;
   lastHitGold: number;
 }
@@ -106,8 +107,55 @@ export const FOUNTAIN = {
   enemyDamageRatio: 0.2,
 };
 
+export const MONSTER_RULES = {
+  /** 野怪离营地超过此距离则脱战回营并回满血 */
+  leash: 9,
+  /** 蓝buff / 红buff 持续时间 */
+  buffDuration: 70,
+  /** 蓝buff(frost_insight)：冷却缩减 / 每秒回蓝(最大法力比例) */
+  frostCdr: 0.2,
+  frostManaRegen: 0.015,
+  /** 红buff(ember_might)：普攻灼烧每 0.5 秒真实伤害 = base + perLevel×等级，持续 2 秒；并减速 */
+  emberBurnBase: 14,
+  emberBurnPerLevel: 3,
+  emberSlow: 0.15,
+  /** 河道巨龙：击杀方全队每人获得的金币/经验(即时奖励，没有持续增益) */
+  drakeTeamGold: 90,
+  drakeTeamXp: 160,
+  /**
+   * 河道巨龙的吐息(特殊攻击)：进入战斗 breathFirst 秒后第一次，此后每 breathEvery 秒一次(起手到起手)。
+   * 流程：breathWarn 秒扇形预警(方向在起手时锁定为当时的仇恨目标，敌我都看得见) → breathTime 秒喷吐 → breathRecover 秒收势(不出手)。
+   * 扇形顶点在巨龙身上，半径 breathRadius、全角 breathAngle(弧度)。喷吐期间分 breathTicks 跳结算，
+   * 每跳对扇形内所有非中立单位造成 巨龙物攻 × breathAdRatio / breathTicks 的法术伤害(第一跳在喷吐开始的瞬间)。
+   * 吐息期间巨龙不普攻(整个流程约少咬 1.3 口)：躲开的人比原来少挨打，不躲的人每轮多吃约两口普攻的量，站在扇形里的队友也会一起挨。
+   */
+  breathFirst: 4,
+  breathEvery: 12,
+  breathWarn: 0.9,
+  breathTime: 0.8,
+  breathRecover: 0.5,
+  breathRadius: 7.5,
+  breathAngle: Math.PI / 3,
+  breathTicks: 4,
+  breathAdRatio: 3,
+  /** 远古巨灵：击杀方全队「巨灵buff(星陨祝福)」持续时间、伤害加成、每秒回复(最大生命比例)，并且期间己方小兵伤害/生命 +40% */
+  blessingDuration: 80,
+  blessingDamage: 0.15,
+  blessingRegen: 0.01,
+  blessingMinionBoost: 0.4,
+  colossusTeamGold: 120,
+};
+
 export interface MonsterDef {
+  /**
+   * 显示名(头顶名牌、小地图、击杀流都用它)。增益怪与史诗野怪用品类通用叫法：蓝buff / 红buff / 河道巨龙 / 远古巨灵；
+   * 小野怪没有专门的通用叫法，直接用自拟名(文案里统称「小野怪」)。
+   */
   name: string;
+  /** 自拟副名(横幅、浮层、说明页写成「通用叫法 · 副名」，见 monsterFullName)。小野怪没有 */
+  alias?: string;
+  /** 一句话击杀奖励(数值取自 MONSTER_RULES)。小野怪没有 */
+  reward?: string;
   hp: number;
   hpPerMin: number;
   ad: number;
@@ -126,36 +174,32 @@ export interface MonsterDef {
 }
 
 export const MONSTERS: Record<MonsterType, MonsterDef> = {
-  mossback: { name: '苔背兽', hp: 2200, hpPerMin: 150, ad: 70, adPerMin: 5, armor: 60, mr: 40, attackSpeed: 0.7, attackRange: 2.0, moveSpeed: 4.6, radius: 0.9, projectileSpeed: 0, gold: 54, xp: 77, epic: false },
-  glimwing: { name: '荧翼蜥', hp: 1250, hpPerMin: 85, ad: 55, adPerMin: 4, armor: 30, mr: 30, attackSpeed: 0.9, attackRange: 5.0, moveSpeed: 4.8, radius: 0.6, projectileSpeed: 16, gold: 31, xp: 45, epic: false },
-  frost_golem: { name: '霜晶魔像', hp: 4200, hpPerMin: 280, ad: 110, adPerMin: 7, armor: 90, mr: 60, attackSpeed: 0.65, attackRange: 2.4, moveSpeed: 4.4, radius: 1.3, projectileSpeed: 0, gold: 97, xp: 138, epic: false },
-  ember_golem: { name: '炽焰魔像', hp: 4200, hpPerMin: 280, ad: 110, adPerMin: 7, armor: 90, mr: 60, attackSpeed: 0.65, attackRange: 2.4, moveSpeed: 4.4, radius: 1.3, projectileSpeed: 0, gold: 97, xp: 138, epic: false },
-  abyss_drake: { name: '深渊鳞兽', hp: 9000, hpPerMin: 600, ad: 190, adPerMin: 12, armor: 120, mr: 100, attackSpeed: 0.6, attackRange: 3.2, moveSpeed: 4.0, radius: 2.0, projectileSpeed: 0, gold: 80, xp: 120, epic: true },
-  star_colossus: { name: '星陨巨灵', hp: 16000, hpPerMin: 900, ad: 260, adPerMin: 16, armor: 160, mr: 140, attackSpeed: 0.55, attackRange: 3.6, moveSpeed: 3.8, radius: 2.4, projectileSpeed: 0, gold: 120, xp: 180, epic: true },
+  mossback: { name: '苔背獾', hp: 2200, hpPerMin: 150, ad: 70, adPerMin: 5, armor: 60, mr: 40, attackSpeed: 0.7, attackRange: 2.0, moveSpeed: 4.6, radius: 0.9, projectileSpeed: 0, gold: 54, xp: 77, epic: false },
+  glimwing: { name: '荧翅蛾', hp: 1250, hpPerMin: 85, ad: 55, adPerMin: 4, armor: 30, mr: 30, attackSpeed: 0.9, attackRange: 5.0, moveSpeed: 4.8, radius: 0.6, projectileSpeed: 16, gold: 31, xp: 45, epic: false },
+  frost_golem: {
+    name: '蓝buff', alias: '霜晶巨鹿', reward: `打掉它，${MONSTER_RULES.buffDuration} 秒内技能冷却更短、回蓝更快`,
+    hp: 4200, hpPerMin: 280, ad: 110, adPerMin: 7, armor: 90, mr: 60, attackSpeed: 0.65, attackRange: 2.4, moveSpeed: 4.4, radius: 1.3, projectileSpeed: 0, gold: 97, xp: 138, epic: false,
+  },
+  ember_golem: {
+    name: '红buff', alias: '炽焰巨熊', reward: `打掉它，${MONSTER_RULES.buffDuration} 秒内普攻附带灼烧和减速`,
+    hp: 4200, hpPerMin: 280, ad: 110, adPerMin: 7, armor: 90, mr: 60, attackSpeed: 0.65, attackRange: 2.4, moveSpeed: 4.4, radius: 1.3, projectileSpeed: 0, gold: 97, xp: 138, epic: false,
+  },
+  abyss_drake: {
+    name: '河道巨龙', alias: '深渊鳞龙', reward: `打掉它：全队每人 +${MONSTER_RULES.drakeTeamGold} 金币、+${MONSTER_RULES.drakeTeamXp} 经验`,
+    hp: 9000, hpPerMin: 600, ad: 190, adPerMin: 12, armor: 120, mr: 100, attackSpeed: 0.6, attackRange: 3.2, moveSpeed: 4.0, radius: 2.0, projectileSpeed: 0, gold: 80, xp: 120, epic: true,
+  },
+  star_colossus: {
+    name: '远古巨灵', alias: '星陨巨灵',
+    reward: `打掉它：全队 ${MONSTER_RULES.blessingDuration} 秒内伤害 +${Math.round(MONSTER_RULES.blessingDamage * 100)}%、持续回血、小兵更强`,
+    hp: 16000, hpPerMin: 900, ad: 260, adPerMin: 16, armor: 160, mr: 140, attackSpeed: 0.55, attackRange: 3.6, moveSpeed: 3.8, radius: 2.4, projectileSpeed: 0, gold: 120, xp: 180, epic: true,
+  },
 };
 
-export const MONSTER_RULES = {
-  /** 野怪离营地超过此距离则脱战回营并回满血 */
-  leash: 9,
-  /** 增益持续时间 */
-  buffDuration: 70,
-  /** 霜晶之智：冷却缩减 / 每秒回蓝(最大法力比例) */
-  frostCdr: 0.2,
-  frostManaRegen: 0.015,
-  /** 炽焰之力：普攻灼烧每 0.5 秒真实伤害 = base + perLevel×等级，持续 2 秒；并减速 */
-  emberBurnBase: 14,
-  emberBurnPerLevel: 3,
-  emberSlow: 0.15,
-  /** 深渊鳞兽：击杀方全队每人获得的金币/经验 */
-  drakeTeamGold: 90,
-  drakeTeamXp: 160,
-  /** 星陨巨灵：击杀方全队「星陨祝福」持续时间、伤害加成、每秒回复(最大生命比例)，并且期间己方小兵伤害/生命 +40% */
-  blessingDuration: 80,
-  blessingDamage: 0.15,
-  blessingRegen: 0.01,
-  blessingMinionBoost: 0.4,
-  colossusTeamGold: 120,
-};
+/** 「通用叫法 · 自拟名」，如「蓝buff · 霜晶巨鹿」「河道巨龙 · 深渊鳞龙」；小野怪写成「小野怪 · 苔背獾」 */
+export function monsterFullName(type: MonsterType): string {
+  const def = MONSTERS[type];
+  return def.alias ? `${def.name} · ${def.alias}` : `小野怪 · ${def.name}`;
+}
 
 export const ECONOMY = {
   startGold: 300,

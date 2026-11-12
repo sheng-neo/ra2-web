@@ -19,7 +19,7 @@ function noRegen(sim: Sim, u: SimHero): void {
   recomputeStats(sim, u);
 }
 
-describe('夜阙 · 被动 猎影', () => {
+describe('荆轲 · 被动 一去不还', () => {
   it('对生命低于 40% 的敌人伤害 +18%；对野怪 +25%(与斩杀乘算)；对建筑无效', () => {
     const sim = createWorld({ seed: 1, playerHero: 'yeque', difficulty: 'normal' }, { noBots: true, noWaves: true });
     const hero = heroOf(sim, 0, 'yeque');
@@ -82,7 +82,7 @@ describe('夜阙 · 被动 猎影', () => {
   });
 });
 
-describe('夜阙 · S1 瞬影斩', () => {
+describe('荆轲 · S1 风萧易水', () => {
   it('穿过路径上的敌人各造成一次物理伤害；命中英雄返还 40% 冷却(只返还一次)', () => {
     const { sim, hero } = arena('yeque', 1, -3, 0);
     const a = enemyAt(sim, 'xingli', 0, 0.5);
@@ -127,7 +127,7 @@ describe('夜阙 · S1 瞬影斩', () => {
     expect(w.sim.nav.isFree(w.hero.pos.x, w.hero.pos.y, w.hero.rt.navR - 0.06)).toBe(true);
   });
 
-  it('击杀后冷却刷新：冲刺途中缓冲的下一次瞬影斩会接着放出来', () => {
+  it('击杀后冷却刷新：冲刺途中缓冲的下一次风萧易水会接着放出来', () => {
     const { sim, hero } = arena('yeque', 1, -3, 0);
     const a = enemyAt(sim, 'xingli', 0, 0);
     a.hp = 50;
@@ -142,7 +142,7 @@ describe('夜阙 · S1 瞬影斩', () => {
   });
 });
 
-describe('夜阙 · S2 影刃飞旋', () => {
+describe('荆轲 · S2 引匕一掷', () => {
   it('出手点掷出 3 枚飞刃(相邻夹角 16°)；贴脸全中：首枚全额，后续各 50%，并减速', () => {
     const { sim, hero } = arena('yeque', 2);
     const a = enemyAt(sim, 'chijin', 2.5, 0);
@@ -193,8 +193,8 @@ describe('夜阙 · S2 影刃飞旋', () => {
   });
 });
 
-describe('夜阙 · 大招 幽夜处决', () => {
-  it('遁影 0.35 秒(不可选中、免疫控制) → 出现在目标身后 → 340(+120%物攻) + 20% 已损生命的物理伤害', () => {
+describe('荆轲 · 大招 图穷匕见', () => {
+  it('隐身 0.35 秒(不可选中、免疫控制) → 出现在目标身后 → 340(+120%物攻) + 20% 已损生命的物理伤害', () => {
     const { sim, hero } = arena('yeque', 4);
     const a = enemyAt(sim, 'panyue', 5, 0, Math.PI);
     noRegen(sim, a);
@@ -248,7 +248,7 @@ describe('夜阙 · 大招 幽夜处决', () => {
     expect(hit[0].amount).toBeCloseTo(mitigate(raw * (1 + P.bonus), a.stats.armor), 3);
   });
 
-  it('遁影期间目标阵亡：处决落空，原地现身；目标只是位移则照样追到身后', () => {
+  it('隐身期间目标阵亡：处决落空，原地现身；目标只是位移则照样追到身后', () => {
     const { sim, hero } = arena('yeque', 4);
     const a = enemyAt(sim, 'xingli', 5, 0);
     sim.command(hero.id, { type: 'cast', slot: 'ult', targetId: a.id });

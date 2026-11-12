@@ -98,16 +98,22 @@ export class MeshBuilder {
     else for (let i = 0; i < pos.count; i++) this.indices.push(base + i);
   }
 
-  /** 重新计算平滑法线(共享顶点处取面积加权平均) */
-  computeNormals(): void {
+  /**
+   * 重新计算法线(共享顶点处取面积加权平均)。
+   * creaseDeg < 180 时带折痕：只有夹角小于它的相邻面才互相平滑，折痕处把顶点拆成几份——
+   * 大面是柔和的弧面，转折处是利落的棱(岩块、砌石)，不再是一条条细长的切面。
+   */
+  computeNormals(creaseDeg = 180): void {
     const p = this.positions;
-    const n = this.normals;
-    n.fill(0);
     const idx = this.indices;
-    for (let i = 0; i < idx.length; i += 3) {
-      const a = idx[i] * 3;
-      const b = idx[i + 1] * 3;
-      const c = idx[i + 2] * 3;
+    const triCount = idx.length / 3;
+    // 面法线：fa = 面积加权(未归一化)，fu = 单位
+    const fa = new Float32Array(triCount * 3);
+    const fu = new Float32Array(triCount * 3);
+    for (let t = 0; t < triCount; t++) {
+      const a = idx[t * 3] * 3;
+      const b = idx[t * 3 + 1] * 3;
+      const c = idx[t * 3 + 2] * 3;
       const ux = p[b] - p[a];
       const uy = p[b + 1] - p[a + 1];
       const uz = p[b + 2] - p[a + 2];
@@ -117,17 +123,93 @@ export class MeshBuilder {
       const nx = uy * vz - uz * vy;
       const ny = uz * vx - ux * vz;
       const nz = ux * vy - uy * vx;
-      for (const k of [a, b, c]) {
-        n[k] += nx;
-        n[k + 1] += ny;
-        n[k + 2] += nz;
-      }
+      const l = Math.hypot(nx, ny, nz) || 1;
+      fa[t * 3] = nx;
+      fa[t * 3 + 1] = ny;
+      fa[t * 3 + 2] = nz;
+      fu[t * 3] = nx / l;
+      fu[t * 3 + 1] = ny / l;
+      fu[t * 3 + 2] = nz / l;
     }
-    for (let i = 0; i < n.length; i += 3) {
-      const l = Math.hypot(n[i], n[i + 1], n[i + 2]) || 1;
-      n[i] /= l;
-      n[i + 1] /= l;
-      n[i + 2] /= l;
+    const n = this.normals;
+    if (creaseDeg >= 180) {
+      n.fill(0);
+      for (let t = 0; t < triCount; t++) {
+        for (let k = 0; k < 3; k++) {
+          const v = idx[t * 3 + k] * 3;
+          n[v] += fa[t * 3];
+          n[v + 1] += fa[t * 3 + 1];
+          n[v + 2] += fa[t * 3 + 2];
+        }
+      }
+      for (let i = 0; i < n.length; i += 3) {
+        const l = Math.hypot(n[i], n[i + 1], n[i + 2]) || 1;
+        n[i] /= l;
+        n[i + 1] /= l;
+        n[i + 2] /= l;
+      }
+      return;
+    }
+    // 顶点 → 相邻三角形(压缩行存储)
+    const vcount = p.length / 3;
+    const start = new Uint32Array(vcount + 1);
+    for (let i = 0; i < idx.length; i++) start[idx[i] + 1]++;
+    for (let v = 0; v < vcount; v++) start[v + 1] += start[v];
+    const fill = start.slice(0, vcount);
+    const adj = new Uint32Array(idx.length);
+    for (let t = 0; t < triCount; t++) for (let k = 0; k < 3; k++) adj[fill[idx[t * 3 + k]]++] = t;
+    const cosC = Math.cos((creaseDeg * Math.PI) / 180);
+    // 每个原顶点已经分出去的副本：[顶点下标, nx, ny, nz]...
+    const copies: number[][] = new Array(vcount);
+    const used = new Uint8Array(vcount);
+    for (let t = 0; t < triCount; t++) {
+      const tx = fu[t * 3];
+      const ty = fu[t * 3 + 1];
+      const tz = fu[t * 3 + 2];
+      for (let k = 0; k < 3; k++) {
+        const v = idx[t * 3 + k];
+        let nx = 0;
+        let ny = 0;
+        let nz = 0;
+        for (let j = start[v]; j < start[v + 1]; j++) {
+          const t2 = adj[j];
+          if (fu[t2 * 3] * tx + fu[t2 * 3 + 1] * ty + fu[t2 * 3 + 2] * tz < cosC) continue;
+          nx += fa[t2 * 3];
+          ny += fa[t2 * 3 + 1];
+          nz += fa[t2 * 3 + 2];
+        }
+        const l = Math.hypot(nx, ny, nz) || 1;
+        nx /= l;
+        ny /= l;
+        nz /= l;
+        let list = copies[v];
+        if (!list) list = copies[v] = [];
+        let found = -1;
+        for (let c = 0; c < list.length; c += 4) {
+          if (list[c + 1] * nx + list[c + 2] * ny + list[c + 3] * nz > 0.9995) {
+            found = list[c];
+            break;
+          }
+        }
+        if (found < 0) {
+          if (!used[v]) {
+            used[v] = 1;
+            found = v;
+          } else {
+            // 折痕另一侧：复制一份顶点
+            found = this.positions.length / 3;
+            this.positions.push(p[v * 3], p[v * 3 + 1], p[v * 3 + 2]);
+            this.normals.push(0, 0, 0);
+            this.colors.push(this.colors[v * 3], this.colors[v * 3 + 1], this.colors[v * 3 + 2]);
+            this.fx.push(this.fx[v * 4], this.fx[v * 4 + 1], this.fx[v * 4 + 2], this.fx[v * 4 + 3]);
+          }
+          n[found * 3] = nx;
+          n[found * 3 + 1] = ny;
+          n[found * 3 + 2] = nz;
+          list.push(found, nx, ny, nz);
+        }
+        idx[t * 3 + k] = found;
+      }
     }
   }
 
@@ -176,12 +258,22 @@ export class SceneryBatcher {
     return this.builder(x, z, shadow);
   }
 
-  /** casterMat 用于投射阴影的实体物件；clutterMat 用于贴地小物(通常双面、不投影) */
-  build(casterMat: THREE.Material, clutterMat: THREE.Material, parent: THREE.Object3D, name: string, computeNormals = false): THREE.Mesh[] {
+  /** 已登记的三角形总数(统计用) */
+  get triangleCount(): number {
+    let n = 0;
+    for (const b of this.cells.values()) n += b.triangleCount;
+    return n;
+  }
+
+  /**
+   * casterMat 用于投射阴影的实体物件；clutterMat 用于贴地小物(通常双面、不投影)。
+   * creaseDeg > 0 时按该折痕角重算法线(崖体这类手工连出来的网格用)。
+   */
+  build(casterMat: THREE.Material, clutterMat: THREE.Material, parent: THREE.Object3D, name: string, creaseDeg = 0): THREE.Mesh[] {
     const out: THREE.Mesh[] = [];
     for (const [k, b] of this.cells) {
       if (b.vertexCount === 0) continue;
-      if (computeNormals) b.computeNormals();
+      if (creaseDeg > 0) b.computeNormals(creaseDeg);
       const shadow = k.endsWith(',1');
       const mesh = new THREE.Mesh(b.build(), shadow ? casterMat : clutterMat);
       mesh.name = `${name}:${k}`;

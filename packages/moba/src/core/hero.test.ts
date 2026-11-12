@@ -9,6 +9,7 @@ import { grantXp } from './rewards';
 import { getSkill, registerSkill, type CastContext } from './skills/registry';
 import { eventsOf, freezeUnit, heroOf, levelTo, place, quietWorld, spawnMinionAt, stepFor } from './testkit';
 import { TICK_DT, type CastSpec } from './types';
+import { createWorld, type Sim } from './world';
 
 const rangeOf = (spec: CastSpec): number => ('range' in spec ? spec.range : 0);
 
@@ -213,7 +214,7 @@ describe('施法管线', () => {
     expect(sim.drainEvents().length).toBe(0);
   });
 
-  it('冷却缩减作用于英雄技能，不作用于召唤师技能', () => {
+  it('冷却缩减作用于英雄技能，不作用于通用技能', () => {
     const sim = quietWorld('xingli');
     const h = heroOf(sim, 0, 'xingli');
     place(sim, h, 0, 0);
@@ -334,7 +335,7 @@ describe('施法管线', () => {
   });
 });
 
-describe('召唤师技能', () => {
+describe('通用技能', () => {
   it('闪现：瞬移固定距离，prevPos 同步；穿墙时落在可走点', () => {
     const sim = quietWorld();
     const h = heroOf(sim, 0, 'chijin');
@@ -415,13 +416,17 @@ describe('装备', () => {
     const sim = quietWorld();
     const h = heroOf(sim, 0, 'chijin');
     const ad0 = h.stats.ad;
+    const speed0 = h.stats.moveSpeed;
     const hp0 = h.stats.maxHp;
     sim.drainEvents();
-    sim.command(h.id, { type: 'buy', itemId: 'iron_blade' });
-    expect(h.gold).toBe(ECONOMY.startGold - ITEMS.iron_blade.cost);
-    expect(h.items[0]).toBe('iron_blade');
-    expect(h.stats.ad).toBeCloseTo(ad0 + 20, 6);
-    expect(eventsOf(sim.drainEvents(), 'itemBought')[0]).toMatchObject({ unitId: h.id, itemId: 'iron_blade' });
+    sim.command(h.id, { type: 'buy', itemId: 'boots' });
+    expect(h.gold).toBe(ECONOMY.startGold - ITEMS.boots.cost);
+    expect(h.items[0]).toBe('boots');
+    expect(h.stats.moveSpeed).toBeCloseTo(speed0 + 0.5, 6);
+    const bought = eventsOf(sim.drainEvents(), 'itemBought')[0];
+    expect(bought).toMatchObject({ unitId: h.id, itemId: 'boots' });
+    // 手动购买不带 auto 标记
+    expect(bought.auto).toBeUndefined();
     sim.command(h.id, { type: 'buy', itemId: 'guardian_plate' });
     expect(eventsOf(sim.drainEvents(), 'reject')[0].reason).toBe('gold');
     h.gold = 99999;
@@ -430,10 +435,12 @@ describe('装备', () => {
     // 买血装：上限与当前生命同步增加
     expect(h.stats.maxHp).toBeCloseTo(hp0 + 1000, 6);
     expect(h.hp).toBeCloseTo(2000, 6);
-    for (let i = 0; i < 4; i++) sim.command(h.id, { type: 'buy', itemId: 'iron_blade' });
+    // 同一件成装可以重复买(鞋除外)
+    for (let i = 0; i < 4; i++) sim.command(h.id, { type: 'buy', itemId: 'piercing_spear' });
     expect(h.items.every((x) => x !== null)).toBe(true);
+    expect(h.stats.ad).toBeCloseTo(ad0 + 75 * 4, 6);
     sim.drainEvents();
-    sim.command(h.id, { type: 'buy', itemId: 'iron_blade' });
+    sim.command(h.id, { type: 'buy', itemId: 'piercing_spear' });
     expect(eventsOf(sim.drainEvents(), 'reject')[0].reason).toBe('full');
   });
 
@@ -470,7 +477,7 @@ describe('装备', () => {
     expect(h.items.filter((x) => x !== null).length).toBe(1);
   });
 
-  it('装备被动：反震 / 星幕 / 灼光', () => {
+  it('装备被动：反伤 / 保命盾 / 附带法伤', () => {
     const sim = quietWorld();
     const h = heroOf(sim, 0, 'panyue');
     const e = heroOf(sim, 1, 'fengling');
@@ -493,7 +500,7 @@ describe('装备', () => {
     expect(onhit).toBeDefined();
     expect(thorns).toBeDefined();
     if (main && thorns) expect(thorns.amount).toBeCloseTo((main.amount * 0.18 * 600) / (600 + e.stats.mr), 3);
-    // 星幕：打到 35% 以下触发一次护盾
+    // 保命盾：打到 35% 以下触发一次护盾
     sim.command(e.id, { type: 'stop' });
     h.hp = h.stats.maxHp * 0.36;
     dealDamage(sim, e, h, 200, 'true');
@@ -668,8 +675,8 @@ describe('成长与经济', () => {
     // 阵亡期间不能下命令，但可以买装备
     sim.command(a.id, { type: 'move', dir: { x: 1, y: 0 } });
     a.gold = 1000;
-    sim.command(a.id, { type: 'buy', itemId: 'iron_blade' });
-    expect(a.items[0]).toBe('iron_blade');
+    sim.command(a.id, { type: 'buy', itemId: 'boots' });
+    expect(a.items[0]).toBe('boots');
     stepFor(sim, wait - 0.2);
     expect(a.alive).toBe(false);
     expect(a.pos.x).toBe(0);
@@ -685,5 +692,170 @@ describe('成长与经济', () => {
     expect(dealDamage(sim, e, a, 100, 'true')).toBe(0);
     stepFor(sim, 2.1);
     expect(a.invulnerable).toBe(false);
+  });
+});
+
+describe('自动出装', () => {
+  /** 安静的世界 + 玩家(程咬金)开着自动出装。出装表：草鞋 → 环首刀 → 铁靴 → 斩马剑 → 重铠 → 长戟 → 狐裘 */
+  const autoWorld = (autoBuy?: boolean): Sim =>
+    createWorld({ seed: 1, playerHero: 'chijin', difficulty: 'normal', autoBuy }, { noBots: true, noWaves: true, noCamps: true });
+  const playerOf = (sim: Sim) => sim.heroes[0];
+  const UPGRADE = ITEMS.boots_guard.cost - Math.floor(ITEMS.boots.cost * 0.6);
+
+  it('初值来自 MatchConfig.autoBuy(缺省关)，只给玩家英雄；关着的时候什么都不买', () => {
+    for (const cfg of [undefined, false] as const) {
+      const sim = autoWorld(cfg);
+      expect(sim.heroes.every((h) => h.autoBuy === false)).toBe(true);
+      const ev = stepFor(sim, 3);
+      expect(eventsOf(ev, 'itemBought').length).toBe(0);
+      expect(playerOf(sim).gold).toBe(ECONOMY.startGold);
+    }
+    const sim = autoWorld(true);
+    expect(sim.heroes.map((h) => h.autoBuy)).toEqual([true, false, false, false, false, false, false, false, false, false]);
+  });
+
+  it('开局 0.5 秒内自动买基础鞋：事件带 auto 标记；其他英雄不受影响', () => {
+    const sim = autoWorld(true);
+    const h = playerOf(sim);
+    sim.drainEvents();
+    const ev = stepFor(sim, 0.5);
+    expect(h.items[0]).toBe('boots');
+    expect(h.gold).toBe(ECONOMY.startGold - ITEMS.boots.cost);
+    const bought = eventsOf(ev, 'itemBought');
+    expect(bought).toEqual([{ type: 'itemBought', unitId: h.id, itemId: 'boots', auto: true }]);
+    expect(eventsOf(ev, 'reject').length).toBe(0);
+    expect(sim.heroes.slice(1).every((o) => o.items.every((it) => it === null))).toBe(true);
+  });
+
+  it('攒够即买(差 1 金币不买)；鞋的升级原地替换并抵扣旧鞋；全程不发 reject', () => {
+    const sim = autoWorld(true);
+    const h = playerOf(sim);
+    stepFor(sim, 0.5);
+    h.gold = ITEMS.blood_scythe.cost - 1;
+    let ev = stepFor(sim, 1);
+    expect(h.items[1]).toBeNull();
+    h.gold = ITEMS.blood_scythe.cost;
+    ev = ev.concat(stepFor(sim, 0.5));
+    expect(h.items.slice(0, 2)).toEqual(['boots', 'blood_scythe']);
+    expect(h.gold).toBe(0);
+    // 第三步：草鞋 → 铁靴，只要 560，还在第 0 格
+    h.gold = UPGRADE - 1;
+    ev = ev.concat(stepFor(sim, 1));
+    expect(h.items[0]).toBe('boots');
+    h.gold = UPGRADE + 7;
+    const speed = h.stats.moveSpeed;
+    ev = ev.concat(stepFor(sim, 0.5));
+    expect(h.items.slice(0, 3)).toEqual(['boots_guard', 'blood_scythe', null]);
+    expect(h.gold).toBe(7);
+    expect(h.stats.moveSpeed).toBeCloseTo(speed + 0.1, 6);
+    expect(eventsOf(ev, 'itemBought').map((e) => [e.itemId, e.auto])).toEqual([['blood_scythe', true], ['boots_guard', true]]);
+    expect(eventsOf(ev, 'reject').length).toBe(0);
+    // 一路给够钱：七步买齐后停手
+    h.gold = 99999;
+    stepFor(sim, 3);
+    expect(h.items).toEqual(['boots_guard', 'blood_scythe', 'starfall_blade', 'guardian_plate', 'piercing_spear', 'starweave_cloak']);
+    const gold = h.gold;
+    expect(eventsOf(stepFor(sim, 2), 'itemBought').length).toBe(0);
+    expect(h.gold).toBe(gold);
+  });
+
+  it('阵亡期间照买；自动出装的开关命令阵亡时也能下', () => {
+    const sim = autoWorld(true);
+    const h = playerOf(sim);
+    const e = heroOf(sim, 1, 'xingli');
+    stepFor(sim, 0.5);
+    place(sim, h, 0, 0);
+    place(sim, e, 2, 0);
+    dealDamage(sim, e, h, 1e6, 'true');
+    expect(h.alive).toBe(false);
+    h.gold = ITEMS.blood_scythe.cost;
+    stepFor(sim, 0.5);
+    expect(h.items[1]).toBe('blood_scythe');
+    sim.command(h.id, { type: 'autoBuy', enabled: false });
+    expect(h.autoBuy).toBe(false);
+    h.gold = 5000;
+    stepFor(sim, 1);
+    expect(h.items[2]).toBeNull();
+    sim.command(h.id, { type: 'autoBuy', enabled: true });
+    stepFor(sim, 0.5);
+    expect(h.items[0]).toBe('boots_guard');
+  });
+
+  it('手动买了推荐之外的装备不干涉；栏位满就暂停：不代卖、不发 reject；卖掉非推荐装腾出格子后继续', () => {
+    const sim = autoWorld(true);
+    const h = playerOf(sim);
+    stepFor(sim, 0.5);
+    h.gold = ITEMS.blood_scythe.cost;
+    stepFor(sim, 0.5);
+    expect(h.items.slice(0, 2)).toEqual(['boots', 'blood_scythe']);
+    h.gold = 99999;
+    // 抢在自动出装之前手动塞 4 件推荐之外的装备，把栏位占满
+    for (const id of ['sage_codex', 'sage_codex', 'void_crown', 'thorn_mail'] as const) sim.command(h.id, { type: 'buy', itemId: id });
+    expect(h.items.every((it) => it !== null)).toBe(true);
+    sim.drainEvents();
+    const ev = stepFor(sim, 2);
+    // 轮到的是换鞋：原地替换，不需要空格；再往后的推荐装买不进来，就此暂停
+    expect(eventsOf(ev, 'itemBought').map((e) => e.itemId)).toEqual(['boots_guard']);
+    expect(eventsOf(ev, 'reject').length).toBe(0);
+    expect(h.autoBuy).toBe(true);
+    expect(h.items).toEqual(['boots_guard', 'blood_scythe', 'sage_codex', 'sage_codex', 'void_crown', 'thorn_mail']);
+    const gold = h.gold;
+    stepFor(sim, 2);
+    expect(h.gold).toBe(gold);
+    // 卖掉一件非推荐装：开关不变，0.5 秒内补上推荐的下一件
+    sim.command(h.id, { type: 'sell', index: 3 });
+    expect(h.autoBuy).toBe(true);
+    stepFor(sim, 0.5);
+    expect(h.items[3]).toBe('starfall_blade');
+    expect(h.items.filter((it) => it === 'sage_codex').length).toBe(1);
+  });
+
+  it('卖出推荐装备 → 本局自动出装关闭(不会原价买回来)；用命令重新打开后会买回', () => {
+    const sim = autoWorld(true);
+    const h = playerOf(sim);
+    stepFor(sim, 0.5);
+    h.gold = ITEMS.blood_scythe.cost;
+    stepFor(sim, 0.5);
+    expect(h.items[1]).toBe('blood_scythe');
+    h.gold = 5000;
+    sim.command(h.id, { type: 'sell', index: 1 });
+    expect(h.autoBuy).toBe(false);
+    const gold = h.gold;
+    expect(gold).toBe(5000 + Math.floor(ITEMS.blood_scythe.cost * 0.6));
+    expect(eventsOf(stepFor(sim, 2), 'itemBought').length).toBe(0);
+    expect(h.gold).toBe(gold);
+    expect(h.items.slice(0, 2)).toEqual(['boots', null]);
+    // 卖基础鞋同样算卖推荐装(它也在出装表里)
+    sim.command(h.id, { type: 'autoBuy', enabled: true });
+    stepFor(sim, 0.5);
+    expect(h.items[1]).toBe('blood_scythe');
+    sim.command(h.id, { type: 'sell', index: 0 });
+    expect(h.autoBuy).toBe(false);
+  });
+
+  it('自己买了别的进阶鞋：鞋视为已完成，不会被换掉', () => {
+    const sim = autoWorld(true);
+    const h = playerOf(sim);
+    stepFor(sim, 0.5);
+    h.gold = 99999;
+    sim.command(h.id, { type: 'buy', itemId: 'boots_fury' });
+    stepFor(sim, 4);
+    expect(h.items[0]).toBe('boots_fury');
+    expect(h.items.includes('boots_guard')).toBe(false);
+    // 其余五件照常买齐
+    expect(h.items.slice(1)).toEqual(['blood_scythe', 'starfall_blade', 'guardian_plate', 'piercing_spear', 'starweave_cloak']);
+    expect(h.autoBuy).toBe(true);
+  });
+
+  it('托管(autoPlay)时与 Bot 的购买并存：谁先到谁买，不会重复买、不会错位', () => {
+    const sim = createWorld({ seed: 5, playerHero: 'fengling', difficulty: 'normal', autoPlay: true, autoBuy: true }, { noWaves: true, noCamps: true });
+    const h = sim.heroes[0];
+    h.gold = 99999;
+    stepFor(sim, 5);
+    expect(h.items).toEqual(['boots_fury', 'sunchaser_bow', 'phantom_edge', 'blood_scythe', 'piercing_spear', 'starfall_blade']);
+    const spent = 99999 - h.gold;
+    // 七步出装的实际总花费(换鞋抵扣 150)，上下浮动只来自这 5 秒的自然金币
+    expect(spent).toBeGreaterThan(10760 - 40);
+    expect(spent).toBeLessThanOrEqual(10760);
   });
 });

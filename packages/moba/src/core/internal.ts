@@ -5,7 +5,7 @@
  * 渲染/界面层只读取契约字段；模拟层各模块通过 unit.rt / hero.h 等访问隐藏状态。
  * 本文件只有类型与常量，不依赖任何玩法模块，可被任何模块安全 import。
  */
-import type { BotController } from './ai/types';
+import type { BotController, ConeHazard } from './ai/types';
 import type {
   AreaEffect, Buff, CampDef, CoreUnit, DamageType, HeroDef, HeroUnit, MinionUnit, MonsterUnit, PlayerCommand, Projectile,
   ProjectileVisual, SkillSlot, Stats, TowerUnit, UnitAnim, Vec2,
@@ -105,7 +105,7 @@ export interface UnitRt {
   silenced: boolean;
   untargetable: boolean;
   unstoppable: boolean;
-  /** 免疫减速（由特定 buff 提供，如赤烬旋舞；不影响其他控制） */
+  /** 免疫减速（由特定 buff 提供，如程咬金旋斧；不影响其他控制） */
   slowImmune: boolean;
   airborne: SimBuff | null;
 
@@ -240,7 +240,7 @@ export interface HeroHooks {
   modifyBasicAttack?(sim: Sim, hero: SimHero, target: SimUnit, mod: BasicAttackMod): void;
   /** 普攻命中结算后。dealt = 主体伤害的实际值 */
   onBasicAttackHit?(sim: Sim, hero: SimHero, target: SimUnit, dealt: number, crit: boolean): void;
-  /** 成功施放技能(含召唤师技能)后、技能脚本执行前 */
+  /** 成功施放技能(含通用技能)后、技能脚本执行前 */
   onSkillCast?(sim: Sim, hero: SimHero, slot: SkillSlot): void;
   /** 技能伤害(kind='skill')命中后 */
   onSkillHit?(sim: Sim, hero: SimHero, target: SimUnit, dealt: number, info: DamageInfo): void;
@@ -323,10 +323,26 @@ export interface CampRt {
   respawnAt: number;
 }
 
+/** 进行中的一次吐息：对 Bot 而言是一个扇形危险区，外加模拟层自己的结算进度 */
+export interface BreathState extends ConeHazard {
+  /** 起手时间 */
+  start: number;
+  /** 是否已进入喷吐阶段（已发 drake_breath 事件） */
+  spraying: boolean;
+  /** 剩余伤害跳数 / 下一跳的模拟时间 / 每跳原始伤害 */
+  ticksLeft: number;
+  nextTick: number;
+  tickDamage: number;
+}
+
 export interface MonsterRt {
   home: Vec2;
   state: typeof MON_IDLE | typeof MON_COMBAT | typeof MON_RETURN;
   camp: CampRt;
+  /** 特殊攻击(河道巨龙吐息)下次可以起手的模拟时间；不在战斗中为 -1，进入战斗时才开始计时 */
+  specialAt: number;
+  /** 进行中的吐息；没有为 null */
+  breath: BreathState | null;
 }
 
 /** 内部单位 = 契约单位 + 运行时字段（buffs 收窄为内部 buff 类型） */

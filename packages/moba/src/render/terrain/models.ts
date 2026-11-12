@@ -1,11 +1,14 @@
 /**
- * 场景点缀物的程序化原型：树 / 松 / 灌木 / 岩石 / 水晶簇 / 断柱 / 蘑菇 / 灯笼果 / 花丛 / 草簇 / 旗帜 / 火盆 等。
+ * 场景点缀物的程序化原型：树(分层叶团) / 垂枝树 / 松 / 灌木 / 岩石 / 水晶簇 / 断柱 / 伞菇与层架菌 / 灯果 / 蕨 / 藤 / 草帘 /
+ * 芦苇 / 荷叶 / 花丛 / 草簇 / 旗帜 / 火盆 等。
  * 每个原型是带 position/normal/color/aFx 的 BufferGeometry(局部原点在落地点)，由 SceneryBatcher 合并进分块网格。
  * 颜色写进顶点色(线性)，实例再乘一个色偏；发光部件用 aFx.y，随风摆动的部件用 aFx.x。
  */
 import * as THREE from 'three';
 import { PALETTE, Rng, hash2 } from '../materials';
 import { MeshBuilder, type RGB, lerp, mixRgb, rgb, scaleRgb } from './geo';
+
+export { MeshBuilder };
 
 const TAU = Math.PI * 2;
 
@@ -67,7 +70,7 @@ function icosphere(detail: number): IcoData {
   return d;
 }
 
-interface BlobOpts {
+export interface BlobOpts {
   detail?: number;
   /** 表面起伏幅度(相对半径) */
   bump?: number;
@@ -92,7 +95,7 @@ interface BlobOpts {
 }
 
 /** 椭球团块：树冠/灌木/岩石/蘑菇伞的基本形体 */
-function addBlob(b: MeshBuilder, cx: number, cy: number, cz: number, rx: number, ry: number, rz: number, o: BlobOpts): void {
+export function addBlob(b: MeshBuilder, cx: number, cy: number, cz: number, rx: number, ry: number, rz: number, o: BlobOpts): void {
   const ico = icosphere(o.detail ?? 1);
   const seed = o.seed ?? 1;
   const bump = o.bump ?? 0;
@@ -172,7 +175,7 @@ function addBlob(b: MeshBuilder, cx: number, cy: number, cz: number, rx: number,
   }
 }
 
-interface TubeOpts {
+export interface TubeOpts {
   sides?: number;
   /** 颜色：起点 → 终点 */
   c0: RGB;
@@ -186,7 +189,7 @@ interface TubeOpts {
 }
 
 /** 沿折线的锥形管：树干/立柱/茎/旗杆。path 每个点带半径 */
-function addTube(b: MeshBuilder, path: [number, number, number, number][], o: TubeOpts): void {
+export function addTube(b: MeshBuilder, path: [number, number, number, number][], o: TubeOpts): void {
   const sides = o.sides ?? 6;
   const rings: number[][] = [];
   const n = path.length;
@@ -250,7 +253,7 @@ function addTube(b: MeshBuilder, path: [number, number, number, number][], o: Tu
 }
 
 /** 六棱晶体：底部六边形 → 腰 → 尖顶，按面着色 */
-function addCrystal(b: MeshBuilder, x: number, y: number, z: number, h: number, r: number, tiltX: number, tiltZ: number, c0: RGB, c1: RGB, glow: number, seed: number): void {
+export function addCrystal(b: MeshBuilder, x: number, y: number, z: number, h: number, r: number, tiltX: number, tiltZ: number, c0: RGB, c1: RGB, glow: number, seed: number): void {
   const sides = 6;
   const m = new THREE.Matrix4().makeRotationFromEuler(new THREE.Euler(tiltX, hash2(seed, 3, 9) * TAU, tiltZ)).setPosition(x, y, z);
   const v = new THREE.Vector3();
@@ -301,96 +304,252 @@ function finish(b: MeshBuilder): THREE.BufferGeometry {
   return b.build();
 }
 
+// ───────────── 叶团片 ─────────────
+
+export interface ClumpOpts {
+  /** 边缘的圆齿数 */
+  lobes: number;
+  /** 底沿暗色 / 中间色 / 顶部亮色 */
+  dark: RGB;
+  mid: RGB;
+  light: RGB;
+  seed: number;
+  /** 风摆权重：底沿 → 顶 */
+  sway0?: number;
+  sway1?: number;
+  /** 法线朝该点外推的混合：让一棵树的几片叶团读成一个整体的明暗 */
+  puffCenter?: [number, number, number];
+  puff?: number;
+  /** 实例色偏蒙版 */
+  team?: number;
+  /** 厚度(相对半径)，默认 0.42 */
+  thick?: number;
+}
+
+/**
+ * 叶团片：压扁的穹顶，边缘推出一圈圆齿，底下收一道暗色的唇边。
+ * 一棵树由几层这样的叶团错落叠成，层与层之间露出暗部和枝干——从俯视镜头看是一层层扇贝边的叶冠，而不是气球。
+ */
+export function addLeafClump(b: MeshBuilder, cx: number, cy: number, cz: number, r: number, o: ClumpOpts): void {
+  const n = o.lobes;
+  const rng = new Rng(o.seed * 31 + 7);
+  const thick = (o.thick ?? 0.42) * r;
+  const rot = rng.range(0, TAU);
+  // 每片叶团一点色相偏移(±6%)
+  const hue = rng.range(-0.06, 0.06);
+  const tintC = (c: RGB, k: number): RGB => [c[0] * k * (1 + hue), c[1] * k, c[2] * k * (1 - hue)];
+  const s0 = o.sway0 ?? 0.3;
+  const s1 = o.sway1 ?? 0.7;
+  const put = (x: number, y: number, z: number, c: RGB, nx: number, ny: number, nz: number, sway: number): number => {
+    let ax = nx;
+    let ay = ny;
+    let az = nz;
+    if (o.puffCenter && o.puff) {
+      let px = cx + x - o.puffCenter[0];
+      let py = cy + y - o.puffCenter[1];
+      let pz = cz + z - o.puffCenter[2];
+      const pl = Math.hypot(px, py, pz) || 1;
+      px /= pl;
+      py /= pl;
+      pz /= pl;
+      ax = lerp(ax, px, o.puff);
+      ay = lerp(ay, py, o.puff);
+      az = lerp(az, pz, o.puff);
+    }
+    const l = Math.hypot(ax, ay, az) || 1;
+    return b.vertex(cx + x, cy + y, cz + z, c, ax / l, ay / l, az / l, sway, 0, o.team ?? 0, 1);
+  };
+  const top = put(rng.range(-0.06, 0.06) * r, thick, rng.range(-0.06, 0.06) * r, tintC(o.light, 1), 0, 1, 0, s1);
+  const ringA: number[] = [];
+  const ringB: number[] = [];
+  const ringC: number[] = [];
+  for (let i = 0; i < n; i++) {
+    const a = rot + (i / n) * TAU;
+    const rr = r * 0.52 * rng.range(0.9, 1.1);
+    const ca = Math.cos(a);
+    const sa = Math.sin(a);
+    ringA.push(put(ca * rr, thick * rng.range(0.74, 0.9), sa * rr, tintC(mixRgb(o.mid, o.light, 0.5), rng.range(0.95, 1.05)), ca * 0.45, 0.9, sa * 0.45, lerp(s0, s1, 0.7)));
+  }
+  for (let j = 0; j < n * 2; j++) {
+    const a = rot + (j / (n * 2)) * TAU;
+    const tip = j % 2 === 0;
+    const rr = r * (tip ? rng.range(0.94, 1.06) : rng.range(0.7, 0.8));
+    const ca = Math.cos(a);
+    const sa = Math.sin(a);
+    // 齿尖略低，齿谷更暗(齿与齿之间的缝)
+    const y = thick * (tip ? rng.range(0.08, 0.2) : rng.range(0.22, 0.34));
+    ringB.push(put(ca * rr, y, sa * rr, tintC(tip ? mixRgb(o.dark, o.mid, 0.8) : mixRgb(o.dark, o.mid, 0.35), 1), ca, 0.38, sa, s0));
+    ringC.push(put(ca * rr * 0.68, -thick * 0.38, sa * rr * 0.68, tintC(o.dark, 0.72), ca * 0.5, -0.8, sa * 0.5, s0));
+  }
+  for (let i = 0; i < n; i++) {
+    const i2 = (i + 1) % n;
+    const j0 = i * 2;
+    const j1 = i * 2 + 1;
+    const j2 = (i * 2 + 2) % (n * 2);
+    b.tri(top, ringA[i2], ringA[i]);
+    b.tri(ringA[i], ringB[j1], ringB[j0]);
+    b.tri(ringA[i], ringA[i2], ringB[j1]);
+    b.tri(ringA[i2], ringB[j2], ringB[j1]);
+  }
+  for (let j = 0; j < n * 2; j++) {
+    const j2 = (j + 1) % (n * 2);
+    b.tri(ringB[j], ringB[j2], ringC[j2]);
+    b.tri(ringB[j], ringC[j2], ringC[j]);
+  }
+}
+
+/** 一片带弧度的窄叶(蕨叶/草叶/藤叶)：沿 dir 方向伸出 len，中段拱起 arch，末端下垂 droop */
+function addFrond(b: MeshBuilder, x: number, y: number, z: number, dirX: number, dirZ: number, len: number, width: number, arch: number, droop: number, c0: RGB, c1: RGB, sway: number, segs = 3): void {
+  const px = -dirZ * width;
+  const pz = dirX * width;
+  const rows: number[] = [];
+  for (let i = 0; i <= segs; i++) {
+    const t = i / segs;
+    const cxp = x + dirX * len * t;
+    const czp = z + dirZ * len * t;
+    const cyp = y + Math.sin(t * Math.PI * 0.6) * arch - t * t * droop;
+    const w = i === segs ? 0 : 1 - t * 0.55;
+    const c = mixRgb(c0, c1, t);
+    if (i === segs) rows.push(b.vertex(cxp, cyp, czp, c, 0, 1, 0, sway * t));
+    else rows.push(b.vertex(cxp - px * w, cyp, czp - pz * w, c, 0, 1, 0, sway * t), b.vertex(cxp + px * w, cyp, czp + pz * w, c, 0, 1, 0, sway * t));
+  }
+  for (let i = 0; i < segs - 1; i++) b.quad(rows[i * 2], rows[i * 2 + 1], rows[i * 2 + 3], rows[i * 2 + 2]);
+  b.tri(rows[(segs - 1) * 2], rows[(segs - 1) * 2 + 1], rows[segs * 2]);
+}
+
 // ───────────── 原型库 ─────────────
 
 const E = PALETTE.env;
+const TRUNK_DARK = rgb(0x4a3530);
+const TRUNK = rgb(E.trunk);
 
-/** 阔叶树。colors 省略为青绿树冠；传入则是点缀用的异色树(花树/金叶树) */
-function makeTree(seed: number, colors?: { dark: number; mid: number; light: number }): THREE.BufferGeometry {
+interface CanopyColors {
+  dark: number;
+  mid: number;
+  light: number;
+}
+
+/**
+ * 阔叶树：树干 + 两根枝杈 + 三层叶团(底层宽而暗、中层、顶层小而亮)。
+ * colors 省略为青绿树冠；传入则是点缀用的异色树(花树/金叶树)。缩放 1 时顶高约 3.6 米、树冠半径约 1.6 米。
+ */
+function makeTree(seed: number, colors?: CanopyColors): THREE.BufferGeometry {
   const rng = new Rng(seed);
   const b = new MeshBuilder();
-  const h = rng.range(1.5, 2.1);
-  const lean = rng.range(-0.25, 0.25);
-  const lean2 = rng.range(-0.2, 0.2);
-  const trunkDark = rgb(0x4d3530);
-  const trunk = rgb(E.trunk);
+  const h = rng.range(1.75, 2.15);
+  const lean = rng.range(-0.22, 0.22);
+  const lean2 = rng.range(-0.18, 0.18);
   addTube(
     b,
     [
       [0, -0.2, 0, 0.3],
-      [lean * 0.3, h * 0.35, lean2 * 0.3, 0.2],
-      [lean * 0.8, h * 0.75, lean2 * 0.8, 0.15],
-      [lean, h, lean2, 0.11],
+      [lean * 0.3, h * 0.4, lean2 * 0.3, 0.2],
+      [lean * 0.8, h * 0.85, lean2 * 0.8, 0.14],
+      [lean, h + 0.95, lean2, 0.06],
     ],
-    { sides: 5, c0: trunkDark, c1: trunk, sway0: 0, sway1: 0.15 },
+    { sides: 5, c0: TRUNK_DARK, c1: TRUNK, sway0: 0, sway1: 0.15 },
   );
-  // 树冠：一个主团 + 几个错落的副团，法线朝树冠中心外推，读成一个蓬松的整体
-  const cy = h + 0.55;
-  const center: [number, number, number] = [lean, cy - 0.45, lean2];
   const dark = rgb(colors?.dark ?? E.canopyDark);
   const mid = rgb(colors?.mid ?? E.canopy);
   const light = rgb(colors?.light ?? E.canopyLight);
-  const mainR = rng.range(1.05, 1.3);
-  addBlob(b, lean, cy, lean2, mainR, mainR * 0.8, mainR, { detail: 1, bump: 0.06, seed, bottom: dark, top: mixRgb(mid, light, 0.42), swayBottom: 0.25, swayTop: 0.6, puffCenter: center, puff: 0.4, cutBelow: -0.4 });
-  const blobs = 3 + rng.int(2);
-  for (let i = 0; i < blobs; i++) {
-    const a = (i / blobs) * TAU + rng.range(-0.4, 0.4);
-    const d = mainR * rng.range(0.6, 0.82);
-    const r = mainR * rng.range(0.5, 0.66);
-    const y = cy + rng.range(-0.4, 0.2);
-    addBlob(b, lean + Math.cos(a) * d, y, lean2 + Math.sin(a) * d, r, r * 0.8, r, {
-      detail: 1,
-      bump: 0.07,
-      seed: seed + i * 13,
-      bottom: scaleRgb(dark, 0.9),
-      top: mixRgb(mid, light, rng.range(0.1, 0.5)),
-      swayBottom: 0.3,
-      swayTop: 0.7,
-      puffCenter: center,
-      puff: 0.55,
-      cutBelow: -0.3,
-    });
+  const center: [number, number, number] = [lean, h + 0.35, lean2];
+  const a0 = rng.range(0, TAU);
+  // 底层：三片，宽而暗；各有一根枝杈从树干伸过去
+  for (let i = 0; i < 3; i++) {
+    const a = a0 + (i / 3) * TAU + rng.range(-0.3, 0.3);
+    const d = rng.range(0.56, 0.7);
+    const r = rng.range(0.86, 1.0);
+    const x = lean + Math.cos(a) * d;
+    const z = lean2 + Math.sin(a) * d;
+    const y = h + rng.range(-0.05, 0.14);
+    if (i < 2) addTube(b, [[lean * 0.7, h * 0.72, lean2 * 0.7, 0.08], [x * 0.75 + lean * 0.25, y - 0.12, z * 0.75 + lean2 * 0.25, 0.04]], { sides: 3, c0: TRUNK_DARK, c1: TRUNK, sway1: 0.2 });
+    addLeafClump(b, x, y, z, r, { lobes: 6, dark: scaleRgb(dark, 0.9), mid: mixRgb(dark, mid, 0.55), light: mixRgb(dark, mid, 0.95), seed: seed + i * 13, sway0: 0.3, sway1: 0.55, puffCenter: center, puff: 0.3 });
   }
-  // 顶部亮团：受光的树梢
-  addBlob(b, lean + rng.range(-0.25, 0.1), cy + mainR * 0.5, lean2 + rng.range(-0.1, 0.25), mainR * 0.55, mainR * 0.4, mainR * 0.55, {
-    detail: 1,
-    bump: 0.07,
-    seed: seed + 99,
-    bottom: mixRgb(mid, light, 0.25),
-    top: mixRgb(mid, light, 0.7),
-    swayBottom: 0.5,
-    swayTop: 0.8,
-    puffCenter: center,
-    puff: 0.5,
-    cutBelow: -0.2,
-  });
+  // 中层：两三片，往里收
+  const midN = 2 + rng.int(2);
+  for (let i = 0; i < midN; i++) {
+    const a = a0 + Math.PI / 3 + (i / midN) * TAU + rng.range(-0.35, 0.35);
+    const d = rng.range(0.32, 0.46);
+    const r = rng.range(0.72, 0.86);
+    addLeafClump(b, lean + Math.cos(a) * d, h + rng.range(0.5, 0.64), lean2 + Math.sin(a) * d, r, { lobes: 6, dark, mid, light: mixRgb(mid, light, 0.4), seed: seed + 50 + i * 17, sway0: 0.4, sway1: 0.7, puffCenter: center, puff: 0.3 });
+  }
+  // 顶层：一片，小而亮(受光的树梢)
+  addLeafClump(b, lean + rng.range(-0.12, 0.12), h + rng.range(1.02, 1.14), lean2 + rng.range(-0.12, 0.12), rng.range(0.6, 0.7), { lobes: 5, dark: mixRgb(dark, mid, 0.7), mid: mixRgb(mid, light, 0.5), light, seed: seed + 99, sway0: 0.55, sway1: 0.85, puffCenter: center, puff: 0.25, thick: 0.5 });
   return finish(b);
 }
 
-/** 远景用的简化阔叶树(装饰带上成片种植)：低面数的两团树冠 */
+/** 垂枝树(近河)：两层叶团，冠下垂着一圈随风摆的细枝条 */
+function makeWillow(seed: number): THREE.BufferGeometry {
+  const rng = new Rng(seed);
+  const b = new MeshBuilder();
+  const h = rng.range(2.0, 2.4);
+  const lean = rng.range(-0.3, 0.3);
+  addTube(b, [[0, -0.2, 0, 0.28], [lean * 0.4, h * 0.5, 0, 0.19], [lean, h, 0.05, 0.12], [lean * 1.1, h + 0.7, 0.05, 0.05]], { sides: 5, c0: TRUNK_DARK, c1: TRUNK, sway1: 0.15 });
+  const dark = rgb(0x2a6a52);
+  const mid = rgb(0x5a9c62);
+  const light = rgb(0xa9d072);
+  const center: [number, number, number] = [lean, h + 0.2, 0];
+  const a0 = rng.range(0, TAU);
+  const spots: [number, number, number, number][] = [];
+  for (let i = 0; i < 3; i++) {
+    const a = a0 + (i / 3) * TAU + rng.range(-0.25, 0.25);
+    const d = rng.range(0.55, 0.7);
+    const r = rng.range(0.85, 1.0);
+    const x = lean + Math.cos(a) * d;
+    const z = Math.sin(a) * d;
+    const y = h + rng.range(0, 0.15);
+    spots.push([x, y, z, r]);
+    addLeafClump(b, x, y, z, r, { lobes: 6, dark, mid: mixRgb(dark, mid, 0.7), light: mid, seed: seed + i * 7, sway0: 0.35, sway1: 0.6, puffCenter: center, puff: 0.3 });
+  }
+  addLeafClump(b, lean, h + 0.68, 0, 0.82, { lobes: 6, dark: mixRgb(dark, mid, 0.5), mid, light, seed: seed + 41, sway0: 0.5, sway1: 0.8, puffCenter: center, puff: 0.25, thick: 0.5 });
+  // 垂枝：从底层叶团的边缘挂下来
+  const strands = 9;
+  for (let i = 0; i < strands; i++) {
+    const sp = spots[i % 3];
+    const a = rng.range(0, TAU);
+    const x = sp[0] + Math.cos(a) * sp[3] * rng.range(0.6, 0.92);
+    const z = sp[2] + Math.sin(a) * sp[3] * rng.range(0.6, 0.92);
+    const y0 = sp[1] + 0.02;
+    const len = rng.range(0.8, 1.35);
+    const w = 0.045;
+    const dx = Math.cos(a + 1.57) * w;
+    const dz = Math.sin(a + 1.57) * w;
+    const v0 = b.vertex(x - dx, y0, z - dz, mid, Math.cos(a), 0.3, Math.sin(a), 0.4);
+    const v1 = b.vertex(x + dx, y0, z + dz, mid, Math.cos(a), 0.3, Math.sin(a), 0.4);
+    const v2 = b.vertex(x - dx * 0.7, y0 - len * 0.55, z - dz * 0.7, mixRgb(mid, light, 0.5), Math.cos(a), 0.3, Math.sin(a), 0.9);
+    const v3 = b.vertex(x + dx * 0.7, y0 - len * 0.55, z + dz * 0.7, mixRgb(mid, light, 0.5), Math.cos(a), 0.3, Math.sin(a), 0.9);
+    const v4 = b.vertex(x, y0 - len, z, light, Math.cos(a), 0.3, Math.sin(a), 1.4);
+    b.quad(v0, v1, v3, v2);
+    b.tri(v2, v3, v4);
+  }
+  return finish(b);
+}
+
+/** 远景用的简化阔叶树(装饰带上成片种植)：两片叶团 */
 function makeFarTree(seed: number): THREE.BufferGeometry {
   const rng = new Rng(seed);
   const b = new MeshBuilder();
-  const h = rng.range(1.6, 2.3);
-  addTube(b, [[0, -0.2, 0, 0.26], [0, h, 0, 0.12]], { sides: 4, c0: rgb(0x4d3530), c1: rgb(E.trunk) });
+  const h = rng.range(1.7, 2.3);
+  addTube(b, [[0, -0.2, 0, 0.26], [0, h + 0.5, 0, 0.1]], { sides: 4, c0: TRUNK_DARK, c1: TRUNK });
   const dark = rgb(E.canopyDark);
   const mid = rgb(E.canopy);
   const light = rgb(E.canopyLight);
-  const r = rng.range(1.15, 1.45);
+  const r = rng.range(1.2, 1.5);
   const center: [number, number, number] = [0, h, 0];
-  addBlob(b, 0, h + 0.5, 0, r, r * 0.8, r, { detail: 1, bump: 0.1, seed, bottom: dark, top: mixRgb(mid, light, 0.35), swayBottom: 0.25, swayTop: 0.6, puffCenter: center, puff: 0.3, cutBelow: -0.3 });
-  addBlob(b, rng.range(-0.5, 0.5), h + 0.5 + r * 0.55, rng.range(-0.5, 0.5), r * 0.6, r * 0.45, r * 0.6, { detail: 0, bump: 0.1, seed: seed + 3, bottom: mid, top: mixRgb(mid, light, 0.8), swayBottom: 0.5, swayTop: 0.8, puffCenter: center, puff: 0.4 });
+  addLeafClump(b, 0, h, 0, r, { lobes: 5, dark, mid: mixRgb(dark, mid, 0.7), light: mid, seed, sway0: 0.25, sway1: 0.55, puffCenter: center, puff: 0.3, thick: 0.55 });
+  addLeafClump(b, rng.range(-0.3, 0.3), h + r * 0.5, rng.range(-0.3, 0.3), r * 0.68, { lobes: 5, dark: mixRgb(dark, mid, 0.6), mid: mixRgb(mid, light, 0.4), light, seed: seed + 3, sway0: 0.5, sway1: 0.8, puffCenter: center, puff: 0.3, thick: 0.55 });
   return finish(b);
 }
 
+/** 星松：三层伞状枝叶的针叶树 */
 function makePine(seed: number): THREE.BufferGeometry {
   const rng = new Rng(seed);
   const b = new MeshBuilder();
   const h = rng.range(3.2, 4.4);
-  addTube(b, [[0, -0.2, 0, 0.22], [0, h * 0.5, 0, 0.12]], { sides: 5, c0: rgb(0x47332c), c1: rgb(E.trunk) });
+  addTube(b, [[0, -0.2, 0, 0.22], [0, h * 0.5, 0, 0.12]], { sides: 5, c0: TRUNK_DARK, c1: TRUNK });
   const tiers = 3;
-  const dark = rgb(0x1f6a55);
-  const light = rgb(0x5fb568);
+  const dark = rgb(0x1c5648);
+  const light = rgb(0x5ea562);
   for (let t = 0; t < tiers; t++) {
     const y0 = h * (0.22 + t * 0.24);
     const y1 = y0 + h * 0.36;
@@ -412,18 +571,20 @@ function makePine(seed: number): THREE.BufferGeometry {
   return finish(b);
 }
 
+/** 灌木：两三片贴地的小叶团 */
 function makeShrub(seed: number): THREE.BufferGeometry {
   const rng = new Rng(seed);
   const b = new MeshBuilder();
   const dark = rgb(E.canopyDark);
-  const light = mixRgb(rgb(E.canopy), rgb(E.canopyLight), 0.4);
-  const n = 2;
+  const mid = rgb(E.canopy);
+  const light = mixRgb(mid, rgb(E.canopyLight), 0.55);
+  const n = 2 + rng.int(2);
   const center: [number, number, number] = [0, 0.1, 0];
   for (let i = 0; i < n; i++) {
     const a = rng.range(0, TAU);
-    const d = i === 0 ? 0 : rng.range(0.3, 0.55);
-    const r = i === 0 ? rng.range(0.5, 0.68) : rng.range(0.32, 0.48);
-    addBlob(b, Math.cos(a) * d, r * 0.62, Math.sin(a) * d, r, r * 0.78, r, { detail: i === 0 ? 1 : 0, bump: 0.08, seed: seed + i, bottom: dark, top: light, swayBottom: 0.05, swayTop: 0.35, puffCenter: center, puff: 0.45, cutBelow: -0.45 });
+    const d = i === 0 ? 0 : rng.range(0.28, 0.5);
+    const r = i === 0 ? rng.range(0.52, 0.66) : rng.range(0.34, 0.46);
+    addLeafClump(b, Math.cos(a) * d, r * (i === 0 ? 0.42 : 0.22), Math.sin(a) * d, r, { lobes: 5, dark, mid, light, seed: seed + i * 5, sway0: 0.05, sway1: 0.3, puffCenter: center, puff: 0.35, thick: 0.62 });
   }
   return finish(b);
 }
@@ -442,8 +603,8 @@ function makeRock(seed: number, big: boolean): THREE.BufferGeometry {
       detail: big && i === 0 ? 1 : 0,
       bump: big ? 0.16 : 0.22,
       seed: seed + i * 7,
-      bottom: mixRgb(dark, light, 0.25),
-      top: mixRgb(dark, light, 0.85),
+      bottom: mixRgb(dark, light, 0.2),
+      top: mixRgb(dark, light, 0.8),
       flat: true,
     });
   }
@@ -475,8 +636,8 @@ function makeCrystalCluster(seed: number, big: boolean): THREE.BufferGeometry {
 function makePillar(seed: number, tall: boolean): THREE.BufferGeometry {
   const rng = new Rng(seed);
   const b = new MeshBuilder();
-  const stone = rgb(0xcfd3da);
-  const stoneDark = rgb(0x8d93a2);
+  const stone = rgb(0xb9b6ac);
+  const stoneDark = rgb(0x7d7c82);
   const h = tall ? rng.range(2.3, 3.2) : rng.range(0.9, 1.6);
   const r = 0.34;
   // 方形柱础
@@ -506,37 +667,93 @@ function makePillar(seed: number, tall: boolean): THREE.BufferGeometry {
   return finish(b);
 }
 
-/** 蘑菇丛：伞盖底色用白(实例色偏定色)，伞缘微微发光 */
+/**
+ * 伞菇组团(0.5~0.8 米)：伞盖底色用白(实例色偏定色)，伞面带几颗浅斑，伞下是浅色的菌褶。
+ * glow = 伞盖的自发光强度(只有约三成的菇丛发光，由实例的 glow 倍率决定)。
+ */
 function makeMushrooms(seed: number): THREE.BufferGeometry {
   const rng = new Rng(seed);
   const b = new MeshBuilder();
   const n = 2 + rng.int(2);
-  const stem: RGB = [0.75, 0.72, 0.62];
+  const stem: RGB = [0.78, 0.74, 0.64];
   for (let i = 0; i < n; i++) {
     const a = rng.range(0, TAU);
-    const d = i === 0 ? 0 : rng.range(0.16, 0.34);
-    const h = i === 0 ? rng.range(0.34, 0.5) : rng.range(0.16, 0.3);
+    const d = i === 0 ? 0 : rng.range(0.24, 0.42);
+    const h = i === 0 ? rng.range(0.42, 0.58) : rng.range(0.2, 0.36);
     const x = Math.cos(a) * d;
     const z = Math.sin(a) * d;
-    const lean = rng.range(-0.06, 0.06);
-    addTube(b, [[x, -0.05, z, h * 0.16], [x + lean, h, z + lean, h * 0.12]], { sides: 4, c0: scaleRgb(stem, 0.7), c1: stem });
-    const cr = h * rng.range(0.5, 0.7);
-    addBlob(b, x + lean, h + cr * 0.12, z + lean, cr, cr * 0.5, cr, { detail: 1, bump: 0.04, seed: seed + i, bottom: [0.5, 0.5, 0.5], top: [1, 1, 1], glow: 0.35, team: 1 });
+    const lean = rng.range(-0.08, 0.08);
+    addTube(b, [[x, -0.05, z, h * 0.15], [x + lean * 0.5, h * 0.6, z + lean * 0.5, h * 0.1], [x + lean, h, z + lean, h * 0.12]], { sides: 5, c0: scaleRgb(stem, 0.7), c1: stem });
+    const cr = h * rng.range(0.52, 0.68);
+    // 伞下的菌褶：一个浅色的倒锥
+    const gill = b.vertex(x + lean, h - cr * 0.1, z + lean, scaleRgb(stem, 0.9), 0, -1, 0);
+    const rim: number[] = [];
+    for (let s = 0; s < 7; s++) {
+      const sa = (s / 7) * TAU;
+      rim.push(b.vertex(x + lean + Math.cos(sa) * cr * 0.96, h + cr * 0.1, z + lean + Math.sin(sa) * cr * 0.96, scaleRgb(stem, 1.08), Math.cos(sa) * 0.4, -0.8, Math.sin(sa) * 0.4));
+    }
+    for (let s = 0; s < 7; s++) b.tri(gill, rim[s], rim[(s + 1) % 7]);
+    addBlob(b, x + lean, h + cr * 0.1, z + lean, cr, cr * 0.52, cr, { detail: 1, bump: 0.03, seed: seed + i, bottom: [0.55, 0.55, 0.55], top: [1, 1, 1], glow: 0.35, team: 1, cutBelow: -0.05 });
+    // 伞面的浅斑
+    for (let k = 0; k < 3; k++) {
+      const sa = rng.range(0, TAU);
+      const sr = cr * rng.range(0.3, 0.6);
+      const sy = h + cr * 0.1 + cr * 0.52 * Math.sqrt(Math.max(0, 1 - (sr * sr) / (cr * cr))) + 0.006;
+      const cxp = x + lean + Math.cos(sa) * sr;
+      const czp = z + lean + Math.sin(sa) * sr;
+      const ss = cr * rng.range(0.1, 0.16);
+      const c: RGB = [1, 0.97, 0.86];
+      const v0 = b.vertex(cxp - ss, sy, czp, c, 0, 1, 0);
+      const v1 = b.vertex(cxp, sy, czp + ss, c, 0, 1, 0);
+      const v2 = b.vertex(cxp + ss, sy, czp, c, 0, 1, 0);
+      const v3 = b.vertex(cxp, sy, czp - ss, c, 0, 1, 0);
+      b.quad(v0, v1, v2, v3);
+    }
   }
   return finish(b);
 }
 
-/** 灯笼果：弯垂的茎上挂着 2~3 颗发暖光的果实 */
-function makeLanternPlant(seed: number): THREE.BufferGeometry {
+/** 层架菌：长在崖壁上的两三层半圆菌盖。局部 +x 朝外(离开岩壁)，原点在岩壁上 */
+function makeBracketFungus(seed: number): THREE.BufferGeometry {
+  const rng = new Rng(seed);
+  const b = new MeshBuilder();
+  const n = 2 + rng.int(2);
+  for (let i = 0; i < n; i++) {
+    const y = i * rng.range(0.16, 0.24);
+    const r = rng.range(0.2, 0.32) * (1 - i * 0.15);
+    const off = rng.range(-0.15, 0.15);
+    const c0: RGB = [0.62, 0.62, 0.62];
+    const c1: RGB = [1, 1, 1];
+    const center = b.vertex(-0.03, y + 0.05, off, c0, 0.2, 1, 0, 0, 0.1, 1);
+    const ring: number[] = [];
+    const segs = 6;
+    for (let s = 0; s <= segs; s++) {
+      const a = -Math.PI / 2 + (s / segs) * Math.PI;
+      ring.push(b.vertex(Math.cos(a) * r, y, off + Math.sin(a) * r * 1.2, c1, Math.cos(a) * 0.5, 0.8, Math.sin(a) * 0.5, 0, 0.5, 1));
+    }
+    for (let s = 0; s < segs; s++) b.tri(center, ring[s + 1], ring[s]);
+    // 菌盖底面(浅色)
+    const under = b.vertex(-0.03, y - 0.07, off, [0.7, 0.66, 0.56], 0, -1, 0);
+    for (let s = 0; s < segs; s++) b.tri(under, ring[s], ring[s + 1]);
+  }
+  return finish(b);
+}
+
+/**
+ * 灯果 / 星铃草：弯垂的茎上挂着 2~3 颗发光的果实(或铃形小花)。
+ * fruit = 果实颜色(底 → 顶)，白色时由实例色偏定色。
+ */
+function makeLanternPlant(seed: number, fruitA: RGB, fruitB: RGB, glow: number, small = false): THREE.BufferGeometry {
   const rng = new Rng(seed);
   const b = new MeshBuilder();
   const leafDark = rgb(0x2f6a45);
-  const leaf = rgb(0x5aa85a);
+  const leaf = rgb(0x5a9c56);
   const stems = 2 + rng.int(2);
+  const k = small ? 0.6 : 1;
   for (let i = 0; i < stems; i++) {
     const a = (i / stems) * TAU + rng.range(-0.5, 0.5);
-    const h = rng.range(0.9, 1.5);
-    const reach = rng.range(0.35, 0.6);
+    const h = rng.range(0.9, 1.5) * k;
+    const reach = rng.range(0.35, 0.6) * k;
     const dx = Math.cos(a);
     const dz = Math.sin(a);
     const tipX = dx * reach;
@@ -544,67 +761,178 @@ function makeLanternPlant(seed: number): THREE.BufferGeometry {
     addTube(
       b,
       [
-        [0, -0.05, 0, 0.05],
-        [dx * reach * 0.25, h * 0.6, dz * reach * 0.25, 0.04],
-        [dx * reach * 0.7, h, dz * reach * 0.7, 0.03],
-        [tipX, h * 0.86, tipZ, 0.02],
+        [0, -0.05, 0, 0.05 * k],
+        [dx * reach * 0.25, h * 0.6, dz * reach * 0.25, 0.04 * k],
+        [dx * reach * 0.7, h, dz * reach * 0.7, 0.03 * k],
+        [tipX, h * 0.86, tipZ, 0.02 * k],
       ],
       { sides: 3, c0: leafDark, c1: leaf, sway0: 0, sway1: 0.5 },
     );
-    const fr = rng.range(0.13, 0.18);
-    addBlob(b, tipX, h * 0.86 - fr * 1.1, tipZ, fr, fr * 1.25, fr, { detail: 1, seed: seed + i, bottom: [1, 0.66, 0.3], top: [1, 0.42, 0.14], glow: 1, swayBottom: 0.55, swayTop: 0.5 });
+    const fr = rng.range(0.13, 0.18) * (small ? 0.75 : 1);
+    addBlob(b, tipX, h * 0.86 - fr * 1.1, tipZ, fr, fr * 1.25, fr, { detail: 1, seed: seed + i, bottom: fruitA, top: fruitB, glow, swayBottom: 0.55, swayTop: 0.5, team: small ? 1 : 0 });
   }
-  // 基部叶丛
-  addBlob(b, 0, 0.14, 0, 0.36, 0.2, 0.36, { detail: 0, bump: 0.12, seed, bottom: leafDark, top: leaf, swayTop: 0.15 });
+  // 基部叶丛：几片向外摊开的叶
+  for (let i = 0; i < 4; i++) {
+    const a = (i / 4) * TAU + rng.range(-0.3, 0.3);
+    addFrond(b, 0, 0.02, 0, Math.cos(a), Math.sin(a), 0.36 * k, 0.07 * k, 0.14 * k, 0.06, leafDark, leaf, 0.15, 2);
+  }
   return finish(b);
 }
 
-/** 花丛：3~4 朵小花(花瓣为白，实例色偏定色)。每朵 = 一根茎 + 一个朝上的四瓣菱形 */
+/** 蕨丛：5~7 片向外拱起再垂下的羽叶 */
+function makeFern(seed: number): THREE.BufferGeometry {
+  const rng = new Rng(seed);
+  const b = new MeshBuilder();
+  const c0 = rgb(0x2f6a48);
+  const c1 = rgb(0x7fb25a);
+  const n = 5 + rng.int(3);
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * TAU + rng.range(-0.35, 0.35);
+    const len = rng.range(0.42, 0.7);
+    addFrond(b, 0, 0, 0, Math.cos(a), Math.sin(a), len, rng.range(0.07, 0.1), len * rng.range(0.45, 0.7), len * 0.3, c0, mixRgb(c1, [0.7, 0.9, 0.5], rng.next() * 0.4), 0.6);
+  }
+  return finish(b);
+}
+
+/**
+ * 藤蔓：从原点垂下 1 米的锥形细带(4 段) + 6 片小叶。局部 +x 朝外(离开岩壁)；长度用 y 向缩放调。
+ */
+function makeVine(seed: number): THREE.BufferGeometry {
+  const rng = new Rng(seed);
+  const b = new MeshBuilder();
+  const stemC = rgb(0x3a6a3e);
+  const leafC = rgb(0x6fa850);
+  const leafL = rgb(0x9cc866);
+  const segs = 4;
+  const w = 0.045;
+  const rows: number[] = [];
+  const wob = rng.range(0, TAU);
+  for (let i = 0; i <= segs; i++) {
+    const t = i / segs;
+    const z = Math.sin(wob + t * 4) * 0.07 * t;
+    const x = 0.06 + 0.03 * Math.sin(wob * 2 + t * 3);
+    const y = -t;
+    const ww = w * (1 - t * 0.7);
+    rows.push(b.vertex(x, y, z - ww, stemC, 1, 0.2, 0, t * 0.5), b.vertex(x, y, z + ww, stemC, 1, 0.2, 0, t * 0.5));
+  }
+  for (let i = 0; i < segs; i++) b.quad(rows[i * 2], rows[i * 2 + 1], rows[i * 2 + 3], rows[i * 2 + 2]);
+  for (let i = 0; i < 6; i++) {
+    const t = (i + 0.6) / 6.4;
+    const side = i % 2 === 0 ? 1 : -1;
+    const z0 = Math.sin(wob + t * 4) * 0.07 * t;
+    const s = rng.range(0.09, 0.14);
+    const c = mixRgb(leafC, leafL, rng.next());
+    const v0 = b.vertex(0.07, -t, z0, scaleRgb(c, 0.8), 1, 0.3, 0, t * 0.6);
+    const v1 = b.vertex(0.1, -t - s * 0.25, z0 + side * s, c, 1, 0.3, 0, t * 0.8);
+    const v2 = b.vertex(0.09, -t - s * 1.2, z0 + side * s * 0.35, c, 1, 0.3, 0, t * 0.9);
+    b.tri(v0, v1, v2);
+  }
+  return finish(b);
+}
+
+/** 草帘：挂在崖沿上向外下垂的三四片长叶。局部 +x 朝外，原点在崖沿上 */
+function makeRimDrape(seed: number): THREE.BufferGeometry {
+  const rng = new Rng(seed);
+  const b = new MeshBuilder();
+  const c0 = rgb(E.cliffGrass);
+  const c1 = rgb(0xa2c860);
+  const n = 3 + rng.int(2);
+  for (let i = 0; i < n; i++) {
+    const a = rng.range(-0.7, 0.7);
+    const len = rng.range(0.34, 0.6);
+    addFrond(b, rng.range(-0.1, 0.05), 0.02, rng.range(-0.25, 0.25), Math.cos(a), Math.sin(a), len, rng.range(0.05, 0.075), len * 0.3, len * rng.range(0.7, 1.1), scaleRgb(c0, rng.range(0.85, 1.05)), c1, 1.0, 2);
+  }
+  return finish(b);
+}
+
+/** 芦苇与香蒲：一丛细长叶 + 两根香蒲穗 */
+function makeReeds(seed: number): THREE.BufferGeometry {
+  const rng = new Rng(seed);
+  const b = new MeshBuilder();
+  const c0 = rgb(0x4a7a3c);
+  const c1 = rgb(0xa8bf66);
+  for (let i = 0; i < 6; i++) {
+    const a = rng.range(0, TAU);
+    const x = Math.cos(a) * rng.range(0, 0.16);
+    const z = Math.sin(a) * rng.range(0, 0.16);
+    const h = rng.range(0.7, 1.25);
+    const lean = rng.range(0.05, 0.3);
+    const w = rng.range(0.03, 0.045);
+    const dx = Math.cos(a);
+    const dz = Math.sin(a);
+    const v0 = b.vertex(x - dz * w, 0, z + dx * w, c0, 0, 1, 0, 0);
+    const v1 = b.vertex(x + dz * w, 0, z - dx * w, c0, 0, 1, 0, 0);
+    const v2 = b.vertex(x + dx * lean * 0.4 - dz * w * 0.7, h * 0.6, z + dz * lean * 0.4 + dx * w * 0.7, mixRgb(c0, c1, 0.6), 0, 1, 0, 0.45);
+    const v3 = b.vertex(x + dx * lean * 0.4 + dz * w * 0.7, h * 0.6, z + dz * lean * 0.4 - dx * w * 0.7, mixRgb(c0, c1, 0.6), 0, 1, 0, 0.45);
+    const v4 = b.vertex(x + dx * lean, h, z + dz * lean, c1, 0, 1, 0, 1);
+    b.quad(v0, v1, v3, v2);
+    b.tri(v2, v3, v4);
+  }
+  const spike = rgb(0x6a4630);
+  for (let i = 0; i < 2; i++) {
+    const a = rng.range(0, TAU);
+    const x = Math.cos(a) * 0.1;
+    const z = Math.sin(a) * 0.1;
+    const h = rng.range(1.0, 1.4);
+    addTube(b, [[x, 0, z, 0.018], [x, h, z, 0.014]], { sides: 3, c0, c1: mixRgb(c0, c1, 0.5), sway0: 0, sway1: 0.6 });
+    addTube(b, [[x, h - 0.02, z, 0.045], [x, h + 0.22, z, 0.045], [x, h + 0.3, z, 0.012]], { sides: 4, c0: spike, c1: scaleRgb(spike, 1.25), sway0: 0.6, sway1: 0.75 });
+  }
+  return finish(b);
+}
+
+/** 花丛：三朵成簇的五瓣小花(花瓣为白，实例色偏定色)，花心暖黄 */
 function makeFlowers(seed: number): THREE.BufferGeometry {
   const rng = new Rng(seed);
   const b = new MeshBuilder();
-  const leaf = rgb(0x4f9a4c);
-  const n = 3 + rng.int(2);
+  const leaf = rgb(0x4f9048);
+  const n = 3;
   for (let i = 0; i < n; i++) {
-    const a = rng.range(0, TAU);
-    const d = rng.range(0.05, 0.3);
+    const a = (i / n) * TAU + rng.range(-0.4, 0.4);
+    const d = rng.range(0.08, 0.2);
     const x = Math.cos(a) * d;
     const z = Math.sin(a) * d;
-    const h = rng.range(0.16, 0.3);
-    const s0 = b.vertex(x - 0.014, 0, z, scaleRgb(leaf, 0.7), 0, 1, 0, 0);
-    const s1 = b.vertex(x + 0.014, 0, z, scaleRgb(leaf, 0.7), 0, 1, 0, 0);
+    const h = rng.range(0.12, 0.22);
+    const s0 = b.vertex(x - 0.012, 0, z, scaleRgb(leaf, 0.7), 0, 1, 0, 0);
+    const s1 = b.vertex(x + 0.012, 0, z, scaleRgb(leaf, 0.7), 0, 1, 0, 0);
     const s2 = b.vertex(x, h, z, leaf, 0, 1, 0, 0.5);
     b.tri(s0, s1, s2);
-    const r = rng.range(0.06, 0.085);
-    const c = b.vertex(x, h + 0.02, z, [1, 0.9, 0.5], 0, 1, 0, 0.5);
-    const ring: number[] = [];
-    for (let p = 0; p < 4; p++) {
-      const pa = (p / 4) * TAU + a;
-      ring.push(b.vertex(x + Math.cos(pa) * r, h, z + Math.sin(pa) * r, [1, 1, 1], 0, 1, 0, 0.5, 0, 1));
+    const r = rng.range(0.1, 0.13);
+    const c = b.vertex(x, h + 0.025, z, [1, 0.85, 0.4], 0, 1, 0, 0.5);
+    const pa0 = rng.range(0, TAU);
+    for (let p = 0; p < 5; p++) {
+      const pa = pa0 + (p / 5) * TAU;
+      const w = 0.42;
+      const t0 = b.vertex(x + Math.cos(pa - w) * r * 0.75, h + 0.012, z + Math.sin(pa - w) * r * 0.75, [0.92, 0.92, 0.92], 0, 1, 0, 0.5, 0, 1);
+      const t1 = b.vertex(x + Math.cos(pa) * r, h + 0.004, z + Math.sin(pa) * r, [1, 1, 1], 0, 1, 0, 0.5, 0, 1);
+      const t2 = b.vertex(x + Math.cos(pa + w) * r * 0.75, h + 0.012, z + Math.sin(pa + w) * r * 0.75, [0.92, 0.92, 0.92], 0, 1, 0, 0.5, 0, 1);
+      b.quad(c, t2, t1, t0);
     }
-    for (let p = 0; p < 4; p++) b.tri(c, ring[(p + 1) % 4], ring[p]);
   }
   return finish(b);
 }
 
-/** 矮草簇：4~6 片单三角叶(镜头距离下足够)，叶尖亮、根部暗 */
+/** 矮草簇：三片带明暗渐变的浅色叶片(根暗、尖亮)，每片两段 */
 function makeTuft(seed: number): THREE.BufferGeometry {
   const rng = new Rng(seed);
   const b = new MeshBuilder();
-  const base = rgb(0x3f8a45);
-  const tip = rgb(0xa8d05a);
-  const n = 4 + rng.int(3);
+  const base = rgb(0x4f8a44);
+  const mid = rgb(0x7fb04e);
+  const tip = rgb(0xb4cf68);
+  const n = 3;
   for (let i = 0; i < n; i++) {
-    const a = (i / n) * TAU + rng.range(-0.5, 0.5);
-    const h = rng.range(0.2, 0.4);
-    const w = rng.range(0.04, 0.06);
-    const out = rng.range(0.08, 0.22);
+    const a = (i / n) * TAU + rng.range(-0.6, 0.6);
+    const h = rng.range(0.2, 0.36);
+    const w = rng.range(0.035, 0.05);
+    const out = rng.range(0.08, 0.2);
     const dx = Math.cos(a);
     const dz = Math.sin(a);
     const v0 = b.vertex(dx * 0.03 + dz * w, 0, dz * 0.03 - dx * w, base, 0, 1, 0, 0);
     const v1 = b.vertex(dx * 0.03 - dz * w, 0, dz * 0.03 + dx * w, base, 0, 1, 0, 0);
-    const v2 = b.vertex(dx * out, h, dz * out, tip, 0, 1, 0, 1);
-    b.tri(v0, v1, v2);
+    const v2 = b.vertex(dx * out * 0.5 + dz * w * 0.7, h * 0.6, dz * out * 0.5 - dx * w * 0.7, mid, 0, 1, 0, 0.5);
+    const v3 = b.vertex(dx * out * 0.5 - dz * w * 0.7, h * 0.6, dz * out * 0.5 + dx * w * 0.7, mid, 0, 1, 0, 0.5);
+    const v4 = b.vertex(dx * out, h, dz * out, tip, 0, 1, 0, 1);
+    b.quad(v0, v1, v3, v2);
+    b.tri(v2, v3, v4);
   }
   return finish(b);
 }
@@ -681,8 +1009,8 @@ function makeBrazierCrystal(): THREE.BufferGeometry {
 function makeRuinStone(seed: number): THREE.BufferGeometry {
   const rng = new Rng(seed);
   const b = new MeshBuilder();
-  const stone = rgb(0xb9bec8);
-  const dark = rgb(0x7c8494);
+  const stone = rgb(0xa9a6a0);
+  const dark = rgb(0x6f6e78);
   const w = rng.range(0.4, 0.7);
   const h = rng.range(0.22, 0.45);
   const d = rng.range(0.28, 0.4);
@@ -690,21 +1018,47 @@ function makeRuinStone(seed: number): THREE.BufferGeometry {
   return finish(b);
 }
 
-/** 莲叶(河面漂浮)：扁圆片 + 缺口 */
+/** 荷叶(河面漂浮)：扁圆片 + 缺口，叶缘略翘、带一圈深色叶脉 */
 function makeLilyPad(seed: number): THREE.BufferGeometry {
   const rng = new Rng(seed);
   const b = new MeshBuilder();
-  const c0 = rgb(0x3f9a58);
-  const c1 = rgb(0x7cc66a);
-  const seg = 9;
-  const gap = rng.range(0.5, 0.9);
+  const c0 = rgb(0x3f8f55);
+  const c1 = rgb(0x79b862);
+  const c2 = rgb(0x4f9a50);
+  const seg = 10;
+  const gap = rng.range(0.45, 0.8);
   const center = b.vertex(0, 0.012, 0, c0, 0, 1, 0);
+  const mid: number[] = [];
   const ring: number[] = [];
   for (let i = 0; i <= seg; i++) {
     const a = gap * 0.5 + (i / seg) * (TAU - gap);
-    ring.push(b.vertex(Math.cos(a), 0, Math.sin(a), c1, 0, 1, 0));
+    const k = 0.94 + 0.06 * Math.sin(i * 2.1 + seed);
+    mid.push(b.vertex(Math.cos(a) * 0.55, 0.014, Math.sin(a) * 0.55, i % 2 === 0 ? c1 : c2, 0, 1, 0));
+    ring.push(b.vertex(Math.cos(a) * k, 0.03, Math.sin(a) * k, scaleRgb(c1, 0.92), Math.cos(a) * 0.3, 0.95, Math.sin(a) * 0.3));
   }
-  for (let i = 0; i < seg; i++) b.tri(center, ring[i + 1], ring[i]);
+  for (let i = 0; i < seg; i++) {
+    b.tri(center, mid[i + 1], mid[i]);
+    b.quad(mid[i], mid[i + 1], ring[i + 1], ring[i]);
+  }
+  return finish(b);
+}
+
+/** 荷花花苞：立在水面上的一枚尖苞(白色，实例色偏定色) + 短茎 */
+function makeLotusBud(): THREE.BufferGeometry {
+  const b = new MeshBuilder();
+  addTube(b, [[0, -0.1, 0, 0.02], [0, 0.22, 0, 0.018]], { sides: 3, c0: rgb(0x3f7a48), c1: rgb(0x5a9c56), sway1: 0.3 });
+  const n = 5;
+  const tip = b.vertex(0, 0.5, 0, [1, 1, 1], 0, 1, 0, 0.4, 0.15, 1);
+  const base = b.vertex(0, 0.2, 0, [0.75, 0.75, 0.75], 0, -1, 0, 0.3, 0, 1);
+  const ring: number[] = [];
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * TAU;
+    ring.push(b.vertex(Math.cos(a) * 0.1, 0.31, Math.sin(a) * 0.1, [0.9, 0.9, 0.9], Math.cos(a), 0.3, Math.sin(a), 0.35, 0.1, 1));
+  }
+  for (let i = 0; i < n; i++) {
+    b.tri(ring[i], tip, ring[(i + 1) % n]);
+    b.tri(base, ring[i], ring[(i + 1) % n]);
+  }
   return finish(b);
 }
 
@@ -712,6 +1066,7 @@ export interface PropLibrary {
   trees: THREE.BufferGeometry[];
   /** 点缀用的异色树：[粉白花树, 金叶树] */
   accentTrees: THREE.BufferGeometry[];
+  willows: THREE.BufferGeometry[];
   farTrees: THREE.BufferGeometry[];
   pines: THREE.BufferGeometry[];
   shrubs: THREE.BufferGeometry[];
@@ -722,22 +1077,38 @@ export interface PropLibrary {
   pillars: THREE.BufferGeometry[];
   tallPillars: THREE.BufferGeometry[];
   mushrooms: THREE.BufferGeometry[];
+  brackets: THREE.BufferGeometry[];
+  /** 琥珀灯果(暖光) */
   lanterns: THREE.BufferGeometry[];
+  /** 星铃草(河岸，微光；铃花为白，实例色偏定色) */
+  bells: THREE.BufferGeometry[];
+  ferns: THREE.BufferGeometry[];
+  vines: THREE.BufferGeometry[];
+  drapes: THREE.BufferGeometry[];
+  reeds: THREE.BufferGeometry[];
   flowers: THREE.BufferGeometry[];
   tufts: THREE.BufferGeometry[];
   ruinStones: THREE.BufferGeometry[];
   lilyPads: THREE.BufferGeometry[];
+  lotusBud: THREE.BufferGeometry;
   banner: THREE.BufferGeometry;
   brazier: THREE.BufferGeometry;
   brazierCrystal: THREE.BufferGeometry;
   dispose(): void;
 }
 
+/** 树模型在缩放 1 时的大致顶高 / 树冠半径 / 树冠中心高度(摆树时算镜头遮挡用) */
+export const TREE_TOP = 3.6;
+export const TREE_CANOPY = 1.6;
+export const TREE_CROWN_Y = 2.5;
+
 export function createPropLibrary(): PropLibrary {
   const many = (n: number, f: (seed: number) => THREE.BufferGeometry, seed0: number): THREE.BufferGeometry[] => Array.from({ length: n }, (_, i) => f(seed0 + i * 101));
+  const amberA = rgb(E.amber);
   const lib = {
     trees: many(4, (sd) => makeTree(sd), 11),
-    accentTrees: [makeTree(211, { dark: 0xc2608f, mid: 0xf09abc, light: 0xffe0ec }), makeTree(223, { dark: 0xa8742a, mid: 0xe0aa3e, light: 0xffe28a })],
+    accentTrees: [makeTree(211, { dark: 0xb86a84, mid: 0xe8a9b8, light: 0xffe3ea }), makeTree(223, { dark: 0xa8742a, mid: 0xd9a640, light: 0xf6dc8a })],
+    willows: many(2, makeWillow, 307),
     farTrees: many(3, makeFarTree, 17),
     pines: many(3, makePine, 23),
     shrubs: many(3, makeShrub, 37),
@@ -748,11 +1119,18 @@ export function createPropLibrary(): PropLibrary {
     pillars: many(2, (s) => makePillar(s, false), 83),
     tallPillars: many(2, (s) => makePillar(s, true), 97),
     mushrooms: many(3, makeMushrooms, 103),
-    lanterns: many(2, makeLanternPlant, 113),
+    brackets: many(2, makeBracketFungus, 109),
+    lanterns: many(2, (s) => makeLanternPlant(s, scaleRgb(amberA, 1.0), [1, 0.5, 0.18], 1), 113),
+    bells: many(2, (s) => makeLanternPlant(s, [0.8, 0.8, 0.8], [1, 1, 1], 0.5, true), 211),
+    ferns: many(3, makeFern, 157),
+    vines: many(3, makeVine, 163),
+    drapes: many(3, makeRimDrape, 167),
+    reeds: many(2, makeReeds, 173),
     flowers: many(3, makeFlowers, 127),
     tufts: many(4, makeTuft, 131),
     ruinStones: many(3, makeRuinStone, 139),
     lilyPads: many(2, makeLilyPad, 149),
+    lotusBud: makeLotusBud(),
     banner: makeBanner(),
     brazier: makeBrazier(),
     brazierCrystal: makeBrazierCrystal(),

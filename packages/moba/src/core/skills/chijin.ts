@@ -1,11 +1,11 @@
 /**
- * 赤烬 · 焰刃武者（战士）
+ * 程咬金 · 混世魔王（战士）
  *
- * 被动 余烬之刃：放技能后获得 chijin_ember，窗口内下一次普攻附带额外物理伤害并回血。
- * S1 烈焰斩：前方扇形物理伤害 + 减速。
- * S2 炎步：突进，路径上的敌人各受一次物理伤害；获得攻速(chijin_blaze，value = 加成比例)。
- * 大招 焚天旋舞：火焰旋风跟随自身逐跳伤害；期间可移动/放技能、不能普攻、免疫减速(起手解除已有减速)、减伤。
- *   旋风不是引导：被眩晕/击飞只会让赤烬动不了，旋风照常灼烧，只有阵亡才会中断。
+ * 被动 越砍越勇：放技能后获得 chijin_ember，窗口内下一次普攻附带额外物理伤害并回血。
+ * S1 拦腰一斧：前方扇形物理伤害 + 减速。
+ * S2 半路杀出：突进，路径上的敌人各受一次物理伤害；获得攻速(chijin_blaze，value = 加成比例)。
+ * 大招 抡圆了砍：斧影旋风跟随自身逐跳伤害；期间可移动/放技能、不能普攻、免疫减速(起手解除已有减速)、减伤。
+ *   旋风不是引导：被眩晕/击飞只会让程咬金动不了，旋风照常劈砍，只有阵亡才会中断。
  */
 import { HEROES } from '../data/heroes';
 import { isStructure } from '../entity';
@@ -17,7 +17,7 @@ const S1_POINT = castPoint('chijin', 's1');
 
 tk.registerHeroHooks('chijin', {
   onSkillCast(sim, hero, slot) {
-    // 只算英雄技能，召唤师技能不触发
+    // 只算英雄技能，通用技能不触发
     if (slot !== 's1' && slot !== 's2' && slot !== 'ult') return;
     tk.addBuff(sim, hero, 'chijin_ember', { duration: P.window, sourceId: hero.id, merge: 'replace' });
   },
@@ -37,7 +37,7 @@ tk.registerHeroHooks('chijin', {
     if (blaze) acc.asPct += blaze.value;
   },
   onTick(sim, hero) {
-    // 旋舞中放了别的技能：施法动作结束后回到旋转
+    // 旋斧中放了别的技能：施法动作结束后回到旋转
     if (hero.rt.act !== null) return;
     const spin = tk.findBuff(hero, 'chijin_spin');
     if (spin) tk.playAnim(sim, hero, 'spin', spin.timeLeft, false);

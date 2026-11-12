@@ -21,6 +21,9 @@
  * - 透明物体的 renderOrder：水面 1，瀑布 2，地形贴地纹样 3，单位脚下光环 4，技能地面贴花/预警圈 5，
  *   环境粒子 6，特效粒子/拖尾 ≥ 7。贴地透明物一律 depthWrite=false，并略高于地面(y ≥ 0.03)或开 polygonOffset。
  * - 受光物体用 materials.ts 的 createToonMaterial；需要投影的网格设 castShadow=true(阴影相机自动贴合镜头)。
+ *   主光方向取 engine/lighting.ts 的 SUN_DIR / SUN_SHADOW_DIR / SUN_SHADOW_LENGTH，不要写死。
+ * - 自写的受光 shader：环境光过一遍 GLSL_LIGHT_TINT(kitLightTint / kitTintAmbient)，暗部色读共享 uniform
+ *   uShadeTintGround(地表/水面/贴花) 或 SHARED.uShadeTint(实体)，不要各写各的常量。
  * - 灯光数量固定(主光 + 半球光 + 点光池)，不要往场景里增删灯：灯数变化会让所有受光 shader 重编译。
  *   需要技能闪光用 ctx.lights.pulse(...)。
  * - 每帧热路径不要分配对象；静态物体设 matrixAutoUpdate=false。
@@ -30,6 +33,7 @@ import type { GameEvent, GameState, MapData, PlayerTeam, Vec2 } from '../../core
 import type { AimIndicator, Quality } from '../api';
 import type { CameraRig } from './camera';
 import type { LightRig } from './lighting';
+import type { LightTint } from './lighttint';
 import type { GradeParams } from './post';
 import type { QualitySettings } from './quality';
 
@@ -89,6 +93,11 @@ export interface RenderContext {
   readonly rig: CameraRig;
   /** 灯光装置：pulse(...) 技能闪光；sun / hemi */
   readonly lights: LightRig;
+  /**
+   * 环境染色贴图(128²，覆盖 ±64 米)：stamp(x, z, radius, color, strength) 盖彩色环境光斑，occlude(x, z, radius, amount) 盖天空光遮蔽，
+   * 全部盖完后 bake() 上传。地形模块在场景构建时写入；受光着色器通过 GLSL_LIGHT_TINT 的 kitLightTint(worldXZ) 读取。
+   */
+  readonly lightTint: LightTint;
   /** 调色参数(后期启用时生效)：desaturate / dim / exposure… */
   readonly grade: GradeParams;
   readonly layers: RenderLayers;

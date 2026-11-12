@@ -295,8 +295,8 @@ describe('命令健壮性', () => {
         case 6: return { type: 'cast', slot: rng.pick(slots), dir: v() };
         case 7: return { type: 'cast', slot: rng.pick(slots), pos: v() };
         case 8: return { type: 'cast', slot: rng.pick(slots), targetId: id };
-        case 9: return { type: 'buy', itemId: rng.pick(['boots', 'iron_blade', 'boots_fury', 'thorn_mail', 'sage_codex'] as const) };
-        case 10: return { type: 'sell', index: rng.int(9) - 2 };
+        case 9: return { type: 'buy', itemId: rng.pick(['boots', 'piercing_spear', 'boots_fury', 'thorn_mail', 'sage_codex'] as const) };
+        case 10: return rng.chance(0.3) ? { type: 'autoBuy', enabled: rng.chance(0.5) } : { type: 'sell', index: rng.int(9) - 2 };
         default: return { type: 'cast', slot: 'nope' as SkillSlot };
       }
     };
@@ -313,7 +313,7 @@ describe('命令健壮性', () => {
       sim.drainEvents();
       for (const u of sim.units) {
         if (!Number.isFinite(u.pos.x + u.pos.y + u.hp + u.mana + u.facing)) bad++;
-        // 跃击(磐岳大招)途中允许在墙体上方，其余时刻英雄必须站在可走位置
+        // 跃击(樊哙大招)途中允许在墙体上方，其余时刻英雄必须站在可走位置
         else if (u.kind === 'hero' && u.alive && !(u.rt.dash && u.rt.dash.ignoreWalls) && !sim.nav.isFree(u.pos.x, u.pos.y, u.rt.navR - 0.1)) bad++;
       }
     }

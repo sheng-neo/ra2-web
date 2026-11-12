@@ -256,7 +256,7 @@ export function fightSkills(b: HeroBot, t: HeroUnit): boolean {
         castToward(b, 's1', P);
         return true;
       }
-      // 已经贴身：炎步的攻速也是输出(穿过去再回头砍)
+      // 已经贴身：半路杀出的攻速也是输出(穿过去再回头砍)
       if (can(b, 's2') && inMelee && !ember && hpR > 0.25 && b.me.skills.s1.cd > 1.5) {
         const dx = t.pos.x - me.pos.x;
         const dy = t.pos.y - me.pos.y;
@@ -546,7 +546,7 @@ export function waveSkills(b: HeroBot, units: readonly Unit[], jungle: boolean):
       return false;
     }
     case 'yeque': {
-      // 飞刃贴脸三枚全中；瞬影斩穿过一排
+      // 飞刃贴脸三枚全中；风萧易水穿过一排
       if (cheap('s2') && dist(me.pos, first.pos) <= 3.6 + first.radius) {
         b.act.castDir('s2', first.pos.x - me.pos.x, first.pos.y - me.pos.y);
         return true;
@@ -614,7 +614,7 @@ export function escapeSkills(b: HeroBot, dx: number, dy: number): boolean {
       return can(b, 's2', true) && escapeDash(b, 's2', dx, dy, 5.5);
     case 'xingli':
       if (close && chaser && can(b, 's2', true)) {
-        // 星环放在追兵脚下偏向自己一点：拉 + 减速
+        // 音环放在追兵脚下偏向自己一点：拉 + 减速
         P.x = chaser.pos.x + (b.me.pos.x - chaser.pos.x) * 0.3;
         P.y = chaser.pos.y + (b.me.pos.y - chaser.pos.y) * 0.3;
         b.act.castAt('s2', P);

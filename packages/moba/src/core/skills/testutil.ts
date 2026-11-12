@@ -1,6 +1,6 @@
 /**
  * 技能/装备测试的共用辅助（只给 *.test.ts 用）。场地选在地图正中的河道口：以原点为中心、
- * 半径约 9 米内没有墙、草丛，也在双方中路外塔的射程之外。
+ * 半径约 9 米内没有墙、草丛，也在双方中路一塔的射程之外。
  */
 import { skillValue } from '../data/heroes';
 import { ARMOR_K } from '../data/units';

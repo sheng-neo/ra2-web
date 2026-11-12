@@ -32,6 +32,24 @@ export function campRadius(type: MonsterType): number {
 export const TOWER_PAD_RADIUS = 3.3;
 export const CORE_PAD_RADIUS = 6.6;
 
+/**
+ * 营地主题号(地表/水面着色器的 uCamps / uPits 与贴花、布景共用；见 art-v2 §9.2 I7)：
+ * 1 霜晶洼地(蓝buff) / 2 余烬坑(红buff) / 3 树根巢穴(苔背獾) / 4 灯花丛(荧翅蛾) / 5 沉渊潭(河道巨龙) / 6 坠星潭(远古巨灵)
+ */
+export const CAMP_THEME: Record<MonsterType, number> = {
+  frost_golem: 1,
+  ember_golem: 2,
+  mossback: 3,
+  glimwing: 4,
+  abyss_drake: 5,
+  star_colossus: 6,
+};
+/** uCamps 数组长度(地图上一共 14 个营地) */
+export const MAX_CAMPS = 14;
+
+/** 低画质档的静态投影按这个墙高估算(米) */
+const STATIC_SHADOW_HEIGHT = 2.6;
+
 const sstep = (a: number, b: number, x: number): number => {
   const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
   return t * t * (3 - 2 * t);
@@ -265,12 +283,121 @@ function stampCircle(buf: Float32Array, size: number, c: Vec2, r: number, reach:
 export interface SplatTextures {
   /** R=兵线 G=河道 B=不可走(墙体/边界) A=基地地台，均为有符号距离(0.5 = 边界，<0.5 = 内部) */
   a: THREE.DataTexture;
-  /** R=草丛 G=野怪营地 B=保留 A=塔座/水晶座 */
+  /** R=草丛 G=野怪营地 B=静态受光蒙版(255 = 受光；没有阴影贴图的低画质档拿它当主光阴影) A=塔座/水晶座 */
   b: THREE.DataTexture;
 }
 
-/** 把距离场烘焙成两张 RGBA8 贴图(线性过滤即可还原出平滑且准确的边界) */
-export function bakeSplat(field: MapField, size: number): SplatTextures {
+/** 太阳方向在水平面上的分量：单位方向 + 「每米物高的影长」 */
+function sunGround(sun: { x: number; y: number; z: number }): { hx: number; hz: number; cot: number } {
+  const hl = Math.hypot(sun.x, sun.z) || 1;
+  return { hx: sun.x / hl, hz: sun.z / hl, cot: hl / Math.max(0.05, sun.y) };
+}
+
+/**
+ * 静态受光蒙版：对离墙不远的 texel，朝太阳的水平方向在墙体距离缓冲里步进，看是否被石台挡住(1 = 受光)。
+ * 西/北/东三面的界外高崖同样算遮挡；南面是矮石沿，不算。
+ */
+function bakeStaticLight(wall: Float32Array, size: number, bound: number, sun: { x: number; y: number; z: number }): Float32Array {
+  const { hx, hz, cot } = sunGround(sun);
+  const reach = STATIC_SHADOW_HEIGHT * cot;
+  const toPx = size / (SPLAT_EXTENT * 2);
+  const lit = new Float32Array(size * size).fill(1);
+  const STEPS = 7;
+  for (let j = 0; j < size; j++) {
+    const z = (j + 0.5) / toPx - SPLAT_EXTENT;
+    for (let i = 0; i < size; i++) {
+      const x = (i + 0.5) / toPx - SPLAT_EXTENT;
+      const k = j * size + i;
+      const d0 = wall[k];
+      const edge = bound - Math.max(Math.abs(x), Math.abs(z));
+      if (d0 <= 0 || edge < -1) continue;
+      if (d0 > reach + 0.6 && edge > reach + 0.6) continue;
+      let occ = 0;
+      for (let s = 1; s <= STEPS; s++) {
+        const t = (reach * s) / STEPS;
+        const qx = x + hx * t;
+        const qz = z + hz * t;
+        let o = 0;
+        if (Math.max(Math.abs(qx), Math.abs(qz)) > bound + 0.25) {
+          // 界外高崖(南侧矮石沿除外)
+          if (qz < bound - 9) o = 1;
+        } else {
+          const qi = Math.min(size - 1, Math.max(0, Math.floor((qx + SPLAT_EXTENT) * toPx)));
+          const qj = Math.min(size - 1, Math.max(0, Math.floor((qz + SPLAT_EXTENT) * toPx)));
+          // 石台要进到墙体里 0.35 米左右才是全高
+          o = Math.min(1, Math.max(0, (-wall[qj * size + qi] - 0.05) / 0.3));
+        }
+        // 影子末端渐隐
+        o *= 1 - 0.55 * sstep(0.55, 1, s / STEPS);
+        if (o > occ) occ = o;
+      }
+      lit[k] = 1 - occ;
+    }
+  }
+  // 两遍 3×3 盒式模糊：半影
+  const tmp = new Float32Array(size * size);
+  for (let pass = 0; pass < 2; pass++) {
+    for (let j = 0; j < size; j++) {
+      for (let i = 0; i < size; i++) {
+        const i0 = Math.max(0, i - 1);
+        const i1 = Math.min(size - 1, i + 1);
+        tmp[j * size + i] = (lit[j * size + i0] + lit[j * size + i] + lit[j * size + i1]) / 3;
+      }
+    }
+    for (let j = 0; j < size; j++) {
+      const j0 = Math.max(0, j - 1);
+      const j1 = Math.min(size - 1, j + 1);
+      for (let i = 0; i < size; i++) lit[j * size + i] = (tmp[j0 * size + i] + tmp[j * size + i] + tmp[j1 * size + i]) / 3;
+    }
+  }
+  return lit;
+}
+
+/** 一处会在低画质档留下静态投影的高物：根部位置、根部高度、投影体的离地高度与半径 */
+export interface StaticCaster {
+  x: number;
+  z: number;
+  /** 投影体中心离地面(y = 0)的高度 */
+  height: number;
+  radius: number;
+  strength: number;
+}
+
+/**
+ * 把树冠等高物的投影盖进静态受光蒙版(splatB.B)：沿太阳反方向按高度平移后的一个软圆。
+ * 在散布完成后调用一次；贴图尚未上传时只是改内存数据。
+ */
+export function stampStaticShadows(splat: SplatTextures, casters: StaticCaster[], sun: { x: number; y: number; z: number }): void {
+  const img = splat.b.image as { data: Uint8Array; width: number };
+  const data = img.data;
+  const size = img.width;
+  const { hx, hz, cot } = sunGround(sun);
+  const toPx = size / (SPLAT_EXTENT * 2);
+  for (const c of casters) {
+    const cx = c.x - hx * c.height * cot;
+    const cz = c.z - hz * c.height * cot;
+    const r = c.radius;
+    const i0 = Math.max(0, Math.floor((cx - r + SPLAT_EXTENT) * toPx));
+    const i1 = Math.min(size - 1, Math.ceil((cx + r + SPLAT_EXTENT) * toPx));
+    const j0 = Math.max(0, Math.floor((cz - r + SPLAT_EXTENT) * toPx));
+    const j1 = Math.min(size - 1, Math.ceil((cz + r + SPLAT_EXTENT) * toPx));
+    for (let j = j0; j <= j1; j++) {
+      const z = (j + 0.5) / toPx - SPLAT_EXTENT;
+      for (let i = i0; i <= i1; i++) {
+        const x = (i + 0.5) / toPx - SPLAT_EXTENT;
+        const d = Math.hypot(x - cx, z - cz) / r;
+        if (d >= 1) continue;
+        const k = 1 - c.strength * (1 - sstep(0.55, 1, d));
+        const o = (j * size + i) * 4 + 2;
+        data[o] = Math.min(data[o], Math.round(255 * k));
+      }
+    }
+  }
+  splat.b.needsUpdate = true;
+}
+
+/** 把距离场烘焙成两张 RGBA8 贴图(线性过滤即可还原出平滑且准确的边界)。sun = 指向太阳的单位向量 */
+export function bakeSplat(field: MapField, size: number, sun: { x: number; y: number; z: number }): SplatTextures {
   const n = size * size;
   const R = SPLAT_RANGE;
   const map = field.map;
@@ -295,6 +422,8 @@ export function bakeSplat(field: MapField, size: number): SplatTextures {
   for (const t of map.towers) stampCircle(pad, size, t.pos, TOWER_PAD_RADIUS, R.pad);
   for (const b of map.bases) stampCircle(pad, size, b.core, CORE_PAD_RADIUS, R.pad);
 
+  const lit = bakeStaticLight(solid, size, map.bound, sun);
+
   const da = new Uint8Array(n * 4);
   const db = new Uint8Array(n * 4);
   const enc = (d: number, range: number): number => Math.min(255, Math.max(0, Math.round((d / range) * 127.5 + 127.5)));
@@ -311,7 +440,7 @@ export function bakeSplat(field: MapField, size: number): SplatTextures {
       da[o + 3] = enc(base[k], R.base);
       db[o] = enc(bush[k], R.bush);
       db[o + 1] = enc(camp[k], R.camp);
-      db[o + 2] = 0;
+      db[o + 2] = Math.round(lit[k] * 255);
       db[o + 3] = enc(pad[k], R.pad);
     }
   }

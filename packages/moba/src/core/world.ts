@@ -22,7 +22,7 @@
  *   projectiles.ts / areas.ts   投射物与区域效果       anim.ts     动作状态机
  *   hero.ts       命令处理、施法管线、智能目标、装备、复活
  *   minions.ts / structures.ts / monsters.ts / vision.ts
- *   skills/       registry(注册表) toolkit(技能工具箱) summoner(召唤师技能) panyue/chijin/xingli/fengling/yeque(英雄技能与被动)
+ *   skills/       registry(注册表) toolkit(技能工具箱) summoner(通用技能) panyue/chijin/xingli/fengling/yeque(英雄技能与被动)
  *                 timing(出手点约定) intents(给 Bot 的技能意图表与伤害估算)
  *   passives.ts   装备被动                             ai/         Bot 接口、公平视图、兜底 AI
  *   headless.ts   无头跑完整对局                       testkit.ts  测试辅助
@@ -37,7 +37,7 @@ import { HERO_IDS } from './data/heroes';
 import { WAVES } from './data/units';
 import { createCore, createHero, createTower } from './entity';
 import { heroCommand, initHero, updateHero } from './hero';
-import type { CampRt, SimArea, SimCore, SimHero, SimProjectile, SimTower, SimUnit } from './internal';
+import type { BreathState, CampRt, SimArea, SimCore, SimHero, SimProjectile, SimTower, SimUnit } from './internal';
 import { LanePath } from './lanes';
 import { createMap } from './map';
 import { updateMinion, updateWaves } from './minions';
@@ -96,10 +96,12 @@ export class Sim implements World {
   readonly heroes: SimHero[] = [];
   readonly projectiles: SimProjectile[] = [];
   readonly areas: SimArea[] = [];
+  /** 进行中的扇形危险区(河道巨龙吐息)。不进 GameState：画面靠 fx 事件，这张表只给 Bot 的躲避逻辑看 */
+  readonly cones: BreathState[] = [];
   readonly byId = new Map<number, SimUnit>();
 
   readonly lanes: Record<LaneId, LanePath>;
-  /** towers[队伍][路] = [外塔, 中塔, 高地塔]，被毁的位置为 null */
+  /** towers[队伍][路] = [一塔, 二塔, 高地塔]，被毁的位置为 null */
   readonly towers: [Record<LaneId, (SimTower | null)[]>, Record<LaneId, (SimTower | null)[]>];
   readonly cores: [SimCore, SimCore];
   readonly camps: CampRt[] = [];

@@ -396,6 +396,9 @@ const SINGLE: Record<FxKey, () => void> = {
     addBuff(player, 'ember_might', 70);
     fx('buff_gain', P0(), { unitId: player.id });
   },
+  // 河道巨龙吐息(C1 占位：只发事件，舞台上没有巨龙单位；待 D 特效包换成带巨龙与 cast_s1 动作的完整演示)
+  drake_breath_warn: () => fx('drake_breath_warn', P0(), { team: 2, unitId: player.id, dir: dirTo(player.pos, foe.pos), radius: 7.5, angle: Math.PI / 3, value: 0.9 }),
+  drake_breath: () => fx('drake_breath', P0(), { team: 2, unitId: player.id, dir: dirTo(player.pos, foe.pos), radius: 7.5, angle: Math.PI / 3, value: 0.8 }),
   panyue_passive_hit: () => fx('panyue_passive_hit', T0(), { unitId: player.id, targetId: foe.id }),
   panyue_s1_dash: () => {
     const dir = dirTo(player.pos, foe.pos);

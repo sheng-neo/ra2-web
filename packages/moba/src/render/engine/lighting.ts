@@ -1,16 +1,32 @@
 /**
- * 光照装置：暖色主平行光(西南上方) + 冷色半球环境光 + 技能闪光点光池。
+ * 光照装置：午后斜阳的暖金主平行光(自西偏南上方) + 偏蓝的半球天光 + 技能闪光点光池。
  * 阴影相机每帧贴合镜头在地面上的可见范围，并按 texel 对齐，镜头平移时阴影边缘不闪烁。
+ *
+ * 主光方向(art-v2 §4 L1)：仰角约 53°，从西偏南 29° 打来。朝上的面 N·L = 0.80、西立面 0.53、
+ * 朝镜头的南立面 0.29、东立面 -0.53——在三阶明暗下正好是 亮 / 亮 / 灰 / 暗 三个面。投影落向屏幕右侧略偏上，长度 = 0.75 倍物高。
+ * 所有需要太阳方向的地方(静态影烘焙、石板倒角、阴影包围盒外扩…)都从这里的常量推，不要再写死。
  */
 import * as THREE from 'three';
 import { PALETTE } from '../materials';
 import type { QualitySettings } from './quality';
 
-/** 指向太阳的单位向量：西南(-x,+z)上方，仰角约 50° */
-export const SUN_DIR = new THREE.Vector3(-0.5, 1.0, 0.64).normalize();
+/** 指向太阳的单位向量(世界空间；x 向东，z 向南，镜头朝北) */
+export const SUN_DIR = new THREE.Vector3(-0.66, 1.0, 0.36).normalize();
+/** 投影在地面上的走向(世界 xz 平面单位向量：x, z)，即背离太阳的水平方向 */
+export const SUN_SHADOW_DIR = new THREE.Vector2(-SUN_DIR.x, -SUN_DIR.z).normalize();
+/** 投影长度 / 物体高度(= cot 仰角，约 0.75) */
+export const SUN_SHADOW_LENGTH = Math.hypot(SUN_DIR.x, SUN_DIR.z) / SUN_DIR.y;
+/** 主光与半球光的强度(与 PALETTE.env.sun / sky / bounce 配套；调色以 art-v2 §2.2 的亮度表为准) */
+export const SUN_INTENSITY = 3.1;
+export const HEMI_INTENSITY = 1.45;
+/**
+ * 地面反光的增益：半球光的下半球颜色 = PALETTE.env.bounce × 这个倍数。朝上的面不受它影响(只吃天光)，
+ * 立面吃一半——岩壁、建筑和角色的背光面靠这份暖色的地面反光托起来，不至于只剩一点冷天光而发黑。
+ */
+export const BOUNCE_GAIN = 2.0;
 
-/** 可见范围内可能出现的最高物体(树冠/塔尖)，阴影包围盒按它外扩 */
-const MAX_OBJECT_HEIGHT = 9;
+/** 可见范围内可能出现的最高物体(树冠/塔尖/巨灵光轮)，阴影包围盒按它外扩 */
+const MAX_OBJECT_HEIGHT = 10;
 const MAX_RAY_DIST = 160;
 
 interface Pulse {
@@ -37,13 +53,14 @@ export class LightRig {
 
   constructor(scene: THREE.Scene) {
     this.scene = scene;
-    this.sun = new THREE.DirectionalLight(PALETTE.env.sun, 2.7);
+    this.sun = new THREE.DirectionalLight(PALETTE.env.sun, SUN_INTENSITY);
     this.sun.position.copy(SUN_DIR).multiplyScalar(80);
-    this.sun.shadow.bias = -0.0004;
-    this.sun.shadow.normalBias = 0.05;
+    this.sun.shadow.bias = -0.0005;
+    this.sun.shadow.normalBias = 0.06;
     scene.add(this.sun);
     scene.add(this.sun.target);
-    this.hemi = new THREE.HemisphereLight(PALETTE.env.sky, PALETTE.env.bounce, 1.75);
+    this.hemi = new THREE.HemisphereLight(PALETTE.env.sky, PALETTE.env.bounce, HEMI_INTENSITY);
+    this.hemi.groundColor.multiplyScalar(BOUNCE_GAIN);
     scene.add(this.hemi);
   }
 
@@ -55,6 +72,12 @@ export class LightRig {
       this.sun.shadow.map?.dispose();
       this.sun.shadow.map = null;
     }
+    // 偏移按 texel 大小给：朝镜头的立面是掠射光(N·L 0.29)，法线偏移要够大才不出痤疮；
+    // high 档用 PCF + 半径(半影宽约 5 个 texel)，texel 小一半但滤波核更宽，偏移反而要略大一点
+    const pcf = q.shadowType === 'pcf';
+    this.sun.shadow.radius = pcf ? q.shadowRadius : 1;
+    this.sun.shadow.bias = pcf ? -0.0006 : -0.0005;
+    this.sun.shadow.normalBias = pcf ? 0.07 : 0.06;
     // 点光池大小固定为档位值：数量变化才会让受光 shader 重编译
     while (this.pulses.length > q.pointLights) {
       const p = this.pulses.pop();

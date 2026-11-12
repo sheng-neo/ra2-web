@@ -13,7 +13,7 @@ import { AREA_THREATS, estimateBasicDamage, estimateComboDamage } from '../skill
 import type { CoreUnit, HeroId, HeroUnit, LaneId, MinionUnit, PlayerTeam, TowerUnit, Unit, Vec2 } from '../types';
 import { Act } from './act';
 import { advantageOf, allyWeight, basicDps, burstOn, effHp, foeWeight, heroOutput, structureOutput } from './eval';
-import { dist, type LaneGeo } from './geom';
+import { coneEscape, dist, type LaneGeo } from './geom';
 import { epicWork, jungleWork } from './jungle';
 import { laneWork } from './lane';
 import { PROFILES, STYLES, TUNE, type Profile, type Style } from './params';
@@ -23,6 +23,7 @@ import { teamBrain, type TeamBrain } from './team';
 import type { BotController, BotView } from './types';
 
 const TMP: Vec2 = { x: 0, y: 0 };
+const ESC: Vec2 = { x: 0, y: 0 };
 const STAND: Vec2 = { x: 0, y: 0 };
 
 /** inMood 的类别：上前消耗 / 支援队友 / 跟随集火 / 闪现追杀 */
@@ -607,6 +608,9 @@ export class HeroBot implements BotController {
 
   // ───────────────────────── 躲技能 ─────────────────────────
 
+  /** 给几何小工具用的「这个点能不能站」 */
+  private readonly canStand = (p: Vec2): boolean => this.v.walkable(p);
+
   private willDodge(id: number): boolean {
     let r = this.dodgeRoll.get(id);
     if (r === undefined) {
@@ -617,7 +621,7 @@ export class HeroBot implements BotController {
     return r;
   }
 
-  /** 走出预警圈/持续伤害区，侧移躲直线弹道。返回 true = 这次思考用来躲了 */
+  /** 走出预警圈/持续伤害区/巨龙吐息的扇形，侧移躲直线弹道。返回 true = 这次思考用来躲了 */
   private dodge(): boolean {
     const v = this.v;
     const me = this.me;
@@ -661,6 +665,15 @@ export class HeroBot implements BotController {
       }
       ux += ox;
       uy += oy;
+      found = true;
+    }
+    // 扇形(河道巨龙吐息)：预警和喷吐阶段都往外走——喷吐是分几跳结算的，晚走一步也能少挨几跳
+    for (const c of v.hostileCones()) {
+      if (c.age < prof.reaction) continue;
+      if (!coneEscape(me.pos, me.radius, c, this.home, this.canStand, ESC)) continue;
+      if (!this.willDodge(c.id)) continue;
+      ux += ESC.x * 2;
+      uy += ESC.y * 2;
       found = true;
     }
     for (const p of v.hostileProjectiles()) {

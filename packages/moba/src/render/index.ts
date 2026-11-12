@@ -28,6 +28,8 @@ export { detectQuality } from './engine/quality';
 export { createRendererCore } from './engine/core';
 export type { GameRendererCore } from './engine/core';
 export type { FrameInfo, RenderContext, RenderModule, RenderModuleFactory, TerrainQuery, UnitQuery } from './engine/context';
+export type { LightTint } from './engine/lighttint';
+export type { QualitySettings } from './engine/quality';
 export { createTerrainModule } from './terrain';
 export { createPlaceholderUnits } from './engine/placeholders';
 export { createFxModule } from './fx';

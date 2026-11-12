@@ -27,7 +27,7 @@ function castToward(sim: Sim, hero: SimHero, intent: SkillIntent, target: SimUni
   sim.command(hero.id, cmd);
 }
 
-/** 满级、带一件物攻装和一件法强装的英雄 + 一个满级磐岳当靶子(不回血) */
+/** 满级、带一件物攻装和一件法强装的英雄 + 一个满级樊哙当靶子(不回血) */
 function duel(heroId: HeroId, distance: number): { sim: Sim; hero: SimHero; target: SimHero } {
   const { sim, hero } = arena(heroId, 15);
   hero.gold = 99999;
@@ -94,7 +94,7 @@ describe('技能意图表', () => {
       for (const slot of SLOTS) {
         const intent = SKILL_INTENTS[heroId][slot];
         if (!intent.damage) continue;
-        // 贴近一点：影刃三枚全中、冲锋/突进都能碰到
+        // 贴近一点：匕首三枚全中、冲锋/突进都能碰到
         const { sim, hero, target } = duel(heroId, 2.5);
         target.hp = target.stats.maxHp * 0.6;
         const estimate = estimateSkillDamage(hero, slot, target);
@@ -111,7 +111,7 @@ describe('技能意图表', () => {
     }
   });
 
-  it('估算细节：部分段数、小兵减伤比例、夜阙被动、减伤 buff、连招合计', () => {
+  it('估算细节：部分段数、小兵减伤比例、荆轲被动、减伤 buff、连招合计', () => {
     const { sim, hero, target } = duel('fengling', 4);
     const d = SKILL_INTENTS.fengling.s1.damage;
     if (!d) throw new Error('no damage');
@@ -136,7 +136,7 @@ describe('技能意图表', () => {
     hero.mana = 10;
     expect(estimateComboDamage(hero, target)).toBe(0);
 
-    // 夜阙：低血增伤与已损生命项
+    // 荆轲：低血增伤与已损生命项
     const y = duel('yeque', 4);
     y.target.hp = y.target.stats.maxHp * 0.35;
     const missing = y.target.stats.maxHp * 0.65;
@@ -231,7 +231,7 @@ describe('技能描述', () => {
     const y = HEROES.yeque.passive;
     for (const s of [`低于 ${pct(y.values.threshold)}`, `提高 ${pct(y.values.bonus)}`, `回复 ${pct(y.values.healHpRatio)} 最大生命`, `对野怪造成的伤害提高 ${pct(y.values.monsterBonus)}`]) expect(y.desc).toContain(s);
     // 技能描述里写死的两个数字
-    expect(HEROES.yeque.skills.s2.desc).toContain(`${HEROES.yeque.skills.s2.values.blades} 枚影刃`);
+    expect(HEROES.yeque.skills.s2.desc).toContain(`${HEROES.yeque.skills.s2.values.blades} 把匕首`);
     expect(HEROES.yeque.skills.s2.desc).toContain(`${pct(HEROES.yeque.skills.s2.values.repeatRatio as number)} 伤害`);
     expect(HEROES.fengling.skills.s1.desc).toContain(`${pct(HEROES.fengling.skills.s1.values.minionRatio as number)} 伤害`);
   });
