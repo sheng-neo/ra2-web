@@ -74,15 +74,18 @@ const BUFF_DESC: Record<BuffId, (b: Buff) => string> = {
   frost_insight: () => `蓝buff：冷却缩减 +${pct(MONSTER_RULES.frostCdr)}(总上限 40%)，回蓝更快。打掉蓝buff 怪获得，持续 ${MONSTER_RULES.buffDuration} 秒。`,
   ember_might: () => `红buff：普攻附带灼烧，并让目标减速 ${pct(MONSTER_RULES.emberSlow)}。打掉红buff 怪获得，持续 ${MONSTER_RULES.buffDuration} 秒。`,
   star_blessing: () => `巨灵buff(星陨祝福)：伤害 +${pct(MONSTER_RULES.blessingDamage)}，持续回血，我方小兵更强。打掉远古巨灵后全队获得，持续 ${MONSTER_RULES.blessingDuration} 秒。`,
-  panyue_passive: (b) => `普攻蓄势 ${b.stacks}/3：第三次普攻震击地面，附带额外伤害与减速。`,
-  panyue_bulwark: () => '岩壁护体：持有护盾，周围敌人被震慑减速。',
-  chijin_ember: () => '下一次普攻附带烈焰，并回复自身生命。',
-  chijin_blaze: (b) => (b.value > 0 ? `攻击速度提高 ${pct(b.value)}。` : '攻击速度大幅提高。'),
-  chijin_spin: () => '火焰旋风持续灼伤周围敌人；期间免疫减速并获得减伤。',
-  xingli_mark: (b) => `星辉印记 ${b.stacks}/3：叠满后引爆并眩晕。`,
-  fengling_gale: (b) => `风势 ${b.stacks}/5：每层提高攻击速度，满层后移速提高、普攻附带额外伤害。`,
+  // 英雄专属状态(键名沿用第一阶段，名字与说明按新身份写；名字见 icons/buffs.ts 的 BUFF_META)
+  panyue_passive: (b) => `盾击蓄势 ${b.stacks}/3：第三次普攻改用大盾砸地，附带额外伤害与减速。`,
+  // 减速只在施放的一瞬间生效一次，持续期间只有护盾
+  panyue_bulwark: () => '拥盾而立：护盾生效中，盾破或到期即结束。',
+  chijin_ember: () => '下一次普攻变为重斧，并回复自身生命。',
+  chijin_blaze: (b) => (b.value > 0 ? `攻速提高 ${pct(b.value)}。` : '攻速大幅提高。'),
+  chijin_spin: () => '斧影持续劈砍周围敌人；期间免疫减速并获得减伤。',
+  xingli_mark: (b) => `余音 ${b.stacks}/3：叠满后弦音共振，造成伤害并眩晕。`,
+  fengling_gale: (b) => `连射 ${b.stacks}/5：每层提高攻速，满层后移速提高、普攻附带额外伤害。`,
   fengling_crit: () => '下一次普攻必定暴击。',
-  yeque_shadow: () => '潜行于暗影之中，移动速度提高。',
+  // 没有移速或隐身效果，只是参与击杀后的刷新提示
+  yeque_shadow: () => '刚刚得手：一、二技能的冷却已刷新。',
   tower_focus: (b) => `塔在打你：塔的伤害越打越疼，现在 +${pct(Math.min(TOWER_RULES.rampMax, b.stacks * TOWER_RULES.rampPerHit))}。塔下没有小兵就先退出来。`,
 };
 
@@ -104,6 +107,28 @@ export function castLabel(c: CastSpec): string {
     default:
       return c.radius > 0 ? `自身 · 半径 ${c.radius}` : '自身';
   }
+}
+
+/** 施法方式的一个词(技能浮层的标签行里用)：方向 / 扇形 / 范围 / 指向 / 自身 */
+export function castKind(c: CastSpec): string {
+  switch (c.type) {
+    case 'direction':
+      return '方向';
+    case 'cone':
+      return '扇形';
+    case 'position':
+      return '范围';
+    case 'target':
+      return '指向';
+    default:
+      return '自身';
+  }
+}
+
+/** 施法距离(自身类技能给作用半径)，技能浮层的数值行里用；没有可说的返回空串 */
+export function castReach(c: CastSpec): string {
+  if (c.type === 'self') return c.radius > 0 ? `半径 ${c.radius}` : '';
+  return `距离 ${c.range}`;
 }
 
 /** 通用技能(回城 / 疗伤 / 闪现)在界面上的施法方式（与模拟层的解析一致：闪现取方向，其余立即生效） */

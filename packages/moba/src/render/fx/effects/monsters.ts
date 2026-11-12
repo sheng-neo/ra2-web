@@ -12,6 +12,7 @@ import { FX_RULES, P, R, WARN, debris, dustPuff, dustRing, embers, glints, hitBu
 import { DECAL } from '../decals';
 import { MODE, SHAPE, type FxMesh } from '../glow';
 import type { FxKit } from '../kit';
+import { SPRITE } from '../textures';
 import { C, TAU, teamTheme } from '../util';
 import type { FxHandler } from './types';
 
@@ -149,6 +150,8 @@ const drakeBreath: FxHandler = (k, e, env) => {
     cone.a = Math.min(1, tt / 0.08) * 0.85;
     cone.progress = tt > dur ? Math.min(1, (tt - dur) / 0.25) : 0;
     if (tt > dur) return;
+    // 口部白热：一团青白亮核(锥体在口部很细，单靠它看不出「从嘴里喷出来」)
+    k.sprites.draw(SPRITE.glow, _v.x, _v.y, _v.z, 1.9 * grow, 0, C.abyssCyan, 1.6, 0.95, 0.6);
     // 雾团与星屑拉丝：沿锥体喷出
     puffAcc += dt * 34 * k.density;
     while (puffAcc >= 1) {

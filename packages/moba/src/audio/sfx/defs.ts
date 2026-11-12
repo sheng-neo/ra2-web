@@ -16,7 +16,7 @@ export type ExtraKey =
   // 小兵 / 野怪
   | 'minion_swing' | 'minion_melee_hit' | 'minion_ranged_launch' | 'minion_ranged_hit'
   | 'minion_siege_launch' | 'minion_siege_hit' | 'super_hit'
-  | 'monster_swing' | 'monster_hit' | 'monster_spit_launch' | 'monster_spit_hit' | 'epic_hit'
+  | 'monster_swing' | 'monster_hit' | 'monster_spit_launch' | 'monster_spit_hit' | 'epic_hit' | 'monster_spawn'
   // 防御塔 / 水晶
   | 'tower_charge' | 'tower_launch' | 'tower_hit' | 'tower_hit_player'
   // 技能弹道
@@ -25,7 +25,7 @@ export type ExtraKey =
   | 'area_telegraph' | 'area_telegraph_enemy' | 'area_panyue_aura' | 'area_panyue_fissure'
   | 'area_chijin_spin' | 'area_xingli_well' | 'area_xingli_storm' | 'area_fengling_rain'
   // 状态与系统
-  | 'player_hurt' | 'player_hurt_heavy' | 'skill_hit' | 'heartbeat'
+  | 'player_hurt' | 'player_hurt_heavy' | 'skill_hit' | 'heartbeat' | 'yeque_refresh'
   | 'death_hero_ally' | 'death_hero_enemy' | 'death_player' | 'death_minion' | 'death_minion_big' | 'death_monster'
   | 'epic_roar' | 'epic_fall' | 'kill_player' | 'kill_ally' | 'kill_enemy'
   | 'levelup_player' | 'respawn_player' | 'coin' | 'coin_big' | 'buy' | 'reject' | 'recall_channel';

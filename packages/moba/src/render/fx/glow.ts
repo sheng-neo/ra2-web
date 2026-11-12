@@ -184,7 +184,7 @@ void main() {
     float th = mix(0.3, 0.85, u) + pr * 0.9 * (1.0 - u * 0.3);
     float body = smoothstep(th - 0.1, th + 0.14, n + (1.0 - u) * 0.3);
     // 丝缕：沿流动方向拉长的细纹，让气流有方向感
-    float wisp = 0.65 + 0.35 * smoothstep(0.35, 0.75, fbm(vec2(u * 1.5 - t1 * 1.3, w * 22.0 + seed * 3.0)));
+    float wisp = 0.4 + 0.6 * smoothstep(0.3, 0.7, fbm(vec2(u * 1.5 - t1 * 1.3, w * 22.0 + seed * 3.0)));
     float ends = smoothstep(0.0, 0.06, u) * (1.0 - smoothstep(0.75, 1.0, u + (n2 - 0.5) * 0.3));
     a *= min(1.0, body * wisp * ends * (0.25 + 0.75 * ndv) * 1.25);
     // 根部青白，向外过渡到本色

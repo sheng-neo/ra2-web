@@ -11,7 +11,7 @@ import { checkAllScores, checkAllSfx, checkLimiter, checkMix, checkMusic, checkS
 import type { GameRow, LimiterRow, MixRow, MusicRow, ScoreRow, SfxRow, StressRow } from '../audio/offline';
 import { SFX, SFX_KEYS } from '../audio/sfx';
 import type { SfxCat } from '../audio/sfx';
-import { HERO_IDS } from '../core/data/heroes';
+import { HEROES, HERO_IDS } from '../core/data/heroes';
 import { createMockState } from '../core/mock';
 import { TICK_DT } from '../core/types';
 import type { AbilitySlot, AnnounceKey, AreaVisual, FxKey, GameEvent, HeroId, ProjectileVisual, SkillSlot, Unit, Vec2 } from '../core/types';
@@ -236,8 +236,18 @@ function walkthrough(): GameEvent[][] {
     }
   }
   for (const key of FX_KEYS) {
+    // 巨龙吐息的两个键带扇形字段，下面单独走一遍
+    if (key === 'drake_breath_warn' || key === 'drake_breath') continue;
     out.push([{ type: 'fx', key, pos: near(8), team: Math.random() < 0.5 ? 0 : 1, radius: 3, value: 40 }]);
   }
+  // 河道巨龙吐息：预警(盯着玩家) → 喷吐；再来一轮预警后巨龙被打死(预警声应被收掉)
+  const drake = unitsOf('monster').find((u) => u.kind === 'monster' && u.monsterType === 'abyss_drake');
+  const dpos = { x: player.pos.x - 5, y: player.pos.y };
+  const breath = { pos: dpos, team: 2 as const, unitId: drake?.id, dir: { x: 1, y: 0 }, radius: 7.5, angle: Math.PI / 3 };
+  out.push([{ type: 'fx', key: 'drake_breath_warn', ...breath, targetId: pid, value: 0.9 }]);
+  out.push([], [], [], [{ type: 'fx', key: 'drake_breath', ...breath, value: 0.8 }]);
+  out.push([], [], [], [], [{ type: 'fx', key: 'drake_breath_warn', ...breath, targetId: foe.id, value: 0.9 }]);
+  if (drake) out.push([{ type: 'death', unitId: drake.id, kind: 'monster', team: 2, killerId: pid, pos: dpos }, { type: 'epicSlain', monsterType: 'abyss_drake', team: 0, pos: dpos }]);
   for (const visual of AREAS) {
     const id = nextId++;
     const pos = near(6);
@@ -251,6 +261,12 @@ function walkthrough(): GameEvent[][] {
   const core = unitsOf('core')[1];
   out.push([{ type: 'death', unitId: minion.id, kind: 'minion', team: 1, killerId: pid, pos: near(4) }, { type: 'gold', unitId: pid, amount: 42, pos: near(3), reason: 'lasthit' }, { type: 'fx', key: 'gold_gain', pos: near(3), team: 0, value: 42 }]);
   out.push([{ type: 'death', unitId: monster.id, kind: 'monster', team: 2, killerId: pid, pos: near(4) }, { type: 'gold', unitId: pid, amount: 70, pos: near(3), reason: 'monster' }]);
+  // 每种普通野怪各刷新、倒下一次(各有各的变体音色)
+  for (const type of ['mossback', 'glimwing', 'frost_golem', 'ember_golem'] as const) {
+    const mo = unitsOf('monster').find((u) => u.kind === 'monster' && u.monsterType === type);
+    out.push([{ type: 'monsterSpawn', campId: 1, monsterType: type, pos: near(5) }]);
+    if (mo) out.push([{ type: 'attack', unitId: mo.id, targetId: pid }], [{ type: 'death', unitId: mo.id, kind: 'monster', team: 2, killerId: pid, pos: near(4) }]);
+  }
   out.push([{ type: 'death', unitId: foe.id, kind: 'hero', team: 1, killerId: pid, pos: near(4) }, { type: 'heroKill', victimId: foe.id, killerId: pid, assistIds: [], multiKill: 1, streak: 1, firstBlood: false, shutdown: false, bounty: 220 }, { type: 'gold', unitId: pid, amount: 220, pos: player.pos, reason: 'kill' }]);
   out.push([{ type: 'death', unitId: state.heroes[1].id, kind: 'hero', team: 0, killerId: foe.id, pos: near(6) }, { type: 'heroKill', victimId: state.heroes[1].id, killerId: foe.id, assistIds: [], multiKill: 1, streak: 1, firstBlood: false, shutdown: false, bounty: 220 }]);
   out.push([{ type: 'heroKill', victimId: state.heroes[6].id, killerId: state.heroes[2].id, assistIds: [pid], multiKill: 1, streak: 1, firstBlood: false, shutdown: false, bounty: 220 }, { type: 'gold', unitId: pid, amount: 110, pos: player.pos, reason: 'assist' }]);
@@ -258,12 +274,15 @@ function walkthrough(): GameEvent[][] {
   out.push([{ type: 'levelUp', unitId: pid, level: 6 }, { type: 'fx', key: 'level_up', pos: player.pos, team: 0, unitId: pid }]);
   out.push([{ type: 'respawn', unitId: pid, pos: player.pos }, { type: 'fx', key: 'respawn', pos: player.pos, team: 0, unitId: pid }]);
   out.push([{ type: 'itemBought', unitId: pid, itemId: 'boots' }]);
+  // 自动出装买入：同一个提示音放轻
+  out.push([], [], [{ type: 'itemBought', unitId: pid, itemId: 'boots_fury', auto: true }]);
   out.push([{ type: 'heal', targetId: pid, amount: 400, pos: player.pos }]);
   out.push([{ type: 'reject', unitId: pid, reason: 'mana' }]);
   out.push([{ type: 'waveSpawn', wave: 3 }]);
   out.push([{ type: 'monsterSpawn', campId: 12, monsterType: 'abyss_drake', pos: { x: -24, y: -24 } }]);
   out.push([{ type: 'monsterSpawn', campId: 13, monsterType: 'star_colossus', pos: { x: 24, y: 24 } }]);
   out.push([{ type: 'epicSlain', monsterType: 'abyss_drake', team: 0, pos: { x: -24, y: -24 } }]);
+  out.push([{ type: 'epicSlain', monsterType: 'star_colossus', team: 1, pos: { x: 24, y: 24 } }]);
   for (const key of ANN_KEYS) {
     out.push([{ type: 'announce', key, team: 0 }]);
     out.push([{ type: 'announce', key, team: 1 }]);
@@ -577,11 +596,28 @@ async function runCheck(): Promise<AudioReport> {
     }
     if (which.has('match')) {
       // 真实模拟内核跑全 AI 对局，把事件流按默认音量原样渲染：验证事件映射、限流与整体电平
-      const jobs: [string, HeroId, number, number][] = [['开局对线 0:05~1:05 (赤烬)', 'chijin', 5, 60], ['中期 4:30~5:30 (星璃)', 'xingli', 270, 60], ['中期 7:00~8:00 (磐岳)', 'panyue', 420, 60]];
+      const jobs: [string, HeroId, number, number][] = [
+        ['开局对线 0:05~1:05 (程咬金)', 'chijin', 5, 60],
+        ['中期 4:30~5:30 (王昭君)', 'xingli', 270, 60],
+        ['中期 7:00~8:00 (樊哙)', 'panyue', 420, 60],
+        ['中期 5:30~6:15 (李广)', 'fengling', 330, 45],
+        ['中期 6:15~7:00 (荆轲)', 'yeque', 375, 45],
+      ];
       for (const j of jobs) {
         say(`真实对局：${j[0]}`);
         report.match.push({ name: j[0], ...(await checkMatch(j[1], j[2], j[3])) });
         renderReport(report, music);
+      }
+      // 打龙：先空跑找到玩家在场的一次吐息预警，再从它之前 4 秒起渲染 24 秒
+      say('真实对局：寻找玩家在场的巨龙吐息…');
+      const found = findBreath();
+      if (found) {
+        const name = `打龙 ${fmtClock(found.at - 4)} 起 24 秒 (${HEROES[found.hero].name}，种子 ${found.seed})`;
+        say(`真实对局：${name}`);
+        report.match.push({ name, ...(await checkMatch(found.hero, found.at - 4, 24, found.seed)) });
+        renderReport(report, music);
+      } else {
+        report.summary = { ...report.summary, breathNote: '没有找到玩家在场的巨龙吐息' };
       }
     }
     if (which.has('stress')) {
@@ -617,9 +653,35 @@ async function runCheck(): Promise<AudioReport> {
   return report;
 }
 
+const MATCH_SEED = 20261112;
+const fmtClock = (t: number): string => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
+
+/**
+ * 空跑几局全 AI 对局(不出声)，找第一次「玩家英雄活着、看得见巨龙、离它 16 米内」的吐息预警。
+ * 模拟是确定性的：之后用同一个种子重跑到那个时刻之前，就能把这段打龙原样渲染出来。
+ */
+function findBreath(): { hero: HeroId; seed: number; at: number } | null {
+  for (let k = 0; k < 3; k++) {
+    for (const hero of HERO_IDS) {
+      const seed = MATCH_SEED + k;
+      const world = createWorld({ seed, playerHero: hero, difficulty: 'normal', autoPlay: true });
+      while (world.state.time < 600 && !world.state.over) {
+        world.step();
+        for (const e of world.drainEvents()) {
+          if (e.type !== 'fx' || e.key !== 'drake_breath_warn') continue;
+          const me = world.state.heroes.find((x) => x.id === world.state.playerId);
+          const dragon = world.state.units.find((u) => u.id === e.unitId);
+          if (me && me.alive && dragon && dragon.visible[0] && Math.hypot(me.pos.x - e.pos.x, me.pos.y - e.pos.y) < 16) return { hero, seed, at: world.state.time };
+        }
+      }
+    }
+  }
+  return null;
+}
+
 /** 用真实模拟内核跑一局全 AI 对局：快进到 startAt，再把随后 seconds 秒的事件流离线渲染成混音 */
-async function checkMatch(hero: HeroId, startAt: number, seconds: number): Promise<GameRow & { intensity: number[] }> {
-  const world = createWorld({ seed: 20261112, playerHero: hero, difficulty: 'normal', autoPlay: true });
+async function checkMatch(hero: HeroId, startAt: number, seconds: number, seed = MATCH_SEED): Promise<GameRow & { intensity: number[] }> {
+  const world = createWorld({ seed, playerHero: hero, difficulty: 'normal', autoPlay: true });
   while (world.state.time < startAt && !world.state.over) {
     world.step();
     world.drainEvents();

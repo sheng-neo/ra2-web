@@ -6,7 +6,7 @@
 import type * as THREE from 'three';
 import type { GameEvent, Projectile, ProjectileVisual, TeamId } from '../../core/types';
 import type { FrameInfo } from '../engine/context';
-import { FX_RULES, P, R, debris, dustPuff, flash, glints, hitBurst, ring, shards, sparks } from './common';
+import { FX_RULES, P, R, dustPuff, flash, glints, hitBurst, ring, shards, sparks } from './common';
 import { DECAL } from './decals';
 import { MODE, SHAPE, type FxMesh } from './glow';
 import type { FxKit } from './kit';

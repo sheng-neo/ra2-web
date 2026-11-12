@@ -69,7 +69,7 @@ function holdDecal(k: FxKit, v: StatusView, type: number, fadeIn = 0.15): number
 const RING_SCALE = { frost: 1.6, ember: 1.85, star: 2.1 } as const;
 /** 环的最小半径(米)：英雄半径只有 0.6 左右，按倍数算出来的环会被模型挡住 */
 function ringRadius(a: UnitAnchor, mult: number): number {
-  return Math.max(a.radius * mult, 0.62 + (mult - 1.3) * 0.75) + 0.12;
+  return Math.max(a.radius * mult, 0.75 + (mult - 1.3) * 0.9) + 0.15;
 }
 function expiring(v: StatusView, b: Buff): number {
   return b.timeLeft < 5 && Number.isFinite(b.timeLeft) ? 0.55 + 0.45 * Math.cos(v.age * 9) : 1;
@@ -79,12 +79,12 @@ function sigilRing(pattern: number, color: THREE.Color, hot: THREE.Color, mult: 
   return {
     create(k, v) {
       const s = holdDecal(k, v, DECAL.sigil, 0.3);
-      k.decals.at(s).y(0.065).params(pattern, 1).color(color, 1.5, 0.6).under(C.shadow, 0.25);
+      k.decals.at(s).y(0.065).params(pattern, 1).color(color, 1.7, 0.85).under(C.shadow, 0.3);
     },
     update(k, v, a, b, dt) {
       const blink = expiring(v, b);
       const rr = ringRadius(a, mult);
-      k.decals.at(v.slots[0]).at(a.x, a.z).radius(rr).rot(v.age * spin).alpha(0.6 * blink + 0.25);
+      k.decals.at(v.slots[0]).at(a.x, a.z).radius(rr).rot(v.age * spin).alpha(0.85 * blink);
       // 一枚绕身的小图标：远看、被模型挡住脚环时也能认出是哪种增益
       const ang = v.phase + v.age * 2 * Math.sign(spin);
       const r = a.radius + 0.5;

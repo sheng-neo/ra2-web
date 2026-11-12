@@ -441,30 +441,30 @@ void main() {
     float rs = r / sc;
     float fade = persist > 0.5 ? 1.0 : 1.0 - smoothstep(0.55, 1.0, t);
     float inside = 1.0 - smoothstep(0.985, 1.0, rs);
-    float ln = band(rs - 0.955, 0.016, aa) + band(rs - 0.8, 0.009, aa) * 0.75;
+    float ln = band(rs - 0.955, 0.024, aa) + band(rs - 0.79, 0.013, aa) * 0.8;
     float motif = 0.0;
     if (pat < 0.5) {
       // 六角霜纹：六边形外框 + 每角一枚小冰晶(三道短划)
       float a6 = mod(ang + PI / 6.0, PI / 3.0) - PI / 6.0;
       float hexR = 0.88 * cos(PI / 6.0) / cos(a6);
-      motif = band(rs - hexR, 0.012, aa);
+      motif = band(rs - hexR, 0.016, aa);
       vec2 q = vec2(rs * cos(a6), rs * sin(a6)) - vec2(0.88, 0.0);
       float cr = length(q);
-      float spokes = band(abs(sin(atan(q.y, q.x) * 3.0)), 0.18, 0.08) * (1.0 - smoothstep(0.05, 0.075, cr));
-      motif = max(motif, spokes);
+      float spokes = band(abs(sin(atan(q.y, q.x) * 3.0)), 0.22, 0.08) * (1.0 - smoothstep(0.08, 0.11, cr));
+      motif = max(motif, spokes + (1.0 - smoothstep(0.02, 0.035, cr)));
     } else if (pat < 1.5) {
       // 三焰纹：三枚向外的火舌，火舌之间是短弧
       float a3 = mod(ang + PI / 3.0, 2.0 * PI / 3.0) - PI / 3.0;
       float x = rs - 0.8;
-      float flame = band(a3 * (0.9 + x * 1.6), 0.07 * (1.0 - smoothstep(0.0, 0.19, x)) + 0.004, 0.02) * step(-0.04, x) * (1.0 - smoothstep(0.17, 0.2, x));
-      motif = max(flame, band(rs - 0.88, 0.01, aa) * smoothstep(0.35, 0.55, abs(a3)));
+      float flame = band(a3 * (0.9 + x * 1.6), 0.1 * (1.0 - smoothstep(0.0, 0.2, x)) + 0.006, 0.02) * step(-0.05, x) * (1.0 - smoothstep(0.18, 0.21, x));
+      motif = max(flame, band(rs - 0.88, 0.014, aa) * smoothstep(0.35, 0.55, abs(a3)));
     } else if (pat < 2.5) {
       // 八芒星轨：八枚尖角站在轨道上，长短相间；每 2 秒一道向外的细脉冲
       float a8 = mod(ang + PI / 8.0, PI / 4.0) - PI / 8.0;
       float k8 = mod(floor((ang + PI / 8.0) / (PI / 4.0)), 2.0);
       float len = k8 > 0.5 ? 0.09 : 0.15;
       float x = rs - 0.88;
-      motif = band(a8 * 6.0, 0.06 * (1.0 - smoothstep(0.0, len, abs(x))) + 0.003, 0.03) * (1.0 - smoothstep(len - 0.01, len, abs(x)));
+      motif = band(a8 * 6.0, 0.09 * (1.0 - smoothstep(0.0, len, abs(x))) + 0.005, 0.03) * (1.0 - smoothstep(len - 0.01, len, abs(x)));
       float pr = fract(now * 0.5 + seed);
       float pulseR = mix(0.82, 1.0, pr);
       ln += band(rs - pulseR, 0.008, aa) * (1.0 - pr) * 0.9;
@@ -476,10 +476,10 @@ void main() {
       float fu = fract(u) - 0.5;
       float y = (rs - mix(0.83, 0.92, row)) / 0.06;
       float sd = length(vec2(fu * 1.3, y + fu * fu * 1.4)) - 0.48;
-      motif = band(sd, 0.05, 0.05) * step(abs(y), 1.3);
+      motif = band(sd, 0.08, 0.05) * step(abs(y), 1.3);
     }
     ln += motif;
-    fil = (motif * 0.12 + band(rs - 0.88, 0.07, 0.04) * 0.06) * fade * inside;
+    fil = (motif * 0.15 + band(rs - 0.875, 0.085, 0.04) * 0.1) * fade * inside;
     e = ln * fade * inside;
     hot = ln * 0.18 * fade * inside;
     cov = (min(ln, 1.0) * 0.55) * fade * inside;

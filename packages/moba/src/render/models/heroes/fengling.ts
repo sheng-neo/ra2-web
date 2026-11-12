@@ -283,10 +283,7 @@ function build(): { h: Human; b: ModelBuilder; extra: Extra } {
     const r = hd.ring(0.02);
     b.tube([[r[0] * 0.95, y + 0.07, r[2] + r[1] * 0.26, 0.01, 0.022], [r[0] * 0.98, y - 0.0, r[2] + r[1] * 0.28, 0.01, 0.02], [r[0] * 0.92, y - 0.06, r[2] + r[1] * 0.32, 0.004, 0.008]], { seg: 4, crease: 180, up: [0, 0, 1] });
   });
-  // 束髻：脑后上方的发髻
-  b.paint(C.hair, { c2: C.hairHi, mat: MAT.fur, gloss: 0.2 });
-  b.ball(0, cy + 0.2, -0.13, 0.085, 0.08, 0.085, 1);
-  // 鹖冠：黑漆纱冠罩住发髻，前低后高；额前一道冠梁
+  // 鹖冠：黑漆纱冠罩住脑后的发髻，前低后高；额前一道冠梁
   {
     const ring = (dy: number, grow: number): number[] => {
       const r = hd.ring(dy * hs);
@@ -450,7 +447,7 @@ function makeAnims(h: Human): Anims {
     foreL: [-56, 0, 0],
     propL: [-34, 0, -8],
   });
-  const common = makeCommon(h, stance, { limp: { propL: [-30, 0, 20] }, lying: { armL: [-6, 0, 70], propL: [90, 0, 0] } });
+  const common = makeCommon(h, stance, { limp: { propL: [-30, 0, 20] }, lying: { armL: [-6, 0, 70], propL: [20, 90, -20] } });
   return { stance, aim, aimLow, aimUp, tmp: emptyCKP(h), runArms, tuck, channel, common };
 }
 

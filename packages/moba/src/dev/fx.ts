@@ -1075,6 +1075,28 @@ PLAYS.set('dbg:decals', () => {
     else if (type === DECAL.coneWarn) pen.rot(0).params(0.52, 0.6).under(new THREE.Color(0xa070ff), 0.55);
   });
 });
+PLAYS.set('dbg:new', () => {
+  // D 包新增的基元：纹章细环 4 种纹样 / 扇形预警 / 图集第 5 行的 5 个通用精灵 / 吐息锥
+  const kit = fxModule.kit;
+  const pats: [number, number][] = [[0, 0x4f9cff], [1, 0xff7a3c], [2, 0xffd04a], [3, 0xa070ff]];
+  pats.forEach(([pat, c], i) => {
+    const p = at(-6.5 + i * 4.2, -2.6);
+    kit.decals.at(kit.decals.hold(DECAL.sigil, 0)).at(p.x, p.y).radius(2.0).params(pat, 1).color(new THREE.Color(c), 1.5, 0.9).under(new THREE.Color(0x120c20), 0.3);
+  });
+  const cw = at(-6.5, 1.2);
+  kit.decals.at(kit.decals.hold(DECAL.coneWarn, 0)).at(cw.x, cw.y).radius(4).rot(stageDir).params(0.52, 0.6).color(new THREE.Color(0xffc24a), 1.6, 0.95).under(new THREE.Color(0x8040ff), 0.7);
+  for (let i = 35; i < 40; i++) {
+    const p = at(-0.5 + (i - 35) * 2.0, 2.6);
+    const st = particleStyle({ sprite: i, add: 0.3, color: DBG_COLORS[i % DBG_COLORS.length], intensity: 1.4, fadeIn: 0.01, fadeOut: 0.98, rot: 0 });
+    kit.particles.use(st).spawn(p.x, 1.2, p.y, 0, 0, 0, 60, 1.7, 1.7);
+  }
+  const m = kit.glow.hold(SHAPE.breath, MODE.breath);
+  const bp = at(3.5, -3);
+  m.at(bp.x, 1.6, bp.y).scale3(5, 1.2, 2.6).rot(0, -stageDir, -0.2).color(new THREE.Color(0xa070ff), 1.05, 0.85);
+  m.add = 0.4;
+  m.k = 2.6;
+  m.progress = 0;
+});
 PLAYS.set('dbg:sprites', () => {
   // 图集里的每个图形各发一个长寿命粒子
   const kit = fxModule.kit;

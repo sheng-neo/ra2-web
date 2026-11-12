@@ -23,6 +23,8 @@ import type { RenderModule, RenderModuleFactory } from '../render/engine/context
 import { type GameRendererCore, createRendererCore } from '../render/engine/core';
 import { PALETTE, createToonMaterial } from '../render/materials';
 import { type InstanceLook, type ModelDef, Puppet, RigBatch, createInstanceLook, getModel, hasModel } from '../render/models';
+import { getHeroPortrait } from '../render/preview';
+import { HEROES, HERO_IDS } from '../core/data/heroes';
 
 const params = new URLSearchParams(location.search);
 const num = (k: string): number | null => {
@@ -378,10 +380,47 @@ function start(): void {
   };
 }
 
-start();
+/**
+ * ?portraits=1：五位英雄的头像拼图(128 / 64 / 40 像素三种显示尺寸)，并逐张记录首次生成的同步耗时。
+ * 第一张包含离屏渲染器的创建与着色器编译，后面几张只有建模(若未缓存)与一次渲染。
+ */
+function startPortraits(): void {
+  hud.style.display = 'none';
+  help.style.display = 'none';
+  app.style.cssText = 'position:fixed;inset:0;padding:16px;background:#0b1226;color:#dfe8ff;font:13px sans-serif;overflow:auto';
+  const times: { id: string; ms: number }[] = [];
+  const urls = HERO_IDS.map((id) => {
+    const t0 = performance.now();
+    const url = getHeroPortrait(id);
+    times.push({ id, ms: Math.round(performance.now() - t0) });
+    return url;
+  });
+  const title = document.createElement('div');
+  title.textContent = `头像首次生成(逐张同步耗时)：${times.map((t) => `${HEROES[t.id as HeroId].name} ${t.ms}ms`).join(' · ')}`;
+  app.appendChild(title);
+  for (const size of [128, 64, 40]) {
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;gap:14px;margin:12px 0;align-items:flex-end';
+    urls.forEach((u, i) => {
+      const img = document.createElement('img');
+      img.src = u;
+      img.width = img.height = size;
+      // 界面里头像多是圆形裁切：两种都给
+      img.style.borderRadius = i % 2 === 0 || size !== 128 ? '50%' : '10px';
+      img.style.boxShadow = '0 0 0 2px #d8b25a';
+      row.appendChild(img);
+    });
+    app.appendChild(row);
+  }
+  window.__portraitTimes = times;
+}
+
+if (params.get('portraits') === '1') startPortraits();
+else start();
 
 declare global {
   interface Window {
+    __portraitTimes?: { id: string; ms: number }[];
     __gal: {
       show(cfg: ShowCfg): void;
       readonly frames: number;

@@ -59,15 +59,17 @@ const AREA_KEY: Partial<Record<AreaVisual, SfxKey>> = {
   xingli_ult_storm: 'area_xingli_storm',
   fengling_ult_rain: 'area_fengling_rain',
 };
-/** 体型越大音高越低 */
-const MON_PITCH: Record<MonsterType, number> = {
-  glimwing: 1.25,
-  mossback: 1,
-  frost_golem: 0.8,
-  ember_golem: 0.78,
-  abyss_drake: 0.62,
-  star_colossus: 0.55,
+/** 野怪音色变体：monster_swing / monster_hit / death_monster / monster_spawn 的 v(各配方里按这个编号分支) */
+const MON_VAR: Record<MonsterType, number> = {
+  mossback: 0,
+  frost_golem: 1,
+  ember_golem: 2,
+  abyss_drake: 3,
+  star_colossus: 4,
+  glimwing: 5,
 };
+/** 史诗野怪的变体(epic_roar / epic_hit / epic_fall 的 v)：0 = 河道巨龙，1 = 远古巨灵 */
+const epicVar = (t: MonsterType): number => (t === 'star_colossus' ? 1 : 0);
 /** 同一批事件里多个播报只播最重要的，其余排队 */
 const ANN_RANK: Record<AnnounceKey, number> = {
   victory: 100, defeat: 100, ace: 90, penta_kill: 85, quadra_kill: 80, legendary: 78, triple_kill: 75, unstoppable: 72,
@@ -92,6 +94,18 @@ interface AreaVoice {
   h: VoiceHandle;
   key: SfxKey;
   gain: number;
+}
+
+/** 玩家是否站在一次扇形特效(pos 为顶点、dir 为朝向、radius / angle 为范围)里；pad = 身体半径，沾边也算 */
+function inFan(pos: Vec2, pad: number, e: FxEvent): boolean {
+  if (!e.dir || e.radius === undefined) return false;
+  const dx = pos.x - e.pos.x;
+  const dy = pos.y - e.pos.y;
+  const d = Math.hypot(dx, dy);
+  if (d > e.radius + pad) return false;
+  if (d <= pad) return true;
+  const half = (e.angle ?? Math.PI / 3) / 2 + Math.asin(Math.min(1, pad / d));
+  return (dx * e.dir.x + dy * e.dir.y) / d >= Math.cos(Math.min(Math.PI, half));
 }
 
 export interface AudioDebugStats {
@@ -139,6 +153,12 @@ export class Engine implements AudioEngine {
   private hitProj = new Set<number>();
   private towerHits = new Set<number>();
   private areaVoices = new Map<number, AreaVoice>();
+  /** 正在响的巨龙吐息(预警或喷吐)：巨龙中途被打死时要收声 */
+  private breathVoice: { h: VoiceHandle; unitId: number } | null = null;
+  /** 每位王昭君普攻乐句弹到第几个音、上次是什么时候弹的 */
+  private strums = new Map<number, { i: number; t: number }>();
+  /** 玩家身上「得手」状态的剩余时间(用来发现它刚挂上 / 被刷新) */
+  private shadowLeft = 0;
   private sight: number[] = [];
   private sightReady = false;
   private lx = 0;
@@ -281,10 +301,13 @@ export class Engine implements AudioEngine {
     }
     this.areaVoices.forEach((a) => a.h.stop(0.2));
     this.areaVoices.clear();
+    this.breathVoice?.h.stop(0.2);
+    this.breathVoice = null;
     this.recallVoice?.stop(0.1);
     this.recallVoice = null;
     this.hbTimer = 0;
     this.heat = 0;
+    this.shadowLeft = 0;
   }
 
   /**
@@ -325,6 +348,10 @@ export class Engine implements AudioEngine {
     this.projOwner.clear();
     this.areaVoices.forEach((a) => a.h.stop(0.2));
     this.areaVoices.clear();
+    this.breathVoice?.h.stop(0.2);
+    this.breathVoice = null;
+    this.strums.clear();
+    this.shadowLeft = 0;
     this.recallVoice?.stop(0.1);
     this.recallVoice = null;
     this.heat = 0;
@@ -463,7 +490,7 @@ export class Engine implements AudioEngine {
           } else if (u.kind === 'tower' || u.kind === 'core') {
             this.at('tower_charge', u.pos, atMe ? 1 : 0.6, { pitch: u.kind === 'core' ? 0.8 : 1, prio: atMe ? 2 : 1 });
           } else if (MONSTERS[u.monsterType].projectileSpeed === 0) {
-            this.at('monster_swing', u.pos, 0.7, { pitch: MON_PITCH[u.monsterType] });
+            this.at('monster_swing', u.pos, 0.7, { v: MON_VAR[u.monsterType] });
           }
           break;
         }
@@ -497,8 +524,8 @@ export class Engine implements AudioEngine {
             if (src.minionType === 'melee') this.at('minion_melee_hit', e.pos, toMe ? 0.75 : vsHero ? 0.5 : 0.3);
             else if (src.minionType === 'super') this.at('super_hit', e.pos, toMe ? 0.85 : vsHero ? 0.6 : 0.4);
           } else if (src.kind === 'monster' && MONSTERS[src.monsterType].projectileSpeed === 0) {
-            if (MONSTERS[src.monsterType].epic) this.at('epic_hit', e.pos, toMe ? 1 : 0.8);
-            else this.at('monster_hit', e.pos, toMe ? 0.9 : 0.65, { pitch: MON_PITCH[src.monsterType] });
+            if (MONSTERS[src.monsterType].epic) this.at('epic_hit', e.pos, toMe ? 1 : 0.8, { v: epicVar(src.monsterType) });
+            else this.at('monster_hit', e.pos, toMe ? 0.9 : 0.65, { v: MON_VAR[src.monsterType] });
           }
           break;
         }
@@ -529,7 +556,9 @@ export class Engine implements AudioEngine {
           if (!mine && !(owner ? this.seen(owner) : this.posSeen(state, e.pos))) break;
           const hero = owner !== undefined && owner.kind === 'hero';
           const gain = mine ? 1 : hero ? 0.65 : e.visual === 'tower_bolt' || e.visual === 'core_bolt' ? 0.7 : e.visual === 'minion_siege' ? 0.5 : 0.38;
-          this.at(PROJ_SPAWN[e.visual], e.pos, gain, { pitch: e.visual === 'core_bolt' ? 0.8 : 1, prio: mine ? 2 : undefined });
+          // 王昭君的普攻：沿乐句往下弹一个音
+          const v = e.visual === 'xingli_basic' ? this.strum(e.ownerId, state.time) : undefined;
+          this.at(PROJ_SPAWN[e.visual], e.pos, gain, { pitch: e.visual === 'core_bolt' ? 0.8 : 1, prio: mine ? 2 : undefined, v });
           break;
         }
 
@@ -545,14 +574,17 @@ export class Engine implements AudioEngine {
           const minion = e.visual === 'minion_ranged' || e.visual === 'minion_siege' || e.visual === 'monster_spit';
           const vsHero = tgt !== undefined && tgt.kind === 'hero';
           const gain = toMe || byMe ? 1 : minion ? (vsHero ? 0.5 : 0.32) : tower ? 0.65 : 0.6;
-          this.at(key, e.pos, gain, { pitch: e.visual === 'core_bolt' ? 0.8 : 1, prio: toMe || byMe ? 2 : undefined });
+          // 李广的「白羽没石」射中英雄：多一声石裂
+          const v = e.visual === 'fengling_s1' && vsHero ? 1 : 0;
+          this.at(key, e.pos, gain, { pitch: e.visual === 'core_bolt' ? 0.8 : 1, prio: toMe || byMe ? 2 : undefined, v });
           break;
         }
 
         case 'projectileEnd': {
           this.projOwner.delete(e.id);
           const skill = e.visual === 'xingli_s1' || e.visual === 'fengling_s1' || e.visual === 'yeque_s2';
-          if (skill && !this.hitProj.has(e.id) && this.posSeen(state, e.pos)) this.at('proj_fizzle', e.pos, 0.7);
+          // 荆轲的匕首落空是钉进地面，其余是消散
+          if (skill && !this.hitProj.has(e.id) && this.posSeen(state, e.pos)) this.at('proj_fizzle', e.pos, 0.7, { v: e.visual === 'yeque_s2' ? 1 : 0 });
           break;
         }
 
@@ -605,7 +637,12 @@ export class Engine implements AudioEngine {
             const u = this.unit(e.unitId);
             // 史诗野怪的倒下由 epicSlain 负责
             if (u && u.kind === 'monster' && !MONSTERS[u.monsterType].epic) {
-              this.at('death_monster', e.pos, 0.8, { pitch: MON_PITCH[u.monsterType] });
+              this.at('death_monster', e.pos, 0.8, { v: MON_VAR[u.monsterType] });
+            }
+            // 巨龙吐到一半被打死：模拟层不发「取消」事件，这里把预警 / 喷吐声收掉
+            if (this.breathVoice && this.breathVoice.unitId === e.unitId) {
+              this.breathVoice.h.stop(0.15);
+              this.breathVoice = null;
             }
           }
           // 塔/水晶：爆炸声由 fx tower_destroyed / core_destroyed 负责
@@ -640,15 +677,19 @@ export class Engine implements AudioEngine {
           break;
 
         case 'itemBought':
-          if (e.unitId === pid) m.play('buy');
+          // 自动出装买入：同一个提示音放轻(界面只弹一条不打扰的提示条)；手动购买保持原样。
+          // 与界面层的 ui('buy') 同属 'buy' 限流分组，两边都触发也只响一次
+          if (e.unitId === pid) m.play('buy', e.auto ? { gain: 0.6 } : undefined);
           break;
 
         case 'monsterSpawn':
-          if (MONSTERS[e.monsterType].epic) this.at('epic_roar', e.pos, 1, { v: e.monsterType === 'star_colossus' ? 1 : 0, floor: 0.3 });
+          if (MONSTERS[e.monsterType].epic) this.at('epic_roar', e.pos, 1, { v: epicVar(e.monsterType), floor: 0.3 });
+          // 普通营地刷新：营地在己方视野里才出声
+          else if (this.posSeen(state, e.pos)) this.at('monster_spawn', e.pos, 0.8, { v: MON_VAR[e.monsterType] });
           break;
 
         case 'epicSlain':
-          this.at('epic_fall', e.pos, 1, { floor: 0.3 });
+          this.at('epic_fall', e.pos, 1, { v: epicVar(e.monsterType), floor: 0.3 });
           break;
 
         case 'announce':
@@ -703,6 +744,10 @@ export class Engine implements AudioEngine {
         // 建筑恒可见
         this.at(key, e.pos, 1, { floor: e.key === 'core_destroyed' ? 0.6 : 0 });
         return;
+      case 'drake_breath_warn':
+      case 'drake_breath':
+        this.onBreath(e, state, pid, me);
+        return;
       default:
         break;
     }
@@ -718,6 +763,35 @@ export class Engine implements AudioEngine {
     const generic = e.key === 'hit_physical' || e.key === 'hit_magic' || e.key === 'hit_tower';
     const gain = generic ? (mine ? 0.8 : 0.45) : mine ? 1 : 0.75;
     this.at(key, e.pos, gain, { prio: mine && !generic ? 3 : undefined });
+  }
+
+  /**
+   * 河道巨龙吐息：预警与喷吐各一条跟随时长的声音。这是敌我都看得见的危险提示，
+   * 只按巨龙自己是否可见来判断，不看它盯着的目标在不在视野里。
+   */
+  private onBreath(e: FxEvent, state: GameState, pid: number, me: HeroUnit | undefined): void {
+    const u = e.unitId !== undefined ? this.unit(e.unitId) : undefined;
+    if (!(u ? this.seen(u) : this.posSeen(state, e.pos))) return;
+    const warn = e.key === 'drake_breath_warn';
+    // 玩家是被盯上的目标、或正站在扇形里：更响、优先级最高
+    const threat = e.targetId === pid || (me !== undefined && me.alive && inFan(me.pos, me.radius, e));
+    // 预警 → 喷吐的交接(预警声本身就在这一刻收住，这里只是兜底)
+    this.breathVoice?.h.stop(0.08);
+    const dur = Math.min(1.6, Math.max(0.3, e.value ?? (warn ? 0.9 : 0.8)));
+    const h = this.at(`fx_${e.key}`, e.pos, threat ? 1 : 0.7, { dur, prio: threat ? 3 : 2 });
+    this.breathVoice = h && e.unitId !== undefined ? { h, unitId: e.unitId } : null;
+  }
+
+  /** 王昭君的普攻沿一句五声音阶的乐句往下弹：每位王昭君各记各的进度，停手 3 秒从头再来 */
+  private strum(id: number, time: number): number {
+    const s = this.strums.get(id);
+    if (!s || time - s.t > 3 || time < s.t) {
+      this.strums.set(id, { i: 0, t: time });
+      return 0;
+    }
+    s.i++;
+    s.t = time;
+    return s.i;
   }
 
   private playAnnounces(anns: { key: AnnounceKey; team: number }[]): void {
@@ -806,7 +880,7 @@ export class Engine implements AudioEngine {
     music.tick();
   }
 
-  /** 跟随玩家状态的持续声：濒死心跳、回城引导 */
+  /** 跟随玩家状态的持续声与提示：濒死心跳、回城引导、荆轲「得手」 */
   private tickPlayerBeds(m: Mixer, me: HeroUnit, dt: number): void {
     const ratio = me.hp / Math.max(1, me.stats.maxHp);
     if (ratio < 0.25 && me.hp > 0) {
@@ -820,12 +894,14 @@ export class Engine implements AudioEngine {
       this.hbTimer = 0;
     }
     let recall = 0;
+    let shadow = 0;
     for (const b of me.buffs) {
-      if (b.id === 'recall') {
-        recall = b.timeLeft;
-        break;
-      }
+      if (b.id === 'recall') recall = b.timeLeft;
+      else if (b.id === 'yeque_shadow') shadow = b.timeLeft;
     }
+    // 荆轲「得手」：状态刚挂上(或被新的击杀刷新)的那一刻，响一声冷的击弦泛音提示技能已刷新
+    if (shadow > this.shadowLeft + 0.2) m.play('yeque_refresh');
+    this.shadowLeft = shadow;
     if (recall > 0.3 && !this.recallVoice) {
       this.recallVoice = m.play('recall_channel', { dur: Math.max(1, recall) });
     } else if (recall <= 0 && this.recallVoice) {

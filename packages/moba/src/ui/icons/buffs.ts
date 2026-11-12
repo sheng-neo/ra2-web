@@ -30,15 +30,16 @@ export const BUFF_META: Record<BuffId, { name: string; kind: BuffKind }> = {
   frost_insight: { name: '蓝buff', kind: 'buff' },
   ember_might: { name: '红buff', kind: 'buff' },
   star_blessing: { name: '巨灵buff', kind: 'buff' },
-  panyue_passive: { name: '磐石之躯', kind: 'buff' },
-  panyue_bulwark: { name: '不动壁垒', kind: 'buff' },
-  chijin_ember: { name: '余烬之刃', kind: 'buff' },
-  chijin_blaze: { name: '炎步 · 攻速', kind: 'buff' },
-  chijin_spin: { name: '焚天旋舞', kind: 'buff' },
-  xingli_mark: { name: '星辉印记', kind: 'debuff' },
-  fengling_gale: { name: '风之眷顾', kind: 'buff' },
-  fengling_crit: { name: '逐风 · 必定暴击', kind: 'buff' },
-  yeque_shadow: { name: '猎影', kind: 'buff' },
+  // 英雄专属(键名沿用第一阶段)：樊哙 / 程咬金 / 王昭君 / 李广 / 荆轲
+  panyue_passive: { name: '覆盾震地', kind: 'buff' },
+  panyue_bulwark: { name: '拥盾怒目', kind: 'buff' },
+  chijin_ember: { name: '越砍越勇', kind: 'buff' },
+  chijin_blaze: { name: '半路杀出 · 攻速', kind: 'buff' },
+  chijin_spin: { name: '抡圆了砍', kind: 'buff' },
+  xingli_mark: { name: '余音', kind: 'debuff' },
+  fengling_gale: { name: '连射', kind: 'buff' },
+  fengling_crit: { name: '应弦而倒', kind: 'buff' },
+  yeque_shadow: { name: '得手', kind: 'buff' },
   tower_focus: { name: '防御塔锁定', kind: 'debuff' },
 };
 
@@ -96,11 +97,11 @@ const DRAW: Record<BuffId, Draw> = {
   // 复活保护：光轮
   respawn_guard: () =>
     glyphBadge('#c8a83a', `<circle cx="12" cy="12" r="4.600" ${F}/><g ${L(2.2)}>${[0, 45, 90, 135, 180, 225, 270, 315].map((a) => `<path d="M12 2v3" transform="rotate(${a} 12 12)"/>`).join('')}</g>`),
-  // 霜晶之智：六棱霜晶
+  // 蓝buff：六棱霜晶
   frost_insight: () => glyphBadge('#3a78d0', `<path d="${starPoly(12, 12, 6, 10.6, 5.4)}" ${F}/><path d="M12 5v14M5.900 8.500l12.200 7M5.900 15.500l12.200-7" stroke="#060a16" stroke-opacity=".35" stroke-width="1.100"/><circle cx="12" cy="12" r="2" fill="#060a16" fill-opacity=".35"/>`),
-  // 炽焰之力：火焰中的星核
+  // 红buff：火焰中的一点亮芯
   ember_might: () => glyphBadge('#d0502a', `<path d="${FLAME}" ${F}/><path d="${star4(12, 15, 3.6, 0.2)}" fill="#060a16" fill-opacity=".5"/>`),
-  // 星陨祝福：大小星芒
+  // 巨灵buff(星陨祝福)：大小星芒
   star_blessing: () => glyphBadge('#d8a83a', `<path d="${star4(10.5, 13, 8.8, 0.2)}" ${F}/><path d="${star4(19, 5.5, 3.8, 0.2)}" ${F}/><path d="${star4(19.5, 19, 2.4, 0.2)}" ${F}/>`),
   // 英雄专属：复用技能图标
   panyue_passive: () => skillIcon('panyue', 'passive'),

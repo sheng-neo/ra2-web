@@ -48,10 +48,15 @@ interface Floater {
   dst: number;
   amount: number;
   prio: number;
+  /** 被后来的数字顶上去的高度(目标值 / 当前缓动值，CSS 像素，未乘界面缩放) */
+  lift: number;
+  liftNow: number;
 }
 
 /** 多段伤害的错位槽(CSS 像素，乘以界面缩放) */
-const SLOTS: [number, number][] = [[0, 0], [26, -24], [-30, -28], [6, -50], [-20, -56], [48, -42], [-52, -46], [0, -76]];
+const SLOTS: [number, number][] = [[0, 0], [16, -4], [-14, -6], [24, -2], [-22, -4], [8, -8], [-8, -8], [0, -10]];
+/** 同一目标出新数字时，把还没淡出的旧数字往上顶这么高：数字一行一行往上走，不叠在一起 */
+const LIFT = 21;
 const POOL = 72;
 /** 多段伤害合并的时间窗(秒)：只并进还在这段时间内的数字 */
 const MERGE_WINDOW = 0.3;
@@ -82,7 +87,7 @@ export class FloaterLayer {
     this.text = text;
     this.icons = icons;
     for (let i = 0; i < POOL; i++) {
-      this.pool.push({ live: false, style: 0, text: '', sprite: null, wx: 0, wy: 0, wz: 0, ox: 0, oy: 0, dir: 1, t: 0, life: 1, scale: 1, alpha: 1, crit: false, coin: false, src: -1, dst: -1, amount: 0, prio: 2 });
+      this.pool.push({ live: false, style: 0, text: '', sprite: null, wx: 0, wy: 0, wz: 0, ox: 0, oy: 0, dir: 1, t: 0, life: 1, scale: 1, alpha: 1, crit: false, coin: false, src: -1, dst: -1, amount: 0, prio: 2, lift: 0, liftNow: 0 });
     }
     this.setDpr(dpr);
   }
@@ -122,6 +127,10 @@ export class FloaterLayer {
     st.n = this.now - st.t < 0.8 ? st.n + 1 : 0;
     st.t = this.now;
     const slot = SLOTS[st.n % SLOTS.length];
+    // 同一目标还在飘的数字整体上移一行(暴击字大，多顶一点)
+    if (st.n > 0) {
+      for (const o of this.pool) if (o.live && o.dst === targetId && o.t < o.life * 0.85) o.lift += crit ? LIFT * 1.4 : LIFT;
+    }
     const f = this.take();
     f.live = true;
     f.style = style;
@@ -144,6 +153,8 @@ export class FloaterLayer {
     f.dst = targetId;
     f.amount = 0;
     f.prio = 2;
+    f.lift = 0;
+    f.liftNow = 0;
     return f;
   }
 
@@ -262,9 +273,11 @@ export class FloaterLayer {
     }
     if (this.stagger.size > 256) this.stagger.clear();
     const p = this.p;
+    const ease = Math.min(1, dt * 14);
     for (const f of this.pool) {
       if (!f.live) continue;
       f.t += dt;
+      f.liftNow += (f.lift - f.liftNow) * ease;
       if (f.t >= f.life) f.live = false;
     }
     // 两遍：先画二级(其余英雄之间)，再画一级(与玩家相关)，玩家自己的数字永远压在最上面
@@ -281,7 +294,7 @@ export class FloaterLayer {
       // 上飘(先快后慢) + 轻微横漂；暴击先放大再回弹
       const rise = 1 - (1 - t) * (1 - t);
       const x = p.x + (f.ox + f.dir * 16 * t) * s;
-      const y = p.y + (f.oy - 18 - 44 * rise) * s;
+      const y = p.y + (f.oy - 18 - 40 * rise - f.liftNow) * s;
       const pop = f.crit ? 2.0 - 1.0 * backOut(Math.min(1, f.t / 0.26)) : 1.4 - 0.4 * Math.min(1, f.t / 0.12);
       const sc = f.scale * pop * s;
       const alpha = f.alpha * (t < 0.62 ? 1 : 1 - (t - 0.62) / 0.38);

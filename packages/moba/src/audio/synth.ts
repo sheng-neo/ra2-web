@@ -5,8 +5,11 @@
 
 export type Ctx = BaseAudioContext;
 export type NoiseKind = 'white' | 'pink' | 'brown';
-/** 自定义周期波：比原生锯齿/方波更柔和，适合做乐器 */
-export type WaveName = 'softsaw' | 'softsq' | 'glass' | 'reed';
+/**
+ * 自定义周期波：比原生锯齿/方波更柔和，适合做乐器。
+ * string = 靠近码子拨弦的明亮弦音(琵琶)；zhu = 竹尺击弦的偏冷弦音(筑：偶次泛音偏弱，听起来更空)
+ */
+export type WaveName = 'softsaw' | 'softsq' | 'glass' | 'reed' | 'string' | 'zhu';
 export type Wave = 'sine' | 'square' | 'sawtooth' | 'triangle' | WaveName;
 
 export const mtof = (m: number): number => 440 * Math.pow(2, (m - 69) / 12);
@@ -212,7 +215,10 @@ export class Kit {
       if (name === 'softsaw') im[n] = (n % 2 ? 1 : -1) / Math.pow(n, 1.45);
       else if (name === 'softsq') im[n] = n % 2 ? 1 / Math.pow(n, 1.35) : 0;
       else if (name === 'glass') im[n] = glass[n] ?? 0;
-      else im[n] = reed[n] ?? 0;
+      else if (name === 'reed') im[n] = reed[n] ?? 0;
+      // 拨弦点在弦长 13% 处：第 n 次泛音的强度 ∝ sin(nπβ)/n^k，拨弦点的整数倍泛音自然缺失
+      else if (name === 'string') im[n] = Math.sin(n * Math.PI * 0.13) / Math.pow(n, 1.1);
+      else im[n] = (Math.sin(n * Math.PI * 0.29) / Math.pow(n, 0.85)) * (n % 2 ? 1 : 0.5);
     }
     w = this.ctx.createPeriodicWave(re, im);
     this.waves.set(name, w);
@@ -493,6 +499,19 @@ export class Patch {
     // 回声尾巴需要节点多活一会儿
     if (tail > this.tail) this.tail = tail;
     return input;
+  }
+
+  /**
+   * 以 g 倍增益执行一段子配方：同一个键的各变体(不同野怪、敌我版本)共用一个配平值，
+   * 这里把它们的响度对齐到同一水平。子配方里的层都接到这个增益节点上。
+   */
+  sub(g: number, fn: (q: Patch) => void): void {
+    const q = new Patch(this.kit, this.gain(g), this.t0);
+    q.pm = this.pm;
+    q.dur = this.dur;
+    fn(q);
+    q.finish();
+    if (q.end > this.end) this.end = q.end;
   }
 
   private tail = 0;

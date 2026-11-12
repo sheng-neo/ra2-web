@@ -13,7 +13,7 @@ import { MODE, SHAPE } from '../glow';
 import type { FxKit } from '../kit';
 import { C, TAU, teamTheme } from '../util';
 import { recentSlain } from './monsters';
-import { type FxEnv, type FxEvent, type FxHandler, involvesPlayer, unitY } from './types';
+import { type FxEvent, type FxHandler, involvesPlayer, unitY } from './types';
 
 /** 攻击方向(来源 → 命中点)，没有来源时为 0 */
 function attackDir(k: FxKit, e: FxEvent, x: number, z: number, out: { x: number; z: number }): void {

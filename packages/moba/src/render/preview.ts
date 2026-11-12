@@ -31,6 +31,8 @@ const PLAY: Record<HeroId, Partial<Record<PlayAnim, [UnitAnim, number]>>> = {
  * 取景框本身不再手填，而是按模型实际的包围盒(含武器，见 measureFrame)算出来。
  */
 const MARGIN = { side: 0.07, top: 0.06, bottom: 0.12 };
+/** 基准取景(米)：五位英雄共用，按最魁梧的樊哙(含发束)定 */
+const REF = { top: 3.2, halfW: 1.2 };
 
 /** 头像取景：注视点相对头心的下移(米，世界尺度)、镜头距离、英雄偏转角(度)、横向偏移；anim/p/variant 为拍照时摆的姿势(默认待机) */
 const BUST: Record<HeroId, { drop: number; dist: number; yaw: number; x: number; anim?: UnitAnim; p?: number; variant?: number }> = {
@@ -335,9 +337,11 @@ export function createHeroPreview(canvas: HTMLCanvasElement, heroId: HeroId): He
     const near = Math.max(0, box.maxZ);
     const distW = halfW / (tanW * (1 - 2 * MARGIN.side)) + near * 0.6;
     const distH = spanH / (2 * tanH * (1 - MARGIN.top - MARGIN.bottom)) + near * 0.5;
-    const dist = Math.max(distW, distH);
-    // 注视点：让 [bottom, top] 落在扣掉上下边距后的画框中间
-    const lookY = (top + bottom) / 2 - (MARGIN.bottom - MARGIN.top) * tanH * dist;
+    // 五位英雄共用一个基准距离(按最高大的樊哙定)：小个子就显得小，坦克最魁梧；只有装不下时才再退远
+    const distRef = Math.max(REF.halfW / (tanW * (1 - 2 * MARGIN.side)), (REF.top - bottom) / (2 * tanH * (1 - MARGIN.top - MARGIN.bottom)));
+    const dist = Math.max(distW, distH, distRef);
+    // 注视点：展台底边落在画框下边距处(各英雄站在同一高度)，头顶自然在上边距以内
+    const lookY = bottom + tanH * dist * (1 - 2 * MARGIN.bottom);
     cam.aspect = aspect;
     cam.position.set(cx, lookY + dist * 0.12, dist);
     cam.lookAt(cx, lookY, 0);
@@ -494,7 +498,8 @@ function renderPortrait(id: HeroId): string {
   if (!portraitGlFailed) {
     try {
       if (!portraitRig) {
-        const size = PORTRAIT_SIZE * 2;
+        // 1.5 倍超采样(再缩到 192)：软件渲染下比 2 倍省约四成，128 像素显示时看不出差别
+        const size = Math.round(PORTRAIT_SIZE * 1.5);
         const canvas = document.createElement('canvas');
         canvas.width = canvas.height = size;
         const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, premultipliedAlpha: true, preserveDrawingBuffer: true });
@@ -506,7 +511,7 @@ function renderPortrait(id: HeroId): string {
       const { renderer, stage } = portraitRig;
       const def = getModel(heroKey(id));
       const puppet = new Puppet(def, 0.37);
-      const batch = new RigBatch(def.geometry, def.rig.count, 1, { outline: 2.2 }, `portrait:${id}`);
+      const batch = new RigBatch(def.geometry, def.rig.count, 1, { outline: 1.7 }, `portrait:${id}`);
       batch.setShadows(false);
       batch.addTo(stage.scene);
       try {
