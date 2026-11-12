@@ -473,19 +473,21 @@ export class Engine implements AudioEngine {
           const byMe = e.sourceId === pid;
           const src = this.unit(e.sourceId);
           const tgt = this.unit(e.targetId);
-          if (toMe || byMe) this.noteCombat(toMe ? src : tgt);
+          // 玩家的技能扫到草里 / 迷雾里看不见的敌人：不出命中确认音、不升战斗热度、不出命中声——与渲染层不出飘字一致，免得靠声音报位置
+          const tgtHidden = tgt !== undefined && !toMe && !this.seen(tgt);
+          if (toMe || (byMe && !tgtHidden)) this.noteCombat(toMe ? src : tgt);
           if (toMe && me && e.amount > 0) {
             const frac = e.amount / Math.max(1, me.stats.maxHp);
             if (frac >= 0.1) m.play('player_hurt_heavy', { gain: Math.min(1, 0.7 + frac * 1.5) });
             else if (frac >= 0.008) m.play('player_hurt', { gain: Math.min(1, 0.55 + frac * 4), v: Math.min(1, frac * 10) });
           }
           if (e.skill) {
-            if (byMe && tgt && tgt.kind === 'hero') m.play('skill_hit');
+            if (byMe && tgt && tgt.kind === 'hero' && !tgtHidden) m.play('skill_hit');
             break;
           }
           // 近战普攻的命中声。远程普攻/塔弹由 projectileHit 负责，这里不重复
-          if (!src) break;
-          if (!toMe && !byMe && !(tgt ? this.seen(tgt) : this.posSeen(state, e.pos))) break;
+          if (!src || tgtHidden) break;
+          if (!toMe && !byMe && !tgt && !this.posSeen(state, e.pos)) break;
           const vsHero = tgt !== undefined && tgt.kind === 'hero';
           if (src.kind === 'hero') {
             const key = ATK_HIT[src.heroId];
@@ -535,7 +537,8 @@ export class Engine implements AudioEngine {
           const toMe = e.targetId === pid;
           const byMe = this.projOwner.get(e.id) === pid;
           const tgt = this.unit(e.targetId);
-          if (!toMe && !byMe && !(tgt ? this.seen(tgt) : this.posSeen(state, e.pos))) break;
+          // 目标看不见就不响(玩家自己的飞行物穿进草里打到人也一样)；目标已不在单位表里时才退回按位置判断
+          if (!toMe && (tgt ? !this.seen(tgt) : !byMe && !this.posSeen(state, e.pos))) break;
           const tower = e.visual === 'tower_bolt' || e.visual === 'core_bolt';
           // 塔打在玩家身上要明显更重
           const key: SfxKey = tower && toMe ? 'tower_hit_player' : PROJ_HIT[e.visual];
@@ -706,6 +709,11 @@ export class Engine implements AudioEngine {
     if (!mine && e.team !== 0) {
       const u = e.unitId !== undefined ? this.unit(e.unitId) : undefined;
       if (!(u ? this.seen(u) : this.posSeen(state, e.pos))) return;
+    }
+    // 命中在看不见的敌人身上的特效音(含玩家自己打出的)：不响
+    if (e.targetId !== undefined && e.targetId !== pid) {
+      const t = this.unit(e.targetId);
+      if (t && !this.seen(t)) return;
     }
     const generic = e.key === 'hit_physical' || e.key === 'hit_magic' || e.key === 'hit_tower';
     const gain = generic ? (mine ? 0.8 : 0.45) : mine ? 1 : 0.75;

@@ -97,7 +97,7 @@ const sameVec = (a: Vec2, b: Vec2): boolean => Math.abs(a.x - b.x) < 1e-4 && Mat
 
 function sameAim(a: AimIndicator | null, b: AimIndicator | null): boolean {
   if (a === b) return true;
-  if (!a || !b || a.kind !== b.kind || !!a.cancel !== !!b.cancel) return false;
+  if (!a || !b || a.kind !== b.kind || !!a.cancel !== !!b.cancel || !!a.pointer !== !!b.pointer) return false;
   switch (a.kind) {
     case 'direction':
       return b.kind === 'direction' && a.range === b.range && a.width === b.width && sameVec(a.dir, b.dir);
@@ -446,7 +446,10 @@ export function createInput(ctx: HudCtx, deps: InputDeps): Input {
   function refreshKeyAim(): void {
     if (!keyAim) return;
     const sol = solveKeyAim();
-    setAim(sol ? sol.indicator : previewIndicator(castSpecOf(ctx.me, keyAim.slot)));
+    const ind = sol ? sol.indicator : previewIndicator(castSpecOf(ctx.me, keyAim.slot));
+    // 落点 / 方向每帧按鼠标底下的地面点重算：告诉渲染层别为它前探镜头，否则镜头一动落点跟着漂(见 AimIndicator.pointer)
+    if (ind) ind.pointer = true;
+    setAim(ind);
   }
   function cancelKeyAim(): void {
     if (!keyAim) return;

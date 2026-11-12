@@ -81,6 +81,8 @@ const CSS = sfCss(`
 .sf-loading__tip.is-out span { opacity: 0; }
 .sf-loading__bar { width: min(100%, 900u); display: grid; grid-template-columns: 1fr auto; gap: 6u 12u; align-items: baseline; }
 .sf-loading__bar .sf-progress { grid-column: 1 / -1; }
+/* 进度条不走缓动：加载的每一步都是同步的重活，两步之间主线程只让出一帧，缓动根本来不及播——百分比到了 100%，条还停在开头 */
+.sf-loading__bar .sf-progress__fill, .sf-loading__bar .sf-progress__spark { transition: none; }
 .sf-loading__label { font-size: var(--sf-fs-sm); letter-spacing: 0.1em; color: var(--sf-c-text-2); }
 .sf-loading__pct { font-size: var(--sf-fs-lg); color: var(--sf-c-gold-200); }
 .sf-loading-root.is-closing { animation: sf-fade-out 0.4s linear both; pointer-events: none; }

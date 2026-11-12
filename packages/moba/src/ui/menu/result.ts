@@ -33,7 +33,8 @@ export interface HeroScore {
  */
 export function computeScores(state: GameState): Map<number, HeroScore> {
   const out = new Map<number, HeroScore>();
-  const minutes = Math.max(1, state.time / 60);
+  // 对局时长按分出胜负那一刻算(state.endTime)：之后为播结束演出，state.time 还会多走几秒
+  const minutes = Math.max(1, (state.endTime ?? state.time) / 60);
   for (const team of [0, 1] as PlayerTeam[]) {
     const members = state.heroes.filter((x) => x.team === team);
     const sum = (f: (x: HeroUnit) => number): number => Math.max(1, members.reduce((acc, x) => acc + f(x), 0));
@@ -261,7 +262,7 @@ export function showResult(root: HTMLElement, state: GameState, host: MenuHost, 
       'div',
       'sf-result__summary',
       h('span', 'sf-result__vs', h('small', null, '蓝方'), h('b', 'is-blue', String(blue.kills)), icon(uiIcon('kill')), h('b', 'is-red', String(red.kills)), h('small', null, '红方')),
-      h('span', 'sf-result__chip', icon(uiIcon('clock')), '时长', h('b', null, fmtClock(state.time))),
+      h('span', 'sf-result__chip', icon(uiIcon('clock')), '时长', h('b', null, fmtClock(state.endTime ?? state.time))),
       h('span', 'sf-result__chip', icon(uiIcon('tower')), '推塔', h('b', null, `${blue.towersDestroyed} : ${red.towersDestroyed}`)),
     ),
   );

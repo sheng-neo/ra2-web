@@ -16,6 +16,11 @@ export type AimIndicator = (
 ) & {
   /** 拖到取消区时为 true：指示器变红 */
   cancel?: boolean;
+  /**
+   * (可选扩展) 这个指示器是跟着屏幕上的指针(鼠标)算出来的：渲染层不要为它做镜头前探。
+   * 镜头一动，指针底下的地面点跟着变，落点 / 方向就会顺着镜头一路漂走。触控拖动瞄准(按拖动向量算，与屏幕位置无关)不设这个标记。
+   */
+  pointer?: boolean;
 };
 
 export interface RendererStats {

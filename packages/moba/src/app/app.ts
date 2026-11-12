@@ -395,8 +395,8 @@ export function startApp(): void {
       // 结算页盖在对局画面上淡入；HUD 立刻收起(免得两边同时响应按键)，画面等盖严了再停
       phase = 'result';
       created.disposeHud();
-      // 结算页的「时长」按分出胜负的那一刻算，不含之后播结束演出的几秒
-      const resultDone = showResult(root, { ...outcome.state, time: outcome.endTime }, menuHost, { signal });
+      // 结算页的「时长」读 state.endTime(分出胜负的那一刻)，不含之后播结束演出的几秒
+      const resultDone = showResult(root, outcome.state, menuHost, { signal });
       await sleep(RESULT_COVER_MS);
       if (gen !== generation) return;
       retire(created);

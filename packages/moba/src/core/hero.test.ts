@@ -32,6 +32,36 @@ describe('移动指令', () => {
     expect(h.anim).toBe('idle');
   });
 
+  it('move：正面顶在己方水晶 / 防御塔上不会钉在原地，贴着弧面绕过去；正面顶平直的墙仍然停住', () => {
+    const sim = quietWorld('xingli');
+    const h = sim.heroes.find((x) => x.isPlayer)!;
+    const base = sim.map.bases[0];
+    // 键盘按住 W+D 从泉水走向中路：出生点、水晶都在对角线上，正对着水晶中心
+    place(sim, h, base.fountain.x, base.fountain.y);
+    const d = Math.SQRT1_2;
+    sim.command(h.id, { type: 'move', dir: { x: d, y: -d } });
+    stepFor(sim, 4.5);
+    // 已经越过水晶(沿对角线方向的进度超过水晶中心 3 米以上)，且全程没进障碍
+    const prog = (h.pos.x - base.core.x) * d - (h.pos.y - base.core.y) * d;
+    expect(prog).toBeGreaterThan(3);
+    expect(sim.nav.isFree(h.pos.x, h.pos.y, h.rt.navR - 0.06)).toBe(true);
+
+    // 防御塔同理：上路是南北走向，从己方塔的正南 4 米沿兵线朝正北走
+    const tower = sim.units.find((u) => u.kind === 'tower' && u.team === 0 && u.lane === 'top')!;
+    place(sim, h, tower.pos.x, tower.pos.y + 4);
+    sim.command(h.id, { type: 'move', dir: { x: 0, y: -1 } });
+    stepFor(sim, 2.5);
+    expect(h.pos.y).toBeLessThan(tower.pos.y - 3);
+    expect(sim.nav.isFree(h.pos.x, h.pos.y, h.rt.navR - 0.06)).toBe(true);
+
+    // 地图西边界是平直的墙：正对着走过去就停住，不会被带着横向滑走
+    place(sim, h, -sim.map.bound + 3, 30);
+    sim.command(h.id, { type: 'move', dir: { x: -1, y: 0 } });
+    stepFor(sim, 2);
+    expect(Math.abs(h.pos.y - 30)).toBeLessThan(0.3);
+    expect(h.pos.x).toBeLessThan(-sim.map.bound + 1.5);
+  });
+
   it('moveTo：绕过墙体寻路到达目标点', () => {
     const sim = quietWorld();
     const h = heroOf(sim, 0, 'chijin');

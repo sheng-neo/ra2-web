@@ -29,13 +29,14 @@ const CSS = sfCss(`
 .sf-hud__banner.is-ally { --tone: 77, 163, 255; }
 .sf-hud__banner.is-foe { --tone: 255, 93, 93; }
 .sf-hud__banner.is-out { animation: sf-hud-bn-out 0.22s var(--sf-ease-in) both; }
-/* 底带：中间实、两端渐隐；上沿一道亮的星轨线，下沿一道淡的 */
+/* 底带：中间实、两端渐隐；上沿一道亮的星轨线，下沿一道淡的。
+   底色留两成通透：镜头拉近后，英雄以北十来米的敌人正好在横幅后面，不能被盖死 */
 .sf-hud__banner::before {
   content: ''; position: absolute; inset: 0; z-index: -1;
   background:
     linear-gradient(90deg, rgba(255, 231, 173, 0), rgba(255, 231, 173, 0.95) 28%, #fff4d6 50%, rgba(255, 231, 173, 0.95) 72%, rgba(255, 231, 173, 0)) left top / 100% 1.5px no-repeat,
     linear-gradient(90deg, rgba(255, 231, 173, 0), rgba(255, 231, 173, 0.6) 30%, rgba(255, 231, 173, 0.6) 70%, rgba(255, 231, 173, 0)) left bottom / 100% 1px no-repeat,
-    linear-gradient(90deg, rgba(var(--tone), 0), rgba(var(--tone), 0.46) 20%, rgba(8, 13, 31, 0.93) 40%, rgba(8, 13, 31, 0.93) 60%, rgba(var(--tone), 0.46) 80%, rgba(var(--tone), 0));
+    linear-gradient(90deg, rgba(var(--tone), 0), rgba(var(--tone), 0.36) 20%, rgba(8, 13, 31, 0.8) 40%, rgba(8, 13, 31, 0.8) 60%, rgba(var(--tone), 0.36) 80%, rgba(var(--tone), 0));
 }
 /* 上沿正中的菱形星 */
 .sf-hud__banner::after {
@@ -120,7 +121,8 @@ interface Item {
   slain: boolean;
 }
 
-const DURATION: Record<Tier, number> = { 1: 1.9, 2: 2.3, 3: 2.7, 4: 3.3 };
+// 横幅盖着屏幕上沿的战场(英雄以北约 11~14 米)：停留时间从紧
+const DURATION: Record<Tier, number> = { 1: 1.6, 2: 2.0, 3: 2.4, 4: 3.0 };
 /** 后面有人排队时，当前横幅至少也要亮这么久 */
 const MIN_SHOW: Record<Tier, number> = { 1: 1.0, 2: 1.25, 3: 1.6, 4: 2.1 };
 const MAX_QUEUE = 4;

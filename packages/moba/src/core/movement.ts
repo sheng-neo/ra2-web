@@ -116,6 +116,32 @@ function followPath(sim: Sim, u: SimUnit, dt: number): boolean {
   return true;
 }
 
+/** 方向移动时，一步的实际位移不到应走距离的这个比例，就算「被正面顶住」 */
+const SIDESTEP_BLOCKED = 0.35;
+/** 判断障碍是不是弧面：比较正前方两侧这么远处的空旷程度 */
+const SIDESTEP_PROBE = 0.6;
+/** 侧面比脚下至少空旷这么多才算弧面(半径 9 米以内的圆都够得着；平直的墙是 0) */
+const SIDESTEP_GAIN = 0.02;
+
+/**
+ * 正面顶在圆形建筑(水晶 / 防御塔)或墙的凸角上时，距离场只会把这一步原样推回来，英雄就钉在原地——
+ * 键盘按住 W+D 从泉水走向中路正好对着己方水晶的中心。这里朝更开阔的一侧横移一步；错开之后不再是正对，
+ * 接着就自然贴着弧面滑过去。平直的墙两侧一样空旷、凹角两侧更窄：都不处理，顶墙就该停住。
+ */
+function sidestep(sim: Sim, u: SimUnit, step: number): boolean {
+  const rt = u.rt;
+  const nav = sim.nav;
+  const tx = -rt.dirY;
+  const ty = rt.dirX;
+  const here = nav.clearanceAt(u.pos.x, u.pos.y);
+  const left = nav.clearanceAt(u.pos.x + tx * SIDESTEP_PROBE, u.pos.y + ty * SIDESTEP_PROBE);
+  const right = nav.clearanceAt(u.pos.x - tx * SIDESTEP_PROBE, u.pos.y - ty * SIDESTEP_PROBE);
+  if (Math.max(left, right) - here < SIDESTEP_GAIN) return false;
+  // 两侧一样时固定取左侧(模拟层要确定性)
+  const side = left >= right ? step : -step;
+  return nav.moveWithCollision(u.pos, tx * side, ty * side, rt.navR);
+}
+
 /** 执行英雄的移动指令（摇杆方向或寻路） */
 export function updateOrderedMove(sim: Sim, u: SimUnit, dt: number): void {
   const rt = u.rt;
@@ -128,7 +154,10 @@ export function updateOrderedMove(sim: Sim, u: SimUnit, dt: number): void {
     u.facing = Math.atan2(rt.dirY, rt.dirX);
     const mx = u.pos.x - sx;
     const my = u.pos.y - sy;
-    if (mx * mx + my * my > 1e-10) rt.moved = true;
+    const moved2 = mx * mx + my * my;
+    if (moved2 > 1e-10) rt.moved = true;
+    // 这一步几乎没走动(正面顶在障碍上)：看看是不是顶在弧面上，是就朝开阔的一侧错开
+    if (moved2 < step * step * SIDESTEP_BLOCKED * SIDESTEP_BLOCKED && sidestep(sim, u, step)) rt.moved = true;
   } else if (rt.moveMode === MOVE_PATH) {
     if (rt.path === null) planPath(sim, u, rt.goalX, rt.goalY, false);
     if (!followPath(sim, u, dt)) rt.moveMode = MOVE_NONE;

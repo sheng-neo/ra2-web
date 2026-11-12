@@ -180,11 +180,12 @@ export function createRendererCore(container: HTMLElement, state: GameState, opt
 
   let disposed = false;
 
-  // 瞄准前探：长射程技能朝屏幕外(尤其是朝南)瞄的时候，镜头往那边让一让，保证指示器末端看得见
+  // 瞄准前探：长射程技能朝屏幕外(尤其是朝南)瞄的时候，镜头往那边让一让，保证指示器末端看得见。
+  // 跟着鼠标算出来的指示器(aim.pointer)不前探：镜头一动鼠标底下的地面点就变，落点会顺着镜头一路滑到最大射程
   let aim: AimIndicator | null = null;
   const updateReach = (s: GameState, alpha: number): void => {
     const rig = engine.rig;
-    if (!aim || aim.kind === 'self' || aim.kind === 'target') {
+    if (!aim || aim.pointer || aim.kind === 'self' || aim.kind === 'target') {
       rig.setReach(null);
       return;
     }

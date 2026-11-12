@@ -29,7 +29,8 @@ const PLAY: Record<HeroId, Partial<Record<PlayAnim, [UnitAnim, number]>>> = {
 /** 取景：模型含武器的大致高度/宽度(已含缩放) */
 const FRAME: Record<HeroId, { h: number; w: number }> = {
   panyue: { h: 3.5, w: 3.4 },
-  chijin: { h: 2.6, w: 2.6 },
+  // 双刀向两侧张开：转到四分之三侧面时刀尖比身体宽出不少，宽度按刀尖算
+  chijin: { h: 2.6, w: 3.1 },
   xingli: { h: 2.85, w: 2.4 },
   fengling: { h: 2.6, w: 2.2 },
   yeque: { h: 2.55, w: 2.3 },

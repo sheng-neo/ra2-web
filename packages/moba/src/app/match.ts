@@ -46,7 +46,7 @@ function thinEvents(batch: GameEvent[], tailStart: number): GameEvent[] {
   return out;
 }
 
-/** finished：对局分出胜负。endTime 是水晶被毁那一 tick 的模拟时间(之后为了播结束演出，state.time 还会继续走) */
+/** finished：对局分出胜负。endTime 是水晶被毁那一 tick 的模拟时间(= state.endTime；之后为了播结束演出，state.time 还会继续走) */
 export type MatchOutcome = { kind: 'finished'; state: GameState; endTime: number } | { kind: 'quit' };
 
 /** 应用层提供给对局会话的环境 */
@@ -320,16 +320,12 @@ export async function startMatch(env: MatchEnv, choice: MatchChoice, opts: Match
     let audioEvMs = 0;
     let lastFrameAt = -1;
     let overAt = -1;
-    let endTime = -1;
     let resizePending = false;
 
     const turbo = opts.speed > 1;
     const loop = new GameLoop<GameEvent>(
       {
-        step() {
-          world.step();
-          if (state.over && endTime < 0) endTime = state.time;
-        },
+        step: () => world.step(),
         drain: () => world.drainEvents(),
         events(batch, steps, tailStart) {
           // 同一批事件依次交给三层：渲染(特效 / 飘字 / 震屏) → 界面(播报 / 击杀流) → 音频。
@@ -370,7 +366,7 @@ export async function startMatch(env: MatchEnv, choice: MatchChoice, opts: Match
               overAt = f.now;
               // 结束演出按真实速度播放
               loop.speed = 1;
-            } else if (f.now - overAt >= RESULT_DELAY_MS) finish({ kind: 'finished', state, endTime: endTime >= 0 ? endTime : state.time });
+            } else if (f.now - overAt >= RESULT_DELAY_MS) finish({ kind: 'finished', state, endTime: state.endTime ?? state.time });
           }
         },
         error(err) {
