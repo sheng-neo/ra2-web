@@ -136,7 +136,7 @@ export function createGlimMoth(): ModelDef {
     let amp = 1;
     let fold = 0;
     let hover = Math.sin((t * TAU) / 1.6) * 0.12;
-    let glow = 1 + 0.15 * Math.sin(t * 3) + (alert ? 0.5 : 0);
+    let glow = 1 + 0.15 * Math.sin(t * 3) + (alert ? 0.3 : 0);
     // 两只个体的色相一冷一暖
     out.tint = 0.1;
     out.tintColor = a.seed > 0.5 ? 0x9fe8ff : 0xc8ffb0;
@@ -169,7 +169,7 @@ export function createGlimMoth(): ModelDef {
         pose.pos(root, 0, 0.14 * back, -0.2 * back + 0.26 * fan);
         amp = 1 - 0.85 * Math.max(back, fan);
         fold = 0.75 * back - 0.5 * fan;
-        glow += 1.2 * back + 2 * bump(p, 0.36, 0.14);
+        glow += 0.4 * back + 0.8 * bump(p, 0.36, 0.14);
         break;
       }
       case 'move': {
@@ -198,7 +198,7 @@ export function createGlimMoth(): ModelDef {
           pose.pos(root, Math.sin(ang) * 1.6 * k, 1.9 * k, Math.cos(ang) * 1.6 * k - 0.8 * k);
           pose.rot(root, 0, (-ang * 180) / Math.PI + 90 * k, -28 * k);
           hz = 7;
-          glow += 1.2 * k;
+          glow += 0.6 * k;
         } else {
           pose.rot(body, Math.sin(t * 0.9) * 4, Math.sin(t * 0.5) * 8, 0);
           pose.rot(head, 0, Math.sin(t * 0.7 + 1) * 14, 0);
@@ -234,7 +234,7 @@ export function createGlimMoth(): ModelDef {
     rig,
     height: 1.9,
     radius: 1.05,
-    scale: 1,
+    scale: 0.86,
     stride: 1.5,
     triangles: b.triangleCount,
     deathDur: 1.2,

@@ -34,14 +34,30 @@ const CSS =
 `) + `.sf-hud__mini::after { background-image: ${STAR}; }`;
 
 const TEAM_COLOR = [COLORS.blue, COLORS.red] as const;
+/**
+ * 营地标记(地图太小写不下字，用颜色 + 形状区分)：
+ * 蓝buff = 蓝色圆点 + 同色细环(与法力条同色)；红buff = 红色圆点 + 细环；小野怪 = 黄色小菱形；
+ * 河道巨龙 = 紫色三角(尖朝上) + 外环；远古巨灵 = 金色大菱形 + 双外环。
+ */
 const CAMP_COLOR: Record<MonsterType, string> = {
   mossback: '#e2cf7a',
   glimwing: '#e2cf7a',
-  frost_golem: '#74c8ff',
-  ember_golem: '#ff8f5e',
+  frost_golem: '#4da3ff',
+  ember_golem: '#ff5d5d',
   abyss_drake: '#c09bff',
   star_colossus: '#ffd76a',
 };
+type CampShape = 'diamond' | 'dot' | 'triangle';
+const CAMP_SHAPE: Record<MonsterType, CampShape> = {
+  mossback: 'diamond',
+  glimwing: 'diamond',
+  frost_golem: 'dot',
+  ember_golem: 'dot',
+  abyss_drake: 'triangle',
+  star_colossus: 'diamond',
+};
+/** 引导 / 目标点的脉冲圈颜色 */
+const GUIDE_COLOR = '255, 214, 130';
 
 type PingKind = 'kill' | 'alert' | 'tower' | 'epic';
 interface Ping {
@@ -55,6 +71,11 @@ const PING_LIFE: Record<PingKind, number> = { kill: 1.8, alert: 2.4, tower: 2.6,
 
 export interface Minimap extends HudPart {
   el: HTMLElement;
+  /**
+   * 引导 / 目标指示：在 pos 处画金色双层脉冲圈，并从玩家头像拉一条虚线过去；null = 取消。
+   * 激活期间小地图按 30Hz 重画。传进来的坐标会被拷贝，调用方可以复用对象。
+   */
+  setGuide(pos: Vec2 | null): void;
 }
 
 export function createMinimap(ctx: HudCtx): Minimap {
@@ -91,6 +112,8 @@ export function createMinimap(ctx: HudCtx): Minimap {
   /** 史诗野怪刷新倒计时的文字精灵(键：文字)。文字每秒才变一次，没必要每帧重新排版描边 */
   const labelSprites = new Map<string, HTMLCanvasElement>();
   const pings: Ping[] = [];
+  /** 引导 / 目标指示点；on 为假时不画 */
+  const guide = { on: false, x: 0, y: 0, t0: 0 };
   const lastAlert = new Map<number, number>();
   /** 己方建筑 id：受击时在小地图上报警。查表比每条伤害事件都去搜单位便宜得多 */
   const allyStructures = new Set<number>();
@@ -296,33 +319,65 @@ export function createMinimap(ctx: HudCtx): Minimap {
     c.closePath();
   }
 
+  /** 尖朝上的三角形(河道巨龙) */
+  function triangle(c: CanvasRenderingContext2D, x: number, y: number, r: number): void {
+    c.beginPath();
+    c.moveTo(x, y - r * 1.1);
+    c.lineTo(x + r, y + r * 0.8);
+    c.lineTo(x - r, y + r * 0.8);
+    c.closePath();
+  }
+
+  function campShape(c: CanvasRenderingContext2D, shape: CampShape, x: number, y: number, r: number): void {
+    if (shape === 'dot') {
+      c.beginPath();
+      c.arc(x, y, r, 0, Math.PI * 2);
+    } else if (shape === 'triangle') triangle(c, x, y, r);
+    else diamond(c, x, y, r);
+  }
+
   function drawCamps(c: CanvasRenderingContext2D): void {
     const camps = ctx.state.camps;
     for (const def of map.camps) {
       const st = camps[def.id] && camps[def.id].campId === def.id ? camps[def.id] : camps.find((x) => x.campId === def.id);
       const epic = MONSTERS[def.monsterType].epic;
-      const buff = def.monsterType === 'frost_golem' || def.monsterType === 'ember_golem';
-      const r = (epic ? 5.2 : buff ? 3.6 : 2.6) * s;
+      const shape = CAMP_SHAPE[def.monsterType];
+      const buff = shape === 'dot';
+      const r = (epic ? 5.2 : buff ? 2.9 : 2.6) * s;
       const x = mx(def.pos.x);
       const y = my(def.pos.y);
       const col = CAMP_COLOR[def.monsterType];
       if (!st || st.alive) {
-        diamond(c, x, y, r);
+        campShape(c, shape, x, y, r);
         c.fillStyle = col;
         c.fill();
         c.lineWidth = Math.max(1, 1.2 * s);
         c.strokeStyle = 'rgba(6, 10, 22, 0.9)';
         c.stroke();
-        if (epic) {
-          diamond(c, x, y, r + 2.4 * s);
+        if (buff) {
+          // 增益怪：同色细环
+          c.beginPath();
+          c.arc(x, y, r + 2 * s, 0, Math.PI * 2);
           c.strokeStyle = col;
           c.lineWidth = Math.max(1, s);
           c.stroke();
+        } else if (epic) {
+          // 史诗野怪：外环；远古巨灵再加一圈
+          campShape(c, shape, x, y, r + 2.4 * s);
+          c.strokeStyle = col;
+          c.lineWidth = Math.max(1, s);
+          c.stroke();
+          if (def.monsterType === 'star_colossus') {
+            campShape(c, shape, x, y, r + 4.6 * s);
+            c.globalAlpha = 0.7;
+            c.stroke();
+            c.globalAlpha = 1;
+          }
         }
         continue;
       }
-      // 未刷新：空心菱形 + 一圈进度弧；史诗野怪直接写秒数
-      diamond(c, x, y, r);
+      // 未刷新：空心的同形标记 + 一圈进度弧；史诗野怪直接写秒数
+      campShape(c, shape, x, y, r);
       c.fillStyle = 'rgba(6, 10, 22, 0.6)';
       c.fill();
       c.strokeStyle = col;
@@ -333,7 +388,7 @@ export function createMinimap(ctx: HudCtx): Minimap {
       const total = Math.max(def.respawn, def.firstSpawn, 1);
       const p = clamp(1 - st.respawnIn / total, 0, 1);
       c.beginPath();
-      c.arc(x, y, r + 1.8 * s, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * p);
+      c.arc(x, y, r + (buff ? 2 : 1.8) * s, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * p);
       c.strokeStyle = col;
       c.lineWidth = Math.max(1, 1.3 * s);
       c.stroke();
@@ -492,6 +547,51 @@ export function createMinimap(ctx: HudCtx): Minimap {
     }
   }
 
+  /** 引导 / 目标指示：玩家 → 目标的虚线 + 目标处的金色双层脉冲圈 */
+  function drawGuide(c: CanvasRenderingContext2D, now: number, me: HeroUnit | null): void {
+    const x = mx(guide.x);
+    const y = my(guide.y);
+    if (me) {
+      const sx = mx(me.pos.x);
+      const sy = my(me.pos.y);
+      const len = Math.hypot(x - sx, y - sy);
+      if (len > 12 * s) {
+        c.save();
+        c.setLineDash([4 * s, 3.5 * s]);
+        c.lineDashOffset = -((now - guide.t0) * 14 * s);
+        c.beginPath();
+        c.moveTo(sx, sy);
+        c.lineTo(x, y);
+        c.lineWidth = Math.max(2.6, 3.2 * s);
+        c.strokeStyle = 'rgba(6, 10, 22, 0.75)';
+        c.stroke();
+        c.lineWidth = Math.max(1.4, 1.7 * s);
+        c.strokeStyle = `rgba(${GUIDE_COLOR}, 0.95)`;
+        c.stroke();
+        c.restore();
+      }
+    }
+    // 两圈错开半个周期向外扩散
+    const period = 1.2;
+    for (let i = 0; i < 2; i++) {
+      const local = (((now - guide.t0) / period + i * 0.5) % 1 + 1) % 1;
+      c.beginPath();
+      c.arc(x, y, (4 + local * 11) * s, 0, Math.PI * 2);
+      c.strokeStyle = `rgba(${GUIDE_COLOR}, ${(1 - local) * 0.95})`;
+      c.lineWidth = Math.max(1.4, (2.6 - local * 1.4) * s);
+      c.stroke();
+    }
+    // 中心留空(不盖住目标本身的图标：塔、营地、水晶)，只套一圈细的定位环
+    c.beginPath();
+    c.arc(x, y, 5.6 * s, 0, Math.PI * 2);
+    c.lineWidth = Math.max(2.4, 2.8 * s);
+    c.strokeStyle = 'rgba(6, 10, 22, 0.8)';
+    c.stroke();
+    c.lineWidth = Math.max(1.2, 1.5 * s);
+    c.strokeStyle = `rgb(${GUIDE_COLOR})`;
+    c.stroke();
+  }
+
   function draw(now: number): void {
     if (!g || px === 0) return;
     const state = ctx.state;
@@ -527,6 +627,8 @@ export function createMinimap(ctx: HudCtx): Minimap {
       if (hero.id === state.playerId) meHero = hero;
       else drawHero(g, hero, now);
     }
+    // 指引线画在自己的头像下面、别人的头像上面
+    if (guide.on) drawGuide(g, now, meHero);
     if (meHero) drawHero(g, meHero, now);
     drawPings(g, now);
   }
@@ -601,6 +703,23 @@ export function createMinimap(ctx: HudCtx): Minimap {
 
   return {
     el,
+    setGuide(pos) {
+      if (!pos) {
+        if (guide.on) lastDraw = -1;
+        guide.on = false;
+        return;
+      }
+      const fresh = !guide.on;
+      if (fresh) guide.t0 = ctx.now;
+      guide.on = true;
+      guide.x = pos.x;
+      guide.y = pos.y;
+      // 刚点亮：当场画一次(调用方排在小地图后面更新，等下一轮重画会晚一帧)
+      if (fresh && px > 0) {
+        lastDraw = ctx.now;
+        draw(ctx.now);
+      }
+    },
     update(c) {
       const now = c.now;
       // 没有 ResizeObserver 的浏览器：除了 resize，再每秒兜底量一次；有的话只在它报了变化时才量
@@ -608,7 +727,7 @@ export function createMinimap(ctx: HudCtx): Minimap {
         lastMeasure = now;
         measure();
       }
-      const interval = pings.length > 0 || peekId !== null ? 1 / 30 : 1 / 12;
+      const interval = pings.length > 0 || peekId !== null || guide.on ? 1 / 30 : 1 / 12;
       if (now - lastDraw >= interval) {
         lastDraw = now;
         draw(now);

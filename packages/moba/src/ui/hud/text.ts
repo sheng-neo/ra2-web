@@ -1,9 +1,10 @@
 /**
- * HUD 文案：拒绝提示、状态说明、施法方式、装备属性、播报用语。全部原创措辞。
+ * HUD 文案：拒绝提示、状态说明、施法方式、装备属性、播报用语、通用叫法(分路 / 塔 / 野怪奖励)、技能标签。全部原创措辞。
+ * 本文件不引用 DOM 与主题模块：引导脚本与目标规则(纯函数，在 Node 里跑单测)也要用这里的词表。
  */
-import { SUMMONER } from '../../core/data/heroes';
+import { SKILL_TAG_NAME, SUMMONER } from '../../core/data/heroes';
 import { MONSTER_RULES, TOWER_RULES } from '../../core/data/units';
-import type { AnnounceKey, Buff, BuffId, CastSpec, GameEvent, StatMods, SummonerSlot } from '../../core/types';
+import type { AnnounceKey, Buff, BuffId, CastSpec, GameEvent, LaneId, MonsterType, RoleLane, SkillTag, StatMods, SummonerSlot, Vec2 } from '../../core/types';
 
 type RejectReason = Extract<GameEvent, { type: 'reject' }>['reason'];
 
@@ -18,27 +19,61 @@ export const REJECT_TEXT: Record<RejectReason, string> = {
 
 const pct = (v: number): string => `${Math.round(v * 100)}%`;
 
+// ───────────────────────── 通用叫法 ─────────────────────────
+
+/** 分路名(横幅、击杀流、引导、目标提示共用) */
+export const LANE_NAME: Record<LaneId, string> = { top: '上路', mid: '中路', bot: '下路' };
+/** 含打野位的分路名 */
+export const ROLE_LANE_NAME: Record<RoleLane, string> = { ...LANE_NAME, jungle: '打野' };
+/** 塔的叫法：tier 1 = 一塔，2 = 二塔，3 = 高地塔 */
+export const TIER_NAME: Record<1 | 2 | 3, string> = { 1: '一塔', 2: '二塔', 3: '高地塔' };
+/** 「上路一塔」 */
+export const towerName = (lane: LaneId, tier: 1 | 2 | 3): string => `${LANE_NAME[lane]}${TIER_NAME[tier]}`;
+
+/**
+ * 河道营地在小地图上的方位(蓝方视角，小地图方位固定：西北 = 左上，东南 = 右下)。
+ * 给横幅和目标提示里的「(左上河道)」用。
+ */
+export function riverSide(pos: Vec2): string {
+  return pos.x + pos.y < 0 ? '左上河道' : '右下河道';
+}
+
+/** 史诗野怪被拿下时的一句话：mine = 我方拿到。数值取自 MONSTER_RULES */
+export function epicSlainText(type: MonsterType, mine: boolean): string {
+  const R = MONSTER_RULES;
+  const side = mine ? '全队' : '敌方全队';
+  if (type === 'abyss_drake') return `${side} +${R.drakeTeamGold} 金币 +${R.drakeTeamXp} 经验`;
+  if (type === 'star_colossus') return mine ? `全队 ${R.blessingDuration} 秒内伤害 +${pct(R.blessingDamage)}、持续回血、小兵更强` : `敌方全队 ${R.blessingDuration} 秒内更强，先避一避`;
+  return mine ? '全队获得奖励' : '敌方获得奖励';
+}
+
+/** 拿到蓝buff / 红buff 时屏幕中下的轻提示 */
+export const BUFF_GAIN_TEXT = {
+  frost_insight: `拿到蓝buff：冷却缩减 +${pct(MONSTER_RULES.frostCdr)}，回蓝更快(${MONSTER_RULES.buffDuration} 秒)`,
+  ember_might: `拿到红buff：普攻附带灼烧和减速(${MONSTER_RULES.buffDuration} 秒)`,
+} as const;
+
 /** 状态说明：能从 value/stacks 读出数值的就写具体数值 */
 const BUFF_DESC: Record<BuffId, (b: Buff) => string> = {
   stun: () => '无法移动、攻击和施放技能。',
   airborne: () => '被击飞：无法移动、攻击和施放技能。',
   root: () => '无法移动，仍可攻击与施放技能。',
-  slow: (b) => (b.value > 0 ? `移动速度降低 ${pct(b.value)}。` : '移动速度降低。'),
+  slow: (b) => (b.value > 0 ? `移速降低 ${pct(b.value)}。` : '移速降低。'),
   silence: () => '无法施放技能。',
   shield: (b) => (b.value > 0 ? `可吸收 ${Math.round(b.value)} 点伤害。` : '吸收即将受到的伤害。'),
-  haste: (b) => (b.value > 0 ? `移动速度提高 ${pct(b.value)}。` : '移动速度提高。'),
-  attack_speed: (b) => (b.value > 0 ? `攻击速度提高 ${pct(b.value)}。` : '攻击速度提高。'),
+  haste: (b) => (b.value > 0 ? `移速提高 ${pct(b.value)}。` : '移速提高。'),
+  attack_speed: (b) => (b.value > 0 ? `攻速提高 ${pct(b.value)}。` : '攻速提高。'),
   dmg_reduction: (b) => (b.value > 0 ? `受到的伤害降低 ${pct(b.value)}。` : '受到的伤害降低。'),
   untargetable: () => '不可被选中，免疫一切伤害。',
   unstoppable: () => '免疫控制效果。',
   burn: (b) => (b.value > 0 ? `持续灼烧，每跳受到 ${Math.round(b.value)} 点真实伤害。` : '持续受到灼烧伤害。'),
-  recall: () => '引导结束后传送回泉水。移动、攻击或受到伤害会打断。',
-  restore: () => '持续回复生命与法力。受到英雄或防御塔的伤害会打断。',
-  fountain: () => '身处泉水，快速回复生命与法力。',
+  recall: () => '原地站满时间就传送回泉水。移动、攻击或挨打会打断。',
+  restore: () => '疗伤中：持续回血回蓝。被英雄或防御塔打到会打断。',
+  fountain: () => '在泉水里：快速回血回蓝。',
   respawn_guard: () => '刚刚复活，短时间内免疫伤害。',
-  frost_insight: () => `冷却缩减提高 ${pct(MONSTER_RULES.frostCdr)}，并持续回复法力。`,
-  ember_might: () => `普攻附带灼烧，并使目标减速 ${pct(MONSTER_RULES.emberSlow)}。`,
-  star_blessing: () => `造成的伤害提高 ${pct(MONSTER_RULES.blessingDamage)}，持续回复生命；己方小兵得到强化。`,
+  frost_insight: () => `蓝buff：冷却缩减 +${pct(MONSTER_RULES.frostCdr)}(总上限 40%)，回蓝更快。打掉蓝buff 怪获得，持续 ${MONSTER_RULES.buffDuration} 秒。`,
+  ember_might: () => `红buff：普攻附带灼烧，并让目标减速 ${pct(MONSTER_RULES.emberSlow)}。打掉红buff 怪获得，持续 ${MONSTER_RULES.buffDuration} 秒。`,
+  star_blessing: () => `巨灵buff(星陨祝福)：伤害 +${pct(MONSTER_RULES.blessingDamage)}，持续回血，我方小兵更强。打掉远古巨灵后全队获得，持续 ${MONSTER_RULES.blessingDuration} 秒。`,
   panyue_passive: (b) => `普攻蓄势 ${b.stacks}/3：第三次普攻震击地面，附带额外伤害与减速。`,
   panyue_bulwark: () => '岩壁护体：持有护盾，周围敌人被震慑减速。',
   chijin_ember: () => '下一次普攻附带烈焰，并回复自身生命。',
@@ -48,7 +83,7 @@ const BUFF_DESC: Record<BuffId, (b: Buff) => string> = {
   fengling_gale: (b) => `风势 ${b.stacks}/5：每层提高攻击速度，满层后移速提高、普攻附带额外伤害。`,
   fengling_crit: () => '下一次普攻必定暴击。',
   yeque_shadow: () => '潜行于暗影之中，移动速度提高。',
-  tower_focus: (b) => `被防御塔锁定：受到的塔伤害提高 ${pct(Math.min(TOWER_RULES.rampMax, b.stacks * TOWER_RULES.rampPerHit))}。`,
+  tower_focus: (b) => `塔在打你：塔的伤害越打越疼，现在 +${pct(Math.min(TOWER_RULES.rampMax, b.stacks * TOWER_RULES.rampPerHit))}。塔下没有小兵就先退出来。`,
 };
 
 export function buffDesc(b: Buff): string {
@@ -71,38 +106,36 @@ export function castLabel(c: CastSpec): string {
   }
 }
 
-/** 召唤师技能在界面上的施法方式（与模拟层的解析一致：闪现取方向，其余立即生效） */
+/** 通用技能(回城 / 疗伤 / 闪现)在界面上的施法方式（与模拟层的解析一致：闪现取方向，其余立即生效） */
 export const SUMMONER_CAST: Record<SummonerSlot, CastSpec> = {
   flash: { type: 'direction', range: SUMMONER.flash.range, width: 1.2 },
   heal: { type: 'self', radius: 0 },
   recall: { type: 'self', radius: 0 },
 };
 
+/**
+ * 属性的统一叫法：长处短处都用这一套(物攻 / 法强 / 生命 / 法力 / 护甲 / 魔抗 / 攻速 / 移速 / 冷却缩减 / 吸血 / 暴击 / 暴击伤害 / 物穿 / 法穿 / 回血 / 回蓝)。
+ * 吸血只对普攻生效，数值后面注明。
+ */
 export const STAT_LABELS: [keyof StatMods, string, (v: number) => string][] = [
-  ['ad', '物理攻击', (v) => `+${v}`],
-  ['ap', '法术强度', (v) => `+${v}`],
-  ['apPct', '法术强度', (v) => `+${pct(v)}`],
-  ['hp', '最大生命', (v) => `+${v}`],
-  ['mana', '最大法力', (v) => `+${v}`],
+  ['ad', '物攻', (v) => `+${v}`],
+  ['ap', '法强', (v) => `+${v}`],
+  ['apPct', '法强', (v) => `+${pct(v)}`],
+  ['hp', '生命', (v) => `+${v}`],
+  ['mana', '法力', (v) => `+${v}`],
   ['armor', '护甲', (v) => `+${v}`],
-  ['mr', '法术抗性', (v) => `+${v}`],
-  ['attackSpeedPct', '攻击速度', (v) => `+${pct(v)}`],
-  ['moveSpeed', '移动速度', (v) => `+${v}`],
+  ['mr', '魔抗', (v) => `+${v}`],
+  ['attackSpeedPct', '攻速', (v) => `+${pct(v)}`],
+  ['moveSpeed', '移速', (v) => `+${v}`],
   ['cdr', '冷却缩减', (v) => `+${pct(v)}`],
-  ['lifesteal', '普攻吸血', (v) => `+${pct(v)}`],
-  ['critChance', '暴击率', (v) => `+${pct(v)}`],
+  ['lifesteal', '吸血', (v) => `+${pct(v)}(仅普攻)`],
+  ['critChance', '暴击', (v) => `+${pct(v)}`],
   ['critDamage', '暴击伤害', (v) => `+${pct(v)}`],
-  ['armorPen', '护甲穿透', (v) => `+${pct(v)}`],
-  ['magicPen', '法术穿透', (v) => `+${pct(v)}`],
-  ['hpRegen', '生命回复', (v) => `+${v}/秒`],
-  ['manaRegen', '法力回复', (v) => `+${v}/秒`],
+  ['armorPen', '物穿', (v) => `+${pct(v)}`],
+  ['magicPen', '法穿', (v) => `+${pct(v)}`],
+  ['hpRegen', '回血', (v) => `+${v}/秒`],
+  ['manaRegen', '回蓝', (v) => `+${v}/秒`],
 ];
-
-/** 装备属性的短写（卡片上一行放得下） */
-const STAT_SHORT: Partial<Record<keyof StatMods, string>> = {
-  ad: '物攻', ap: '法强', apPct: '法强', hp: '生命', mana: '法力', armor: '护甲', mr: '法抗', attackSpeedPct: '攻速', moveSpeed: '移速',
-  cdr: '冷却', lifesteal: '吸血', critChance: '暴击', critDamage: '暴伤', armorPen: '破甲', magicPen: '法穿', hpRegen: '回血', manaRegen: '回蓝',
-};
 
 export function statLines(stats: StatMods): { label: string; value: string }[] {
   const out: { label: string; value: string }[] = [];
@@ -113,14 +146,32 @@ export function statLines(stats: StatMods): { label: string; value: string }[] {
   return out;
 }
 
+/** 一行放得下的属性摘要(名字与详情处同一套叫法；这里不带「仅普攻」之类的括注) */
 export function statSummary(stats: StatMods, max = 3): string {
   const out: string[] = [];
-  for (const [k, , fmt] of STAT_LABELS) {
+  for (const [k, label, fmt] of STAT_LABELS) {
     const v = stats[k];
-    if (v !== undefined && out.length < max) out.push(`${STAT_SHORT[k] ?? ''}${fmt(v)}`);
+    if (v !== undefined && out.length < max) out.push(`${label}${fmt(v).replace(/\(.*\)$/, '')}`);
   }
   return out.join('  ');
 }
+
+// ───────────────────────── 技能类型标签 ─────────────────────────
+
+/**
+ * 技能标签的显示信息(HUD 与选英雄页共用)：name = 标签文字，short = 技能键角标上的两个字，color = 标签色。
+ * 样式约定：胶囊形，文字用标签色，底色为标签色 14% 不透明度，1px 同色 45% 描边。「大招」「被动」按槽位另加，不在这张表里。
+ */
+export const SKILL_TAG_META: Record<SkillTag, { name: string; short: string; color: string }> = {
+  dash: { name: SKILL_TAG_NAME.dash, short: '位移', color: '#5cd6f7' },
+  control: { name: SKILL_TAG_NAME.control, short: '控制', color: '#b9a2ff' },
+  slow: { name: SKILL_TAG_NAME.slow, short: '减速', color: '#8fc7ff' },
+  burst: { name: SKILL_TAG_NAME.burst, short: '爆发', color: '#ff8a7a' },
+  dot: { name: SKILL_TAG_NAME.dot, short: '持续', color: '#ffb454' },
+  shield: { name: SKILL_TAG_NAME.shield, short: '护盾', color: '#dfe8ff' },
+  heal: { name: SKILL_TAG_NAME.heal, short: '回复', color: '#6fe3a1' },
+  buff: { name: SKILL_TAG_NAME.buff, short: '增益', color: '#f3cf85' },
+};
 
 export const CATEGORY_NAMES = { recommend: '推荐', attack: '攻击', magic: '法术', defense: '防御', boots: '鞋' } as const;
 export type ShopTab = keyof typeof CATEGORY_NAMES;

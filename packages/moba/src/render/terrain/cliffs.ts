@@ -4,7 +4,7 @@
  * 读成「垒起来的岩块」而不是一条挤出带：
  *   - 轮廓点每 2~4 个编成一「柱」，同柱共用进深、崖沿高度与石台高度；柱与柱之间插一道内凹的竖缝(顶点 AO 压暗)；
  *   - 每柱分上下两块：下块 → 一级小石台(朝上的面接高光、长苔) → 上块 → 圆角崖沿；
- *   - 三种剖面：阶地型(石台宽、上块后退)、陡壁型(近乎直立)、石脊型(窄墙体不做平顶，顶上是起伏的岩脊)；
+ *   - 三种剖面：阶地型(石台宽、上块后退)、陡壁型(近乎直立)、石脊型(窄墙体：更矮、错落更大的一道矮岩墙，顶上只长灌木与矮树)；
  *   - 崖沿不再是一圈亮边：只有约三成的柱露出暖石沿，其余由苔与草盖过来；
  *   - 顶面多环细分，顶点色按世界坐标的噪声做草色斑(细节纹理由材质的顶面贴图给)。
  * 内缩量被钳制在多边形中轴线上，所以任意凸/近凸多边形都不会自相交。崖脚轮廓始终与碰撞多边形重合。
@@ -60,6 +60,8 @@ export interface CliffOptions {
   niches?: Vec2[];
 }
 
+/** 顶面草地写进 aFx.z 的岩石肌理权重(见上) */
+export const TOP_TEX = 0.4;
 /** 顶面各环到崖脚的距离(第一环 = 崖沿) */
 const RIM_D = 0.8;
 const TOP_D = [RIM_D, 1.3, 1.95, 2.8, 3.9, 5.3, 7.2, 30];
@@ -234,7 +236,7 @@ export function buildCliff(b: MeshBuilder, poly: Polygon, seed: number, opts: Cl
       ledgeY: slab ? rng.range(0.35, 0.6) : lerp(0.55, H * 0.68, rng.next()),
       shelf: slab ? rng.range(0.02, 0.06) : terrace ? rng.range(0.25, 0.6) : rng.range(0.1, 0.3),
       tone: rng.range(0.86, 1.12),
-      bare: rng.chance(0.3),
+      bare: rng.chance(0.28),
       moss: rng.next(),
       batter: rng.range(0, 0.16),
       groove: rng.range(0.08, 0.3),
@@ -281,7 +283,7 @@ export function buildCliff(b: MeshBuilder, poly: Polygon, seed: number, opts: Cl
       case 1: // 下块前脸
         d = 0.05 + Math.max(0, j) + g * GROOVE_DEPTH;
         y = ledgeY - 0.13 + jy * 0.5;
-        color = mixRgb(ROCK_DARK, ROCK, 0.7);
+        color = mixRgb(ROCK_DARK, ROCK_LIGHT, 0.42);
         ao = 0.92 - g * 0.3;
         break;
       case 2: // 下块顶沿(小圆角)
@@ -300,13 +302,13 @@ export function buildCliff(b: MeshBuilder, poly: Polygon, seed: number, opts: Cl
       case 4: // 上块前脸中段
         d = upper + 0.03 + j + c.batter * 0.5;
         y = lerp(ledgeY, rim, 0.5) + jy;
-        color = mixRgb(ROCK_DARK, ROCK, 0.85);
+        color = mixRgb(ROCK, ROCK_LIGHT, 0.3);
         ao = 0.95 - g * 0.35;
         break;
       case 5: // 上块顶沿下方
         d = upper + 0.07 + j * 0.6 + c.batter;
         y = rim - 0.2;
-        color = mixRgb(ROCK, ROCK_LIGHT, c.bare ? 0.55 : 0.3);
+        color = mixRgb(ROCK, ROCK_LIGHT, c.bare ? 0.7 : 0.45);
         ao = 1 - g * 0.4;
         break;
       case 6: // 崖沿圆角：三成的柱是暖石沿，其余被苔盖住
@@ -324,14 +326,7 @@ export function buildCliff(b: MeshBuilder, poly: Polygon, seed: number, opts: Cl
         const pz = p.z + p.nz * de * r.k;
         // 崖沿处跟着各柱的错落，往里很快并到只由位置决定的高度(中轴线两侧在那里接缝，不能各算各的)
         const blend = smoothstep(0, 1, (de - RIM_D) / Math.max(0.25, Math.min(1.8, r.maxD - RIM_D)));
-        if (kind === 'ridge') {
-          // 石脊：不做平顶，往里隆起成一道起伏的岩脊，凹处长苔
-          const crest = 0.3 + (fbm2(px * 0.4, pz * 0.4, 2, seed + 9) - 0.35) * 0.8;
-          y = lerp(rim, H + crest * smoothstep(RIM_D, 2.3, de), blend);
-          const mossy = smoothstep(0.5, 0.72, fbm2(px * 0.45 + 3, pz * 0.45, 2, seed + 21)) * blend;
-          color = mixRgb(mixRgb(ROCK, ROCK_LIGHT, 0.45 + crest * 0.3), mixRgb(MOSS, TOP_GRASS, 0.5), mossy * 0.8);
-          tex = 1 - mossy * 0.8;
-        } else {
+        {
           y = lerp(rim, H, blend) + profileY(de);
           // 草色斑：亮 / 暗 / 发黄，偶尔露一块土
           const n1 = fbm2(px * 0.22, pz * 0.22, 2, seed);
@@ -339,9 +334,10 @@ export function buildCliff(b: MeshBuilder, poly: Polygon, seed: number, opts: Cl
           let gcol = mixRgb(TOP_GRASS, TOP_GRASS_LIGHT, smoothstep(0.3, 0.7, n1));
           gcol = mixRgb(gcol, TOP_GRASS_DRY, smoothstep(0.58, 0.8, n2) * 0.6);
           gcol = mixRgb(gcol, TOP_SOIL, smoothstep(0.7, 0.85, 1 - n2) * smoothstep(0.5, 0.7, n1) * 0.55);
-          const edgeK = Math.min(1, (de - RIM_D) / 1.2);
-          color = c.bare ? mixRgb(mixRgb(ROCK_LIGHT, ROCK_WARM, 0.5), gcol, 0.35 + 0.65 * edgeK) : mixRgb(mixRgb(MOSS, TOP_GRASS, 0.6), gcol, edgeK);
-          tex = c.bare ? (1 - edgeK) * 0.6 : 0;
+          const edgeK = Math.min(1, (de - RIM_D) / 0.7);
+          color = c.bare ? mixRgb(mixRgb(ROCK_LIGHT, ROCK_WARM, 0.5), gcol, 0.45 + 0.55 * edgeK) : mixRgb(mixRgb(MOSS, TOP_GRASS, 0.6), gcol, edgeK);
+          // 顶面留四成岩石肌理权重：材质的顶面草贴图只按 (1 - tex) 生效，草叶笔触的对比因此收掉四成
+          tex = c.bare ? TOP_TEX + (1 - edgeK) * 0.4 : TOP_TEX;
         }
         ao = ti === 0 ? 1 - g * 0.3 : 1;
         return { t: de * r.k, y, color: ti === 0 ? scaleRgb(color, c.tone) : color, ao, tex };
@@ -371,7 +367,7 @@ export function buildCliff(b: MeshBuilder, poly: Polygon, seed: number, opts: Cl
     kind,
     height: H,
     inradius,
-    topY: (d: number) => (kind === 'ridge' ? H + 0.3 * smoothstep(RIM_D, 2.3, d) : H + profileY(d)),
+    topY: (d: number) => H + profileY(d),
     rim: rimInfo,
     niches,
   };

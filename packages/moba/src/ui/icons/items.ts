@@ -1,10 +1,11 @@
 /**
- * 21 件装备图标：按 ItemDef.color 取主色、按品类画出可辨识的造型（刀/弓/书/甲/靴/杖/冠/心…）。
+ * 17 件装备图标：按 ItemDef.color 取主色、按器物画出可辨识的造型（草鞋/靴/斩马剑/角弓/环首刀/戟/吴钩/杖/冠/竹简/铠/狐裘/护心镜/钉盾）。
+ * 名字是「功能词 + 古器物」，图标画的就是那件器物，功能用小记号点出来(速度线、血滴、裂甲、暴击星芒……)。
  * 与技能图标同一套徽章底板：深色径向底 + 主体 + 暗角 + 顶部高光。
  */
 import { ITEMS } from '../../core/data/items';
 import type { ItemId } from '../../core/types';
-import { INK, badge, darken, glow, glowDef, lg, lighten, mix, rg, star4, starPoly } from './svg';
+import { INK, badge, darken, glow, glowDef, lg, lighten, mix, polar, rg, star4, starPoly } from './svg';
 
 type Draw = (c: string) => string;
 
@@ -45,18 +46,31 @@ function boot(c: string, extraDefs: string, under: string, over: string): string
 
 const DRAW: Record<ItemId, Draw> = {
   // ── 鞋 ──
-  // 疾行靴：系带皮靴，靴后带速度线
-  boots: (c) =>
-    boot(
-      c,
-      '',
-      `<path d="M2 26H10M0 35H9M3 44H10" stroke="${lighten(c, 0.45)}" stroke-width="1.8" stroke-linecap="round" opacity=".65"/>`,
-      `<path d="M24 18H30M24 23H30M24 28H30" stroke="${lighten(c, 0.6)}" stroke-width="1.5" stroke-linecap="round"/>` +
-        `<path d="M15 33Q23 30 31 33" fill="none" stroke="${darken(c, 0.55)}" stroke-width="3"/>` +
-        `<rect x="20.5" y="29.8" width="4.6" height="4.6" rx="1" fill="#f3cf85" ${S(0.9)}/>`,
-    ),
+  // 移速草鞋：稻草编的鞋底 + 麻绳系带，鞋后带速度线(最基础的一双，所以不是靴子的样子)
+  boots: (c) => {
+    const straw = mix(c, '#e9c873', 0.6);
+    const rope = (d: string): string =>
+      `<path d="${d}" fill="none" stroke="${INK}" stroke-width="4.8" stroke-linecap="round" stroke-linejoin="round"/>` +
+      `<path d="${d}" fill="none" stroke="${lighten(straw, 0.35)}" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>`;
+    let weave = '';
+    for (let x = 13; x <= 49; x += 4.5) weave += `M${x} 43.5L${x + 3} 51.5`;
+    return badge(
+      itemBg(c),
+      lg('sl', 0, 40, 0, 54, [[0, lighten(straw, 0.45)], [0.5, straw], [1, darken(straw, 0.5)]]) + glowDef('g', lighten(c, 0.3), 0.55),
+      glow('g', 32, 36, 28) +
+        `<path d="M1 24H9M0 33H7M2 42H6" stroke="${lighten(c, 0.45)}" stroke-width="1.8" stroke-linecap="round" opacity=".65"/>` +
+        // 后跟的绳圈在鞋底后面
+        rope('M14 42Q10 25 21 22Q30 20.5 31.5 31') +
+        `<path d="M8 46Q8 42 12 42H46Q52 42 56.5 37.5Q60 41 58 47Q55.5 53.5 48 53.5H13Q8 53.5 8 49.5Z" fill="url(#@sl)" ${S(1.4)}/>` +
+        `<path d="${weave}" stroke="${darken(straw, 0.55)}" stroke-width="1.1" stroke-linecap="round" opacity=".7"/>` +
+        `<path d="M10.5 44H47Q52 44 55.5 41" fill="none" stroke="#ffffff" stroke-width="1.1" stroke-linecap="round" opacity=".45"/>` +
+        rope('M23 42Q25 31 31.5 31Q39 33 45 42') +
+        rope('M41 42Q45 33.5 51.5 39') +
+        `<circle cx="31.5" cy="31" r="3.2" fill="${lighten(straw, 0.5)}" ${S(1.1)}/>`,
+    );
+  },
 
-  // 磐守之靴：加了胫甲与包头钢板的重靴
+  // 护甲铁靴：加了胫甲与包头钢板的重靴
   boots_guard: (c) =>
     boot(
       c,
@@ -69,7 +83,7 @@ const DRAW: Record<ItemId, Draw> = {
         `<path d="M11.5 3.5H33.5L31.5 9.5H13.5Z" fill="${lighten(c, 0.45)}" ${S(1.1)}/>`,
     ),
 
-  // 星辉之靴：靴筒嵌着发光星印，靴底流着星辉
+  // 减冷却布靴：靴筒绣着发光的星印(技能转得更快)，靴底流着微光
   boots_arcane: (c) =>
     boot(
       c,
@@ -82,7 +96,7 @@ const DRAW: Record<ItemId, Draw> = {
         `<path d="${star4(45, 22, 3.4)}" fill="#ffffff"/><path d="${star4(52, 33, 2.4)}" fill="#c9f6ff"/><circle cx="40" cy="12" r="1.2" fill="#c9f6ff"/>`,
     ),
 
-  // 疾风之靴：靴踝生出一对小翼
+  // 攻速皮靴：靴踝生出一对小翼
   boots_fury: (c) =>
     boot(
       c,
@@ -95,7 +109,7 @@ const DRAW: Record<ItemId, Draw> = {
     ),
 
   // ── 攻击 ──
-  // 陨星战刃：白热的阔刃，护手处嵌一颗坠星
+  // 收割斩马剑：白热的阔刃长剑，护手处嵌一颗星芒
   starfall_blade: (c) =>
     badge(
       itemBg(c),
@@ -116,87 +130,105 @@ const DRAW: Record<ItemId, Draw> = {
         `</g>`,
     ),
 
-  // 逐日长弓：拉满的金色长弓，箭指一轮烈日
-  sunchaser_bow: (c) =>
-    badge(
+  // 攻速角弓：两梢反曲的角弓拉满，一箭在弦、两道残影紧随其后(连珠快射)
+  sunchaser_bow: (c) => {
+    const limb = 'M25.5 2.5Q19.5 5 22 9.5Q31 13 36.5 21Q42 29 39.5 32Q42 35 36.5 43Q31 51 22 54.5Q19.5 59 25.5 61.5';
+    const arrow = (dy: number, op: number): string =>
+      `<g transform="translate(0 ${dy})" opacity="${op}">` +
+      `<path d="M13 32H52" stroke="#fff7da" stroke-width="1.8" stroke-linecap="round"/>` +
+      `<path d="M50 27.5L60 32L50 36.5L53 32Z" fill="#ffffff"/>` +
+      `</g>`;
+    return badge(
       itemBg(c),
-      tone('bw', c, 20, 2, 44, 62) + rg('sun', 44, 20, 13, [[0, '#fffdf2'], [0.55, c], [1, darken(c, 0.25)]]) + glowDef('g', c, 0.9),
-      glow('g', 44, 20, 22) +
-        `<g stroke="${lighten(c, 0.3)}" stroke-width="1.7" stroke-linecap="round">${[0, 45, 90, 135, 180, 225, 270, 315].map((a) => `<path d="M44 3V6.5" transform="rotate(${a} 44 20)"/>`).join('')}</g>` +
-        `<circle cx="44" cy="20" r="10.5" fill="url(#@sun)" stroke="${darken(c, 0.45)}" stroke-width="1"/>` +
+      lg('bw', 0, 2, 0, 62, [[0, '#4a3018'], [0.16, c], [0.5, lighten(c, 0.5)], [0.84, c], [1, '#4a3018']]) + glowDef('g', c, 0.8),
+      glow('g', 36, 30, 26) +
         `<g transform="rotate(-38 32 32)">` +
-        `<path d="M21 3L11 32L21 61" fill="none" stroke="#fff7da" stroke-width="1.1" stroke-linejoin="round"/>` +
-        `<path d="M21 3Q31 5 37.5 16Q44 27 40 32Q44 37 37.5 48Q31 59 21 61" fill="none" stroke="${INK}" stroke-width="6.6" stroke-linecap="round"/>` +
-        `<path d="M21 3Q31 5 37.5 16Q44 27 40 32Q44 37 37.5 48Q31 59 21 61" fill="none" stroke="url(#@bw)" stroke-width="4.4" stroke-linecap="round"/>` +
-        `<rect x="37.4" y="27" width="5.6" height="10" rx="1.6" fill="#7a4a1c" ${S(1)}/>` +
+        arrow(-10, 0.22) +
+        arrow(10, 0.38) +
+        `<path d="M22.5 6.5L11 32L22.5 57.5" fill="none" stroke="#fff7da" stroke-width="1.1" stroke-linejoin="round"/>` +
+        `<path d="${limb}" fill="none" stroke="${INK}" stroke-width="6.6" stroke-linecap="round"/>` +
+        `<path d="${limb}" fill="none" stroke="url(#@bw)" stroke-width="4.4" stroke-linecap="round"/>` +
+        `<path d="M30 13.5Q35 17.5 38 23M30 50.5Q35 46.5 38 41" fill="none" stroke="#ffffff" stroke-width="1" stroke-linecap="round" opacity=".55"/>` +
+        `<rect x="37" y="27" width="5.6" height="10" rx="1.6" fill="#7a4a1c" ${S(1)}/>` +
+        `<path d="M37 30.3H42.6M37 33.7H42.6" stroke="#f3cf85" stroke-width=".9"/>` +
         `<path d="M11 32H53" stroke="${INK}" stroke-width="3.6" stroke-linecap="round"/>` +
         `<path d="M11 32H53" stroke="#fff7da" stroke-width="1.8" stroke-linecap="round"/>` +
         `<path d="M50 27L61.5 32L50 37L53.5 32Z" fill="#ffffff" ${S(1)}/>` +
         `<path d="M11 32L8 28H13L16.5 32L13 36H8Z" fill="#ff8a3a" ${S(0.9)}/>` +
         `</g>`,
-    ),
+    );
+  },
 
-  // 饮血镰：猩红的长柄弯镰，刃尖滴血
+  // 吸血环首刀：直背直刃的汉刀，柄尾一个圆环；刃口染血、刀下滴着两滴血
   blood_scythe: (c) =>
     badge(
       itemBg(c),
-      lg('bl', 44, 6, 8, 30, [[0, darken(c, 0.35)], [0.55, c], [1, '#fbeaea']]) + glowDef('g', c, 0.7),
-      glow('g', 24, 20, 24) +
-        `<path d="M14 59L44 13" stroke="${INK}" stroke-width="6" stroke-linecap="round"/>` +
-        `<path d="M14 59L44 13" stroke="${WOOD}" stroke-width="3.2" stroke-linecap="round"/>` +
-        `<path d="M21.5 47.5L25 50M27.5 38.5L31 41" stroke="#f3cf85" stroke-width="1.8" stroke-linecap="round"/>` +
-        `<path d="M47 8Q22 -2 5 24L7 31.5Q22 13.5 43 20Z" fill="url(#@bl)" ${S()}/>` +
-        `<path d="M7 31.5Q22 13.5 43 20" fill="none" stroke="#ffffff" stroke-width="1.4" stroke-linecap="round"/>` +
-        `<path d="M46 9L53.5 2L50 13Z" fill="${STEEL_M}" ${S(1)}/>` +
-        `<circle cx="44.5" cy="13.5" r="4.4" fill="#3a4257" stroke="#f3cf85" stroke-width="1.2"/>` +
-        `<path d="M9 36Q13 41.5 9 45Q5 41.5 9 36Z" fill="#ff5a55" ${S(0.8)}/>` +
-        `<path d="M15.5 44Q18 47.5 15.5 50Q13 47.5 15.5 44Z" fill="#ff5a55" ${S(0.8)}/>`,
+      lg('bl', 27.5, 0, 36.5, 0, [[0, STEEL_D], [0.28, STEEL_L], [0.62, '#d9dee6'], [1, c]]) + glowDef('g', c, 0.7),
+      `<g transform="rotate(42 32 32)">` +
+        glow('g', 32, 22, 22) +
+        // 刀身：左边是直的刀背，右边是刃，刀尖斜切
+        `<path d="M28 1.5L36 10V43H28Z" fill="url(#@bl)" ${S()}/>` +
+        `<path d="M30.3 7V41" stroke="#ffffff" stroke-width="1.1" stroke-linecap="round" opacity=".85"/>` +
+        `<path d="M36 10V43" stroke="${c}" stroke-width="1.6" opacity=".9"/>` +
+        `<path d="M26.5 43H37.5V46.6H26.5Z" fill="#f3cf85" ${S(1)}/>` +
+        `<rect x="29.2" y="46.6" width="5.6" height="8.4" fill="${darken(c, 0.55)}" ${S(1)}/>` +
+        `<path d="M29.2 49.3H34.8M29.2 52.1H34.8" stroke="#f3cf85" stroke-width=".9"/>` +
+        // 环首：先垫一圈深色描边，再画金环
+        `<circle cx="32" cy="59" r="4" fill="none" stroke="${INK}" stroke-width="4.6"/>` +
+        `<circle cx="32" cy="59" r="4" fill="none" stroke="#f3cf85" stroke-width="2.4"/>` +
+        `</g>` +
+        `<path d="M45 30Q48.5 35 45 38.2Q41.5 35 45 30Z" fill="#ff5a55" ${S(0.8)}/>` +
+        `<path d="M38 41Q40.3 44.4 38 46.6Q35.7 44.4 38 41Z" fill="#ff5a55" ${S(0.8)}/>`,
     ),
 
-  // 破阵枪：长枪刺穿一圈碎裂的阵环
+  // 破甲长戟：矛尖旁横出一道戟枝，刺穿一圈裂开的甲环
   piercing_spear: (c) =>
     badge(
       itemBg(c),
-      steel('hd', -6, -15, 6, 3) + glowDef('g', '#ffffff', 0.7),
+      steel('hd', -8, -16, 8, 8) + glowDef('g', '#ffffff', 0.7),
       `<g fill="none" stroke="${lighten(c, 0.25)}" stroke-width="2.6" stroke-linecap="round" opacity=".8">` +
-        `<path d="M22.5 14.5A19 19 0 0 0 11.5 39"/><path d="M19 49.5A19 19 0 0 0 46 46.5"/><path d="M48.5 36A19 19 0 0 0 44 20"/>` +
+        `<path d="M21 17A19 19 0 0 0 11.5 39"/><path d="M19 49.5A19 19 0 0 0 46 46.5"/><path d="M49.5 38A19 19 0 0 0 49 27"/>` +
         `</g>` +
-        `<path d="M14 26L20 29M40 51L38 45M51 30L45 31" stroke="${lighten(c, 0.5)}" stroke-width="1.3" stroke-linecap="round" opacity=".7"/>` +
-        `<path d="M9 57L45 19" stroke="${INK}" stroke-width="5.6" stroke-linecap="round"/>` +
-        `<path d="M9 57L45 19" stroke="${WOOD}" stroke-width="3" stroke-linecap="round"/>` +
-        `<path d="M42 21Q35 21.5 33 30Q38 28 44 27Z" fill="#e0453f" ${S(0.9)}/>` +
+        `<path d="M14 26L20 29M40 51L38 45M52.5 33L46.5 33" stroke="${lighten(c, 0.5)}" stroke-width="1.3" stroke-linecap="round" opacity=".7"/>` +
+        `<path d="M9 57L42 22" stroke="${INK}" stroke-width="5.6" stroke-linecap="round"/>` +
+        `<path d="M9 57L42 22" stroke="${WOOD}" stroke-width="3" stroke-linecap="round"/>` +
+        `<path d="M38.5 25Q31.5 25.5 29.5 34Q34.5 32 40.5 31Z" fill="#e0453f" ${S(0.9)}/>` +
         `<circle cx="9" cy="57" r="2.8" fill="${STEEL_M}" ${S(1)}/>` +
-        `<g transform="translate(47 17) rotate(45)">` +
+        `<g transform="translate(44 20) rotate(45)">` +
+        // 戟枝：从矛头根部横着伸出去，末端上翘成钩
+        `<path d="M0 2L-9.5 1.5L-15 -5L-13.5 4.5L-9 8.5H0Z" fill="url(#@hd)" ${S()}/>` +
+        `<path d="M-1 5H-9.5L-13 0" fill="none" stroke="#ffffff" stroke-width=".9" stroke-linejoin="round" opacity=".7"/>` +
         `<path d="M0 -16L6.2 -3L0 3.5L-6.2 -3Z" fill="url(#@hd)" ${S()}/>` +
         `<path d="M0 -14V2" stroke="#ffffff" stroke-width="1" opacity=".8"/>` +
-        `<rect x="-3.4" y="2" width="6.8" height="3.6" rx="1" fill="#f3cf85" ${S(0.9)}/>` +
+        `<rect x="-3.4" y="7.5" width="6.8" height="3.6" rx="1" fill="#f3cf85" ${S(0.9)}/>` +
         `</g>` +
-        glow('g', 58, 6, 8) +
-        `<path d="${star4(58, 6, 4.4, 0.14)}" fill="#ffffff"/>`,
+        glow('g', 56.5, 8.5, 8) +
+        `<path d="${star4(56.5, 8.5, 4.2, 0.14)}" fill="#ffffff"/>`,
     ),
 
-  // 无影刃：弧形匕首拖着两重渐隐的残影
+  // 暴击吴钩：弯如新月、刀尖回钩的弯刀，拖着一重残影；钩尖一点暴击的星芒
   phantom_edge: (c) => {
-    const blade = 'M32 3Q41 18 37.5 40H26.5Q28.5 20 32 3Z';
+    const blade = 'M27 42Q20.5 21 32.5 7Q40 -1.5 48.5 7.5Q41.5 5.5 38 12Q30.5 24 35.5 42Z';
     return badge(
       itemBg(c),
-      lg('bl', 26, 0, 39, 0, [[0, '#ffffff'], [0.5, lighten(c, 0.5)], [1, c]]) + glowDef('g', c, 0.8),
-      `<g transform="translate(3 -2) rotate(38 32 32)">` +
-        `<path d="${blade}" transform="translate(-13 4)" fill="${c}" opacity=".18"/>` +
-        `<path d="${blade}" transform="translate(-6.5 2)" fill="${c}" opacity=".38"/>` +
-        glow('g', 32, 20, 20) +
+      lg('bl', 22, 0, 46, 0, [[0, '#ffffff'], [0.45, lighten(c, 0.55)], [1, c]]) + glowDef('g', c, 0.8) + glowDef('gs', '#ffffff', 1),
+      `<g transform="translate(-1 2) rotate(30 32 32)">` +
+        `<path d="${blade}" transform="translate(-8 3)" fill="${c}" opacity=".26"/>` +
+        glow('g', 34, 20, 22) +
         `<path d="${blade}" fill="url(#@bl)" ${S()}/>` +
-        `<path d="M32 3Q41 18 37.5 40" fill="none" stroke="#ffffff" stroke-width="1.2" stroke-linecap="round"/>` +
-        `<rect x="21.5" y="40" width="21" height="4.4" rx="2" fill="#2a2244" stroke="${c}" stroke-width="1.1"/>` +
-        `<rect x="29.4" y="44.4" width="5.2" height="9.6" fill="#15131f" ${S(1)}/>` +
-        `<path d="M29.4 47.5H34.6M29.4 50.5H34.6" stroke="${c}" stroke-width="1"/>` +
-        `<circle cx="32" cy="57.4" r="3" fill="none" stroke="${c}" stroke-width="1.8"/>` +
+        `<path d="M29.5 40Q24 22 34 9.5Q39.5 3 45 6" fill="none" stroke="#ffffff" stroke-width="1.2" stroke-linecap="round" opacity=".9"/>` +
+        `<path d="M22 42H40.5Q42.5 42 42.5 44.2Q42.5 46.4 40.5 46.4H22Q20 46.4 20 44.2Q20 42 22 42Z" fill="#2a2244" stroke="${lighten(c, 0.2)}" stroke-width="1.1"/>` +
+        `<rect x="28.6" y="46.4" width="5.4" height="9.2" fill="#15131f" ${S(1)}/>` +
+        `<path d="M28.6 49.4H34M28.6 52.4H34" stroke="${c}" stroke-width="1"/>` +
+        `<path d="M31.3 55.6L35 59.3L31.3 63L27.6 59.3Z" fill="${lighten(c, 0.2)}" ${S(1)}/>` +
+        glow('gs', 48, 7, 9) +
+        `<path d="${star4(48, 7, 6.5, 0.12)}" fill="#ffffff"/>` +
         `</g>`,
     );
   },
 
   // ── 法术 ──
-  // 星辰法杖：杖首的弯月托着一颗悬浮的星晶
+  // 减冷却法杖：杖首的弯月托着一颗悬浮的星晶
   astral_staff: (c) =>
     badge(
       itemBg(c),
@@ -215,7 +247,7 @@ const DRAW: Record<ItemId, Draw> = {
         `<circle cx="14" cy="22" r="1.3" fill="#c9f6ff"/><path d="${star4(20, 13, 2.8)}" fill="#ffffff"/>`,
     ),
 
-  // 虚空之冠：冠心嵌着一枚吞光的虚空宝石
+  // 法穿玉冠：冠心嵌着一枚吞光的暗玉(专破魔抗)
   void_crown: (c) =>
     badge(
       itemBg(c),
@@ -231,7 +263,7 @@ const DRAW: Record<ItemId, Draw> = {
         `<path d="M27.5 32Q29.5 28.5 33.5 29" fill="none" stroke="#ffffff" stroke-width="1.3" stroke-linecap="round" opacity=".85"/>`,
     ),
 
-  // 凛冬权杖：杖首凝着一朵六棱冰晶
+  // 减速权杖：杖首凝着一朵六棱冰晶(打中就减速)
   winter_scepter: (c) =>
     badge(
       itemBg(c),
@@ -248,28 +280,39 @@ const DRAW: Record<ItemId, Draw> = {
         `<g stroke="#e8fbff" stroke-width="1.2" stroke-linecap="round"><path d="M14 14V22M10.5 16L17.5 20M10.5 20L17.5 16"/><path d="M53 42V48M50.4 43.5L55.6 46.5M50.4 46.5L55.6 43.5"/></g>`,
     ),
 
-  // 贤者星典：烫金封面的厚典籍，封面是一枚星徽
-  sage_codex: (c) =>
-    badge(
+  // 法强竹简：半卷半展的一册竹简，两道编绳，简上的字迹泛着金光
+  sage_codex: (c) => {
+    let slips = '';
+    let marks = '';
+    for (let i = 0; i < 7; i++) {
+      const x = 9.5 + i * 5.2;
+      const y = 13 + (i % 2) * 1.2;
+      slips += `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="4.8" height="38" rx="1" fill="url(#@bm)" ${S(0.9)}/>`;
+      if (i > 0) marks += `M${(x + 1.3).toFixed(1)} 27h2.2M${(x + 1.3).toFixed(1)} 31h2.2M${(x + 1.3).toFixed(1)} 35h2.2M${(x + 1.3).toFixed(1)} 39h2.2`;
+    }
+    return badge(
       itemBg(c),
-      lg('cv', 14, 8, 46, 54, [[0, lighten(c, 0.45)], [0.5, c], [1, darken(c, 0.5)]]) + glowDef('g', '#fff6dc', 0.9),
-      `<g transform="rotate(-9 32 32)">` +
-        `<path d="M19 11H51V56H19Z" fill="#f6efdb" ${S()}/>` +
-        `<path d="M48.6 13V54M46.2 13V54M21 53.6H46M21 51.2H46" stroke="#b9aa84" stroke-width=".9"/>` +
-        `<path d="M15 8H44Q46 8 46 10V51Q46 53 44 53H15Q13 53 13 51V10Q13 8 15 8Z" fill="url(#@cv)" ${S()}/>` +
-        `<path d="M13 10Q13 8 15 8H19V53H15Q13 53 13 51Z" fill="${darken(c, 0.55)}" opacity=".7"/>` +
-        `<path d="M38.5 8H44Q46 8 46 10V15.5ZM38.5 53H44Q46 53 46 51V45.5Z" fill="#fff4d6" ${S(0.9)}/>` +
-        glow('g', 31.5, 27, 15) +
-        `<circle cx="31.5" cy="27" r="10.5" fill="none" stroke="#6b4614" stroke-width="1.3"/>` +
-        `<path d="${star4(31.5, 27, 9.5, 0.2)}" fill="#fffbe9" stroke="#6b4614" stroke-width=".8"/>` +
-        `<path d="M24 44H39" stroke="#6b4614" stroke-width="2.2" stroke-linecap="round"/>` +
-        `<path d="M35 53V62L37.6 59.4L40.2 62V53Z" fill="#d8433f" ${S(0.9)}/>` +
+      lg('bm', 0, 12, 0, 52, [[0, lighten(c, 0.5)], [0.5, c], [1, darken(c, 0.45)]]) + lg('rl', 45, 0, 56, 0, [[0, darken(c, 0.35)], [0.45, lighten(c, 0.35)], [1, darken(c, 0.6)]]) + glowDef('g', '#fff6dc', 0.85),
+      `<g transform="rotate(-8 32 32)">` +
+        glow('g', 28, 33, 24) +
+        slips +
+        `<path d="${marks}" stroke="#5a3a12" stroke-width="1.3" stroke-linecap="round"/>` +
+        // 两道编绳
+        `<path d="M8.5 20.5H47M8.5 45H47" stroke="${INK}" stroke-width="3.2" stroke-linecap="round"/>` +
+        `<path d="M8.5 20.5H47M8.5 45H47" stroke="#c8523c" stroke-width="1.7" stroke-linecap="round"/>` +
+        // 右端卷起来的那一卷
+        `<rect x="45.5" y="10" width="10" height="44" rx="5" fill="url(#@rl)" ${S(1.2)}/>` +
+        `<ellipse cx="50.5" cy="13" rx="3.6" ry="1.8" fill="${darken(c, 0.62)}"/>` +
+        `<path d="M45.5 20.5H55.5M45.5 45H55.5" stroke="#c8523c" stroke-width="1.7"/>` +
+        `<path d="M48 17V50" stroke="#ffffff" stroke-width="1" stroke-linecap="round" opacity=".5"/>` +
+        `<path d="M50.5 54V60" stroke="#c8523c" stroke-width="1.5" stroke-linecap="round"/><path d="M48.8 59.5H52.2L51.3 63H49.7Z" fill="#c8523c"/>` +
         `</g>` +
-        `<path d="${star4(54, 16, 3.2)}" fill="#ffffff"/>`,
-    ),
+        `<path d="${star4(51, 9, 3.6)}" fill="#ffffff"/><path d="${star4(8, 54, 2.4)}" fill="#fff6dc"/>`,
+    );
+  },
 
   // ── 防御 ──
-  // 守护者重铠：宽肩重型胸甲，胸口一枚护心晶
+  // 护甲重铠：宽肩重型胸甲，胸口一枚护心晶
   guardian_plate: (c) =>
     badge(
       itemBg(c),
@@ -285,53 +328,77 @@ const DRAW: Record<ItemId, Draw> = {
         `<path d="M32 22L36.2 27L32 32L27.8 27Z" fill="#ffcf70" stroke="#fffdf2" stroke-width="1"/>`,
     ),
 
-  // 星纹斗篷：缀满星点、连成星图的斗篷
-  starweave_cloak: (c) =>
-    badge(
-      itemBg(c),
-      lg('ck', 0, 6, 0, 58, [[0, lighten(c, 0.4)], [0.45, c], [1, mix(c, '#0a1838', 0.75)]]) + glowDef('g', c, 0.7),
-      glow('g', 32, 34, 30) +
-        `<path d="M24 9Q32 5 40 9L45 16Q56 34 54 58Q43 51.5 32 58Q21 51.5 10 58Q8 34 19 16Z" fill="url(#@ck)" ${S(1.4)}/>` +
-        `<path d="M26 23Q24 40 20.5 54.5M38 23Q40 40 43.5 54.5M32 25V57" fill="none" stroke="${darken(c, 0.6)}" stroke-width="1.2" stroke-linecap="round" opacity=".4"/>` +
-        `<path d="M24 9Q32 5 40 9L42.5 17.5Q32 24 21.5 17.5Z" fill="${darken(c, 0.4)}" ${S(1.1)}/>` +
-        `<ellipse cx="32" cy="13.4" rx="6.2" ry="3.3" fill="#061220"/>` +
-        `<path d="M22 37L30.5 46.5L41.5 33L46.5 46" fill="none" stroke="#ffffff" stroke-width=".8" opacity=".45"/>` +
-        `<path d="${star4(22, 37, 3.6)}" fill="#fffbe9"/><path d="${star4(41.5, 33, 3)}" fill="#fffbe9"/><path d="${star4(30.5, 46.5, 3.2)}" fill="#fffbe9"/><path d="${star4(46.5, 46, 2.3)}" fill="#fffbe9"/><path d="${star4(16.5, 48, 2)}" fill="#fffbe9"/>` +
-        `<circle cx="27" cy="30" r=".9" fill="#fff"/><circle cx="37.5" cy="42" r=".9" fill="#fff"/><circle cx="24" cy="50" r=".8" fill="#fff"/>` +
-        `<circle cx="32" cy="21" r="3" fill="#f3cf85" ${S(1)}/>` +
-        `<path d="M10 58Q21 51.5 32 58Q43 51.5 54 58" fill="none" stroke="#d9fff8" stroke-width="1.1" stroke-linecap="round" opacity=".7"/>`,
-    ),
-
-  // 不灭之心：晶莹的结晶之心，心核长明
-  undying_heart: (c) =>
-    badge(
-      itemBg(c),
-      rg('ht', 27, 24, 34, [[0, lighten(c, 0.6)], [0.45, c], [1, darken(c, 0.55)]]) + glowDef('g', c, 0.9) + glowDef('gc', '#fff0f3', 1),
-      glow('g', 32, 32, 31) +
-        `<path d="M6 45Q10 54 19 59M58 45Q54 54 45 59" fill="none" stroke="${lighten(c, 0.35)}" stroke-width="1.5" stroke-linecap="round" opacity=".6"/>` +
-        `<path d="M32 56L10 32Q4 19 15 12.5Q25 8 32 19Q39 8 49 12.5Q60 19 54 32Z" fill="url(#@ht)" ${S(1.5)}/>` +
-        `<path d="M32 19L24 31L32 56L40 31Z" fill="#ffffff" opacity=".2"/>` +
-        `<path d="M15 12.5L24 31L10 32M49 12.5L40 31L54 32M24 31H40M32 19L24 31M32 19L40 31" fill="none" stroke="#ffffff" stroke-width=".9" stroke-linejoin="round" opacity=".45"/>` +
-        `<ellipse cx="20" cy="19.5" rx="5.2" ry="2.8" transform="rotate(-32 20 19.5)" fill="#ffffff" opacity=".6"/>` +
-        glow('gc', 32, 31, 11) +
-        `<path d="${star4(32, 31, 7.5)}" fill="#fff6f8"/>`,
-    ),
-
-  // 荆棘岩甲：岩质胸甲上生满尖刺
-  thorn_mail: (c) => {
-    const sp = `fill="url(#@sp)" ${S(1.1)}`;
+  // 魔抗狐裘：厚实的裘衣，肩上一圈蓬松的白狐毛领，下摆也滚着毛边
+  starweave_cloak: (c) => {
+    const fur = 'M17.5 21Q13.5 16.5 18.5 13.5Q18.5 8.5 24.5 9.5Q27.5 5 32 8Q36.5 5 39.5 9.5Q45.5 8.5 45.5 13.5Q50.5 16.5 46.5 21Q48.5 26.5 42.5 26Q39.5 30 36 26.5Q32 30.5 28 26.5Q24.5 30 21.5 26Q15.5 26.5 17.5 21Z';
+    const hem = 'M11 57Q21.5 50.5 32 57Q42.5 50.5 53 57';
     return badge(
       itemBg(c),
-      lg('bd', 12, 10, 52, 56, [[0, lighten(c, 0.45)], [0.5, c], [1, darken(c, 0.6)]]) + lg('sp', 0, 4, 0, 56, [[0, '#f1f8d8'], [1, darken(c, 0.2)]]),
-      `<path d="M19 18L5 5L23 12Z" ${sp}/><path d="M45 18L59 5L41 12Z" ${sp}/>` +
-        `<path d="M14 29L1 27L14 36.5Z" ${sp}/><path d="M50 29L63 27L50 36.5Z" ${sp}/>` +
-        `<path d="M18 44L6 53L23 50Z" ${sp}/><path d="M46 44L58 53L41 50Z" ${sp}/>` +
-        `<path d="M32 9.5L44 12.5Q52 16 51 28V40Q46 52 32 56.5Q18 52 13 40V28Q12 16 20 12.5Z" fill="url(#@bd)" ${S(1.5)}/>` +
-        `<path d="M24 11.5Q32 18.5 40 11.5" fill="none" stroke="${darken(c, 0.6)}" stroke-width="2.2" stroke-linecap="round"/>` +
-        `<path d="M32 19V56M13.5 33Q22 37 32 34Q42 37 50.5 33M18 45Q32 51 46 45" fill="none" stroke="${darken(c, 0.62)}" stroke-width="1.3" stroke-linecap="round" opacity=".65"/>` +
-        `<path d="M20 12.5Q12 16 13 28" fill="none" stroke="#ffffff" stroke-width="1" stroke-linecap="round" opacity=".5"/>` +
-        `<path d="${starPoly(32, 27, 4, 8, 2.8)}" fill="#f1f8d8" ${S(1)}/>` +
-        `<path d="M22 23.5L20 20L24 21ZM42 23.5L44 20L40 21ZM23 42L20.5 39.5L25 40ZM41 42L43.5 39.5L39 40Z" fill="#f1f8d8"/>`,
+      lg('ck', 0, 10, 0, 58, [[0, lighten(c, 0.35)], [0.45, c], [1, mix(c, '#0a1838', 0.72)]]) + lg('fr', 0, 5, 0, 30, [[0, '#ffffff'], [1, '#e2d3b4']]) + glowDef('g', c, 0.7),
+      glow('g', 32, 36, 30) +
+        `<path d="M22 15L45 15.5Q56 34 54 58Q43 51.5 32 58Q21 51.5 10 58Q8 34 19 15.5Z" fill="url(#@ck)" ${S(1.4)}/>` +
+        `<path d="M26 27Q24 41 21 53M38 27Q40 41 43 53M32 29V56" fill="none" stroke="${darken(c, 0.6)}" stroke-width="1.2" stroke-linecap="round" opacity=".4"/>` +
+        `<path d="M19 15.5Q11 30 10.5 50" fill="none" stroke="#ffffff" stroke-width="1" stroke-linecap="round" opacity=".35"/>` +
+        // 下摆的毛边
+        `<path d="${hem}" fill="none" stroke="${INK}" stroke-width="7" stroke-linecap="round"/>` +
+        `<path d="${hem}" fill="none" stroke="#efe3c8" stroke-width="4.8" stroke-linecap="round"/>` +
+        `<path d="M15 53.5V57M20 51.5V55M25.5 52.5V56M32 55V58.5M38.5 52.5V56M44 51.5V55M49 53.5V57" stroke="#b9a57e" stroke-width=".9" stroke-linecap="round"/>` +
+        // 毛领
+        `<path d="${fur}" fill="url(#@fr)" ${S(1.3)}/>` +
+        `<path d="M21 17.5L23 20.5M26 13L27.5 16M37 13L36 16M43 17.5L41 20.5M25 22.5L26.5 24.5M39 22.5L37.5 24.5M32 22.5V25.5" stroke="#b9a57e" stroke-width="1" stroke-linecap="round"/>` +
+        `<ellipse cx="32" cy="14.5" rx="5.4" ry="2.7" fill="#061220"/>` +
+        `<circle cx="32" cy="27.5" r="2.8" fill="#f3cf85" ${S(1)}/>`,
+    );
+  },
+
+  // 回血护心镜：系在胸前的圆铜镜，镜心一枚心形纹(血厚、脱战回血)
+  undying_heart: (c) => {
+    let studs = '';
+    for (let i = 0; i < 8; i++) {
+      const [x, y] = polar(32, 32, 20.2, i * 45 + 22.5);
+      studs += `<circle cx="${x}" cy="${y}" r="1.3" fill="#fff4d6" stroke="#6b4614" stroke-width=".5"/>`;
+    }
+    const strap = (d: string): string =>
+      `<path d="${d}" stroke="${INK}" stroke-width="6" stroke-linecap="round"/><path d="${d}" stroke="${WOOD}" stroke-width="3.6" stroke-linecap="round"/>`;
+    return badge(
+      itemBg(c),
+      lg('rm', 10, 10, 54, 54, [[0, '#fff1c4'], [0.45, '#d9a548'], [1, '#6b4614']]) + rg('ht', 27, 25, 26, [[0, lighten(c, 0.62)], [0.5, c], [1, darken(c, 0.55)]]) + glowDef('g', c, 0.85) + glowDef('gc', '#fff0f3', 0.9),
+      glow('g', 32, 32, 31) +
+        strap('M7 7L17 17') +
+        strap('M57 7L47 17') +
+        strap('M7 57L17 47') +
+        strap('M57 57L47 47') +
+        `<circle cx="32" cy="32" r="23" fill="url(#@rm)" ${S(1.5)}/>` +
+        `<circle cx="32" cy="32" r="17.2" fill="url(#@ht)" stroke="#6b4614" stroke-width="1.2"/>` +
+        studs +
+        `<path d="M19.5 25A14.5 14.5 0 0 1 30 17.7" fill="none" stroke="#ffffff" stroke-width="2.2" stroke-linecap="round" opacity=".6"/>` +
+        glow('gc', 32, 32, 12) +
+        `<path d="M32 42L23.3 33Q20 27.5 24.7 24.7Q29.2 22.8 32 27.4Q34.8 22.8 39.3 24.7Q44 27.5 40.7 33Z" fill="#fff3f5" stroke="${darken(c, 0.5)}" stroke-width="1" stroke-linejoin="round"/>` +
+        `<path d="M26 28.5Q27.2 26.3 29.3 26.6" fill="none" stroke="${c}" stroke-width="1.1" stroke-linecap="round" opacity=".7"/>`,
+    );
+  },
+
+  // 反伤钉盾：一面圆盾，盾沿一圈尖钉，盾心也是一枚钉(谁打你谁挨扎)
+  thorn_mail: (c) => {
+    let rivets = '';
+    for (let i = 0; i < 8; i++) {
+      const [x, y] = polar(32, 33, 14.5, i * 45 - 90);
+      rivets += `<circle cx="${x}" cy="${y}" r="1.3" fill="#f1f8d8" stroke="${darken(c, 0.6)}" stroke-width=".5"/>`;
+    }
+    return badge(
+      itemBg(c),
+      rg('bd', 26, 26, 30, [[0, lighten(c, 0.5)], [0.5, c], [1, darken(c, 0.6)]]) + lg('sp', 0, 4, 0, 62, [[0, '#f8fbe6'], [1, darken(c, 0.15)]]),
+      // 八枚尖钉垫在盾面后面，只露出盾沿以外的尖
+      `<path d="${starPoly(32, 33, 8, 28.5, 15, -67.5)}" fill="url(#@sp)" ${S(1.2)}/>` +
+        `<circle cx="32" cy="33" r="20" fill="url(#@bd)" ${S(1.5)}/>` +
+        `<circle cx="32" cy="33" r="17.3" fill="none" stroke="${darken(c, 0.55)}" stroke-width="1.2" opacity=".6"/>` +
+        `<circle cx="32" cy="33" r="10.5" fill="none" stroke="${darken(c, 0.6)}" stroke-width="1.3" opacity=".65"/>` +
+        `<path d="M32 13V22.5M32 43.5V53M12 33H21.5M42.5 33H52" stroke="${darken(c, 0.6)}" stroke-width="1.1" opacity=".5"/>` +
+        rivets +
+        `<path d="M17.5 25.5A16.5 16.5 0 0 1 28.5 16.8" fill="none" stroke="#ffffff" stroke-width="1.8" stroke-linecap="round" opacity=".5"/>` +
+        `<circle cx="32" cy="33" r="7" fill="${darken(c, 0.35)}" ${S(1.2)}/>` +
+        `<path d="${starPoly(32, 33, 4, 9, 3, -90)}" fill="url(#@sp)" ${S(1)}/>` +
+        `<circle cx="32" cy="33" r="1.6" fill="#ffffff"/>`,
     );
   },
 };

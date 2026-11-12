@@ -27,6 +27,11 @@ export interface RendererStats {
   fps: number;
   drawCalls: number;
   triangles: number;
+  /**
+   * (可选扩展) GPU 分段计时，只有页面地址带 ?gpuTimings=1 时才有：最近 60 帧里每帧的平均 GPU 毫秒数。
+   * supported = false 表示设备不提供计时查询(各段恒为 0)。
+   */
+  gpu?: { supported: boolean; shadow: number; scene: number; post: number; total: number; windows: number };
 }
 
 export interface GameRenderer {

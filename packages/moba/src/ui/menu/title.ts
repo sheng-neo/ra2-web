@@ -1,10 +1,12 @@
 /**
- * 标题页：原创 Logo（金属渐变字 + 坠星划痕 + 星芒）与三个入口按钮。
+ * 标题页：原创 Logo（金属渐变字 + 坠星划痕 + 星芒）与三个入口按钮；「开始对战」下面一行「新手引导」复选。
+ * 复选直接读写 Settings.tutorial：存储不可用的宿主里每次刷新都会回到默认(开)，老玩家在这里一点就关。
  */
 import type { MenuHost } from '../api';
+import { assistOn, setAssist } from '../hud/assist';
 import { uiIcon } from '../icons';
 import { openSettingsDialog } from '../settings';
-import { createButton, h, hasOpenDialog, injectStyle, isButtonKeyFocused, sfCss, svgDataUri } from '../theme';
+import { createButton, h, hasOpenDialog, icon, injectStyle, isButtonKeyFocused, sfCss, svgDataUri } from '../theme';
 import { openHowToDialog } from './howto';
 
 export interface MenuScreen {
@@ -98,6 +100,19 @@ const CSS = sfCss(`
 
 .sf-home__menu { grid-row: 2; display: flex; flex-direction: column; align-items: stretch; gap: 12u; width: min(100%, max(260px, 330u)); animation: sf-rise-in 0.7s 1.05s var(--sf-ease-out) both; }
 .sf-home__row { display: grid; grid-template-columns: 1fr 1fr; gap: 12u; }
+/* 「开始对战」+ 它下面的新手引导复选 */
+.sf-home__start { display: flex; flex-direction: column; align-items: stretch; gap: 7u; }
+.sf-home__guide {
+  display: inline-flex; align-items: center; justify-content: center; gap: 7u; align-self: center; min-height: max(30px, 32u); margin: 0; padding: 2u 10u; border: 0; border-radius: 99px; background: none; cursor: pointer;
+  font: inherit; font-size: var(--sf-fs-sm); font-weight: 700; line-height: 1.2; color: var(--sf-c-text); text-shadow: 0 1px 4px rgba(0, 0, 0, 0.85); white-space: nowrap;
+}
+.sf-home__guide small { font-size: var(--sf-fs-xs); font-weight: 500; color: var(--sf-c-text-3); }
+.sf-home__guide-box { flex: none; display: grid; place-items: center; width: max(17px, 19u); height: max(17px, 19u); border-radius: 4u; color: transparent; background: rgba(8, 13, 31, 0.7); box-shadow: inset 0 0 0 max(1.5px, 1.5u) rgba(150, 178, 235, 0.7); transition: background 0.12s linear, box-shadow 0.12s linear; }
+.sf-home__guide-box .sf-i { width: 82%; height: 82%; vertical-align: 0; }
+.sf-home__guide[aria-checked="true"] .sf-home__guide-box { color: #2b1a04; background: linear-gradient(180deg, #fff4d6, #e0b160); box-shadow: inset 0 0 0 1px #6b4614, 0 0 8u rgba(255, 214, 130, 0.6); }
+@media (hover: hover) { .sf-home__guide:hover { background: rgba(150, 178, 235, 0.12); } }
+.sf-home__guide:focus-visible { outline: 2px solid var(--sf-c-cyan-300); outline-offset: 2px; }
+.sf-home__guide:active { transform: scale(0.97); }
 .sf-home__foot { grid-row: 4; display: flex; align-items: center; justify-content: center; gap: 10u; margin: 0; font-size: var(--sf-fs-xs); letter-spacing: 0.14em; color: var(--sf-c-text-3); text-align: center; text-shadow: 0 1px 4px rgba(0, 0, 0, 0.9); animation: sf-fade-in 1s 1.4s linear both; }
 .sf-home__foot i { width: 3px; height: 3px; border-radius: 50%; background: var(--sf-c-text-4); }
 
@@ -108,8 +123,9 @@ const CSS = sfCss(`
   .sf-logo__name { font-size: max(46px, min(104u, 19.5vw)); }
   .sf-logo__emblem { width: max(64px, 96u); }
   .sf-logo__tag { margin-top: 10u; }
-  .sf-home__menu { flex-direction: row; width: min(100%, max(520px, 700u)); }
-  .sf-home__menu > .sf-btn { flex: 1.25; }
+  .sf-home__menu { flex-direction: row; align-items: flex-start; width: min(100%, max(520px, 700u)); }
+  .sf-home__start { flex: 1.25; gap: 3u; }
+  .sf-home__guide { min-height: max(26px, 28u); }
   .sf-home__row { flex: 2; }
 }
 @media (orientation: portrait) {
@@ -140,18 +156,41 @@ export function createTitleScreen(o: TitleOptions): MenuScreen {
   );
 
   const start = createButton({ label: '开始对战', variant: 'primary', size: 'lg', pulse: true, sound: 'confirm', onClick: () => o.onStart() });
+
+  // 新手引导复选：读写 Settings.tutorial(缺省开)
+  const guide = h('button', 'sf-home__guide', h('i', 'sf-home__guide-box', icon(uiIcon('check'))), h('span', null, '新手引导'), h('small', null, '(第一次玩建议打开)'));
+  guide.type = 'button';
+  guide.setAttribute('role', 'checkbox');
+  const syncGuide = (): void => guide.setAttribute('aria-checked', assistOn(o.host.getSettings(), 'tutorial') ? 'true' : 'false');
+  syncGuide();
+  guide.addEventListener('click', () => {
+    setAssist(o.host, 'tutorial', !assistOn(o.host.getSettings(), 'tutorial'));
+    o.host.audio.ui('click');
+    syncGuide();
+  });
+
   const howto = createButton({ label: '操作说明', icon: uiIcon('keyboard'), onClick: () => openHowToDialog(o.root) });
   const settings = createButton({
     label: '设置',
     icon: uiIcon('settings'),
-    onClick: () => openSettingsDialog(o.root, { get: () => o.host.getSettings(), update: (p) => o.host.updateSettings(p), audio: o.host.audio, mode: 'menu' }),
+    onClick: () =>
+      openSettingsDialog(o.root, {
+        get: () => o.host.getSettings(),
+        update: (p) => {
+          o.host.updateSettings(p);
+          // 设置面板里也有同一个开关：改了这边跟着变
+          syncGuide();
+        },
+        audio: o.host.audio,
+        mode: 'menu',
+      }),
   });
 
   const el = h(
     'div',
     'sf-screen sf-home',
     h('div', 'sf-home__logo', logo),
-    h('nav', 'sf-home__menu', start, h('div', 'sf-home__row', howto, settings)),
+    h('nav', 'sf-home__menu', h('div', 'sf-home__start', start, guide), h('div', 'sf-home__row', howto, settings)),
     h('p', 'sf-home__foot', h('span', null, '1 名玩家 + 9 名 AI'), h('i'), h('span', null, '全部美术与音效均为程序化生成'), h('i'), h('span', null, 'v0.1')),
   );
 

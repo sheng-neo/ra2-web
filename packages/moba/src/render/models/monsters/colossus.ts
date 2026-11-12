@@ -131,7 +131,7 @@ export function createStarColossus(): ModelDef {
         const a = (k / 16) * TAU;
         const big = k % 4 === 0;
         b.paint(big ? GOLD_HOT : GOLD, { glow: big ? 0.7 : 0.14, ...gold, mat: big ? MAT.crystal : MAT.metal, line: 0 });
-        b.g(X(Math.cos(a) * (R - 0.1), 0, Math.sin(a) * (R - 0.1), 0, -(a * 180) / Math.PI, 0), () => b.box(0, 0, 0, big ? 0.3 : 0.14, big ? 0.16 : 0.2, big ? 0.16 : 0.06, 0.02));
+        b.g(X(Math.cos(a) * (R - 0.1), 0, Math.sin(a) * (R - 0.1), 0, -(a * 180) / Math.PI, 0), () => b.box(0, 0, 0, big ? 0.3 : 0.14, big ? 0.16 : 0.2, big ? 0.16 : 0.06));
       }
     });
   });
@@ -233,7 +233,7 @@ export function createStarColossus(): ModelDef {
     const bob = Math.sin(t * 1.2);
     const alert = (a.mode & 2) !== 0;
     let spin = 1;
-    let haloSpin = alert ? 2 : 1;
+    const haloSpin = alert ? 2 : 1;
     let glow = 1 + 0.16 * Math.sin(t * 2) + (alert ? 0.35 : 0);
     let ringsOn = 1;
     // 通用底层：各部件带相位地漂浮
@@ -285,7 +285,7 @@ export function createStarColossus(): ModelDef {
         const rise = easeIO(seg(d, 2.4, 3.0));
         pose.pos(core, 0, 1.6 * rise, 0);
         pose.scale(core, (1 + 0.25 * Math.sin(d * 40) * seg(d, 0.6, 2.4) + 0.9 * bump(d, 3.1, 0.2)) * (1 - seg(d, 3.15, 3.4)));
-        glow = (1 + 0.6 * Math.sin(d * 34) * seg(d, 0.5, 2.4)) * (1 - 0.6 * seg(d, 1.0, 2.4)) + 3 * bump(d, 3.1, 0.25);
+        glow = (1 + 0.5 * Math.sin(d * 34) * seg(d, 0.5, 2.4)) * (1 - 0.6 * seg(d, 1.0, 2.4)) + 1.6 * bump(d, 3.1, 0.25);
         out.tint = 0.4 * seg(d, 1.6, 2.6);
         out.tintColor = 0x6a6e86;
         break;
@@ -323,7 +323,7 @@ export function createStarColossus(): ModelDef {
         }
         pose.scale(core, 1 + 0.4 * back);
         spin = 1 + 3 * back;
-        glow += 1.4 * back + 2.2 * bump(p, 0.36, 0.14);
+        glow += 0.5 * back + 1.0 * bump(p, 0.36, 0.14);
         break;
       }
       case 'stunned': {
@@ -354,7 +354,7 @@ export function createStarColossus(): ModelDef {
           ringsOn = easeOut(seg(s, 2.2, 2.7));
           pose.scale(halo, Math.max(0.001, easeOut(seg(s, 2.4, 2.9)) * (1 + 0.25 * bump(s, 2.8, 0.15))));
           spin = 1 + 5 * (1 - seg(s, 2.2, 3.0));
-          glow = 0.5 + 1.6 * bump(s, 1.2, 0.4) + 1.6 * bump(s, 2.7, 0.3) + 0.5 * seg(s, 2.6, 3.0);
+          glow = 0.5 + 0.8 * bump(s, 1.2, 0.4) + 0.9 * bump(s, 2.7, 0.3) + 0.5 * seg(s, 2.6, 3.0);
         } else if (alert) {
           // 警戒：双拳握紧提到胸前
           fists.forEach((f, i) => {
@@ -376,7 +376,7 @@ export function createStarColossus(): ModelDef {
       shoulders.forEach((sh, i) => pose.move(sh, (i === 0 ? 1 : -1) * 0.2 * hk, 0.08 * hk, 0));
       pose.add(head, -8 * hk, 0, 0);
       pose.scale(core, pose.s[core] * (1 + 0.3 * hk));
-      glow += 1.2 * hk;
+      glow += 0.5 * hk;
     }
     // 浑仪三环：各自倾斜，绕竖轴以不同速度进动(20 / 33 / -14 度每秒)
     const RATE = [20, 33, -14];

@@ -6,7 +6,7 @@
  */
 import { type CKP, type CommonAnims, E, type Human, type HumanDims, type RunStyle, RUN_DEFAULT, type TrackKey, animateCommon, applyCKP, breathe, bump, emptyCKP, humanRig, kp, makeCommon, mix, runCycle, sampleTrack, sat, strikeWarp, track } from '../humanoid';
 import { MAT, ModelBuilder, PATTERN, X, lerp } from '../kit';
-import { beard, chainBind, face, hairCap, hand, head, lock, strip, torsoBind, trim } from '../parts';
+import { beard, chainBind, face, hairCap, hand, head, lock, strip, torsoBind } from '../parts';
 import type { Pose } from '../rig';
 import type { AnimInput, AnimOutput, ModelDef } from '../types';
 
@@ -40,7 +40,7 @@ const DIMS: HumanDims = {
   clavX: 0.16, shoulderX: 0.47, shoulderY: 1.43, elbowY: 1.06, wristY: 0.73, handY: 0.61,
 };
 
-const SCALE = 1.42;
+const SCALE = 1.36;
 const DEG = Math.PI / 180;
 
 /** 盾的尺寸：全高 / 半宽 / 握带(前臂)到盾中心的距离(盾心在握带下方，举起时盾顶不挡脸) / 弧面深度 */
@@ -437,10 +437,10 @@ function makeAnims(h: Human): Anims {
   // 普攻 A：剑自右上斜劈到左下
   const aWind = kp(h, stance, {
     hipsPos: [0.03, -0.08, -0.06],
-    hips: [0, -22, 0],
-    spine: [-2, -14, 0],
-    chest: [-6, -20, 0],
-    head: [0, 38, 0],
+    hips: [0, -12, 0],
+    spine: [-2, -8, 0],
+    chest: [-6, -12, 0],
+    head: [0, 22, 0],
     armR: [-150, 0, -46],
     foreR: [-70, 0, 0],
     propR: [-10, -20, 0],
@@ -448,10 +448,10 @@ function makeAnims(h: Human): Anims {
   });
   const aHit = kp(h, stance, {
     hipsPos: [-0.03, -0.15, 0.14],
-    hips: [8, 30, 0],
-    spine: [8, 14, 0],
-    chest: [10, 22, 0],
-    head: [-8, -42, 0],
+    hips: [8, 14, 0],
+    spine: [8, 8, 0],
+    chest: [10, 12, 0],
+    head: [-8, -24, 0],
     footL: [0.27, 0.11, 0.3, 0, 16],
     armR: [-58, 44, -18],
     foreR: [-12, 0, 0],
@@ -459,7 +459,7 @@ function makeAnims(h: Human): Anims {
     armL: [6, 0, 34],
     foreL: [-64, -36, 0],
   });
-  const aFollow = kp(h, aHit, { hips: [10, 38, 0], chest: [12, 28, 0], armR: [-28, 70, -10], foreR: [-20, 0, 0], propR: [84, 36, 0] });
+  const aFollow = kp(h, aHit, { hips: [10, 20, 0], chest: [12, 16, 0], armR: [-28, 64, -10], foreR: [-20, 0, 0], propR: [84, 36, 0] });
   const atkA = track([
     [0, stance],
     [0.22, aWind, E.out],
@@ -470,8 +470,8 @@ function makeAnims(h: Human): Anims {
   // 普攻 B：盾沿横击，随后反手剑自左向右带过
   const bWind = kp(h, stance, {
     hipsPos: [0, -0.1, -0.04],
-    hips: [0, 30, 0],
-    chest: [-2, 12, 0],
+    hips: [0, 18, 0],
+    chest: [-2, 8, 0],
     armL: [-10, 0, 40],
     foreL: [-92, -20, 0],
     armR: [-50, 60, -20],
@@ -480,10 +480,10 @@ function makeAnims(h: Human): Anims {
   });
   const bHit = kp(h, stance, {
     hipsPos: [0.03, -0.14, 0.14],
-    hips: [8, -28, 0],
-    spine: [6, -14, 0],
-    chest: [6, -22, 0],
-    head: [-6, 44, 0],
+    hips: [8, -16, 0],
+    spine: [6, -8, 0],
+    chest: [6, -12, 0],
+    head: [-6, 26, 0],
     footR: [-0.29, 0.11, 0.1, 0, -10],
     armR: [-50, -46, -76],
     foreR: [-10, 0, 0],

@@ -9,7 +9,10 @@
  *   ?units=0          不画占位单位
  *   ?t=秒             把动画时间固定推进到指定值后暂停(对比截图用)
  *   ?kit=1            在镜头前摆一排着色套件样例(阶梯明暗/描边/闪白/淡出/队伍色/发光/实例化/点光)，验证 materials.ts
+ *   ?timings=1        统计面板里追加地形各构建阶段的耗时与各类几何的三角形数
  * 键盘：WASD/方向键 平移镜头，1/2/3 切画质，T 切俯瞰。拖动鼠标也可平移。
+ * 调试钩子：window.__renderer / __engine / __state / __timings / __counts；
+ *   window.__cycle() 释放渲染器后原地重建一遍，返回前后的几何/贴图/着色器程序计数(查泄漏：两次构建后的计数应当相同)。
  */
 import { createMockState } from '../core/mock';
 import type { Quality } from '../render/api';
@@ -38,10 +41,11 @@ const state = createMockState();
 const modules: RenderModuleFactory[] = [createTerrainModule];
 if (params.get('units') !== '0') modules.push(createPlaceholderUnits);
 const buildStart = performance.now();
-const renderer = createRendererCore(app, state, { quality }, modules);
+let renderer = createRendererCore(app, state, { quality }, modules);
 const buildMs = Math.round(performance.now() - buildStart);
-const engine = renderer.engine;
+let engine = renderer.engine;
 const terrainTimings = renderer.context.getModule<TerrainModule>('terrain')?.timings ?? {};
+const terrainCounts = renderer.context.getModule<TerrainModule>('terrain')?.counts ?? {};
 
 const player = state.heroes.find((h) => h.id === state.playerId);
 const look = { x: num('x') ?? player?.pos.x ?? 0, y: num('y') ?? player?.pos.y ?? 0 };
@@ -171,21 +175,54 @@ function frame(now: number): void {
       `画质 ${engine.quality}  ${vp.width}×${vp.height} @${vp.dpr.toFixed(2)}x  FPS ${s.fps}\n` +
       `draw calls ${s.drawCalls}   三角形 ${s.triangles.toLocaleString()}\n` +
       `镜头 (${look.x.toFixed(1)}, ${look.y.toFixed(1)})   场景构建 ${buildMs}ms`;
-    if (params.get('timings') === '1') hud.textContent += '\n' + Object.entries(terrainTimings).map(([k, v]) => `${k} ${v}`).join('  ');
+    if (params.get('timings') === '1') {
+      hud.textContent += '\n' + Object.entries(terrainTimings).map(([k, v]) => `${k} ${v}`).join('  ');
+      hud.textContent += '\n' + Object.entries(terrainCounts).map(([k, v]) => `${k} ${v}`).join('  ');
+    }
   }
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
 
+/** 渲染器里当前的资源计数(几何 / 贴图 / 着色器程序) */
+function resourceCounts(): { geometries: number; textures: number; programs: number } {
+  const info = engine.renderer.info;
+  return { geometries: info.memory.geometries, textures: info.memory.textures, programs: info.programs?.length ?? 0 };
+}
+
+/** 释放渲染器后原地重建：返回「第一次构建后 / 释放后 / 重建并画过一帧后」三组计数 */
+function cycle(): { built: ReturnType<typeof resourceCounts>; disposed: ReturnType<typeof resourceCounts>; rebuilt: ReturnType<typeof resourceCounts>; rebuildMs: number } {
+  const built = resourceCounts();
+  const three = engine.renderer;
+  renderer.dispose();
+  const disposed = { geometries: three.info.memory.geometries, textures: three.info.memory.textures, programs: three.info.programs?.length ?? 0 };
+  const t0 = performance.now();
+  renderer = createRendererCore(app, state, { quality }, modules);
+  engine = renderer.engine;
+  if (hasLook) {
+    renderer.setCameraPeek(look);
+    renderer.snapCamera();
+  }
+  renderer.render(state, 1, 0);
+  const rebuildMs = Math.round(performance.now() - t0);
+  window.__renderer = renderer;
+  window.__engine = engine;
+  return { built, disposed, rebuilt: resourceCounts(), rebuildMs };
+}
+
 declare global {
   interface Window {
     __timings: typeof terrainTimings;
+    __counts: typeof terrainCounts;
     __renderer: typeof renderer;
     __engine: typeof engine;
     __state: typeof state;
+    __cycle: typeof cycle;
   }
 }
 window.__timings = terrainTimings;
+window.__counts = terrainCounts;
 window.__renderer = renderer;
 window.__engine = engine;
 window.__state = state;
+window.__cycle = cycle;

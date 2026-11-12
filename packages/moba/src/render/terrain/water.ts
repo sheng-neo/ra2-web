@@ -113,7 +113,7 @@ void main() {
   float fn = n1.r * 0.6 + n2.r * 0.4;
   // 拍岸沫：贴着水线，宽度被噪声撕碎，3.5 秒一个进退约 0.25 米的周期
   float lap = 0.125 + 0.125 * sin(t * (TAU / 3.5) + fn * 5.0 + dot(wp, vec2(0.23, 0.17)));
-  float edgeW = 0.16 + 0.3 * fn + lap;
+  float edgeW = 0.1 + 0.22 * fn + lap * 0.8;
   float edge = 1.0 - smoothstep(edgeW * 0.45, edgeW, shore - 0.3);
   float foam = edge * (0.5 + 0.5 * n2.b);
   // 向岸推进的一道细浪
@@ -130,7 +130,7 @@ void main() {
   foam = clamp(foam, 0.0, 1.0);
   vec3 foamCol = cFoam * RECIPROCAL_PI * (amb + sun * shadow * 0.9);
   col = mix(col, foamCol, foam);
-  alpha = max(alpha, foam * 0.9);
+  alpha = max(alpha, foam * 0.78);
   col *= mix(uShadeTintGround, vec3(1.0), shadow);
   // 边界淡出：水面带两侧多出来的部分不应盖住岸
   alpha *= smoothstep(-0.9, -0.3, shore);

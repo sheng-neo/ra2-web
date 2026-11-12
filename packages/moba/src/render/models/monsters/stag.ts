@@ -177,7 +177,8 @@ export function createFrostStag(): ModelDef {
       const L = len * long * (0.85 + 0.3 * hash(i, n));
       const tip = [root[0] + dx * L, root[1] + dy * L, root[2] + dz * L];
       b.paint(MANE_SHADE, { c2: MANE, ao: 0.8, ao2: 1, mat: MAT.fur, pattern: PATTERN.fur, patternScale: 8, patternAmt: 0.35 });
-      b.limb(root, tip, w, 0.014, { seg: 5, flat: 0.62, up: [-sn, V[1] * cs, V[2] * cs], bulge: 0.25, cap0: false });
+      const mid = [lerp(root[0], tip[0], 0.45), lerp(root[1], tip[1], 0.45), lerp(root[2], tip[2], 0.45)];
+      b.tube([[root[0], root[1], root[2], w, w * 0.62], [mid[0], mid[1], mid[2], w * 0.9, w * 0.56], [tip[0], tip[1], tip[2], 0.014, 0.01]], { seg: 5, up: [-sn, V[1] * cs, V[2] * cs], cap0: false });
     }
   };
   maneRing([0, 2.58, 1.25], 0.2, 0.25, 8, 0.34, 0.11, Q.neck[1], 0.2);
@@ -272,7 +273,7 @@ export function createFrostStag(): ModelDef {
     pose.rot(earL, 0, -26 * flick, 14 * flick);
     pose.rot(earR, 0, 20 * bump((t * 0.29 + 0.4) % 1, 0.5, 0.07), 0);
     pose.rot(Q.tail[0], -18 * bump((t * 0.23) % 1, 0.5, 0.1), Math.sin(t * 2.3) * 8, 0);
-    out.glow = 1 + 0.1 * Math.sin(t * 2.1) + (alert ? 0.5 : 0);
+    out.glow = 1 + 0.1 * Math.sin(t * 2.1) + (alert ? 0.3 : 0);
     let planted = true;
 
     switch (a.anim) {
@@ -299,7 +300,7 @@ export function createFrostStag(): ModelDef {
         const pop = seg(dT, 1.2, 2.0);
         pose.pos(crest, 0, 0.8 * easeOut(pop), 0);
         pose.scale(crest, (1 + 0.5 * bump(pop, 0.2, 0.2)) * (1 - seg(dT, 1.7, 2.1)));
-        out.glow = (1 + 1.5 * bump(dT, 1.2, 0.3)) * (1 - 0.8 * seg(dT, 1.4, 2.1));
+        out.glow = (1 + 0.9 * bump(dT, 1.2, 0.3)) * (1 - 0.8 * seg(dT, 1.4, 2.1));
         out.tint = 0.5 * seg(dT, 1.2, 2.0);
         out.tintColor = 0x8ea4c8;
         break;
@@ -329,7 +330,7 @@ export function createFrostStag(): ModelDef {
           pose.add(Q.neck[0], -34 * fwd, 0, 0);
           pose.add(Q.neck[1], -26 * fwd, 0, 0);
           pose.add(Q.head, -30 * fwd, 0, 0);
-          out.glow += 0.8 * back + 1.6 * bump(p, 0.36, 0.14);
+          out.glow += 0.4 * back + 0.8 * bump(p, 0.36, 0.14);
         } else {
           // 踏击：人立(前腿收在胸前) → 双前蹄踏地
           const up = wind * (1 - hit);
@@ -345,7 +346,7 @@ export function createFrostStag(): ModelDef {
             plantLeg(Q, pose, i, l.rx, l.ry + 1.5 * k, l.rz - 0.2 * k + 0.22 * slam, 60 * k);
           }
           planted = false;
-          out.glow += 0.6 * up + 1.8 * bump(p, 0.36, 0.14);
+          out.glow += 0.3 * up + 0.9 * bump(p, 0.36, 0.14);
         }
         break;
       }
@@ -375,7 +376,7 @@ export function createFrostStag(): ModelDef {
           pose.move(Q.pelvis, 0, -0.1 * (1 - thaw), 0);
           out.tint = 0.85 * (1 - seg(s, 0.1, 0.8));
           out.tintColor = 0x9fdcff;
-          out.glow = 0.3 + 0.7 * thaw + 1.4 * cry;
+          out.glow = 0.3 + 0.7 * thaw + 0.7 * cry;
         } else if (alert) {
           // 警戒：低头把角对准目标，前蹄刨地
           lower(0.7, true);

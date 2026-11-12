@@ -9,6 +9,7 @@ import { BASE_GRADE, PALETTE, TONE_MAPPING, disposeSharedTextures, installToneMa
 import { setUnitPatternsEnabled } from '../models/shading';
 import { CameraRig } from './camera';
 import { disposeObject3D } from './dispose';
+import { GpuTimer, gpuTimingsRequested, type GpuTimings } from './gputimer';
 import { LightRig } from './lighting';
 import { LightTint } from './lighttint';
 import { PostPipeline, supportsHdrTargets, type GradeParams } from './post';
@@ -122,6 +123,8 @@ export class RenderEngine {
   private readonly handleRestored = (): void => this.onContextRestored?.();
 
   private container: HTMLElement;
+  /** GPU 计时(只有地址带 ?gpuTimings=1 时才创建，见 gputimer.ts) */
+  private gpuTimer: GpuTimer | null = null;
   private post: PostPipeline | null = null;
   private hdrOk: boolean;
   private stats: RendererStats = { fps: 60, drawCalls: 0, triangles: 0 };
@@ -194,6 +197,7 @@ export class RenderEngine {
       dim: 0,
     };
     this.hdrOk = supportsHdrTargets(renderer);
+    if (gpuTimingsRequested()) this.gpuTimer = new GpuTimer(renderer);
     this.quality = quality;
     this.settings = QUALITY[quality];
     this.applyQuality();
@@ -221,8 +225,12 @@ export class RenderEngine {
     this.grade.bloomStrength = s.bloom;
     this.grade.haze = s.haze;
     if (s.post) {
-      if (!this.post) this.post = new PostPipeline(r, this.scene, this.rig.camera, this.grade, s);
-      else this.post.applyQuality(s);
+      if (!this.post) {
+        this.post = new PostPipeline(r, this.scene, this.rig.camera, this.grade, s);
+        // 后期的第一个全屏通道开始时切到「后期」段
+        const timer = this.gpuTimer;
+        if (timer) this.post.onPostBegin = () => timer.begin('post');
+      } else this.post.applyQuality(s);
     } else if (this.post) {
       this.post.dispose();
       this.post = null;
@@ -371,10 +379,20 @@ export class RenderEngine {
     r.info.reset();
     // 环境染色贴图只在主场景绘制期间挂在共享 uniform 上(立绘/头像这些独立小场景采到的是中性贴图)
     this.lightTint.bind(true);
+    const timer = this.gpuTimer;
+    if (timer) {
+      timer.attach(true);
+      timer.begin('scene');
+    }
     if (this.post) this.post.render(dt);
     else {
       r.setRenderTarget(null);
       r.render(this.scene, this.rig.camera);
+    }
+    if (timer) {
+      timer.frameEnd();
+      timer.attach(false);
+      this.stats.gpu = timer.timings;
     }
     this.lightTint.bind(false);
     this.stats.drawCalls = r.info.render.calls;
@@ -408,6 +426,11 @@ export class RenderEngine {
 
   getStats(): RendererStats {
     return this.stats;
+  }
+
+  /** GPU 分段计时的最新结果；没带 ?gpuTimings=1 时为 null */
+  get gpuTimings(): GpuTimings | null {
+    return this.gpuTimer ? this.gpuTimer.timings : null;
   }
 
   /** 屏幕坐标(clientX/clientY) → 地面(y=0)坐标 */
@@ -449,6 +472,8 @@ export class RenderEngine {
     this.post = null;
     this.lights.dispose();
     this.lightTint.dispose();
+    this.gpuTimer?.dispose();
+    this.gpuTimer = null;
     this.scene.clear();
     this.canvas.removeEventListener('webglcontextrestored', this.handleRestored);
     this.canvas.style.filter = '';

@@ -108,12 +108,12 @@ export function createTopBar(ctx: HudCtx): TopBar {
   const towersFoeN = mk('sf-num', '0');
   const towersMine = h('span', 'sf-hud__score-towers', icon(uiIcon('tower')), towersMineN);
   const towersFoe = h('span', 'sf-hud__score-towers', icon(uiIcon('tower')), towersFoeN);
-  towersMine.title = '我方已摧毁的防御塔';
-  towersFoe.title = '敌方已摧毁的防御塔';
+  towersMine.title = '我方已推掉的塔';
+  towersFoe.title = '敌方已推掉的塔';
   const time = mk('sf-hud__time sf-num', '00:00');
   const waveN = mk('sf-num', '');
   const wave = h('span', 'sf-hud__wave', icon(uiIcon('hourglass')), waveN);
-  wave.title = '下一波兵线';
+  wave.title = '下一波小兵';
   const score = h(
     'div',
     'sf-hud__score',
@@ -133,7 +133,7 @@ export function createTopBar(ctx: HudCtx): TopBar {
   const aN = h('b', 'sf-num is-a', '0');
   const csN = h('b', 'sf-num', '0');
   const kda = h('div', 'sf-hud__chip sf-hud__kda', icon(uiIcon('kill')), kN, h('i', null, '/'), dN, h('i', null, '/'), aN, h('span', 'sf-hud__kda-cs', icon(uiIcon('cs')), csN));
-  kda.title = '击杀 / 死亡 / 助攻 · 补刀';
+  kda.title = '击杀 / 阵亡 / 助攻 · 补兵';
   const goldN = h('b', 'sf-num', '0');
   const gold = h('div', 'sf-hud__chip sf-hud__gold', icon(uiIcon('gold')), goldN);
   gold.title = '金币';

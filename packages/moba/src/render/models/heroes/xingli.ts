@@ -8,7 +8,7 @@
  *   pipaPos = 琴的平移；pluck = 右手相对默认拨弦点的偏移[横向, 沿弦, 离开面板]；free = [右手松开, 左手松开, 左手沿琴颈滑动]。
  * 每帧先摆好躯干与琴，再用 IK 把左手放到琴颈、右手放到弦上，所以琴怎么动，手都在琴上。
  */
-import { type CKP, type CommonAnims, E, type Human, type HumanDims, type RunStyle, RUN_DEFAULT, STANDARD_DIMS, type TrackKey, animateCommon, applyCKP, breathe, bump, emptyCKP, humanRig, kp, makeCommon, mix, reachHand, runCycle, sampleTrack, sat, strikeWarp, track } from '../humanoid';
+import { type CKP, type CommonAnims, E, type Human, type HumanDims, type RunStyle, RUN_DEFAULT, STANDARD_DIMS, type TrackKey, animateCommon, applyCKP, breathe, bump, emptyCKP, humanRig, kp, makeCommon, mix, mixQ, reachHand, runCycle, sampleTrack, sat, strikeWarp, track } from '../humanoid';
 import { MAT, ModelBuilder, PATTERN, type SoftBind, X, lerp } from '../kit';
 import { chainBind, face, furRing, furTube, hairCap, hand, head, polyAt, strip, torsoBind } from '../parts';
 import type { Pose } from '../rig';
@@ -120,7 +120,11 @@ function build(): { h: Human; b: ModelBuilder; extra: Extra } {
   ];
   const pleat = (a: number, k: number): number => 1 + (k < 4 ? 0.04 * (1 - k / 4) * Math.sin(a * 8) : 0);
   b.bind(skirtBind).paint(C.hem, { c2: C.robe, ao: 0.9, ao2: 1, mat: MAT.cloth, by: (_x, y) => (y - 0.08) / 0.34, pattern: PATTERN.weave, patternScale: 16, patternAmt: 0.12 });
-  b.lathe(skirtProf, { seg: 16, cap1: false, shape: pleat });
+  b.lathe(skirtProf, { seg: 16, cap0: false, cap1: false, shape: pleat });
+  // 裙底：一片浅色衬裙(倒地时会朝向镜头；带一点自发光，不被「朝下的面压暗」的烘焙涂黑)
+  b.paint(C.robeShade, { c2: C.hem, glow: 0.06, mat: MAT.cloth, line: 0 });
+  b.lathe([[0.07, 0.02, 0.02], [0.078, 0.45, 0.45]], { seg: 16, cap1: false });
+  b.paint(C.hem, { c2: C.robe, ao: 0.9, ao2: 1, mat: MAT.cloth });
   const skirtR = (y: number): number => {
     for (let i = 1; i < skirtProf.length; i++) {
       if (y <= skirtProf[i][0]) return lerp(skirtProf[i - 1][1], skirtProf[i][1], (y - skirtProf[i - 1][0]) / (skirtProf[i][0] - skirtProf[i - 1][0]));
@@ -173,8 +177,10 @@ function build(): { h: Human; b: ModelBuilder; extra: Extra } {
   // ── 手臂：窄袖上臂 + 喇叭袖(石青袖缘、队伍色内衬、白毛袖口) ──
   b.sym((s) => {
     const x = d.shoulderX;
-    b.bone(s > 0 ? J.armL : J.armR).paint(C.robe, { c2: C.robeShade, mat: MAT.cloth, gloss: 0.1 });
-    b.limb([x, d.shoulderY + 0.02, 0], [x, d.elbowY - 0.02, 0], 0.074, 0.064, { seg: 7 });
+    // 上臂罩在斗篷里(绛红)，肘上一圈白毛滚边；小臂是深衣的喇叭袖
+    b.bone(s > 0 ? J.armL : J.armR).paint(C.cloakLight, { c2: C.cloak, mat: MAT.cloth, pattern: PATTERN.weave, patternScale: 10, patternAmt: 0.16 });
+    b.limb([x, d.shoulderY + 0.03, 0], [x, d.elbowY + 0.03, 0], 0.096, 0.1, { seg: 8 });
+    b.g(X(x, 0, 0), () => furRing(b, 0.1, 0.1, 0.028, 0.026, { c: C.fur, c2: C.furShade, tufts: 6, seg: 5, y: d.elbowY + 0.03 }));
     b.bone(s > 0 ? J.foreL : J.foreR).paint(C.robeShade, { c2: C.robe, mat: MAT.cloth, gloss: 0.1 });
     b.lathe([[d.wristY - 0.04, 0.108, 0.108, x, 0], [d.wristY + 0.01, 0.104, 0.104, x, 0], [d.wristY + 0.14, 0.082, 0.082, x, 0], [d.elbowY + 0.03, 0.066, 0.066, x, 0]], { seg: 10, cap0: false });
     b.paint(C.robeShade, { mat: MAT.cloth, ao: 0.7 });
@@ -465,21 +471,6 @@ function makeAnims(h: Human): Anims {
 }
 
 const _sv = new Float32Array(8);
-
-/** q[o..] = nlerp(from[fo..], q[o..], w) */
-function mixQ(q: Float32Array, o: number, from: Float32Array, fo: number, w: number): void {
-  const dot = q[o] * from[fo] + q[o + 1] * from[fo + 1] + q[o + 2] * from[fo + 2] + q[o + 3] * from[fo + 3];
-  const u = (1 - w) * (dot < 0 ? -1 : 1);
-  const x = from[fo] * u + q[o] * w;
-  const y = from[fo + 1] * u + q[o + 1] * w;
-  const z = from[fo + 2] * u + q[o + 2] * w;
-  const ww = from[fo + 3] * u + q[o + 3] * w;
-  const l = Math.hypot(x, y, z, ww) || 1;
-  q[o] = x / l;
-  q[o + 1] = y / l;
-  q[o + 2] = z / l;
-  q[o + 3] = ww / l;
-}
 
 export function createXingli(): ModelDef {
   const { h, b, extra } = build();

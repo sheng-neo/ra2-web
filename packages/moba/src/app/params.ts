@@ -8,6 +8,9 @@
  *   ?speed=8                               时间倍率(每帧多步，加速跑完整局)
  *   ?quality=low|medium|high               本次会话的画质(不写入存档)
  *   ?fps=1                                 显示帧率
+ *   ?autobuy=0|1                           本次会话的自动出装开关(不写入存档；缺省跟随玩家设置，默认开)
+ *   ?tutorial=0|1                          本次会话的新手引导开关(不写入存档)
+ *   ?hints=0|1                             本次会话的「当前目标」提示开关(不写入存档)
  *
  * 同样的键也可以写在 hash 里：#skipmenu=1&auto=1；单个词的 hash 当作开关：#auto、#fps、#skipmenu，
  * #demo 等于 skipmenu + auto(观战演示)。
@@ -27,11 +30,17 @@ export interface DebugParams {
   speed: number;
   quality: Quality | null;
   showFps: boolean;
+  /** 自动出装 / 新手引导 / 当前目标提示：null = 未指定(跟随玩家设置) */
+  autoBuy: boolean | null;
+  tutorial: boolean | null;
+  objectiveHints: boolean | null;
 }
 
 export const MAX_SPEED = 64;
 
 const truthy = (v: string | null): boolean => v !== null && v !== '0' && v !== 'false' && v !== 'off';
+/** 三态开关：没写这个键 = null */
+const tri = (v: string | null): boolean | null => (v === null ? null : truthy(v));
 
 function parseHash(hash: string): URLSearchParams {
   const raw = hash.replace(/^#/, '');
@@ -79,5 +88,8 @@ export function parseDebugParams(search: string, hash = ''): DebugParams {
     speed,
     quality: quality === 'low' || quality === 'medium' || quality === 'high' ? quality : null,
     showFps: truthy(get('fps')),
+    autoBuy: tri(get('autobuy')),
+    tutorial: tri(get('tutorial')),
+    objectiveHints: tri(get('hints')),
   };
 }

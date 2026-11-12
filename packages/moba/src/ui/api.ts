@@ -15,6 +15,18 @@ export interface Settings {
   showFps: boolean;
   /** 镜头震动 */
   cameraShake: boolean;
+  /**
+   * 自动出装(玩家的偏好)：金币够了自动购买推荐出装的下一件。开局时作为 MatchConfig.autoBuy 的初值；
+   * 对局中改它，宿主会转成 PlayerCommand 'autoBuy'。本局实际是否生效看 HeroUnit.autoBuy(卖出推荐装会让本局关闭，但不改这个偏好)。
+   */
+  autoBuy: boolean;
+  /**
+   * 新手引导：首次游玩默认开。引导走完 / 玩家点「跳过引导」/ 打完一局后由界面或宿主写成 false；
+   * 设置面板里可以重新打开(对局中由 false 变 true = 从第一步重看)。「恢复默认」不动它。
+   */
+  tutorial: boolean;
+  /** 屏幕上方的「当前目标」提示行 */
+  objectiveHints: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -24,6 +36,9 @@ export const DEFAULT_SETTINGS: Settings = {
   musicVolume: 0.5,
   showFps: false,
   cameraShake: true,
+  autoBuy: true,
+  tutorial: true,
+  objectiveHints: true,
 };
 
 /** HUD 向宿主(main.ts)索取的能力 */
@@ -38,8 +53,15 @@ export interface HudHost {
   setPaused(paused: boolean): void;
   /** 放弃对局返回主菜单 */
   quit(): void;
+  /**
+   * 当前生效的设置(活对象，随 updateSettings 原地更新，可以每帧读)。
+   * HUD 各部件读 .autoBuy / .tutorial / .objectiveHints 都走这里，不另存副本。
+   */
   getSettings(): Settings;
-  /** 修改并持久化设置（宿主负责应用到渲染/音频） */
+  /**
+   * 修改并持久化设置（宿主负责应用到渲染/音频/模拟：如 autoBuy 会转成对局命令）。
+   * 存储不可用时(沙箱 iframe)至少在本次会话内记住。引导走完后界面用它写 { tutorial: false }。
+   */
   updateSettings(patch: Partial<Settings>): void;
   getFps(): number;
   audio: AudioEngine;

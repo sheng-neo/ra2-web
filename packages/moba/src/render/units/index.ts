@@ -576,7 +576,8 @@ export function createUnitsModule(ctx: RenderContext): UnitsModule {
       look.tintAmount = v.tintAmount;
     }
     // 透视剪影：敌红友蓝己绿、野怪金；倒地/离场的不画
-    look.xrayAmount = v.alive && v.dying < 0 ? 1 : 0;
+    // (出生演出里身体有一段在地面 / 水面以下：不画剪影，否则整只会透出来)
+    look.xrayAmount = v.alive && v.dying < 0 && v.spawnT < 0 ? 1 : 0;
     look.xray.copy(v.isPlayer ? colors.xSelf : v.team === 2 ? colors.xNeutral : v.team === playerTeam ? colors.xAlly : colors.xEnemy);
     if (v.dying >= 0 && Number.isFinite(v.deathDur)) {
       // 演出的最后一段抖动淡出

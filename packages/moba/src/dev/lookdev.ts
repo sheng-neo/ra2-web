@@ -229,6 +229,8 @@ interface LookdevModule extends RenderModule {
 }
 
 const GRAY = 0x808080;
+/** 灰模 / 样例球 / 假人整体向东偏移(左上角留给读数面板) */
+const OX = 4.4;
 
 const createLookdev: RenderModuleFactory = (ctx: RenderContext): LookdevModule => {
   const root = new THREE.Group();
@@ -276,36 +278,36 @@ const createLookdev: RenderModuleFactory = (ctx: RenderContext): LookdevModule =
     prismFaces.push([face(-45), face(0), face(45)]);
     tag(label, x, 0, zForms + r + 0.3);
   };
-  prism(-9.2, GRAY, '岩柱 50% 灰(三阶)');
-  prism(-5.4, PALETTE.env.rock, '岩柱 岩色');
-  add(new THREE.CylinderGeometry(0.5, 0.56, 3.4, 24), createToonMaterial({ color: GRAY, ramp: [0.05, 0.42, 0.55], softness: 0.1, kicker: 0.3, fx: false }), -1.8, 1.7, zForms);
-  tag('石柱(冷边 0.3)', -1.8, 0, zForms + 1.0);
-  add(new THREE.SphereGeometry(1.2, 40, 24), createToonMaterial({ color: GRAY, steps: 2, fx: false }), 1.6, 1.2, zForms);
-  tag('球 两阶', 1.6, 0, zForms + 1.7);
-  add(new THREE.SphereGeometry(1.2, 40, 24), createToonMaterial({ color: GRAY, steps: 3, softness: 0.34, fx: false }), 4.8, 1.2, zForms);
-  tag('球 三阶·软', 4.8, 0, zForms + 1.7);
+  prism(OX - 9.6, GRAY, '岩柱 50% 灰(三阶)');
+  prism(OX - 5.8, PALETTE.env.rock, '岩柱 岩色');
+  add(new THREE.CylinderGeometry(0.5, 0.56, 3.4, 24), createToonMaterial({ color: GRAY, ramp: [0.05, 0.42, 0.55], softness: 0.1, kicker: 0.3, fx: false }), OX - 2.6, 1.7, zForms);
+  tag('石柱(冷边 0.3)', OX - 2.6, 0, zForms + 1.0);
+  add(new THREE.SphereGeometry(1.2, 40, 24), createToonMaterial({ color: GRAY, steps: 2, fx: false }), OX + 0.4, 1.2, zForms);
+  tag('球 两阶', OX + 0.4, 0, zForms + 1.7);
+  add(new THREE.SphereGeometry(1.2, 40, 24), createToonMaterial({ color: GRAY, steps: 3, softness: 0.34, fx: false }), OX + 3.4, 1.2, zForms);
+  tag('球 三阶·软', OX + 3.4, 0, zForms + 1.7);
   // 石台：顶面贴图(mapTop)。这里拿噪声图当顶面贴图的替身，只为看「朝上的面叠贴图与色斑、立面不受影响」
   const noise = makeNoiseTexture(128, 11);
   disposables.push(noise);
   const slabMat = createToonMaterial({ color: PALETTE.env.cliffGrass, ramp: [0.05, 0.42, 0.55], softness: 0.1, shadeTint: PALETTE.env.shadeRock, rim: 0.08, kicker: 0.1, fx: false, mapTop: noise, mapTopScale: 0.35, mapTopGain: 2, mapTopNoise: noise });
-  add(new THREE.BoxGeometry(3.2, 1.1, 2.2), slabMat, 12.2, 0.55, zForms);
-  tag('石台 顶面贴图', 12.2, 0, zForms + 1.6);
+  add(new THREE.BoxGeometry(3.2, 1.1, 2.2), slabMat, OX + 9.6, 0.55, zForms);
+  tag('石台 顶面贴图', OX + 9.6, 0, zForms + 1.6);
   const treeMat = createToonMaterial({ color: GRAY, steps: 1, rim: 0, fx: false });
-  add(new THREE.ConeGeometry(1.3, 2.6, 20), treeMat, 8.2, 2.5, zForms);
-  add(new THREE.CylinderGeometry(0.22, 0.3, 1.3, 10), treeMat, 8.2, 0.65, zForms);
-  tag('树 一阶(植被)', 8.2, 0, zForms + 1.7);
+  add(new THREE.ConeGeometry(1.3, 2.6, 20), treeMat, OX + 6.3, 2.5, zForms);
+  add(new THREE.CylinderGeometry(0.22, 0.3, 1.3, 10), treeMat, OX + 6.3, 0.65, zForms);
+  tag('树 一阶(植被)', OX + 6.3, 0, zForms + 1.7);
 
   // ── 单位着色器的样例：纹样球 / 材质球 / 假人，合成一份几何一次画完 ──
   const ug = new UnitGeo();
   const zPat = -5.0;
   PATTERN_BALLS.forEach((b, i) => {
-    const x = (i - (PATTERN_BALLS.length - 1) / 2) * 2.05;
+    const x = OX + (i - (PATTERN_BALLS.length - 1) / 2) * 2.05;
     ug.ellipsoid(x, 0.86, zPat, 0.8, 0.8, 0.8, b.paint, 40, 26);
     tag(b.name, x, 0, zPat + 1.0);
   });
   const zMat = -1.9;
   MATERIAL_BALLS.forEach((b, i) => {
-    const x = (i - (MATERIAL_BALLS.length - 1) / 2) * 1.85;
+    const x = OX + (i - (MATERIAL_BALLS.length - 1) / 2) * 1.85;
     const r = b.paint.glow && b.paint.glow > 0.5 ? 0.42 : 0.74;
     ug.ellipsoid(x, r + 0.06, zMat, r, r, r, b.paint, 36, 24);
     tag(b.name, x, 0, zMat + 0.95);
@@ -324,18 +326,18 @@ const createLookdev: RenderModuleFactory = (ctx: RenderContext): LookdevModule =
     ug.box(x + 0.72, 1.0, z + 0.1, 0.06, 0.62, 0.34, { color: c(0xb9c2d0), cat: UNIT_MAT.metal, pattern: gray ? 0 : UNIT_PATTERN.meteoric, cells: 7, amount: 0.8 });
   };
   const zDummy = 1.6;
-  dummy(-3.2, zDummy, false);
-  tag('假人(布/皮肤/皮革/金属/毛)', -3.2, 0, zDummy + 0.6);
-  dummy(-0.4, zDummy, true);
-  tag('假人 50% 灰', -0.4, 0, zDummy + 0.6);
+  dummy(OX - 3.2, zDummy, false);
+  tag('假人(布/皮肤/皮革/金属/毛)', OX - 3.2, 0, zDummy + 0.6);
+  dummy(OX - 0.4, zDummy, true);
+  tag('假人 50% 灰', OX - 0.4, 0, zDummy + 0.6);
   // 浅色假人：最亮的甲片应落在 L* 85~92
-  ug.ellipsoid(2.6, 1.15, zDummy, 0.5, 1.1, 0.42, { color: 0xe9e9e9, cat: UNIT_MAT.metal });
-  ug.ellipsoid(2.6, 2.3, zDummy, 0.3, 0.3, 0.3, { color: 0xe9e9e9, cat: UNIT_MAT.metal });
-  tag('白甲', 2.6, 0, zDummy + 0.6);
+  ug.ellipsoid(OX + 2.6, 1.15, zDummy, 0.5, 1.1, 0.42, { color: 0xe9e9e9, cat: UNIT_MAT.metal });
+  ug.ellipsoid(OX + 2.6, 2.3, zDummy, 0.3, 0.3, 0.3, { color: 0xe9e9e9, cat: UNIT_MAT.metal });
+  tag('白甲', OX + 2.6, 0, zDummy + 0.6);
   // 深色假人：背光侧靠冷边从地面上分出来
-  ug.ellipsoid(5.4, 1.15, zDummy, 0.5, 1.1, 0.42, { color: 0x2a2630, cat: UNIT_MAT.cloth });
-  ug.ellipsoid(5.4, 2.3, zDummy, 0.3, 0.3, 0.3, { color: 0x2a2630, cat: UNIT_MAT.leather });
-  tag('深色衣', 5.4, 0, zDummy + 0.6);
+  ug.ellipsoid(OX + 5.4, 1.15, zDummy, 0.5, 1.1, 0.42, { color: 0x2a2630, cat: UNIT_MAT.cloth });
+  ug.ellipsoid(OX + 5.4, 2.3, zDummy, 0.3, 0.3, 0.3, { color: 0x2a2630, cat: UNIT_MAT.leather });
+  tag('深色衣', OX + 5.4, 0, zDummy + 0.6);
   const unitGeo = ug.build();
   const batch = new RigBatch(unitGeo, 1, 1, { outline: 1.5 }, 'hero:lookdev');
   batch.addTo(ctx.layers.units);
@@ -380,10 +382,10 @@ const createLookdev: RenderModuleFactory = (ctx: RenderContext): LookdevModule =
   // ── 环境染色试验 ──
   if (params.get('tint') === '1') {
     const lt = ctx.lightTint;
-    lt.stamp(-3.2, zDummy, 4, PALETTE.red.main, 0.35);
-    lt.stamp(4, zMat, 5, PALETTE.env.water, 0.3);
-    lt.stamp(-9.2, zForms + 2, 3, PALETTE.env.amber, 0.35);
-    lt.occlude(4.8, zForms + 1, 4, 0.5);
+    lt.stamp(OX - 3.2, zDummy, 4, PALETTE.red.main, 0.35);
+    lt.stamp(OX + 5, zMat, 5, PALETTE.env.water, 0.3);
+    lt.stamp(OX - 9.6, zForms + 2, 3, PALETTE.env.amber, 0.35);
+    lt.occlude(OX + 3.4, zForms + 1, 4, 0.5);
     lt.bake();
   }
 

@@ -149,6 +149,24 @@ export function createEmberBear(): ModelDef {
     crack(-0.4, m(1.2), -0.95, m(0.45), 4, 0.05, 3);
     crack(-0.9, m(1.4), -1.4, m(0.9), 3, 0.04, 4);
   }
+  // 毛簇：背脊到臀几撮翘起的毛、胯侧各两撮，打破身体光滑的椭球轮廓
+  const tuft = (p: number[], dx: number, dy: number, dz: number, len: number, w: number): void => {
+    b.tube(
+      [
+        [p[0], p[1], p[2], w, w * 0.5],
+        [p[0] + dx * len * 0.5, p[1] + dy * len * 0.5 + 0.03, p[2] + dz * len * 0.5, w * 0.8, w * 0.42],
+        [p[0] + dx * len, p[1] + dy * len, p[2] + dz * len, 0.012, 0.012],
+      ],
+      { seg: 4, up: [1, 0, 0], cap0: false },
+    );
+  };
+  b.bind(bodySkin).paint(FUR_DARK, { c2: FUR_LIGHT, ...furOpts });
+  for (let i = 0; i < 6; i++) tuft(surf(-0.45 - i * 0.22, Math.PI / 2 + (i % 2 ? 0.12 : -0.12), 0.97), 0, 0.5, -0.86, 0.34 - i * 0.025, 0.13);
+  for (const s of [1, -1]) {
+    const m = (th: number): number => (s > 0 ? th : Math.PI - th);
+    tuft(surf(-1.25, m(0.75), 0.97), s * 0.5, 0.2, -0.84, 0.3, 0.12);
+    tuft(surf(-1.5, m(0.3), 0.97), s * 0.55, -0.1, -0.83, 0.28, 0.11);
+  }
   // 短尾
   b.bone(Q.tail[0]).paint(FUR_DARK, { ...furOpts });
   b.ball(0, 1.4, -1.8, 0.16, 0.14, 0.14, 1);
@@ -219,6 +237,9 @@ export function createEmberBear(): ModelDef {
     b.g(X(0.26, 1.88, 1.93, -10, 36, 22), () => b.extrude([[-0.09, 0], [0, 0.035], [0.09, 0.02], [0.01, -0.03]], 0.05, 0));
     b.paint(FUR_DARK, { ...furOpts });
     b.g(X(0.27, 1.95, 1.9, -14, 34, 26), () => b.box(0, 0, 0, 0.24, 0.05, 0.08, 0.02));
+    // 颊毛
+    b.paint(FUR, { c2: FUR_LIGHT, ...furOpts });
+    b.tube([[0.4, 1.64, 1.62, 0.1, 0.05], [0.52, 1.56, 1.5, 0.08, 0.04], [0.6, 1.46, 1.36, 0.012, 0.012]], { seg: 4, up: [0, 0, 1], cap0: false });
     // 上犬齿
     b.paint(0xf4e8d0, { gloss: 0.6, mat: MAT.leather });
     b.g(X(0.12, 1.52, 2.2, 180, 0, 0), () => b.crystal(0.035, 0.14, 4, 0.9, 0.05));
@@ -242,7 +263,7 @@ export function createEmberBear(): ModelDef {
     const len = 0.62 + 0.3 * sn + 0.14 * hash(i, 21);
     const tip = [cs * (0.56 + len * 0.62), 1.5 + sn * (0.52 + len * 0.7) + 0.1, 1.08 - len * 0.62];
     const mid = [lerp(root[0], tip[0], 0.5) + cs * 0.1, lerp(root[1], tip[1], 0.5) + 0.1, lerp(root[2], tip[2], 0.5) + 0.06];
-    b.bone(manes[i % 4]).paint(MANE, { c2: MANE_TIP, glow: 0.22, glow2: 0.6, mat: MAT.fur, line: 1 });
+    b.bone(manes[i % 4]).paint(MANE, { c2: MANE_TIP, glow: 0.14, glow2: 0.42, mat: MAT.fur, line: 1 });
     b.tube(
       [
         [root[0], root[1], root[2], 0.2, 0.09],
@@ -295,7 +316,7 @@ export function createEmberBear(): ModelDef {
         }
         planted = false;
         const dim = seg(d, 0.5, 1.1);
-        fire = (1 + 2.6 * bump(d, 0.3, 0.3)) * (1 - dim);
+        fire = (1 + 1.2 * bump(d, 0.3, 0.3)) * (1 - dim);
         pose.scale(core, 1 - 0.5 * dim);
         flames.forEach((f) => pose.scale(f, Math.max(0, (1 + 1.5 * bump(d, 0.3, 0.28)) * (1 - seg(d, 0.45, 0.8)))));
         manes.forEach((m) => pose.scale(m, 1 - 0.75 * seg(d, 0.6, 1.3)));
@@ -334,7 +355,7 @@ export function createEmberBear(): ModelDef {
           }
           standLegs(Q, pose, 0, 0, 12);
           planted = false;
-          fire += 1.2 * up + 3 * bump(p, 0.37, 0.16);
+          fire += 0.4 * up + 1.1 * bump(p, 0.37, 0.16);
           flames.forEach((f) => pose.scale(f, 1 + 1.6 * bump(p, 0.4, 0.2)));
         } else {
           // 左右掌交替横拍：收掌蓄力 → 上步横扫
@@ -351,7 +372,7 @@ export function createEmberBear(): ModelDef {
           standLegs(Q, pose, 0, 0, 15 & ~(1 << li));
           plantLeg(Q, pose, li, l.rx + s * (0.35 * back - 0.75 * swipe), l.ry + 1.0 * back + 0.5 * swipe * (1 - swipe), l.rz - 0.25 * back + 0.95 * swipe, 30 * back - 20 * swipe);
           planted = false;
-          fire += 0.5 * back + 1.4 * bump(p, 0.36, 0.14);
+          fire += 0.2 * back + 0.6 * bump(p, 0.36, 0.14);
         }
         break;
       }
@@ -380,7 +401,7 @@ export function createEmberBear(): ModelDef {
           pose.add(Q.neck[0], -26 * cry, 0, 0);
           pose.add(Q.head, -24 * cry, 0, 0);
           roar = cry;
-          fire = 0.4 + 0.6 * rise + 1.6 * cry;
+          fire = 0.4 + 0.6 * rise + 0.8 * cry;
           flames.forEach((f) => pose.scale(f, rise * (1 + 1.2 * cry)));
         } else if (alert) {
           // 警戒：压低前身低吼，间或昂头咆哮
@@ -391,7 +412,7 @@ export function createEmberBear(): ModelDef {
           pose.add(Q.neck[0], 8 - 30 * cry, Math.sin(t * 9) * 1.5, 0);
           pose.add(Q.head, -18 * cry, 0, 0);
           roar = 0.25 + 0.75 * cry;
-          fire += 0.4 + 0.8 * cry;
+          fire += 0.2 + 0.4 * cry;
         } else {
           // 待机：伏低喘息；每隔几秒打个哈欠或挠一下地
           const cyc = (t / 6.5) % 1;
@@ -422,7 +443,7 @@ export function createEmberBear(): ModelDef {
       pose.add(Q.neck[0], 10 * hk, sgn * 16 * hk, 0);
       pose.add(Q.head, 8 * hk, 0, sgn * 14 * hk);
       pose.move(Q.pelvis, 0, -0.06 * hk, -0.08 * hk);
-      fire += 1.2 * hk;
+      fire += 0.6 * hk;
     }
     pose.rot(Q.jaw, 4 + 30 * roar, 0, 0);
     // 火舌与火鬃：各带相位地伸缩摇摆

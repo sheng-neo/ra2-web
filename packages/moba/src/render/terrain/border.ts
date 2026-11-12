@@ -9,6 +9,7 @@
 import * as THREE from 'three';
 import { GLSL_OUTPUT_FRAGMENT, PALETTE, Rng, SHARED, fbm2, hash2 } from '../materials';
 import type { Vec2 } from '../../core/types';
+import { TOP_TEX } from './cliffs';
 import { type MapField, WATER_LEVEL } from './field';
 import { MeshBuilder, type OutlinePoint, type RGB, type SceneryBatcher, extrudeRings, lerp, mixRgb, outlineNormals, rgb, scaleRgb, smoothstep } from './geo';
 import type { PropLibrary } from './models';
@@ -154,7 +155,9 @@ export function buildBorder(field: MapField, info: BorderInfo, root: THREE.Objec
       y = lerp(hi[k][1], lo[k][1], sw);
       const rockCols: RGB[] = [mixRgb(ROCK_DARK, ROCK, 0.2), mixRgb(ROCK_DARK, ROCK, 0.65 - crack * 0.3), mixRgb(ROCK_LIGHT, MOSS, hash2(i, 5, 51) * 0.4), ROCK, mixRgb(ROCK, ROCK_LIGHT, 0.55), mixRgb(ROCK_LIGHT, ROCK_WARM, 0.6)];
       const stoneCols: RGB[] = [scaleRgb(stoneDark, 0.75), mixRgb(stoneDark, stone, 0.5), stone, mixRgb(stoneDark, stone, 0.7), stone, scaleRgb(stone, 1.05)];
-      const lowCols: RGB[] = [scaleRgb(ROCK, 0.8), ROCK_LIGHT, mixRgb(ROCK_LIGHT, ROCK_WARM, 0.7), ROCK_LIGHT, ROCK, ROCK_DARK];
+      // 南侧矮石沿：沿顶是长苔的暖石，外立面往下迅速压暗(当画框用，不抢对局区)
+      const mossN = fbm2(p.s * 0.31, 5.7, 2, 19);
+      const lowCols: RGB[] = [scaleRgb(ROCK, 0.8), mixRgb(ROCK_LIGHT, MOSS, mossN * 0.5), mixRgb(mixRgb(ROCK_LIGHT, ROCK_WARM, 0.6), MOSS, smoothstep(0.45, 0.7, mossN) * 0.7), mixRgb(ROCK, MOSS, mossN * 0.4), scaleRgb(ROCK_DARK, 0.9), scaleRgb(ROCK_DARK, 0.62)];
       const hiCol = inBase ? stoneCols[k] : rockCols[k];
       const loCol = inBase ? stoneCols[Math.min(5, k + 1)] : lowCols[k];
       color = mixRgb(hiCol, loCol, sw);
@@ -200,7 +203,7 @@ export function buildBorder(field: MapField, info: BorderInfo, root: THREE.Objec
         color = [ROCK, mixRgb(ROCK, ROCK_DARK, 0.6), mixRgb(ROCK_DARK, DEEP, 0.5), DEEP][k - 14];
       }
     }
-    const tex = k <= 5 || k >= 13 ? 1 : k === 6 ? 0.5 : 0.1;
+    const tex = k <= 5 || k >= 13 ? 1 : k === 6 ? 0.6 : TOP_TEX;
     return { t: t * p.miter, y, color: scaleRgb(color, tone), ao, tex };
   };
 
@@ -274,7 +277,7 @@ export function scatterBorder(batch: SceneryBatcher, lib: PropLibrary, field: Ma
         } else {
           // 紧邻对局区的第一排用精细树，其余用低面数的远景树
           const sc = rng.range(1.0, 1.55) * (sw > 0.5 ? 0.8 : 1);
-          batch.add(rng.pick(t < 4.5 ? lib.trees : lib.farTrees), trs(px, y - 0.1, pz, rng.range(0, 6.28), sc, sc * rng.range(0.95, 1.15)), { tint });
+          batch.add(rng.pick(t < 3.2 ? lib.trees : lib.farTrees), trs(px, y - 0.1, pz, rng.range(0, 6.28), sc, sc * rng.range(0.95, 1.15)), { tint });
         }
       } else if (roll < 0.74) {
         const sc = rng.range(0.7, 1.9);
@@ -291,6 +294,16 @@ export function scatterBorder(batch: SceneryBatcher, lib: PropLibrary, field: Ma
         batch.add(rng.pick(lib.tallPillars), trs(px, y - 0.1, pz, rng.range(0, 6.28), rng.range(1.2, 1.7), rng.range(1.2, 1.9), rng.range(-0.08, 0.08), rng.range(-0.08, 0.08)), { tint: [0.95, 0.95, 0.92], glow: 0.9 });
       }
     }
+  }
+  // 南侧矮石沿：沿顶一排向外(朝镜头)垂下的草帘，间或一丛蕨，把那条石带打碎
+  const r3 = new Rng(16180);
+  for (let x = -bound + 0.6; x < bound - 0.6; x += r3.range(0.45, 0.9)) {
+    const z = bound + 0.34;
+    if (field.riverDist(x, z) < 1.2 || field.baseDist(x, bound - 0.6) < 0.3) continue;
+    const kind = r3.next();
+    if (kind < 0.7) batch.add(r3.pick(lib.drapes), trs(x, 0.4, z + 0.14, -Math.PI / 2 + r3.range(-0.3, 0.3), r3.range(1.0, 1.5)), { shadow: false, tint: scaleRgb([1, 1, 0.94], r3.range(0.82, 1.02)) });
+    else if (kind < 0.85) batch.add(r3.pick(lib.ferns), trs(x, 0.4, z - 0.04, r3.range(0, 6.28), r3.range(0.7, 1.0)), { shadow: false });
+    else if (kind < 0.93) batch.add(r3.pick(lib.vines), trs(x, 0.36, z + 0.3, -Math.PI / 2, r3.range(0.9, 1.2), r3.range(0.8, 1.5)), { shadow: false });
   }
   // 林下的矮草与野花：打破大片纯色的林地
   const r2 = new Rng(27182);

@@ -5,12 +5,23 @@ describe('parseDebugParams', () => {
   it('没有参数时全部为缺省值', () => {
     expect(parseDebugParams('')).toEqual({
       hero: null, difficulty: null, seed: null, skipMenu: false, auto: false, speed: 1, quality: null, showFps: false,
+      autoBuy: null, tutorial: null, objectiveHints: null,
     });
   });
 
   it('解析完整的查询串', () => {
     const p = parseDebugParams('?hero=xingli&difficulty=hard&seed=42&skipmenu=1&auto=1&speed=8&quality=high&fps=1');
-    expect(p).toEqual({ hero: 'xingli', difficulty: 'hard', seed: 42, skipMenu: true, auto: true, speed: 8, quality: 'high', showFps: true });
+    expect(p).toEqual({
+      hero: 'xingli', difficulty: 'hard', seed: 42, skipMenu: true, auto: true, speed: 8, quality: 'high', showFps: true,
+      autoBuy: null, tutorial: null, objectiveHints: null,
+    });
+  });
+
+  it('对战辅助三项是三态：不写 = 跟随玩家设置(null)，写了才覆盖', () => {
+    expect(parseDebugParams('?autobuy=0&tutorial=1&hints=off')).toMatchObject({ autoBuy: false, tutorial: true, objectiveHints: false });
+    expect(parseDebugParams('', '#autobuy=1&tutorial=0')).toMatchObject({ autoBuy: true, tutorial: false, objectiveHints: null });
+    // 单词 hash 也能当开关用
+    expect(parseDebugParams('', '#autobuy')).toMatchObject({ autoBuy: true, tutorial: null });
   });
 
   it('非法取值被忽略而不是原样放行', () => {

@@ -89,6 +89,8 @@ export class BloomPyramidPass extends Pass {
   /** x = 阈值(线性 HDR 亮度)，y = 软拐点宽度。受光的白石/石板不得越过阈值；发光件的 HDR 亮度定在 1.6~3.0 */
   readonly threshold = new THREE.Vector2(1.35, 0.25);
   levels = 5;
+  /** 本通道开始绘制时的回调(GPU 分段计时用) */
+  onBegin: (() => void) | null = null;
   private down: THREE.WebGLRenderTarget[] = [];
   private up: THREE.WebGLRenderTarget[] = [];
   private quad = new FullScreenQuad();
@@ -136,6 +138,7 @@ export class BloomPyramidPass extends Pass {
   }
 
   override render(renderer: THREE.WebGLRenderer, _write: THREE.WebGLRenderTarget, read: THREE.WebGLRenderTarget): void {
+    this.onBegin?.();
     const n = Math.min(MAX_LEVELS, Math.max(2, this.levels));
     const quad = this.quad;
     // 提取高亮 → 第 0 级
@@ -273,6 +276,8 @@ export class FinalPass extends Pass {
   private bloom: BloomPyramidPass;
   readonly grade: GradeParams;
   private gradeOn = true;
+  /** 本通道开始绘制时的回调(GPU 分段计时用) */
+  onBegin: (() => void) | null = null;
 
   constructor(bloom: BloomPyramidPass, grade: GradeParams) {
     super();
@@ -323,6 +328,7 @@ export class FinalPass extends Pass {
   }
 
   override render(renderer: THREE.WebGLRenderer, write: THREE.WebGLRenderTarget, read: THREE.WebGLRenderTarget): void {
+    this.onBegin?.();
     const u = this.material.uniforms;
     const g = this.grade;
     u.tDiffuse.value = read.texture;
@@ -355,6 +361,11 @@ export class PostPipeline {
   readonly finalPass: FinalPass;
   readonly grade: GradeParams;
   private target: THREE.WebGLRenderTarget;
+  /** 场景画完、第一个全屏通道(bloom 或合成)开始时调用一次(GPU 分段计时用) */
+  set onPostBegin(fn: (() => void) | null) {
+    this.bloomPass.onBegin = fn;
+    this.finalPass.onBegin = fn;
+  }
 
   constructor(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.Camera, grade: GradeParams, q: QualitySettings) {
     this.grade = grade;

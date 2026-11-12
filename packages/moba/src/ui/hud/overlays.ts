@@ -9,7 +9,7 @@ import { storageGet, storageSet } from '../storage';
 import { h, icon, injectStyle, sfCss } from '../theme';
 import { classSlot, clamp01, numSlot, textSlot, varSlot, type HudCtx, type HudPart, type InputMode, type ToastTone } from './common';
 import { glyphFace, heroFace, teamCls } from './face';
-import { REJECT_TEXT } from './text';
+import { BUFF_GAIN_TEXT, REJECT_TEXT } from './text';
 
 const STYLE = sfCss(`
 /* ── 阵亡：去色层 + 面板 ── */
@@ -124,6 +124,8 @@ const STYLE = sfCss(`
 @media (orientation: portrait) {
   .sf-hud__death { top: calc(var(--hud-t) + var(--hud-mini) + 150u); }
   .sf-hud__fps { left: var(--hud-l); top: calc(var(--hud-t) + var(--hud-mini) + max(60px, 66u)); }
+  /* 顶部指引位(引导卡 / 当前目标)在竖屏下正好占着这一行：有指引时帧率读数挪到小地图右边、右上角按钮的下面 */
+  .sf-hud.is-coach .sf-hud__fps { left: calc(var(--hud-l) + var(--hud-mini) + 8u); top: calc(var(--hud-t) + var(--hud-mini) - 6u); }
   .sf-hud__toasts { bottom: calc(var(--hud-ch) + var(--hud-lift) + 40u); }
   .sf-hud__channel { bottom: calc(var(--hud-ch) + var(--hud-lift) + 6u); }
   .sf-hud__tips { bottom: calc(var(--hud-ch) + var(--hud-lift) + 10u); padding-left: 10u; max-width: 94vw; }
@@ -154,7 +156,9 @@ export function createDeathOverlay(ctx: HudCtx, opts: DeathOptions): DeathOverla
   const countN = h('b', 'sf-num', '0');
   const count = h('div', 'sf-hud__death-count', countN);
   const killer = h('div', 'sf-hud__death-killer');
-  const panel = h('div', 'sf-hud__death', count, h('div', 'sf-hud__death-main', h('h2', 'sf-hud__death-title sf-metal', '你已阵亡'), h('div', 'sf-hud__death-label', '秒后复活'), killer, h('div', 'sf-hud__death-tip', '阵亡期间仍可打开商店购买装备')));
+  const tip = h('div', 'sf-hud__death-tip');
+  const setTip = textSlot(tip);
+  const panel = h('div', 'sf-hud__death', count, h('div', 'sf-hud__death-main', h('h2', 'sf-hud__death-title sf-metal', '你已阵亡'), h('div', 'sf-hud__death-label', '秒后复活'), killer, tip));
 
   const setCount = numSlot(countN);
   const setP = varSlot(count, '--p', 1 / 180);
@@ -166,8 +170,11 @@ export function createDeathOverlay(ctx: HudCtx, opts: DeathOptions): DeathOverla
     dead = v;
     ctx.root.classList.toggle('is-dead', v);
     opts.dimTarget?.classList.toggle('is-on', v);
-    if (v) total = Math.max(1, me.respawnIn);
-    else killer.textContent = '';
+    if (v) {
+      total = Math.max(1, me.respawnIn);
+      // 自动出装开着时不用操心装备；关着就提醒可以趁这会儿买
+      setTip(me.autoBuy ? '阵亡期间金币照涨，自动出装照买。' : '阵亡期间金币照涨，可以打开商店买装备。');
+    } else killer.textContent = '';
     opts.onDeathChange?.(v);
   }
 
@@ -193,7 +200,7 @@ export function createDeathOverlay(ctx: HudCtx, opts: DeathOptions): DeathOverla
         const src = c.unit(ev.killerId);
         const foe = c.team === 0 ? 1 : 0;
         const kind = src?.kind;
-        const name = kind === 'tower' ? '敌方防御塔' : kind === 'core' ? '敌方星核' : src && src.kind === 'monster' ? MONSTERS[src.monsterType].name : kind === 'minion' ? '敌方小兵' : '战场';
+        const name = kind === 'tower' ? '敌方防御塔' : kind === 'core' ? '敌方水晶' : src && src.kind === 'monster' ? MONSTERS[src.monsterType].name : kind === 'minion' ? '敌方小兵' : '战场';
         killer.append(glyphFace(kind === 'tower' || kind === 'core' ? uiIcon('tower') : kind === 'monster' ? uiIcon('monster') : uiIcon('cs'), teamCls(foe, c.team)), h('span', 'is-red', name));
       }
       const assists = ev.assistIds.map((id) => c.hero(id)).filter((x): x is HeroUnit => !!x);
@@ -214,7 +221,8 @@ export function createDeathOverlay(ctx: HudCtx, opts: DeathOptions): DeathOverla
 
 export interface Toasts extends HudPart {
   el: HTMLElement;
-  show(text: string, tone?: ToastTone): void;
+  /** life：至少停留多久(秒)。不传时按字数给：短句 1.7 秒，带说明的长句自动加长 */
+  show(text: string, tone?: ToastTone, life?: number): void;
 }
 
 const TOAST_LIFE = 1.7;
@@ -225,11 +233,13 @@ export function createToasts(ctx: HudCtx): Toasts {
   el.setAttribute('aria-live', 'assertive');
   const items: { el: HTMLElement; text: string; until: number; leaving: boolean }[] = [];
 
-  function show(text: string, tone: ToastTone = 'warn'): void {
+  function show(text: string, tone: ToastTone = 'warn', minLife = TOAST_LIFE): void {
+    // 停留时间跟着字数走：「技能冷却中」一眼就够，一句十几个字的说明要给够阅读时间
+    const life = Math.max(minLife, 0.9 + text.length * 0.12);
     // 同一句话连着来(狂按冷却中的技能)：不叠新条，只让旧的抖一下并续命
     for (const it of items) {
       if (it.text === text && !it.leaving) {
-        it.until = ctx.now + TOAST_LIFE;
+        it.until = ctx.now + life;
         it.el.classList.remove('is-again');
         void it.el.offsetWidth;
         it.el.classList.add('is-again');
@@ -238,7 +248,7 @@ export function createToasts(ctx: HudCtx): Toasts {
     }
     const t = h('div', `sf-hud__toast${tone === 'warn' ? '' : ` is-${tone}`}`, icon(TOAST_ICON[tone]), text);
     el.appendChild(t);
-    items.push({ el: t, text, until: ctx.now + TOAST_LIFE, leaving: false });
+    items.push({ el: t, text, until: ctx.now + life, leaving: false });
     while (items.length > 3) items.shift()?.el.remove();
   }
 
@@ -259,6 +269,18 @@ export function createToasts(ctx: HudCtx): Toasts {
     },
     handleEvent(ev: GameEvent, c) {
       if (ev.type === 'reject' && ev.unitId === c.state.playerId) show(REJECT_TEXT[ev.reason], 'warn');
+      else if (ev.type === 'fx' && ev.key === 'buff_gain' && ev.unitId === c.state.playerId) {
+        // 拿到蓝buff / 红buff：每次都用一句话说清楚得到了什么。事件本身不带是哪一种，看身上刚挂上(剩余时间最长)的那个
+        let id: keyof typeof BUFF_GAIN_TEXT | null = null;
+        let left = -1;
+        for (const b of c.me.buffs) {
+          if ((b.id === 'frost_insight' || b.id === 'ember_might') && b.timeLeft > left) {
+            left = b.timeLeft;
+            id = b.id;
+          }
+        }
+        if (id) show(BUFF_GAIN_TEXT[id], 'info');
+      }
     },
   };
 }
@@ -352,7 +374,7 @@ export function createTips(ctx: HudCtx, seconds: number): Tips {
         h('span', null, ...kbd('右键'), '点地移动 / 攻击'),
         h('span', null, ...kbd('空格'), '普攻'),
         h('span', null, ...kbd('Q', 'E', 'R'), '技能：按住瞄准，松开施放'),
-        h('span', null, ...kbd('F', 'G', 'B'), '闪现 / 恢复 / 回城'),
+        h('span', null, ...kbd('F', 'G', 'B'), '闪现 / 疗伤 / 回城'),
         h('span', null, ...kbd('P'), '商店'),
         h('span', null, ...kbd('Tab'), '战况'),
         h('span', null, ...kbd('Esc'), '暂停'),

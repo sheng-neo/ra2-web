@@ -120,10 +120,16 @@ void main() {
   float wdepth = max(0.0, uWaterLevel - vWorldPos.y);
   vec2 wp = wp0;
   #if WATER >= 1
-  // 折射：河床各层的采样坐标按水波法线偏移，水越深晃得越厉害(与水面着色器用同一组流动噪声)
-  vec4 rn = texture2D(tNoise, wp0 * 0.061 - uFlow * t * 0.022);
-  vec4 rn2 = texture2D(tNoise, wp0 * 0.113 - uFlow * t * 0.041 + vec2(0.37, 0.71));
-  wp += vec2((rn.g - 0.5) * 0.4 + (rn2.b - 0.5) * 0.3, (rn.b - 0.5) * 0.4 + (rn2.g - 0.5) * 0.3) * (wdepth * 2.4);
+  // 折射：河床各层的采样坐标按水波法线偏移，水越深晃得越厉害(与水面着色器用同一组流动噪声)。只有水下的像素才采样
+  if (under > 0.001) {
+    vec4 rn = texture2D(tNoise, wp0 * 0.061 - uFlow * t * 0.022);
+    #if WATER >= 2
+    vec4 rn2 = texture2D(tNoise, wp0 * 0.113 - uFlow * t * 0.041 + vec2(0.37, 0.71));
+    wp += vec2((rn.g - 0.5) * 0.4 + (rn2.b - 0.5) * 0.3, (rn.b - 0.5) * 0.4 + (rn2.g - 0.5) * 0.3) * (wdepth * 2.4);
+    #else
+    wp += (rn.gb - 0.5) * (wdepth * 1.5);
+    #endif
+  }
   #endif
 
   vec2 suv = wp * uSplatScale + 0.5;
@@ -146,20 +152,21 @@ void main() {
   #if DETAIL >= 1
   vec3 gt2 = texture2D(tGrass, vec2(wp.y, -wp.x) * 0.0371 + 0.4).rgb;
   #else
-  vec3 gt2 = vec3(0.47);
+  vec3 gt2 = vec3(0.182);
   #endif
   vec3 grass = mix(cGrassCool, cGrass, smoothstep(0.3, 0.6, nA.r));
   grass = mix(grass, cGrassWarm, smoothstep(0.5, 0.76, nA.g) * 0.55);
   grass = mix(grass, cGrassCool, (1.0 - smoothstep(0.4, 5.0, dRiver)) * 0.55);
   grass = mix(grass, cGrassDark, smoothstep(0.54, 0.8, nB.r) * 0.45);
-  vec3 gdet = mix(vec3(1.0), gt * 2.1 * (gt2 * 0.8 + 0.62), 0.72);
-  grass *= mix(vec3(0.86, 0.96, 1.02), vec3(1.1, 1.06, 0.88), smoothstep(0.75, 1.35, gdet.g)) * gdet;
+  // (草贴图是 sRGB 的暗灰绿，线性均值约 0.18：先乘回 1 附近，再把对比收到原来的六成；最亮的笔触封顶)
+  vec3 gdet = min(mix(vec3(1.0), gt * 5.5 * (gt2 * 2.75 + 0.5), 0.6), vec3(1.55));
+  grass *= mix(vec3(0.9, 0.97, 1.02), vec3(1.08, 1.05, 0.9), smoothstep(0.8, 1.35, gdet.g)) * gdet;
   vec3 albedo = grass;
   vec3 emissive = vec3(0.0);
 
   // ── 野区腐殖土：通道中央踩实成土路，靠墙处保留草 ──
   // (泥土贴图是 sRGB 的中灰，线性均值约 0.22：乘回 1 附近，并收一点对比)
-  vec3 dt = mix(vec3(1.0), texture2D(tDirt, wp * 0.238).rgb * 4.4, 0.75);
+  vec3 dt = mix(vec3(1.0), texture2D(tDirt, wp * 0.238).rgb * 4.9, 0.75);
   float corridor = smoothstep(0.9, 3.0, dSolid);
   float dirtN = nB.r * 0.55 + nA.g * 0.45;
   float dirtMask = smoothstep(0.47, 0.6, dirtN + corridor * 0.12 - 0.06) * corridor;
@@ -177,21 +184,30 @@ void main() {
   albedo = mix(albedo, cHumus * 0.55, root * 0.5);
   #endif
   albedo = mix(albedo, dirt, dirtMask);
-  albedo = mix(albedo, cGrassDark * (gt * 1.6 + 0.2) * 0.62, bushSoil * 0.85);
+  albedo = mix(albedo, cGrassDark * (gt * 3.2 + 0.4) * 0.62, bushSoil * 0.85);
 
   // ── 兵线石板路：路内铺满，只有最外沿零星缺块；路缘石(几何)外面是一条窄夯土带，再过渡到草 ──
   float laneN = (nB.g - 0.5) * 0.45 + (nB.b - 0.5) * 0.25;
   float dl = dLane + laneN;
   // tStone：r 明暗 g 石面蒙版 b 石块 id a 烘好的倒角受光；tStoneN：rg 法线 b 高度 a 苔藓噪声
-  vec4 sd = texture2D(tStone, wp * 0.125);
-  vec4 sn = texture2D(tStoneN, wp * 0.125);
-  float keepT = smoothstep(-0.95, 0.2, dl);
+  // (只有兵线、塔座、基地附近才用得到：其余地方省掉这两次采样)
+  vec4 sd = vec4(0.5, 1.0, 0.5, 0.5);
+  vec4 sn = vec4(0.5, 0.5, 0.8, 0.3);
+  if (dLane < 1.4 || dPad < 1.0 || dBase < 0.8) {
+    sd = texture2D(tStone, wp * 0.125);
+    #if DETAIL >= 1
+    sn = texture2D(tStoneN, wp * 0.125);
+    #endif
+  }
+  float keepT = smoothstep(-0.55, 0.3, dl);
   float paved = step(keepT * keepT * 0.85, sd.b);
   float earth = 1.0 - smoothstep(0.3, 0.8, dl);
   vec3 laneEarth = cLaneEarth * dt * (0.94 + 0.2 * nA.b);
   float wear = smoothstep(-1.2, -3.2, dLane);
   float tone = mix(sd.r * 2.0, 1.0, 0.4 * wear) * (1.0 + 0.08 * wear);
-  vec3 laneStone = mix(cLane, cLaneAlt, smoothstep(0.5, 0.9, sd.b) * 0.7) * tone * (0.95 + 0.12 * nA.r) * uLaneGain;
+  vec3 laneStone = mix(cLane, cLaneAlt, smoothstep(0.5, 0.9, sd.b) * 0.7);
+  // 主光很暖：反照率往冷灰收一点，受光后才是「暖灰米」而不是土黄
+  laneStone = mix(laneStone, vec3(dot(laneStone, vec3(0.3, 0.5, 0.2))) * vec3(0.95, 1.0, 1.1), 0.42) * tone * (0.95 + 0.12 * nA.r) * uLaneGain;
   // 苔：路边、墙脚与近水处，从石缝往石面上爬
   float nearWall = 1.0 - smoothstep(0.3, 2.0, dSolid);
   float nearRiver = 1.0 - smoothstep(0.4, 3.0, dRiver);
@@ -242,7 +258,7 @@ void main() {
     float e = min(dA, dR);
     float hs = hash12(vec2(segId, ringId) + team * 17.0);
     float joint = smoothstep(0.018, 0.04, e);
-    plaza = bStone * (0.86 + 0.24 * hs) * (0.88 + 0.24 * nA.g) * (0.72 + 0.56 * sd.r) * (0.9 + 0.2 * dt.g);
+    plaza = bStone * (0.78 + 0.22 * hs) * (0.88 + 0.24 * nA.g) * (0.72 + 0.56 * sd.r) * (0.9 + 0.2 * dt.g);
     plaza *= band > 1.5 ? 0.74 : 1.0;
     // 饰带中线嵌一道细金线
     plaza = mix(plaza, bTrim, (1.0 - smoothstep(0.02, 0.045, abs(rin - 0.45))) * step(1.5, band) * 0.85);
@@ -333,8 +349,16 @@ void main() {
     float pulse = 0.72 + 0.28 * sin(t * 1.3 + camp.x);
     if (camp.z < 1.5) {
       // 霜晶洼地：石与土偏冷灰蓝，草尖泛白霜
-      float frost = smoothstep(0.8, 1.25, gdet.g) * 0.5 + smoothstep(0.5, 0.75, nB.b) * 0.35;
-      albedo = mix(albedo, albedo * vec3(0.74, 0.88, 1.06) + vec3(0.42, 0.56, 0.66) * frost, m * 0.85 * open);
+      float fm = m * open;
+      float frost = smoothstep(0.34, 0.62, nB.r * 0.55 + nA.g * 0.45 + (1.0 - cr / 5.5) * 0.28);
+      vec3 ice = vec3(0.42, 0.56, 0.68) * (0.8 + 1.1 * gt.g);
+      albedo = mix(albedo * vec3(0.78, 0.9, 1.04), ice, frost * 0.82 * fm);
+      albedo += vec3(0.3, 0.38, 0.42) * smoothstep(0.85, 1.3, gdet.g) * fm * (1.0 - frost) * 0.6;
+      #if DETAIL >= 1
+      // 冰面上的白色裂纹
+      float fc = texture2D(tNoise, wp * 0.21 + 0.71).g;
+      albedo += vec3(0.4, 0.46, 0.5) * (1.0 - smoothstep(0.006, 0.022, abs(fc - 0.5))) * frost * fm * 0.5;
+      #endif
     } else if (camp.z < 2.5) {
       // 余烬坑：焦黑的玄武地面 + 缓慢明灭的熔裂纹
       vec3 scorch = vec3(0.05, 0.043, 0.045) * (0.55 + 0.9 * dt.g);
@@ -342,8 +366,8 @@ void main() {
       albedo = mix(albedo, scorch, sm * 0.88);
       #if DETAIL >= 1
       float cn = texture2D(tNoise, wp * 0.115 + 0.43).g;
-      float crack = (1.0 - smoothstep(0.006, 0.03, abs(cn - 0.5))) * smoothstep(0.25, 0.9, sm);
-      emissive += vec3(1.0, 0.36, 0.08) * crack * (0.5 + 0.7 * pulse) * (0.6 + 0.6 * nB.b);
+      float crack = (1.0 - smoothstep(0.004, 0.022, abs(cn - 0.5))) * smoothstep(0.25, 0.9, sm);
+      emissive += vec3(1.0, 0.36, 0.08) * crack * (0.28 + 0.42 * pulse) * (0.5 + 0.7 * nB.b);
       albedo = mix(albedo, vec3(0.5, 0.16, 0.04), crack * 0.6);
       #endif
     } else if (camp.z < 3.5) {
@@ -392,14 +416,16 @@ void main() {
   float dr = dRiver + (nB.g - 0.5) * 0.7;
   float bedMask = 1.0 - smoothstep(-0.2, 0.45, dr);
   vec3 bed = mix(cSand, cGravel, smoothstep(0.08, 0.42, wdepth)) * (0.8 + 0.4 * nB.g) * (0.5 + 0.5 * dt);
+  #if DETAIL >= 2
   // 河底卵石
   float pebble = smoothstep(0.3, 0.2, texture2D(tNoise, wp * 0.21).a);
   bed = mix(bed, bed * vec3(0.62, 0.66, 0.72), pebble * 0.6);
+  #endif
   // 渡口：水下仍能看到石板
   float ford = stoneMask * 0.85 + plazaMask;
   albedo = mix(albedo, mix(bed, albedo, ford), bedMask * (1.0 - plazaMask));
   vec3 absorb = exp(-wdepth * vec3(6.2, 2.1, 1.25));
-  albedo = albedo * absorb + cScatter * (0.42 * (1.0 - absorb.r)) * under;
+  albedo = albedo * absorb + cScatter * (0.36 * (1.0 - absorb.r)) * under;
   // 岸边湿土 + 紧贴水线的一道深色水渍
   float wet = (1.0 - smoothstep(0.1, 1.1, dr)) * (1.0 - under);
   albedo *= 1.0 - 0.34 * wet;
@@ -446,16 +472,20 @@ void main() {
   #endif
   #if WATER >= 1
   // 焦散：两个尺度反向滚动取交叠，只在受光的浅水里
-  vec2 cuv = wp * 0.155;
-  float c1 = texture2D(tCaust, cuv + uFlow * t * 0.018 + vec2(t * 0.011, -t * 0.007)).r;
-  #if WATER >= 2
-  float c2 = texture2D(tCaust, cuv * 0.71 - vec2(t * 0.013, t * 0.009) + 0.31).g;
-  float caust = (c1 + c2) * 0.42 + min(c1, c2) * 1.5;
-  #else
-  float caust = c1 * 0.8;
-  #endif
-  float cdep = smoothstep(0.03, 0.14, wdepth) * (1.0 - 0.45 * smoothstep(0.26, 0.4, wdepth)) * (1.0 - 0.6 * pitGlow);
-  vec3 caustic = cCaustic * caust * cdep * under;
+  vec3 caustic = vec3(0.0);
+  if (under > 0.001) {
+    vec2 cuv = wp * 0.155;
+    float c1 = texture2D(tCaust, cuv + uFlow * t * 0.018 + vec2(t * 0.011, -t * 0.007)).r;
+    #if WATER >= 2
+    float c2 = texture2D(tCaust, cuv * 0.71 - vec2(t * 0.013, t * 0.009) + 0.31).g;
+    float caust = (c1 + c2) * 0.42 + min(c1, c2) * 1.5;
+    #else
+    float caust = c1 * 0.8;
+    #endif
+    // (渡口是兵线必经之处：焦散收掉一半，免得单位脚下一片碎光)
+    float cdep = smoothstep(0.03, 0.14, wdepth) * (1.0 - 0.45 * smoothstep(0.26, 0.4, wdepth)) * (1.0 - 0.6 * pitGlow) * (1.0 - 0.5 * stoneMask);
+    caustic = cCaustic * caust * cdep * under;
+  }
   #else
   vec3 caustic = vec3(0.0);
   #endif
@@ -466,10 +496,10 @@ void main() {
   float lit = shadow * contact;
   vec3 amb = kitTintAmbient(kitAmbient(N) * ao, kitLightTint(wp0));
   vec3 sun = kitSunColor();
-  vec3 irradiance = amb + sun * (ndl * lit * sunK) * (1.0 + caustic * 1.6) + kitPointLights(N, -vViewPosition);
+  vec3 irradiance = amb + sun * (ndl * lit * sunK) * (1.0 + caustic * 1.15) + kitPointLights(N, -vViewPosition);
   vec3 col = albedo * RECIPROCAL_PI * irradiance;
   // 暗部偏冷(只偏色不压暗)
-  col *= mix(uShadeTintGround, vec3(1.0), lit);
+  col *= mix(uShadeTintGround * 0.9, vec3(1.0), lit);
   #if DETAIL >= 1
   // 水洼的天光反射与(高画质)太阳碎闪
   col = mix(col, cSkyRefl * (0.45 + 0.55 * lit), puddle * 0.34);
@@ -480,10 +510,12 @@ void main() {
   #endif
   #if WATER >= 2
   // 水底星屑：稀疏成簇的发光碎晶，缓慢闪烁
-  vec4 sp4 = texture2D(tNoise, wp * 0.094 + 0.63);
-  float cluster = smoothstep(0.62, 0.76, nA.b * 0.6 + nB.r * 0.5);
-  float spark = smoothstep(0.07, 0.02, sp4.a) * cluster;
-  emissive += cStar * spark * (0.55 + 0.45 * sin(t * 1.7 + sp4.g * 40.0 + wp.x)) * 0.9 * under;
+  if (under > 0.001) {
+    vec4 sp4 = texture2D(tNoise, wp * 0.094 + 0.63);
+    float cluster = smoothstep(0.62, 0.76, nA.b * 0.6 + nB.r * 0.5);
+    float spark = smoothstep(0.07, 0.02, sp4.a) * cluster;
+    emissive += cStar * spark * (0.55 + 0.45 * sin(t * 1.7 + sp4.g * 40.0 + wp.x)) * 0.9 * under;
+  }
   #endif
   col += emissive;
   gl_FragColor = vec4(col, 1.0);
@@ -639,7 +671,8 @@ export function createGround(field: MapField, splat: SplatTextures, noise: THREE
       cHumus: { value: col(E.dirtDark) },
       cSand: { value: col(E.sand) },
       cGravel: { value: col(0x8d8672) },
-      cScatter: { value: col(E.water) },
+      // 水体散射色：调色板的中段水色往灰里收一点(否则受暖光后是泳池般的艳青)
+      cScatter: { value: col(E.water).lerp(col(0x5f9aa8), 0.35) },
       cCaustic: { value: col(E.caustic) },
       cSkyRefl: { value: col(0xbcd6f2) },
       cStar: { value: col(0x9ff0ff) },

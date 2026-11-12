@@ -6,12 +6,12 @@
  * 所以这里先把一批事件收齐，afterEvents 时再统一生成。
  */
 import { MONSTERS } from '../../core/data/units';
-import type { GameEvent, HeroUnit, MonsterType } from '../../core/types';
+import type { GameEvent, HeroUnit, MonsterType, Vec2 } from '../../core/types';
 import { uiIcon } from '../icons';
 import { h, icon, injectStyle, sfCss, type Child } from '../theme';
 import type { HudCtx, HudPart } from './common';
 import { glyphFace, heroFace, teamCls } from './face';
-import { ANNOUNCE_TIER, KILL_TITLES } from './text';
+import { ANNOUNCE_TIER, KILL_TITLES, epicSlainText, riverSide, towerName } from './text';
 
 type KillEvent = Extract<GameEvent, { type: 'heroKill' }>;
 type AnnounceEvent = Extract<GameEvent, { type: 'announce' }>;
@@ -57,7 +57,10 @@ const CSS = sfCss(`
   background-image: linear-gradient(180deg, #fff3ee 0%, #ffc2b3 28%, #f25b50 54%, #9c1f2b 62%, #ff8d7a 82%, #ffe6dd 100%);
   filter: drop-shadow(0 1u 0 rgba(60, 6, 12, 0.9)) drop-shadow(0 3u 8u rgba(0, 0, 0, 0.55));
 }
-.sf-hud__banner-sub { display: flex; align-items: center; gap: 5u; margin-top: 1u; font-size: var(--sf-fs-sm); font-weight: 600; line-height: 1.3; color: var(--sf-c-text); white-space: nowrap; text-shadow: var(--hud-shadow-text); }
+.sf-hud__banner-sub { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 0 5u; margin-top: 1u; font-size: var(--sf-fs-sm); font-weight: 600; line-height: 1.35; color: var(--sf-c-text); text-align: center; text-shadow: var(--hud-shadow-text); }
+/* 每一段自己不折行，放不下时整段换到下一行 */
+.sf-hud__banner-sub > * { white-space: nowrap; }
+.sf-hud__banner-sub .is-dim { color: var(--sf-c-text-2); font-weight: 600; }
 .sf-hud__banner-sub .is-blue { color: #9ccfff; font-weight: 800; }
 .sf-hud__banner-sub .is-red { color: #ff9c9c; font-weight: 800; }
 .sf-hud__banner-sub .is-me { color: var(--sf-c-me); font-weight: 800; }
@@ -126,6 +129,8 @@ interface Item {
   left: HTMLElement | null;
   right: HTMLElement | null;
   slain: boolean;
+  /** 这一条至少亮多久(秒)：带一句话说明的要给够阅读时间。缺省按强度取 DURATION */
+  hold?: number;
 }
 
 // 横幅盖着屏幕上沿的战场(英雄以北约 11~14 米)：停留时间从紧
@@ -133,17 +138,16 @@ const DURATION: Record<Tier, number> = { 1: 1.6, 2: 2.0, 3: 2.4, 4: 3.0 };
 /** 后面有人排队时，当前横幅至少也要亮这么久 */
 const MIN_SHOW: Record<Tier, number> = { 1: 1.0, 2: 1.25, 3: 1.6, 4: 2.1 };
 const MAX_QUEUE = 4;
-const LANE_NAME = { top: '上路', mid: '中路', bot: '下路' } as const;
-const TIER_NAME = { 1: '一塔', 2: '二塔', 3: '高地塔' } as const;
-const EPIC_REWARD: Partial<Record<MonsterType, string>> = {
-  abyss_drake: '全队获得金币与经验',
-  star_colossus: '全队获得「星陨祝福」',
-};
+/** 带一句话说明的横幅(开局、出兵、史诗野怪刷新)多亮一会儿，读得完 */
+const HOLD_INFO = 2.4;
+const HOLD_EPIC = 3.4;
 
 export interface Banner extends HudPart {
   el: HTMLElement;
   /** 直接按播报键弹一条（画廊/调试用） */
   demo(ev: AnnounceEvent, c: HudCtx): void;
+  /** 正在显示横幅，或还有排队没播的：顶部中央的指引位(引导卡 / 当前目标)据此让位 */
+  isShowing(): boolean;
 }
 
 export function createBanner(): Banner {
@@ -156,7 +160,10 @@ export function createBanner(): Banner {
   // 本批事件的暂存
   const batch: (KillEvent | AnnounceEvent)[] = [];
   let lastEpic: MonsterType | null = null;
+  let lastEpicPos: Vec2 | null = null;
   let lastTower: TowerEvent | null = null;
+  /** 已经播过「刷新」横幅的史诗野怪：第一次多说一句它在小地图的哪儿 */
+  const epicSeen = new Set<MonsterType>();
 
   function enqueue(item: Item): void {
     queue.push(item);
@@ -183,7 +190,7 @@ export function createBanner(): Banner {
       item.right ? h('span', `sf-hud__banner-face is-r${item.slain ? ' is-slain' : ''}`, item.right) : null,
     );
     wrap.appendChild(el);
-    cur = { el, tier: item.tier, shownAt: now, hideAt: now + DURATION[item.tier], removeAt: 0 };
+    cur = { el, tier: item.tier, shownAt: now, hideAt: now + Math.max(DURATION[item.tier], item.hold ?? 0), removeAt: 0 };
   }
 
   const who = (hero: HeroUnit, c: HudCtx): HTMLElement =>
@@ -230,32 +237,36 @@ export function createBanner(): Banner {
     const base = { tier, tone, left: null, right: null, slain: false } as const;
     switch (a.key) {
       case 'match_start':
-        return { ...base, title: '星陨开战', sub: ['摧毁敌方星核，赢得胜利'] };
+        return { ...base, title: '对战开始', sub: ['摧毁敌方水晶就赢'], hold: HOLD_INFO };
       case 'minions_spawn':
-        return { ...base, title: '兵线出发', sub: ['星卫已从双方基地出击'] };
+        return { ...base, title: '小兵出发', sub: ['跟着小兵去打架更安全'], hold: HOLD_INFO };
       case 'super_minions':
-        return { ...base, title: mine ? '我方巨卫出击' : '敌方巨卫出击', sub: [mine ? '敌方高地已破，兵线得到强化' : '我方高地失守，小心敌方兵线'] };
+        return { ...base, title: mine ? '我方超级兵出击' : '敌方超级兵出击', sub: [mine ? '敌方高地塔已破，这一路的兵更强了' : '我方高地塔被破，注意回防'], hold: HOLD_INFO };
       case 'epic_spawn': {
         const name = lastEpic ? MONSTERS[lastEpic].name : '史诗野怪';
-        return { ...base, title: `${name}现身`, sub: [lastEpic && EPIC_REWARD[lastEpic] ? `击败它，${EPIC_REWARD[lastEpic]}` : '击败它可为全队带来强力增益'], left: glyphFace(uiIcon('monster')) };
+        // 一句话说明击杀奖励(数值取自 MONSTER_RULES)；每种第一次刷新时再说一句它在小地图的哪儿
+        const sub: Child[] = [(lastEpic && MONSTERS[lastEpic].reward) || '打掉它，全队都有奖励'];
+        if (lastEpic && lastEpicPos && !epicSeen.has(lastEpic)) sub.push(h('span', 'is-dim', `(小地图${riverSide(lastEpicPos)})`));
+        if (lastEpic) epicSeen.add(lastEpic);
+        return { ...base, title: `${name}已刷新`, sub, left: glyphFace(uiIcon('monster')), hold: HOLD_EPIC };
       }
       case 'epic_slain': {
         const name = lastEpic ? MONSTERS[lastEpic].name : '史诗野怪';
-        const reward = (lastEpic && EPIC_REWARD[lastEpic]) || '全队获得增益';
-        const sub: Child[] = actor ? [who(actor, c), `击败了${name}`, '·', reward] : [mine ? '我方' : '敌方', `击败了${name}`, '·', reward];
-        return { ...base, title: mine ? `${name}已被击败` : `敌方夺得${name}`, sub, left: actor ? heroFace(c.host, actor, c.team) : null, right: glyphFace(uiIcon('monster'), 'is-dead'), slain: true };
+        const reward = lastEpic ? epicSlainText(lastEpic, mine) : mine ? '全队获得奖励' : '敌方获得奖励';
+        const sub: Child[] = mine && actor ? [who(actor, c), '拿下', '·', reward] : [reward];
+        return { ...base, title: mine ? `我方击败${name}` : `敌方夺得${name}`, sub, left: actor ? heroFace(c.host, actor, c.team) : null, right: glyphFace(uiIcon('monster'), 'is-dead'), slain: true, hold: HOLD_EPIC };
       }
       case 'tower_destroyed': {
-        const where = lastTower ? `${LANE_NAME[lastTower.lane]}${TIER_NAME[lastTower.tier]}` : '防御塔';
+        const where = lastTower ? towerName(lastTower.lane, lastTower.tier) : '防御塔';
         const sub: Child[] = mine ? (actor ? [who(actor, c), `拆除了敌方${where}`] : [`我方兵线拆除了敌方${where}`]) : [`我方${where}失守`];
         return { ...base, title: mine ? '摧毁敌方防御塔' : '我方防御塔被摧毁', sub, left: actor ? heroFace(c.host, actor, c.team) : null, right: glyphFace(uiIcon('tower'), `${teamCls(mine ? (c.team === 0 ? 1 : 0) : c.team, c.team)} is-dead`), slain: true };
       }
       case 'ace':
-        return { ...base, title: '团灭', sub: [mine ? '敌方全员阵亡，乘胜追击！' : '我方全员阵亡，守住基地！'] };
+        return { ...base, title: '团灭', sub: [mine ? '敌方全员阵亡，趁现在推塔！' : '我方全员阵亡，守住水晶！'] };
       case 'victory':
       case 'defeat':
         // team 是获胜方：以玩家视角决定措辞
-        return { ...base, title: mine ? '星核击破' : '星核陷落', sub: [mine ? '敌方基地已被摧毁' : '我方基地已被摧毁'] };
+        return { ...base, title: mine ? '敌方水晶已摧毁' : '我方水晶被摧毁', sub: [mine ? '我方获胜' : '敌方获胜'] };
       default: {
         // 击杀称号类却没有配对的 heroKill（理论上不会发生）：按称号单独播
         const title = KILL_TITLES[a.key];
@@ -296,7 +307,10 @@ export function createBanner(): Banner {
     handleEvent(ev) {
       if (ev.type === 'heroKill' || ev.type === 'announce') batch.push(ev);
       else if (ev.type === 'monsterSpawn') {
-        if (MONSTERS[ev.monsterType].epic) lastEpic = ev.monsterType;
+        if (MONSTERS[ev.monsterType].epic) {
+          lastEpic = ev.monsterType;
+          lastEpicPos = ev.pos;
+        }
       } else if (ev.type === 'epicSlain') lastEpic = ev.monsterType;
       else if (ev.type === 'towerDestroyed') lastTower = ev;
     },
@@ -307,6 +321,7 @@ export function createBanner(): Banner {
       batch.push(ev);
       flush(c);
     },
+    isShowing: () => cur !== null || queue.length > 0,
     update(c) {
       const now = c.now;
       if (cur) {

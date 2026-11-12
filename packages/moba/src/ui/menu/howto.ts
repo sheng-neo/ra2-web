@@ -89,7 +89,7 @@ function keyboardPane(): HTMLElement {
     row('move', '移', '移动', '<em>W A S D</em> 或方向键；<em>鼠标右键</em>点地面寻路移动'),
     row('atk', '攻', '普攻', '<em>空格 / J</em> 自动选择目标；<em>左键或右键</em>点敌人指定攻击'),
     row('skill', '技', '技能', '<em>Q</em> 一技能 · <em>E</em> 二技能 · <em>R</em> 大招：按下显示指示器，松开朝鼠标位置施放；<em>Esc / 右键</em>取消'),
-    row('sum', '召', '召唤师技能', '<em>F</em> 闪现(朝鼠标) · <em>G</em> 恢复 · <em>B</em> 回城'),
+    row('sum', '通', '通用技能', '<em>F</em> 闪现(朝鼠标) · <em>G</em> 疗伤 · <em>B</em> 回城'),
     row('ui', '界', '界面', '<em>Tab</em> 按住看记分板 · <em>P</em> 商店 · <em>Esc</em> 设置 / 暂停'),
   );
   return h('div', 'sf-howto__pane', h('div', 'sf-howto__fig sf-inset', keys, mouse), list);
@@ -119,7 +119,7 @@ function touchPane(): HTMLElement {
     // 摇杆
     '<circle cx="74" cy="140" r="34" fill="#5cd6f7" fill-opacity=".1" stroke="#5cd6f7" stroke-width="1.600"/>' +
     '<circle cx="86" cy="130" r="14" fill="#5cd6f7" fill-opacity=".7"/>' +
-    // 普攻 + 三技能 + 召唤师技能 + 商店
+    // 普攻 + 三技能 + 通用技能 + 商店
     btn(340, 150, 30, '#ff8a7a') +
     btn(278, 162, 18, '#f3cf85') + btn(292, 112, 18, '#f3cf85') + btn(340, 86, 18, '#f3cf85') +
     btn(232, 174, 11, '#6fe3a1') + btn(246, 140, 11, '#6fe3a1') + btn(264, 80, 11, '#6fe3a1') +
@@ -134,7 +134,7 @@ function touchPane(): HTMLElement {
     row('move', '1', '摇杆', '左下区域按住拖动，控制英雄移动'),
     row('atk', '2', '普攻', '按住连续攻击，自动选择最合适的目标'),
     row('skill', '3', '技能', '<em>轻点</em> = 智能施法；<em>按住拖动</em> = 手动瞄准，松手施放；拖到<em>「取消」</em>区松手则取消；<em>原地长按</em>查看技能说明'),
-    row('sum', '4', '召唤师技能', '闪现(可拖动选方向) · 恢复 · 回城'),
+    row('sum', '4', '通用技能', '闪现(可拖动选方向) · 疗伤 · 回城'),
     row('ui', '5', '小地图', '点按并拖动可观察战场，松手回到英雄'),
     row('ui', '6', '商店', '随时购买装备；金币足够时会弹出推荐装备的快捷购买'),
     row('ui', '7', '战况 / 暂停', '右上角按钮：记分板、暂停与设置'),

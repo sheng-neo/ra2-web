@@ -364,7 +364,7 @@ export function decorateCamps(
           shadow: false,
           tint: theme === 2 ? [0.42, 0.36, 0.36] : epic ? [0.78, 0.82, 0.98] : [0.95, 0.95, 0.9],
         });
-        if (epic && rng.chance(0.4)) out.ripples.push({ x: px, z: pz, r: 0.9 });
+        if (epic && rng.chance(0.25)) out.ripples.push({ x: px, z: pz, r: 0.8 });
       }
     }
 

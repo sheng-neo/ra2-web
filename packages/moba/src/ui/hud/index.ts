@@ -17,6 +17,7 @@ import { openSettingsDialog } from '../settings';
 import { bindUiSounds, dismissTooltip, ensureTheme, h, injectStyle, sfCss, type Dialog } from '../theme';
 import { createBanner } from './banner';
 import { injectHudBase } from './base';
+import { createCoach, type CoachDebug } from './coach';
 import type { HudActions, HudCtx, HudPart, InputMode } from './common';
 import { createKillFeed } from './feed';
 import { createMinimap } from './minimap';
@@ -48,6 +49,7 @@ export interface HudOptions {
   /**
    * 开局操作提示条显示多少秒后自动收起，缺省 8（一行七八个键位，3 秒读不完）；0 = 不显示。
    * 玩家点 × 关掉过一次后会记住(localStorage)，之后的对局不再显示。
+   * 新手引导开着(Settings.tutorial 且不是托管演示)时由引导卡取代它，这个值不起作用。
    */
   tipsSeconds?: number;
 }
@@ -70,6 +72,8 @@ export interface HudHandle extends Hud {
   setProfiling(on: boolean): void;
   /** 各部件耗时统计(毫秒)：按 update 最大值从高到低排；未开启统计时为空数组 */
   getProfile(): HudPartProfile[];
+  /** 顶部指引位(新手引导 + 当前目标)：restartGuide 从第 1 步重看引导；debug 给调试 / 端到端测试看当前状态与目标切换日志 */
+  readonly coach: { restartGuide(): void; debug(): CoachDebug };
 }
 
 /** 单个部件的耗时统计(毫秒) */
@@ -153,7 +157,10 @@ export function createHud(root: HTMLElement, host: HudHost, state: GameState, op
   const toasts = createToasts(ctx);
   const channel = createChannelBar();
   const fps = createFps(ctx);
-  const tips = createTips(ctx, opts.tipsSeconds ?? 8);
+  // 顶部中央的指引位：新手引导卡 + 当前目标行(共用一个位置)，外加场景箭头
+  const coach = createCoach(ctx, { banner, minimap });
+  // 引导开着时由它教操作，不再弹开局键位提示条
+  const tips = createTips(ctx, coach.replacesTips ? 0 : opts.tipsSeconds ?? 8);
 
   function setMode(mode: InputMode): void {
     if (mode === ctx.mode && el.classList.contains(`sf-hud--${mode}`)) return;
@@ -195,6 +202,8 @@ export function createHud(root: HTMLElement, host: HudHost, state: GameState, op
         get: () => host.getSettings(),
         update: (patch) => host.updateSettings(patch),
         audio: host.audio,
+        // 暂停面板里「新手引导」行的「重看」：引导已经开着时从第 1 步重来
+        onReplayTutorial: () => coach.restartGuide(),
         onQuit: () => host.quit(),
         onClose: () => {
           settings = null;
@@ -229,10 +238,10 @@ export function createHud(root: HTMLElement, host: HudHost, state: GameState, op
   const input = createInput(ctx, { field, skills, forced, setMode });
 
   // DOM 顺序即叠放顺序（各部件自带 z-index 分层，同层内后者在上）
-  el.append(...death.els.slice(0, 2), field, input.joystick, minimap.el, ...shop.els.slice(0, 1), ...top.els, feed.el, fps.el, status.el, skills.el, banner.el, channel.el, tips.el, toasts.el, death.els[2], scoreboard.el, shop.els[1]);
+  el.append(...death.els.slice(0, 2), field, input.joystick, minimap.el, ...shop.els.slice(0, 1), ...top.els, feed.el, fps.el, status.el, skills.el, banner.el, ...coach.els, channel.el, tips.el, toasts.el, death.els[2], scoreboard.el, shop.els[1]);
 
   const named: [string, HudPart][] = [
-    ['minimap', minimap], ['topbar', top], ['feed', feed], ['banner', banner], ['status', status], ['skills', skills], ['shop', shop],
+    ['minimap', minimap], ['topbar', top], ['feed', feed], ['banner', banner], ['coach', coach], ['status', status], ['skills', skills], ['shop', shop],
     ['scoreboard', scoreboard], ['death', death], ['toasts', toasts], ['channel', channel], ['fps', fps], ['tips', tips], ['input', input],
   ];
   const parts: HudPart[] = named.map((n) => n[1]);
@@ -375,6 +384,7 @@ export function createHud(root: HTMLElement, host: HudHost, state: GameState, op
       profiling = on;
       if (on) prof.clear();
     },
+    coach: { restartGuide: () => coach.restartGuide(), debug: () => coach.debug() },
     getProfile() {
       const out: HudPartProfile[] = [];
       for (const [name, p] of named) {

@@ -217,10 +217,13 @@ export function startApp(): void {
   let audio: AudioEngine;
   try {
     ensureTheme();
-    // URL 调试参数(quality / fps)只影响本次会话：放在覆盖层里，不随玩家改别的设置一起写进存档
+    // URL 调试参数(quality / fps / autobuy / tutorial / hints)只影响本次会话：放在覆盖层里，不随玩家改别的设置一起写进存档
     const overrides: Partial<Settings> = {};
     if (params.quality) overrides.quality = params.quality;
     if (params.showFps) overrides.showFps = true;
+    if (params.autoBuy !== null) overrides.autoBuy = params.autoBuy;
+    if (params.tutorial !== null) overrides.tutorial = params.tutorial;
+    if (params.objectiveHints !== null) overrides.objectiveHints = params.objectiveHints;
     store = createSettingsStore<Settings>(loadSettings({ quality: detectQuality() }), overrides, saveSettings);
     audio = createAudio();
   } catch (err) {
@@ -395,6 +398,8 @@ export function startApp(): void {
       // 结算页盖在对局画面上淡入；HUD 立刻收起(免得两边同时响应按键)，画面等盖严了再停
       phase = 'result';
       created.disposeHud();
+      // 打完了一局 = 不再是新手：新手引导从此默认关(设置里可以重新打开)。托管演示局不算玩家自己打的
+      if (settings.tutorial && !created.config.autoPlay) updateSettings({ tutorial: false });
       // 结算页的「时长」读 state.endTime(分出胜负的那一刻)，不含之后播结束演出的几秒
       const resultDone = showResult(root, outcome.state, menuHost, { signal });
       await sleep(RESULT_COVER_MS);

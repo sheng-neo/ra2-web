@@ -359,42 +359,62 @@ export function addLeafClump(b: MeshBuilder, cx: number, cy: number, cz: number,
     const l = Math.hypot(ax, ay, az) || 1;
     return b.vertex(cx + x, cy + y, cz + z, c, ax / l, ay / l, az / l, sway, 0, o.team ?? 0, 1);
   };
-  const top = put(rng.range(-0.06, 0.06) * r, thick, rng.range(-0.06, 0.06) * r, tintC(o.light, 1), 0, 1, 0, s1);
+  // 三角形朝向统一按几何法线校正：穹顶朝上，唇边朝下
+  const P = b.positions;
+  const tri = (i0: number, i1: number, i2: number, up: boolean): void => {
+    const ux = P[i1 * 3] - P[i0 * 3];
+    const uz = P[i1 * 3 + 2] - P[i0 * 3 + 2];
+    const vx = P[i2 * 3] - P[i0 * 3];
+    const vz = P[i2 * 3 + 2] - P[i0 * 3 + 2];
+    const ny = uz * vx - ux * vz;
+    if (ny > 0 === up) b.tri(i0, i1, i2);
+    else b.tri(i0, i2, i1);
+  };
+  const top = put(rng.range(-0.05, 0.05) * r, thick, rng.range(-0.05, 0.05) * r, tintC(o.light, 1), 0, 1, 0, s1);
   const ringA: number[] = [];
   const ringB: number[] = [];
   const ringC: number[] = [];
+  const ringD: number[] = [];
   for (let i = 0; i < n; i++) {
     const a = rot + (i / n) * TAU;
-    const rr = r * 0.52 * rng.range(0.9, 1.1);
     const ca = Math.cos(a);
     const sa = Math.sin(a);
-    ringA.push(put(ca * rr, thick * rng.range(0.74, 0.9), sa * rr, tintC(mixRgb(o.mid, o.light, 0.5), rng.range(0.95, 1.05)), ca * 0.45, 0.9, sa * 0.45, lerp(s0, s1, 0.7)));
+    const rr = r * 0.42 * rng.range(0.92, 1.08);
+    ringA.push(put(ca * rr, thick * rng.range(0.86, 0.94), sa * rr, tintC(mixRgb(o.mid, o.light, 0.62), rng.range(0.96, 1.04)), ca * 0.3, 0.95, sa * 0.3, lerp(s0, s1, 0.8)));
+    const ab = a + Math.PI / n;
+    const cb = Math.cos(ab);
+    const sb = Math.sin(ab);
+    const rb = r * 0.78 * rng.range(0.94, 1.06);
+    ringB.push(put(cb * rb, thick * rng.range(0.52, 0.64), sb * rb, tintC(o.mid, rng.range(0.94, 1.04)), cb * 0.62, 0.78, sb * 0.62, lerp(s0, s1, 0.45)));
   }
   for (let j = 0; j < n * 2; j++) {
     const a = rot + (j / (n * 2)) * TAU;
     const tip = j % 2 === 0;
-    const rr = r * (tip ? rng.range(0.94, 1.06) : rng.range(0.7, 0.8));
+    // 浅圆齿：齿尖略外探、略低，齿谷略收、更暗
+    const rr = r * (tip ? rng.range(0.97, 1.05) : rng.range(0.86, 0.9));
     const ca = Math.cos(a);
     const sa = Math.sin(a);
-    // 齿尖略低，齿谷更暗(齿与齿之间的缝)
-    const y = thick * (tip ? rng.range(0.08, 0.2) : rng.range(0.22, 0.34));
-    ringB.push(put(ca * rr, y, sa * rr, tintC(tip ? mixRgb(o.dark, o.mid, 0.8) : mixRgb(o.dark, o.mid, 0.35), 1), ca, 0.38, sa, s0));
-    ringC.push(put(ca * rr * 0.68, -thick * 0.38, sa * rr * 0.68, tintC(o.dark, 0.72), ca * 0.5, -0.8, sa * 0.5, s0));
+    const y = thick * (tip ? rng.range(0.06, 0.14) : rng.range(0.16, 0.24));
+    ringC.push(put(ca * rr, y, sa * rr, tintC(tip ? mixRgb(o.dark, o.mid, 0.72) : mixRgb(o.dark, o.mid, 0.4), 1), ca * 0.86, 0.5, sa * 0.86, s0));
+    ringD.push(put(ca * rr * 0.7, -thick * 0.32, sa * rr * 0.7, tintC(o.dark, 0.7), ca * 0.5, -0.85, sa * 0.5, s0));
   }
   for (let i = 0; i < n; i++) {
     const i2 = (i + 1) % n;
+    const im = (i + n - 1) % n;
+    tri(top, ringA[i], ringA[i2], true);
+    tri(ringA[i], ringB[im], ringB[i], true);
+    tri(ringA[i], ringB[i], ringA[i2], true);
     const j0 = i * 2;
     const j1 = i * 2 + 1;
     const j2 = (i * 2 + 2) % (n * 2);
-    b.tri(top, ringA[i2], ringA[i]);
-    b.tri(ringA[i], ringB[j1], ringB[j0]);
-    b.tri(ringA[i], ringA[i2], ringB[j1]);
-    b.tri(ringA[i2], ringB[j2], ringB[j1]);
+    tri(ringB[i], ringC[j0], ringC[j1], true);
+    tri(ringB[i], ringC[j1], ringC[j2], true);
+    tri(ringB[i], ringC[j2], ringB[i2], true);
   }
   for (let j = 0; j < n * 2; j++) {
     const j2 = (j + 1) % (n * 2);
-    b.tri(ringB[j], ringB[j2], ringC[j2]);
-    b.tri(ringB[j], ringC[j2], ringC[j]);
+    tri(ringC[j], ringC[j2], ringD[j2], false);
+    tri(ringC[j], ringD[j2], ringD[j], false);
   }
 }
 
@@ -463,7 +483,7 @@ function makeTree(seed: number, colors?: CanopyColors): THREE.BufferGeometry {
     const z = lean2 + Math.sin(a) * d;
     const y = h + rng.range(-0.05, 0.14);
     if (i < 2) addTube(b, [[lean * 0.7, h * 0.72, lean2 * 0.7, 0.08], [x * 0.75 + lean * 0.25, y - 0.12, z * 0.75 + lean2 * 0.25, 0.04]], { sides: 3, c0: TRUNK_DARK, c1: TRUNK, sway1: 0.2 });
-    addLeafClump(b, x, y, z, r, { lobes: 6, dark: scaleRgb(dark, 0.9), mid: mixRgb(dark, mid, 0.55), light: mixRgb(dark, mid, 0.95), seed: seed + i * 13, sway0: 0.3, sway1: 0.55, puffCenter: center, puff: 0.3 });
+    addLeafClump(b, x, y, z, r, { lobes: 8, dark: scaleRgb(dark, 0.9), mid: mixRgb(dark, mid, 0.55), light: mixRgb(dark, mid, 0.95), seed: seed + i * 13, sway0: 0.3, sway1: 0.55, puffCenter: center, puff: 0.35, thick: 0.5 });
   }
   // 中层：两三片，往里收
   const midN = 2 + rng.int(2);
@@ -471,10 +491,10 @@ function makeTree(seed: number, colors?: CanopyColors): THREE.BufferGeometry {
     const a = a0 + Math.PI / 3 + (i / midN) * TAU + rng.range(-0.35, 0.35);
     const d = rng.range(0.32, 0.46);
     const r = rng.range(0.72, 0.86);
-    addLeafClump(b, lean + Math.cos(a) * d, h + rng.range(0.5, 0.64), lean2 + Math.sin(a) * d, r, { lobes: 6, dark, mid, light: mixRgb(mid, light, 0.4), seed: seed + 50 + i * 17, sway0: 0.4, sway1: 0.7, puffCenter: center, puff: 0.3 });
+    addLeafClump(b, lean + Math.cos(a) * d, h + rng.range(0.5, 0.64), lean2 + Math.sin(a) * d, r, { lobes: 8, dark, mid, light: mixRgb(mid, light, 0.28), seed: seed + 50 + i * 17, sway0: 0.4, sway1: 0.7, puffCenter: center, puff: 0.35, thick: 0.52 });
   }
   // 顶层：一片，小而亮(受光的树梢)
-  addLeafClump(b, lean + rng.range(-0.12, 0.12), h + rng.range(1.02, 1.14), lean2 + rng.range(-0.12, 0.12), rng.range(0.6, 0.7), { lobes: 5, dark: mixRgb(dark, mid, 0.7), mid: mixRgb(mid, light, 0.5), light, seed: seed + 99, sway0: 0.55, sway1: 0.85, puffCenter: center, puff: 0.25, thick: 0.5 });
+  addLeafClump(b, lean + rng.range(-0.12, 0.12), h + rng.range(1.02, 1.14), lean2 + rng.range(-0.12, 0.12), rng.range(0.6, 0.7), { lobes: 7, dark: mixRgb(dark, mid, 0.7), mid: mixRgb(mid, light, 0.3), light: mixRgb(mid, light, 0.62), seed: seed + 99, sway0: 0.55, sway1: 0.85, puffCenter: center, puff: 0.3, thick: 0.6 });
   return finish(b);
 }
 
@@ -499,9 +519,9 @@ function makeWillow(seed: number): THREE.BufferGeometry {
     const z = Math.sin(a) * d;
     const y = h + rng.range(0, 0.15);
     spots.push([x, y, z, r]);
-    addLeafClump(b, x, y, z, r, { lobes: 6, dark, mid: mixRgb(dark, mid, 0.7), light: mid, seed: seed + i * 7, sway0: 0.35, sway1: 0.6, puffCenter: center, puff: 0.3 });
+    addLeafClump(b, x, y, z, r, { lobes: 8, dark, mid: mixRgb(dark, mid, 0.7), light: mid, seed: seed + i * 7, sway0: 0.35, sway1: 0.6, puffCenter: center, puff: 0.35, thick: 0.5 });
   }
-  addLeafClump(b, lean, h + 0.68, 0, 0.82, { lobes: 6, dark: mixRgb(dark, mid, 0.5), mid, light, seed: seed + 41, sway0: 0.5, sway1: 0.8, puffCenter: center, puff: 0.25, thick: 0.5 });
+  addLeafClump(b, lean, h + 0.68, 0, 0.82, { lobes: 8, dark: mixRgb(dark, mid, 0.5), mid, light, seed: seed + 41, sway0: 0.5, sway1: 0.8, puffCenter: center, puff: 0.25, thick: 0.5 });
   // 垂枝：从底层叶团的边缘挂下来
   const strands = 9;
   for (let i = 0; i < strands; i++) {
@@ -536,8 +556,8 @@ function makeFarTree(seed: number): THREE.BufferGeometry {
   const light = rgb(E.canopyLight);
   const r = rng.range(1.2, 1.5);
   const center: [number, number, number] = [0, h, 0];
-  addLeafClump(b, 0, h, 0, r, { lobes: 5, dark, mid: mixRgb(dark, mid, 0.7), light: mid, seed, sway0: 0.25, sway1: 0.55, puffCenter: center, puff: 0.3, thick: 0.55 });
-  addLeafClump(b, rng.range(-0.3, 0.3), h + r * 0.5, rng.range(-0.3, 0.3), r * 0.68, { lobes: 5, dark: mixRgb(dark, mid, 0.6), mid: mixRgb(mid, light, 0.4), light, seed: seed + 3, sway0: 0.5, sway1: 0.8, puffCenter: center, puff: 0.3, thick: 0.55 });
+  addLeafClump(b, 0, h, 0, r, { lobes: 6, dark, mid: mixRgb(dark, mid, 0.7), light: mid, seed, sway0: 0.25, sway1: 0.55, puffCenter: center, puff: 0.3, thick: 0.6 });
+  addLeafClump(b, rng.range(-0.3, 0.3), h + r * 0.5, rng.range(-0.3, 0.3), r * 0.68, { lobes: 6, dark: mixRgb(dark, mid, 0.6), mid: mixRgb(mid, light, 0.4), light, seed: seed + 3, sway0: 0.5, sway1: 0.8, puffCenter: center, puff: 0.3, thick: 0.6 });
   return finish(b);
 }
 
@@ -584,7 +604,7 @@ function makeShrub(seed: number): THREE.BufferGeometry {
     const a = rng.range(0, TAU);
     const d = i === 0 ? 0 : rng.range(0.28, 0.5);
     const r = i === 0 ? rng.range(0.52, 0.66) : rng.range(0.34, 0.46);
-    addLeafClump(b, Math.cos(a) * d, r * (i === 0 ? 0.42 : 0.22), Math.sin(a) * d, r, { lobes: 5, dark, mid, light, seed: seed + i * 5, sway0: 0.05, sway1: 0.3, puffCenter: center, puff: 0.35, thick: 0.62 });
+    addLeafClump(b, Math.cos(a) * d, r * (i === 0 ? 0.42 : 0.22), Math.sin(a) * d, r, { lobes: 6, dark, mid, light, seed: seed + i * 5, sway0: 0.05, sway1: 0.3, puffCenter: center, puff: 0.35, thick: 0.62 });
   }
   return finish(b);
 }

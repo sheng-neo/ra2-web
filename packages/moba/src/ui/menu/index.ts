@@ -12,7 +12,8 @@ import { createTitleScreen } from './title';
 import type { MenuScreen } from './title';
 
 const CHOICE_KEY = 'starfall.lastChoice.v1';
-const DEFAULT_CHOICE: MatchChoice = { heroId: 'chijin', difficulty: 'normal' };
+// 第一次玩(没有历史选择)：默认选中上手简单的程咬金，对手难度默认「简单」；玩家选过一次之后就以他的选择为准
+const DEFAULT_CHOICE: MatchChoice = { heroId: 'chijin', difficulty: 'easy' };
 
 /** 记住上次选的英雄与难度(本地存储不可用时只在本次会话里记住，见 storage.ts) */
 function loadChoice(): MatchChoice {

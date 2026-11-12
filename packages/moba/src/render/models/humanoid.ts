@@ -272,6 +272,24 @@ export function placeHand(h: Human, pose: Pose, side: 1 | -1, x: number, y: numb
   ikLimb(h.rig, pose, side > 0 ? J.armL : J.armR, side > 0 ? J.foreL : J.foreR, side > 0 ? J.handL : J.handR, x, y, z, poleX, poleY, poleZ, -1);
 }
 
+/**
+ * 把姿态里某关节的旋转向 from 里保存的旋转混合：q[o..] = nlerp(from[fo..], q[o..], w)。
+ * 用于 IK 的权重(手从「叉腰」过渡到「握住武器」)：先存下 IK 之前的臂/前臂旋转，解完 IK 再按权重混回去。
+ */
+export function mixQ(q: Float32Array, o: number, from: Float32Array, fo: number, w: number): void {
+  const dot = q[o] * from[fo] + q[o + 1] * from[fo + 1] + q[o + 2] * from[fo + 2] + q[o + 3] * from[fo + 3];
+  const u = (1 - w) * (dot < 0 ? -1 : 1);
+  const x = from[fo] * u + q[o] * w;
+  const y = from[fo + 1] * u + q[o + 1] * w;
+  const z = from[fo + 2] * u + q[o + 2] * w;
+  const ww = from[fo + 3] * u + q[o + 3] * w;
+  const l = Math.hypot(x, y, z, ww) || 1;
+  q[o] = x / l;
+  q[o + 1] = y / l;
+  q[o + 2] = z / l;
+  q[o + 3] = ww / l;
+}
+
 const LEG_JOINTS = new Set<string>(['thighL', 'shinL', 'footL', 'thighR', 'shinR', 'footR']);
 
 /**

@@ -67,7 +67,8 @@ function canopyTint(x: number, z: number, rng: Rng): RGB {
   const side = (x - z) / 110;
   const n = fbm2(x * 0.06, z * 0.06, 2, 77);
   const warm = Math.max(0, side) * 0.22 + (n - 0.5) * 0.3;
-  const v = rng.range(0.9, 1.08);
+  // 树冠是画面里的暗框：整体压一档
+  const v = rng.range(0.78, 0.94);
   return [v * (1 + warm * 0.5), v * (1 + warm * 0.08), v * (1 - warm * 0.35)];
 }
 
@@ -429,7 +430,7 @@ export function scatterGround(batch: SceneryBatcher, lib: PropLibrary, field: Ma
         batch.add(r4.pick(lib.lilyPads), trs(lx, WATER_LEVEL + 0.012, lz, r4.range(0, 6.28), sc, 1), { shadow: false, tint: scaleRgb([1, 1, 1], r4.range(0.85, 1.08)) });
         if (i === 1) batch.add(lib.lotusBud, trs(lx, WATER_LEVEL, lz, r4.range(0, 6.28), r4.range(0.9, 1.2)), { shadow: false, tint: rgb(E.petalPink), maskedTint: true });
       }
-      if (big > 0) out.ripples.push({ x: px, z: pz, r: 1.5 });
+      if (big > 0 && r4.chance(0.6)) out.ripples.push({ x: px, z: pz, r: 1.3 });
     } else if (k < 0.5) {
       if (glow.claim(px, pz, 10)) {
         const tint = mixRgb(GLOW_CYAN, [1, 1, 1], r4.range(0.1, 0.4));
@@ -447,8 +448,24 @@ export function scatterGround(batch: SceneryBatcher, lib: PropLibrary, field: Ma
         const lz = pz + r4.range(-0.6, 0.6) * i;
         batch.add(r4.pick(lib.rocks), trs(lx, field.heightAt(lx, lz) + 0.04, lz, r4.range(0, 6.28), sc, sc * 0.8), { shadow: false, tint: [0.8, 0.86, 0.92] });
       }
-      out.ripples.push({ x: px, z: pz, r: 1.0 });
+      if (r4.chance(0.5)) out.ripples.push({ x: px, z: pz, r: 0.9 });
     }
+  }
+
+  // ── 河岸上的星铃草：矮小的铃花丛，带一点青色微光(要在发光网格里占到位) ──
+  const r6 = new Rng(2323);
+  for (let s = 0; s < len; s += 4.5) {
+    const side = r6.chance(0.5) ? 1 : -1;
+    const across = side * (half + r6.range(0.7, 1.3));
+    const px = a.x + dx * s - dz * across;
+    const pz = a.y + dz * s + dx * across;
+    const sc = r6.range(0.5, 0.62);
+    const rot = r6.range(0, 6.28);
+    if (field.boundDist(px, pz) < 1 || field.laneDist(px, pz) < 1.5 || field.solidDist(px, pz) < 0.4 || field.bushDist(px, pz) < 0.4 || field.campDist(px, pz) < 0.5) continue;
+    if (!glow.claim(px, pz, 9)) continue;
+    const tint = mixRgb(GLOW_CYAN, [1, 1, 1], 0.25);
+    batch.add(r6.pick(lib.bells), trs(px, field.heightAt(px, pz) - 0.02, pz, rot, sc), { shadow: false, tint, maskedTint: true, glow: 1 });
+    out.glows.push({ x: px, z: pz, y: 0.03, r: 1.1, color: tint });
   }
 
   // ── 贴着墙体的河岸：芦苇与香蒲(种在墙脚的碰撞轮廓里，不占可走水面) ──

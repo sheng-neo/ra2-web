@@ -8,6 +8,7 @@ import { uiIcon } from '../icons';
 import { h, injectStyle, sfCss } from '../theme';
 import type { HudCtx, HudPart } from './common';
 import { glyphFace, heroFace, teamCls } from './face';
+import { towerName } from './text';
 
 const CSS = sfCss(`
 .sf-hud__feed { position: absolute; right: var(--hud-r); top: calc(var(--hud-t) + max(46px, 50u)); z-index: 3; display: flex; flex-direction: column; align-items: flex-end; gap: 5u; }
@@ -32,13 +33,15 @@ const CSS = sfCss(`
 .sf-hud__kf-text { font-size: var(--sf-fs-xs); font-weight: 700; color: var(--sf-c-text); letter-spacing: 0.04em; white-space: nowrap; text-shadow: var(--hud-shadow-text); }
 @keyframes sf-hud-kf-in { from { opacity: 0; transform: translateX(40u); } to { opacity: 1; transform: none; } }
 @keyframes sf-hud-kf-out { to { opacity: 0; transform: translateX(24u); } }
-@media (orientation: portrait) { .sf-hud__feed { top: calc(var(--hud-t) + max(96px, 106u)); } }
+@media (orientation: portrait) {
+  .sf-hud__feed { top: calc(var(--hud-t) + max(96px, 106u)); }
+  /* 竖屏：顶部指引位(引导卡 / 当前目标)横贯整屏，就在击杀流第三条的位置——有指引时只留最新的两条 */
+  .sf-hud.is-coach .sf-hud__kf:nth-last-child(n+3) { display: none; }
+}
 `);
 
 const LIFE = 6.5;
 const MAX = 4;
-const LANE_NAME = { top: '上路', mid: '中路', bot: '下路' } as const;
-const TIER_NAME = { 1: '一塔', 2: '二塔', 3: '高地塔' } as const;
 
 interface Entry {
   el: HTMLElement;
@@ -91,7 +94,7 @@ export function createKillFeed(ctx: HudCtx): KillFeed {
         if (!victim) return;
         const killer = c.hero(ev.killerId);
         const killerUnit = killer ?? c.unit(ev.killerId);
-        // 击杀方：英雄按其队伍；被塔/小兵/野怪打死算在对面头上
+        // 击杀方：英雄按其队伍；被塔 / 小兵 / 野怪打死算在对面头上
         const killerTeam = killer ? killer.team : victim.team === 0 ? 1 : 0;
         const involvesMe = victim.isPlayer || !!killer?.isPlayer || ev.assistIds.indexOf(c.state.playerId) >= 0;
         const row = h('div', `sf-hud__kf ${killerTeam === c.team ? 'is-ally' : 'is-foe'}${involvesMe ? ' is-me' : ''}`);
@@ -115,7 +118,7 @@ export function createKillFeed(ctx: HudCtx): KillFeed {
         row.append(
           h('span', 'sf-hud__kf-text', `${byMine ? '我方摧毁' : '敌方摧毁'}`),
           ico('tower'),
-          h('span', 'sf-hud__kf-text', `${LANE_NAME[ev.lane]}${TIER_NAME[ev.tier]}`),
+          h('span', 'sf-hud__kf-text', towerName(ev.lane, ev.tier)),
           glyphFace(uiIcon('tower'), `${teamCls(ev.team, c.team)} is-dead`),
         );
         push(row);

@@ -45,7 +45,10 @@ interface CulledCell {
 /** 最高的投影物(崖顶树冠)大约多高(米)：分块包围盒按它的影长朝背光方向外扩 */
 const SHADOW_CASTER_HEIGHT = 10;
 /** 崖顶贴图的第二尺度与色斑(材质侧的可选细节)。顶面的大块色斑已经烘在顶点色里，这里只决定要不要再叠材质那一层 */
-const MAP_TOP_DETAIL = false;
+const MAP_TOP_DETAIL = true;
+/** 崖顶草贴图的亮度增益(见材质的 mapTopGain)：草贴图的线性均值约 0.18，叠第二尺度时再乘约 0.77 */
+const MAP_TOP_GAIN = 4.5;
+const MAP_TOP_GAIN_DETAIL = 5.8;
 /** 岩体法线的折痕角 */
 const CREASE_DEG = 35;
 
@@ -100,11 +103,12 @@ export function createTerrainModule(ctx: RenderContext): TerrainModule {
     shadeTint: PALETTE.env.shadeRock,
     mapTop: ground.grassTexture,
     mapTopScale: 0.1,
+    mapTopGain: MAP_TOP_DETAIL && q.groundDetail > 0 ? MAP_TOP_GAIN_DETAIL : MAP_TOP_GAIN,
     mapTopNoise: noise,
     mapTopDetail: MAP_TOP_DETAIL && q.groundDetail > 0,
   });
   // 实体景物(树、石、构件、建筑件)：三阶明暗但边界放软——树冠读成柔和的体块，石件仍有亮/灰/暗三个面
-  const sceneryMat = createToonMaterial({ vertexColors: true, ramp: [0.02, 0.42, 0.56], softness: 0.2, rim: 0.12, rimPower: 2.6, kicker: 0.12, wind: 0.42, glowBoost: 1.7, shadeTint: PALETTE.env.shadeRock });
+  const sceneryMat = createToonMaterial({ vertexColors: true, ramp: [0.0, 0.42, 0.6], softness: 0.3, rim: 0.12, rimPower: 2.6, kicker: 0.12, wind: 0.42, glowBoost: 1.7, shadeTint: PALETTE.env.shadeRock });
   const clutterMat = createToonMaterial({ vertexColors: true, steps: 1, rim: 0, wind: 0.3, glowBoost: 1.5, side: THREE.DoubleSide });
 
   // ── 墙体断崖(按 32 米分块合并)。先选好壁龛的位置，石台在那里加宽一级 ──
@@ -311,7 +315,9 @@ export function createTerrainModule(ctx: RenderContext): TerrainModule {
     setQuality(s) {
       ground.setQuality(s);
       water.setQuality(s);
-      cliffMat.setMapTopDetail(MAP_TOP_DETAIL && s.groundDetail > 0);
+      const topDetail = MAP_TOP_DETAIL && s.groundDetail > 0;
+      cliffMat.setMapTopDetail(topDetail);
+      (cliffMat.uniforms.uMapTop.value as THREE.Vector3).y = topDetail ? MAP_TOP_GAIN_DETAIL : MAP_TOP_GAIN;
       bushes.setQuality(s);
       motes.setQuality(s);
       atmos.setQuality(s);

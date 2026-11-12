@@ -209,7 +209,7 @@ const vec4 MAT_PARAMS[7] = vec4[7](
   vec4(0.0, 24.0, 1.7, 0.0),
   vec4(0.1, 14.0, 1.5, 0.0),
   vec4(0.3, 10.0, 1.0, 0.0),
-  vec4(1.15, 52.0, 0.8, 0.55),
+  vec4(1.15, 52.0, 0.8, 0.7),
   vec4(0.85, 70.0, 0.9, 0.2),
   vec4(0.0, 24.0, 2.2, 0.0),
   vec4(0.22, 28.0, 0.6, 0.0)
@@ -303,7 +303,8 @@ void main() {
   // 环境光 = 半球光 × 天光可见度 + 环境染色(站在红方基地里带一层暖红补光，站在河里带青色)
   vec3 amb = (kitAmbient(N) * vLt.a + vLt.rgb * KIT_LIGHT_TINT_GAIN) * ao;
   vec3 irradiance = amb + sun * lit * mix(1.0, ao, 0.4) + pl;
-  vec3 col = base * RECIPROCAL_PI * irradiance * (1.0 - 0.3 * metal);
+  // 金属的漫反射压暗一截，亮度让给高光与环境反射
+  vec3 col = base * RECIPROCAL_PI * irradiance * (1.0 - 0.42 * metal);
   // 暗部乘色：统一偏冷紫；皮肤的暗部偏暖(血色)
   col *= mix(cat == 1 ? uSkinShade : uShadeTint, vec3(1.0), lit);
 
@@ -318,14 +319,22 @@ void main() {
   float sAmt = max(mp.x, vFx.x * uSpec.x);
   float sPow = mp.x > 0.0 ? mp.y : uSpec.y;
   float sp = pow(saturate(dot(N, H)), sPow);
-  float hard = cat >= 3 ? 0.08 : 0.3;
+  // 金属 / 晶体 / 岩，以及只靠旧的 aFx.x 出高光的面：硬边亮斑；皮肤 / 皮革：边缘柔一些
+  float hard = cat >= 3 || mp.x == 0.0 ? 0.08 : 0.3;
   col += sun * RECIPROCAL_PI * smoothstep(0.5 - hard, 0.5 + hard, sp) * sAmt * (1.0 + patEdge) * lit;
   col += sun * RECIPROCAL_PI * base * patEdge * 0.5 * lit;
   // 假环境反射：反射方向朝上取天光(冷)、朝下取地面反光(暖)
   float env = max(mp.w, vFx.x * 0.22);
   if (env > 0.0) {
     vec3 R = reflect(-V, N);
-    col += base * kitAmbient(R) * (RECIPROCAL_PI * env * (0.55 + 0.9 * fres));
+    #if NUM_HEMI_LIGHTS > 0
+    // 地平线以上取天光(冷)、以下取地面反光(暖)，交界收紧成一道明暗线——金属感主要靠这条线
+    float ry = dot(R, hemisphereLights[0].direction);
+    vec3 envCol = mix(hemisphereLights[0].groundColor, hemisphereLights[0].skyColor, smoothstep(-0.14, 0.2, ry));
+    #else
+    vec3 envCol = kitAmbient(R);
+    #endif
+    col += base * envCol * (RECIPROCAL_PI * env * (0.55 + 0.9 * fres));
   }
   if (cat == 4) {
     // 晶体：轮廓提亮 + 背光透射(光从背面穿过来)

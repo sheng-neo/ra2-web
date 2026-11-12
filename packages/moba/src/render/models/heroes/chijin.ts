@@ -9,7 +9,7 @@
  * 每帧先摆好躯干，再用 IK 让右手到位、把斧转到指定朝向、左手去抓斧柄(权重为 0 时叉腰)。
  * 这样「斧从右肩斜劈到左下」就是俯仰角从 −150° 走到 40°：手跟着胸腔走，斧的指向不受躯干拧转影响，落点好控制。
  */
-import { type CKP, type CommonAnims, E, type Human, type HumanDims, type RunStyle, RUN_DEFAULT, STANDARD_DIMS, type TrackKey, animateCommon, applyCKP, breathe, bump, copyCKP, emptyCKP, humanRig, kp, makeCommon, mix, reachHand, runCycle, sampleTrack, strikeWarp, track } from '../humanoid';
+import { type CKP, type CommonAnims, E, type Human, type HumanDims, type RunStyle, RUN_DEFAULT, STANDARD_DIMS, type TrackKey, animateCommon, applyCKP, breathe, bump, copyCKP, emptyCKP, humanRig, kp, makeCommon, mix, mixQ, reachHand, runCycle, sampleTrack, strikeWarp, track } from '../humanoid';
 import { MAT, ModelBuilder, PATTERN, X, lerp } from '../kit';
 import { beard, boot, chainBind, face, hand, head, lock, polyAt, strip, torsoBind } from '../parts';
 import { type Pose, poseSpace, setSpaceRot } from '../rig';
@@ -347,7 +347,7 @@ interface Anims {
 }
 
 /** 扛斧：斧柄搭在右肩，斧头在头的右后上方，刃朝外 */
-const CARRY = { gripR: [-0.25, -0.06, 0.32], aim: [-130, 8, -90], gripL: [0, -0.24, 0] };
+const CARRY = { gripR: [-0.25, -0.06, 0.32], aim: [-128, 26, -74], gripL: [0, -0.24, 0] };
 
 function makeAnims(h: Human): Anims {
   // 站姿：两脚开立，肚子挺着，斧扛右肩，左手叉腰
@@ -380,11 +380,11 @@ function makeAnims(h: Human): Anims {
     chest: [10, 12, 0],
     head: [-12, -18, 0],
     footL: [0.2, 0.09, 0.34, 0, 14],
-    gripR: [0.02, -0.1, 0.44],
-    aim: [40, 4, 0],
+    gripR: [0.02, 0.0, 0.46],
+    aim: [12, 4, 0],
     gripL: [1, -0.22, 0],
   });
-  const aFollow = kp(h, aHit, { hips: [14, 20, 0], chest: [12, 16, 0], gripR: [0.08, -0.2, 0.36], aim: [66, 14, 0] });
+  const aFollow = kp(h, aHit, { hips: [14, 20, 0], chest: [12, 16, 0], gripR: [0.08, -0.1, 0.4], aim: [28, 12, 0] });
   const atkA = track([
     [0, stance],
     [0.21, aWind, E.out],
@@ -394,7 +394,7 @@ function makeAnims(h: Human): Anims {
   ]);
   // 强化的一斧(越砍越勇)：同样是斜劈，预备更大、下沉更深
   const xWind = kp(h, aWind, { hipsPos: [0.02, 0.0, -0.1], spine: [-12, -14, 0], chest: [-14, -22, 0], gripR: [-0.16, 0.3, 0.12], aim: [-168, 18, 0] });
-  const xHit = kp(h, aHit, { hipsPos: [-0.02, -0.24, 0.18], hips: [18, 16, 0], spine: [14, 8, 0], gripR: [0.02, -0.16, 0.44], aim: [50, 4, 0] });
+  const xHit = kp(h, aHit, { hipsPos: [-0.02, -0.24, 0.18], hips: [18, 16, 0], spine: [14, 8, 0], gripR: [0.02, -0.16, 0.44], aim: [20, 4, 0] });
   const atkX = track([
     [0, stance],
     [0.23, xWind, E.out],
@@ -402,7 +402,7 @@ function makeAnims(h: Human): Anims {
     [0.56, xHit, E.lin],
     [1, stance, E.io],
   ]);
-  // 普攻 B·反撩：斧沉到左后下方，反手向右前上方撩起(刃朝上)
+  // 普攻 B·反撩：斧沉到左后下方，贴着身体左侧反手向右前上方撩起
   const bWind = kp(h, stance, {
     hipsPos: [-0.02, -0.14, -0.04],
     hips: [6, 26, 0],
@@ -410,7 +410,7 @@ function makeAnims(h: Human): Anims {
     chest: [6, 22, 0],
     head: [0, -34, 0],
     gripR: [-0.02, -0.2, 0.28],
-    aim: [128, -22, 180],
+    aim: [24, 150, -100],
     gripL: [1, -0.2, 0],
   });
   const bHit = kp(h, stance, {
@@ -421,10 +421,10 @@ function makeAnims(h: Human): Anims {
     head: [6, 36, 0],
     footL: [0.2, 0.09, 0.3, 0, 14],
     gripR: [-0.12, 0.08, 0.42],
-    aim: [-38, -22, 180],
+    aim: [-12, -8, -105],
     gripL: [1, -0.2, 0],
   });
-  const bFollow = kp(h, bHit, { chest: [-12, -26, 0], gripR: [-0.18, 0.22, 0.3], aim: [-84, -26, 180] });
+  const bFollow = kp(h, bHit, { chest: [-12, -26, 0], gripR: [-0.18, 0.2, 0.32], aim: [-46, -46, -105] });
   const atkB = track([
     [0, stance],
     [0.2, bWind, E.out],
@@ -466,7 +466,7 @@ function makeAnims(h: Human): Anims {
     [1, stance, E.io],
   ]);
   // 跑动：扛着斧大步走，左臂自己摆
-  const carry = kp(h, null, { gripR: [-0.25, -0.04, 0.32], aim: [-128, 8, -90], gripL: [-1, 0, 0] });
+  const carry = kp(h, null, { gripR: [-0.25, -0.04, 0.32], aim: [-126, 26, -74], gripL: [-1, 0, 0] });
   // 二技能·半路杀出：压低身子前冲，斧头在前像撞角
   const dash = kp(h, null, {
     hipsPos: [0, -0.2, 0.1],
@@ -524,21 +524,6 @@ function makeAnims(h: Human): Anims {
 const _p = [0, 0, 0];
 const _qh = [0, 0, 0, 1];
 const _sv = new Float32Array(8);
-
-/** q[o..] = nlerp(from[fo..], q[o..], w) */
-function mixQ(q: Float32Array, o: number, from: Float32Array, fo: number, w: number): void {
-  const dot = q[o] * from[fo] + q[o + 1] * from[fo + 1] + q[o + 2] * from[fo + 2] + q[o + 3] * from[fo + 3];
-  const u = (1 - w) * (dot < 0 ? -1 : 1);
-  const x = from[fo] * u + q[o] * w;
-  const y = from[fo + 1] * u + q[o + 1] * w;
-  const z = from[fo + 2] * u + q[o + 2] * w;
-  const ww = from[fo + 3] * u + q[o + 3] * w;
-  const l = Math.hypot(x, y, z, ww) || 1;
-  q[o] = x / l;
-  q[o + 1] = y / l;
-  q[o + 2] = z / l;
-  q[o + 3] = ww / l;
-}
 
 export function createChijin(): ModelDef {
   const { h, b, extra } = build();

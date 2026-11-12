@@ -184,7 +184,8 @@ export async function startMatch(env: MatchEnv, choice: MatchChoice, opts: Match
     loading.setProgress(0.05, '集结双方英雄…');
     await nextPaint();
     if (cancelled()) return null;
-    const config: MatchConfig = { seed: opts.seed, playerHero: choice.heroId, difficulty: choice.difficulty, autoPlay: opts.autoPlay };
+    // 自动出装的初值取玩家的设置(默认开)；对局中改设置由下面的 onSettings 转成命令
+    const config: MatchConfig = { seed: opts.seed, playerHero: choice.heroId, difficulty: choice.difficulty, autoPlay: opts.autoPlay, autoBuy: env.getSettings().autoBuy };
     const world = createWorld(config);
     const state = world.state;
 
@@ -399,6 +400,9 @@ export async function startMatch(env: MatchEnv, choice: MatchChoice, opts: Match
     document.addEventListener('visibilitychange', onVisibility);
 
     const unsubscribeSettings = env.onSettings((patch) => {
+      // 自动出装：设置面板 / 商店顶部的开关改的是玩家的偏好，这里转成本局的命令(阵亡、暂停时也能下，下一步模拟生效)。
+      // 胜负已分就不必了。tutorial / objectiveHints 不用转：HUD 每帧从 getSettings() 读
+      if (patch.autoBuy !== undefined && !state.over) world.command(state.playerId, { type: 'autoBuy', enabled: patch.autoBuy });
       if (!renderer) return;
       if (patch.quality !== undefined) renderer.setQuality(patch.quality);
       if (patch.cameraShake !== undefined) renderer.setCameraShake?.(patch.cameraShake);

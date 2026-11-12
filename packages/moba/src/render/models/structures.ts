@@ -86,7 +86,7 @@ function hexCage(b: ModelBuilder, R: number, yc: number, size: number, n: number
 
 /** 塔身 / 晶体上的发光裂纹：一条贴着圆柱面爬的折线 */
 function crackLine(b: ModelBuilder, rOf: (y: number) => number, a0: number, y0: number, y1: number, seed: number, out = 1.012): void {
-  const n = 5;
+  const n = 4;
   const pts: number[][] = [];
   for (let i = 0; i <= n; i++) {
     const u = i / n;
@@ -95,7 +95,7 @@ function crackLine(b: ModelBuilder, rOf: (y: number) => number, a0: number, y0: 
     const r = rOf(y) * out;
     pts.push([Math.cos(a) * r, y, Math.sin(a) * r, 0.035 * (1 - Math.abs(u - 0.5) * 1.3), 0.02]);
   }
-  b.tube(pts, { seg: 4, cap0: true, cap1: true });
+  b.tube(pts, { seg: 3, cap0: false, cap1: false });
 }
 
 function createTower(tier: 1 | 2 | 3, team: 0 | 1): ModelDef {
@@ -152,7 +152,7 @@ function createTower(tier: 1 | 2 | 3, team: 0 | 1): ModelDef {
       const ym = (y0 + y1) / 2;
       const hh = (y1 - y0) / 2;
       b.g(X(Math.cos(a) * (colR(ym) * 0.925 + 0.015), ym, Math.sin(a) * (colR(ym) * 0.925 + 0.015), 0, 90 - (a * 180) / Math.PI, 0), () =>
-        b.g(X(0, 0, 0, -((0.34 * W) / (H - 0.35)) * (180 / Math.PI), 0, 0), () => b.extrude([[-0.06, -hh], [0.06, -hh], [0.09, 0], [0.06, hh], [0, hh + 0.12], [-0.06, hh], [-0.09, 0]], 0.07, 0.02)));
+        b.g(X(0, 0, 0, -((0.34 * W) / (H - 0.35)) * (180 / Math.PI), 0, 0), () => b.extrude([[-0.06, -hh], [0.06, -hh], [0.09, 0], [0.06, hh], [0, hh + 0.12], [-0.06, hh], [-0.09, 0]], 0.07, 0)));
     }
   }
   // 会随受损脱落的外挂石板(斜面上，贴着塔身)
@@ -163,7 +163,7 @@ function createTower(tier: 1 | 2 | 3, team: 0 | 1): ModelDef {
     b.g(X(Math.cos(a) * colR(y) * 0.99, y, Math.sin(a) * colR(y) * 0.99, 0, 90 - (a * 180) / Math.PI, 0), () => {
       b.box(0, 0, 0, 0.5 * W, 0.6, 0.16, 0.05);
       b.paint(L.trim, { ...trimMat });
-      b.box(0, 0, 0.085, 0.1, 0.1, 0.03, 0.01);
+      b.box(0, 0, 0.085, 0.1, 0.1, 0.03);
     });
   });
   // 受损的发光裂纹：三组，按生命 75 / 50 / 25% 依次出现
@@ -236,7 +236,7 @@ function createTower(tier: 1 | 2 | 3, team: 0 | 1): ModelDef {
       b.paint(L.crystal, { c2: L.crystalHot, glow: 0.5, mat: MAT.crystal, line: 0 });
       for (let k = 0; k < 4; k++) {
         const a = (k * Math.PI) / 2 + i * 0.6;
-        b.g(X(Math.cos(a) * R, 0, Math.sin(a) * R, 0, -(a * 180) / Math.PI, 0), () => b.box(0, 0, 0, 0.12, 0.09, 0.22, 0.03));
+        b.g(X(Math.cos(a) * R, 0, Math.sin(a) * R, 0, -(a * 180) / Math.PI, 0), () => b.box(0, 0, 0, 0.12, 0.09, 0.22));
       }
     });
   });
@@ -283,8 +283,8 @@ function createTower(tier: 1 | 2 | 3, team: 0 | 1): ModelDef {
       charge = a.p < w ? a.p / w : Math.max(0, 1 - (a.p - w) / 0.25);
       pop = bump(a.p, w + 0.04, 0.09);
       spin = 1 + 3 * charge;
-      if (a.p >= w) out.glow = 1 + 2.5 * charge;
-      else out.glow = 1 + 1.6 * charge * charge;
+      if (a.p >= w) out.glow = 1 + 1.6 * charge;
+      else out.glow = 1 + 1.0 * charge * charge;
     } else out.glow = 1 + 0.12 * Math.sin(t * 2);
     out.glow *= 1 - weak * (0.35 + 0.25 * Math.sin(t * 17) * Math.sin(t * 7.3));
     pose.pos(core, 0, Math.sin(t * 1.3) * 0.12 - weak * 0.25, 0);
@@ -348,7 +348,7 @@ function createTower(tier: 1 | 2 | 3, team: 0 | 1): ModelDef {
     triangles: b.triangleCount,
     deathDur: 2.4,
     attach: { core: { joint: core, x: 0, y: 0, z: 0 }, muzzle: { joint: core, x: 0, y: 0, z: 0 }, chest: { joint: root, x: 0, y: 2.6, z: 0 }, head: { joint: tip, x: 0, y: 1, z: 0 } },
-    blend: (from, to) => (from === to ? 0.3 : 0),
+    blend: () => 0,
     animate,
   };
 }
@@ -479,8 +479,8 @@ function createCore(team: 0 | 1): ModelDef {
         { seg: 6, up: [1, 0, 0], crease: 30 },
       );
       b.paint(L.trim, { ...trimMat });
-      b.g(X(0, 0.5, -0.16, -8, 0, 0), () => b.box(0, 0, 0, 0.9, 0.14, 0.78, 0.04));
-      b.g(X(0, 2.1, -0.04, 12, 0, 0), () => b.box(0, 0, 0, 0.58, 0.1, 0.48, 0.03));
+      b.g(X(0, 0.5, -0.16, -8, 0, 0), () => b.box(0, 0, 0, 0.9, 0.14, 0.78));
+      b.g(X(0, 2.1, -0.04, 12, 0, 0), () => b.box(0, 0, 0, 0.58, 0.1, 0.48));
       // 臂背上的发光嵌线
       b.paint(L.crystal, { c2: L.crystalHot, glow: 0.4, mat: MAT.crystal, line: 0 });
       b.g(X(0, 1.3, -0.5, 0, 0, 0), () => b.box(0, 0, 0, 0.08, 1.1, 0.05));
@@ -519,7 +519,7 @@ function createCore(team: 0 | 1): ModelDef {
         const big = k % 3 === 0;
         if (big) b.paint(L.crystal, { c2: L.crystalHot, glow: 0.55, mat: MAT.crystal, line: 0 });
         else b.paint(L.trim, { ...trimMat });
-        b.g(X(Math.cos(a) * (R - 0.12), 0, Math.sin(a) * (R - 0.12), 0, -(a * 180) / Math.PI, 0), () => b.box(0, 0, 0, big ? 0.34 : 0.16, big ? 0.18 : 0.22, big ? 0.2 : 0.07, 0.02));
+        b.g(X(Math.cos(a) * (R - 0.12), 0, Math.sin(a) * (R - 0.12), 0, -(a * 180) / Math.PI, 0), () => b.box(0, 0, 0, big ? 0.34 : 0.16, big ? 0.18 : 0.22, big ? 0.2 : 0.07));
       }
     });
   }
@@ -545,7 +545,7 @@ function createCore(team: 0 | 1): ModelDef {
     if (a.anim === 'attack') {
       const w = a.windup;
       charge = a.p < w ? a.p / w : Math.max(0, 1 - (a.p - w) / 0.25);
-      out.glow = 1 + 2 * charge;
+      out.glow = 1 + 1.2 * charge;
     } else out.glow = 1 + 0.14 * Math.sin(t * 1.8);
     // 生命越低越偏白热；低于 25% 警报式脉冲
     out.glow *= 1 + 0.5 * dmg - weak * (0.3 + 0.3 * Math.sin(t * 19) * Math.sin(t * 6.1));
@@ -600,7 +600,7 @@ function createCore(team: 0 | 1): ModelDef {
     stride: 1,
     triangles: b.triangleCount,
     attach: { core: { joint: star, x: 0, y: 0, z: 0 }, muzzle: { joint: star, x: 0, y: 0, z: 0 }, chest: { joint: root, x: 0, y: 3.2, z: 0 }, head: { joint: star, x: 0, y: 1.8, z: 0 } },
-    blend: (from, to) => (from === to ? 0.3 : 0),
+    blend: () => 0,
     animate,
   };
 }

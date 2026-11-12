@@ -17,8 +17,8 @@ const TAU = Math.PI * 2;
 const SCALE = 0x2c3884;
 const SCALE_LIGHT = 0x4e60b8;
 const SCALE_DARK = 0x1a2052;
-const PLATE = 0x8fa6d8;
-const PLATE_LIGHT = 0xc8d6f0;
+const PLATE = 0x7f96cc;
+const PLATE_LIGHT = 0xb8c8ea;
 const MEMBRANE = 0x3a2a8a;
 const MEMBRANE_EDGE = 0x8a5cff;
 const TEAL = 0x3fe0d0;
@@ -32,11 +32,6 @@ const MOUTH = 0x5a2a9a;
 
 /** 吐息动作里「蓄息」占整个 cast_s1 的比例(预警 0.9 秒 / 共 1.7 秒) */
 const WARN = MONSTER_RULES.breathWarn / (MONSTER_RULES.breathWarn + MONSTER_RULES.breathTime);
-
-const hash = (i: number, s: number): number => {
-  const x = Math.sin(i * 127.1 + s * 311.7) * 43758.5453;
-  return x - Math.floor(x);
-};
 
 interface Frame {
   p: number[];
@@ -237,7 +232,7 @@ export function createAbyssDrake(): ModelDef {
     const m = new THREE.Matrix4().makeBasis(x, y, n);
     m.setPosition(pos[0], pos[1], pos[2]);
     b.bind(skin).paint(mixCol(SCALE, SCALE_LIGHT, 0.55), { c2: SCALE, gloss: 0.6, mat: MAT.leather });
-    b.g(m, () => b.g(X(0, 0, 0.0, -6, 0, 0), () => b.extrude([[0, -l * 0.35], [w * 0.5, 0], [w * 0.3, l * 0.5], [0, l * 0.68], [-w * 0.3, l * 0.5], [-w * 0.5, 0]], 0.045, 0.02)));
+    b.g(m, () => b.g(X(0, 0, 0.0, -6, 0, 0), () => b.extrude([[0, -l * 0.35], [w * 0.5, 0], [w * 0.3, l * 0.5], [0, l * 0.68], [-w * 0.3, l * 0.5], [-w * 0.5, 0]], 0.045, 0)));
   };
 
   // ── 四肢：蹲伏外撑，三趾利爪 ──
@@ -597,7 +592,7 @@ export function createAbyssDrake(): ModelDef {
         for (let i = 0; i < 6; i++) pose.scale(Q.tail[5 - i], 1 - 0.999 * seg(gone, i * 0.07, i * 0.07 + 0.3));
         out.tint = 0.6 * seg(d, 1.8, 2.8);
         out.tintColor = 0xb090ff;
-        glow = (1 + 2.5 * bump(d, 0.62, 0.14)) * (1 - 0.85 * seg(d, 0.8, 1.6)) + 1.6 * gone;
+        glow = (1 + 1.2 * bump(d, 0.62, 0.14)) * (1 - 0.85 * seg(d, 0.8, 1.6)) + 0.9 * gone;
         break;
       }
       case 'move': {
@@ -631,7 +626,7 @@ export function createAbyssDrake(): ModelDef {
           const step = Math.max(back, fwd);
           Q.legs.forEach((l, i) => plantLeg(Q, pose, i, l.rx, l.ry + 0.28 * step * Math.max(0, Math.sin(p * 40 + i * 1.6)), l.rz, 0));
           planted = false;
-          glow += 0.6 * back + 1.6 * bump(p, 0.38, 0.16);
+          glow += 0.3 * back + 0.8 * bump(p, 0.38, 0.16);
         } else {
           // 噬咬：颈后缩成弓 → 弹射前探，咬合
           neckPose(-22 * back + 34 * fwd, -26 * back + 40 * fwd, 22 * back + 16 * fwd, 20 * back - 30 * fwd, 12 * back - 22 * fwd, 0);
@@ -641,7 +636,7 @@ export function createAbyssDrake(): ModelDef {
           frill = back + 0.4 * fwd;
           open = 0.3 * back + 0.14 * fwd;
           lift = 14 * back - 6 * fwd;
-          glow += 0.7 * back + 1.8 * bump(p, 0.36, 0.14);
+          glow += 0.3 * back + 0.8 * bump(p, 0.36, 0.14);
         }
         break;
       }
@@ -690,7 +685,7 @@ export function createAbyssDrake(): ModelDef {
           jaw = 4 + 40 * cry;
           frill = cry;
           curl = 0.3 + 0.7 * easeIO(seg(s, 1.9, 2.4));
-          glow += 0.8 * head * (1 - body) + 1.4 * cry;
+          glow += 0.4 * head * (1 - body) + 0.7 * cry;
         } else if (alert) {
           // 警戒：翼张到六成，身体压低，头对准目标
           open = 0.6;

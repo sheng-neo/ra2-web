@@ -150,14 +150,27 @@ export class MeshBuilder {
       }
       return;
     }
-    // 顶点 → 相邻三角形(压缩行存储)
+    // 位置相同的顶点算同一组(挤出时中轴线两侧各有一份顶点：邻接要跨过去，否则接缝两边各算各的法线)
     const vcount = p.length / 3;
-    const start = new Uint32Array(vcount + 1);
-    for (let i = 0; i < idx.length; i++) start[idx[i] + 1]++;
-    for (let v = 0; v < vcount; v++) start[v + 1] += start[v];
-    const fill = start.slice(0, vcount);
+    const group = new Uint32Array(vcount);
+    const byPos = new Map<string, number>();
+    let groups = 0;
+    for (let v = 0; v < vcount; v++) {
+      const key = `${Math.round(p[v * 3] * 500)},${Math.round(p[v * 3 + 1] * 500)},${Math.round(p[v * 3 + 2] * 500)}`;
+      let g = byPos.get(key);
+      if (g === undefined) {
+        g = groups++;
+        byPos.set(key, g);
+      }
+      group[v] = g;
+    }
+    // 组 → 相邻三角形(压缩行存储)
+    const start = new Uint32Array(groups + 1);
+    for (let i = 0; i < idx.length; i++) start[group[idx[i]] + 1]++;
+    for (let g = 0; g < groups; g++) start[g + 1] += start[g];
+    const fill = start.slice(0, groups);
     const adj = new Uint32Array(idx.length);
-    for (let t = 0; t < triCount; t++) for (let k = 0; k < 3; k++) adj[fill[idx[t * 3 + k]]++] = t;
+    for (let t = 0; t < triCount; t++) for (let k = 0; k < 3; k++) adj[fill[group[idx[t * 3 + k]]]++] = t;
     const cosC = Math.cos((creaseDeg * Math.PI) / 180);
     // 每个原顶点已经分出去的副本：[顶点下标, nx, ny, nz]...
     const copies: number[][] = new Array(vcount);
@@ -171,7 +184,8 @@ export class MeshBuilder {
         let nx = 0;
         let ny = 0;
         let nz = 0;
-        for (let j = start[v]; j < start[v + 1]; j++) {
+        const gv = group[v];
+        for (let j = start[gv]; j < start[gv + 1]; j++) {
           const t2 = adj[j];
           if (fu[t2 * 3] * tx + fu[t2 * 3 + 1] * ty + fu[t2 * 3 + 2] * tz < cosC) continue;
           nx += fa[t2 * 3];

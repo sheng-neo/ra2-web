@@ -1,15 +1,16 @@
 /**
  * 底部英雄状态栏：头像(阵亡变灰 + 复活倒计时)、等级、被动、生命/法力(数值、护盾段、千血刻度、掉血残影)、
- * 经验条、属性速览、状态图标行(剩余时间转圈 + 层数，点按/悬停看说明)、6 格装备(点按看属性)、金币与商店入口。
+ * 经验条、属性速览(4 项两字版：物攻或法强 / 护甲 / 魔抗 / 移速)、状态图标行(剩余时间转圈 + 层数，点按/悬停看说明)、
+ * 6 格装备(点按看四层说明：名字 → 大白话 → 属性 → 被动；新到手的那一格闪一下)、金币与商店入口。
  */
 import { HEROES } from '../../core/data/heroes';
 import { ITEMS } from '../../core/data/items';
 import type { Buff, BuffId, GameEvent, HeroUnit, ItemId } from '../../core/types';
 import { BUFF_META, buffIcon, itemIcon, skillIcon, uiIcon } from '../icons';
-import { itemTooltipHtml } from '../menu/select';
 import { createPortrait, escapeHtml } from '../menu/shared';
 import { attachTooltip, createSlot, h, icon, injectStyle, sfCss } from '../theme';
 import { classSlot, clamp01, numSlot, replay, textSlot, varSlot, type HudCtx, type HudPart } from './common';
+import { itemTipHtml } from './itemtip';
 import { buffDesc } from './text';
 
 const CSS = sfCss(`
@@ -66,6 +67,13 @@ const CSS = sfCss(`
 .sf-hud__st-items { flex: none; display: grid; grid-template-columns: repeat(3, auto); gap: 3u; }
 .sf-hud__st-items .sf-slot { --sf-slot: 27u; border-radius: 5u; box-shadow: 0 0 0 1px rgba(8, 13, 31, 0.95), 0 0 0 max(1.5px, 2u) rgba(224, 177, 96, 0.5); }
 .sf-hud__st-items .sf-slot--empty { box-shadow: inset 0 0 0 1px var(--sf-c-line-strong); }
+/* 新到手的装备(手动买的、自动出装买的都算)：那一格亮一下再落定 */
+.sf-hud__st-items .sf-slot.is-new { animation: sf-hud-item-new 1.1s var(--sf-ease-out); }
+@keyframes sf-hud-item-new {
+  0% { transform: scale(1.5); filter: brightness(2.4); box-shadow: 0 0 0 1px rgba(8, 13, 31, 0.95), 0 0 0 max(2px, 2.5u) #fff4d6, 0 0 0 0 rgba(255, 231, 173, 0.9); }
+  35% { transform: scale(0.94); filter: brightness(1.5); }
+  100% { transform: none; filter: none; box-shadow: 0 0 0 1px rgba(8, 13, 31, 0.95), 0 0 0 max(1.5px, 2u) rgba(224, 177, 96, 0.5), 0 0 0 16u rgba(255, 231, 173, 0); }
+}
 
 /* ── 金币 + 商店入口（与小地图下方的商店按钮是同一个入口，放在装备旁边顺手） ── */
 .sf-hud__st-shop {
@@ -115,6 +123,9 @@ const CSS = sfCss(`
 }
 `);
 
+/** 冷却缩减的上限(与 core/stats.ts 的 MAX_CDR 同值；那边没有导出，这里只用于说明文字) */
+const CDR_CAP = 0.4;
+
 const BUFF_ORDER: BuffId[] = Object.keys(BUFF_META) as BuffId[];
 const BUFF_RANK = new Map<BuffId, number>(BUFF_ORDER.map((id, i) => [id, i]));
 const MAX_BUFFS = 10;
@@ -145,7 +156,11 @@ export function createStatusBar(ctx: HudCtx): StatusBar {
   disposers.push(
     attachTooltip(
       passive,
-      () => `<div class="sf-tip__title"><span>${escapeHtml(def.passive.name)}</span><span class="sf-tip__meta">被动</span></div><div>${escapeHtml(def.passive.desc)}</div>`,
+      () =>
+        `<div class="sf-tip__title"><span>${escapeHtml(def.passive.name)}</span><span class="sf-tip__meta">被动</span></div>` +
+        // 先一句大白话，再给带数值的完整描述
+        (def.passive.brief ? `<div style="font-weight:600;color:var(--sf-c-text)">${escapeHtml(def.passive.brief)}</div>` : '') +
+        `<div>${escapeHtml(def.passive.desc)}</div>`,
     ),
   );
   const por = h('div', 'sf-hud__st-por', createPortrait(host, heroId), respawn, lv, passive);
@@ -177,12 +192,14 @@ export function createStatusBar(ctx: HudCtx): StatusBar {
     }),
   );
 
+  // 属性速览：4 项两字版。主输出属性按职业取一项(法师看法强，其余看物攻)，五项两字版在状态栏里放不下
+  const mainStat: [string, (m: HeroUnit) => number, (v: number) => string] =
+    def.role === 'mage' ? ['法强', (m) => Math.round(m.stats.ap), String] : ['物攻', (m) => Math.round(m.stats.ad), String];
   const statDefs: [string, (m: HeroUnit) => number, (v: number) => string][] = [
-    ['攻', (m) => Math.round(m.stats.ad), String],
-    ['法', (m) => Math.round(m.stats.ap), String],
-    ['甲', (m) => Math.round(m.stats.armor), String],
-    ['抗', (m) => Math.round(m.stats.mr), String],
-    ['速', (m) => Math.round(m.stats.moveSpeed * 10) / 10, (v) => v.toFixed(1)],
+    mainStat,
+    ['护甲', (m) => Math.round(m.stats.armor), String],
+    ['魔抗', (m) => Math.round(m.stats.mr), String],
+    ['移速', (m) => Math.round(m.stats.moveSpeed * 10) / 10, (v) => v.toFixed(1)],
   ];
   const stats = h('div', 'sf-hud__st-stats');
   stats.setAttribute('data-hud-hit', '');
@@ -195,20 +212,23 @@ export function createStatusBar(ctx: HudCtx): StatusBar {
     attachTooltip(stats, () => {
       const s = ctx.me.stats;
       const pc = (v: number): string => `${Math.round(v * 100)}%`;
+      // 叫法与商店、装备说明同一套(见 text.ts 的 STAT_LABELS)
       const rows: [string, string][] = [
-        ['物理攻击', String(Math.round(s.ad))], ['法术强度', String(Math.round(s.ap))],
-        ['护甲', String(Math.round(s.armor))], ['法术抗性', String(Math.round(s.mr))],
-        ['攻击速度', s.attackSpeed.toFixed(2)], ['移动速度', s.moveSpeed.toFixed(1)],
-        ['冷却缩减', pc(s.cdr)], ['暴击率', pc(s.critChance)],
-        ['护甲穿透', pc(s.armorPen)], ['法术穿透', pc(s.magicPen)],
-        ['普攻吸血', pc(s.lifesteal)], ['攻击距离', s.attackRange.toFixed(1)],
-        ['生命回复', `${s.hpRegen.toFixed(1)}/秒`], ['法力回复', `${s.manaRegen.toFixed(1)}/秒`],
+        ['物攻', String(Math.round(s.ad))], ['法强', String(Math.round(s.ap))],
+        ['护甲', String(Math.round(s.armor))], ['魔抗', String(Math.round(s.mr))],
+        ['攻速', s.attackSpeed.toFixed(2)], ['移速', s.moveSpeed.toFixed(1)],
+        ['冷却缩减', pc(s.cdr)], ['吸血', pc(s.lifesteal)],
+        ['暴击', pc(s.critChance)], ['暴击伤害', pc(s.critDamage)],
+        ['物穿', pc(s.armorPen)], ['法穿', pc(s.magicPen)],
+        ['回血', `${s.hpRegen.toFixed(1)}/秒`], ['回蓝', `${s.manaRegen.toFixed(1)}/秒`],
+        ['射程', s.attackRange.toFixed(1)], ['', ''],
       ];
       return (
         `<div class="sf-tip__title"><span>${escapeHtml(def.name)} · 属性</span></div>` +
         `<div style="display:grid;grid-template-columns:auto auto auto auto;gap:1px 10px;margin-top:4px">${rows
           .map(([k, v]) => `<span style="color:var(--sf-c-text-3)">${k}</span><b class="sf-num" style="color:var(--sf-c-text);text-align:right">${v}</b>`)
-          .join('')}</div>`
+          .join('')}</div>` +
+        `<div style="margin-top:5px;font-size:var(--sf-fs-xs);color:var(--sf-c-text-3)">冷却缩减上限 ${pc(CDR_CAP)}；吸血只对普攻生效。</div>`
       );
     }),
   );
@@ -259,6 +279,8 @@ export function createStatusBar(ctx: HudCtx): StatusBar {
   let lastMp = -1;
   let lastMaxMp = -1;
 
+  /** 第一次同步是把开局已有的装备摆上去，不算「新到手」 */
+  let itemsSynced = false;
   function syncItems(me: HeroUnit): void {
     for (let i = 0; i < itemSlots.length; i++) {
       const slot = itemSlots[i];
@@ -271,9 +293,15 @@ export function createStatusBar(ctx: HudCtx): StatusBar {
       slot.el.innerHTML = id ? itemIcon(id) : '';
       if (id) {
         slot.el.setAttribute('aria-label', ITEMS[id].name);
-        slot.off = attachTooltip(slot.el, () => itemTooltipHtml(ITEMS[id]));
-      } else slot.el.removeAttribute('aria-label');
+        slot.off = attachTooltip(slot.el, () => itemTipHtml(ITEMS[id]));
+        // 新装备进了这一格(含原地换鞋)：闪一下，自动出装买的东西也能被注意到
+        if (itemsSynced) replay(slot.el, 'is-new');
+      } else {
+        slot.el.removeAttribute('aria-label');
+        slot.el.classList.remove('is-new');
+      }
     }
+    itemsSynced = true;
   }
 
   function buffTip(id: BuffId): string {

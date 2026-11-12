@@ -4,7 +4,7 @@
  */
 import { MAT, ModelBuilder, PATTERN, X, lerp, smooth } from '../kit';
 import { type Quad, gait, hitPulse, plantLeg, quadRig, rearUp, standLegs } from '../quadruped';
-import { type Pose, bump, chainSkin, easeIO, easeIn, easeOut, seg, strikeWarp } from '../rig';
+import { type Pose, bump, chainSkin, easeIO, easeOut, seg, strikeWarp } from '../rig';
 import type { AnimInput, AnimOutput, ModelDef } from '../types';
 
 const TAU = Math.PI * 2;
@@ -84,7 +84,7 @@ export function createMossBadger(): ModelDef {
   };
   const bodySkin = chainSkin(rig, [Q.pelvis, Q.chest], 1.2);
   b.bind(bodySkin).paint(FUR, { c2: BELLY, by: belly, ...furOpts });
-  b.tube(rings, { seg: 12, up: [1, 0, 0] });
+  b.tube(rings, { seg: 10, up: [1, 0, 0] });
   b.bone(Q.tail[0]).paint(FUR_DARK, { c2: STRIPE, ...furOpts });
   b.tube([[0, 0.58, -1.02, 0.11, 0.1], [0, 0.56, -1.22, 0.09, 0.08], [0, 0.6, -1.4, 0.02, 0.02]], { seg: 6, up: [1, 0, 0] });
 
@@ -161,7 +161,7 @@ export function createMossBadger(): ModelDef {
       [0, 0.58, 1.38, 0.14, 0.12],
       [0, 0.56, 1.48, 0.08, 0.07],
     ],
-    { seg: 14, up: [1, 0, 0] },
+    { seg: 12, up: [1, 0, 0] },
   );
   // 下颌与两颊的浅色
   b.paint(BELLY, { ...furOpts });

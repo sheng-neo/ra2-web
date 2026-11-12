@@ -30,6 +30,10 @@ export function loadSettings(defaults?: Partial<Settings>): Settings {
     out.musicVolume = clamp01(o.musicVolume, out.musicVolume);
     if (typeof o.showFps === 'boolean') out.showFps = o.showFps;
     if (typeof o.cameraShake === 'boolean') out.cameraShake = o.cameraShake;
+    // 第二阶段新增的三项：老存档里没有，缺了就保持默认值(都是开)
+    if (typeof o.autoBuy === 'boolean') out.autoBuy = o.autoBuy;
+    if (typeof o.tutorial === 'boolean') out.tutorial = o.tutorial;
+    if (typeof o.objectiveHints === 'boolean') out.objectiveHints = o.objectiveHints;
   }
   return out;
 }
@@ -53,6 +57,11 @@ export interface SettingsPanelOptions {
   onResume?(): void;
   /** 对局内确认「返回主菜单」 */
   onQuit?(): void;
+  /**
+   * 对局内点了新手引导那一行的「重看」(此时 tutorial 已经是开)：让引导从第一步重新开始。
+   * 不给这个回调时，面板退而把 tutorial 开关「先关、0.7 秒后再开」一次——只认开关跳变的界面同样会重来。
+   */
+  onReplayTutorial?(): void;
 }
 
 export interface SettingsPanel {
@@ -64,6 +73,9 @@ export interface SettingsPanel {
   refresh(): void;
   dispose(): void;
 }
+
+/** 「重看」新手引导时，开关先关掉多久再打开(毫秒)：要长过界面轮询设置的间隔，引导才看得到这次「关 → 开」 */
+const REPLAY_PULSE_MS = 700;
 
 const QUALITY_HINT: Record<Quality, string> = {
   low: '关闭阴影与后期特效，帧率最高，适合低端设备或省电。',
@@ -78,6 +90,10 @@ const CSS = sfCss(`
 .sf-settings .sf-field { grid-template-columns: minmax(max(92px, 104u), max-content) 1fr; }
 .sf-settings__row { cursor: pointer; border-radius: 6u; }
 .sf-settings__quality { margin-top: 2u; }
+/* 带说明小字的开关行：说明紧贴在行下面 */
+.sf-settings__row.has-hint { min-height: max(34px, 38u); }
+.sf-settings__row.has-hint + .sf-field__hint { margin: -1u 0 8u; }
+.sf-settings__replay { flex: none; padding: 4u 2u; font-size: var(--sf-fs-sm); white-space: nowrap; }
 .sf-settings__foot { display: flex; align-items: center; gap: 12u; width: 100%; }
 .sf-settings__foot > .sf-link { margin-right: auto; }
 .sf-dialog--settings .sf-dialog__foot { padding-top: 12u; padding-bottom: 14u; }
@@ -109,16 +125,71 @@ export function createSettingsPanel(o: SettingsPanelOptions): SettingsPanel {
     },
   });
 
-  const toggleRow = (label: string, iconSvg: string, key: 'showFps' | 'cameraShake'): { row: HTMLElement; toggle: Toggle } => {
-    const toggle = createToggle({ value: o.get()[key], label, onChange: (v) => o.update({ [key]: v }) });
-    const row = h('div', 'sf-field sf-settings__row', h('span', 'sf-field__label', icon(iconSvg), label), h('span', 'sf-field__ctl', toggle.el));
+  // 「重看」新手引导：引导开着时也能从第一步重来。宿主给了 onReplayTutorial 就直接调它；
+  // 没给的话只能靠 tutorial 这个开关传话，做成「先关、稍后再开」的一次脉冲
+  let replayTimer = 0;
+  const cancelReplay = (): void => {
+    window.clearTimeout(replayTimer);
+    replayTimer = 0;
+  };
+
+  type ToggleKey = 'showFps' | 'cameraShake' | 'autoBuy' | 'objectiveHints' | 'tutorial';
+  interface ToggleRow {
+    row: HTMLElement;
+    toggle: Toggle;
+    /** 行下面的说明小字 */
+    hint: HTMLElement | null;
+  }
+  const toggleRow = (label: string, iconSvg: string, key: ToggleKey, hint?: string, extra?: HTMLElement | null): ToggleRow => {
+    const toggle = createToggle({
+      value: o.get()[key],
+      label,
+      onChange: (v) => {
+        // 玩家亲手拨了引导开关：以这次为准，还没完成的「重看」脉冲作废
+        if (key === 'tutorial') cancelReplay();
+        o.update({ [key]: v });
+      },
+    });
+    const row = h('div', `sf-field sf-settings__row${hint ? ' has-hint' : ''}`, h('span', 'sf-field__label', icon(iconSvg), label), h('span', 'sf-field__ctl', extra, toggle.el));
     // 整行都是点击热区（开关本身偏小）
     row.dataset.sfSnd = 'click';
     row.addEventListener('click', () => toggle.flip());
-    return { row, toggle };
+    return { row, toggle, hint: hint ? h('p', 'sf-field__hint', hint) : null };
   };
   const fps = toggleRow('显示帧率', uiIcon('fps'), 'showFps');
   const shake = toggleRow('镜头震动', uiIcon('shake'), 'cameraShake');
+
+  // ── 对战辅助 ──
+  const replay = mode === 'match' ? h('button', 'sf-link sf-settings__replay', '重看') : null;
+  const autoBuy = toggleRow('自动出装', uiIcon('shop'), 'autoBuy', '金币够了自动购买推荐出装的下一件，阵亡时也会买。');
+  const hints = toggleRow('当前目标提示', uiIcon('target'), 'objectiveHints', '在屏幕上方提示现在该做什么。');
+  const tutorial = toggleRow('新手引导', uiIcon('info'), 'tutorial', '开局一步步教操作；打完一局后自动关闭。', replay);
+  if (replay) {
+    replay.type = 'button';
+    replay.dataset.sfSnd = 'confirm';
+    replay.setAttribute('aria-label', '从第一步重看新手引导');
+    replay.addEventListener('click', (ev) => {
+      // 别让这次点击冒到整行上把开关翻掉
+      ev.stopPropagation();
+      cancelReplay();
+      const finish = (): void => {
+        replayTimer = 0;
+        o.update({ tutorial: true });
+      };
+      if (!o.get().tutorial) finish(); // 引导关着：打开就是从头开始
+      else if (o.onReplayTutorial) o.onReplayTutorial();
+      else {
+        o.update({ tutorial: false });
+        // 面板关了也要把开关打回去，所以这个定时器不随 dispose 取消
+        replayTimer = window.setTimeout(finish, REPLAY_PULSE_MS);
+      }
+      tutorial.toggle.set(true);
+      replay.textContent = '已从头开始';
+      window.setTimeout(() => {
+        replay.textContent = '重看';
+      }, 1600);
+    });
+  }
 
   // ── 声音 ──
   const sliderRow = (label: string, iconSvg: string, key: 'masterVolume' | 'sfxVolume' | 'musicVolume'): { row: HTMLElement; slider: Slider; val: HTMLElement } => {
@@ -144,6 +215,7 @@ export function createSettingsPanel(o: SettingsPanelOptions): SettingsPanel {
   const el = h(
     'div',
     'sf-settings',
+    h('section', 'sf-settings__group sf-settings__group--assist', h('h3', 'sf-heading', '对战辅助'), autoBuy.row, autoBuy.hint, hints.row, hints.hint, tutorial.row, tutorial.hint),
     h(
       'section',
       'sf-settings__group',
@@ -162,6 +234,10 @@ export function createSettingsPanel(o: SettingsPanelOptions): SettingsPanel {
     qualityHint.textContent = QUALITY_HINT[s.quality];
     fps.toggle.set(s.showFps);
     shake.toggle.set(s.cameraShake);
+    autoBuy.toggle.set(s.autoBuy);
+    hints.toggle.set(s.objectiveHints);
+    // 「重看」的脉冲进行中(开关被临时关着)：界面上保持「开」
+    tutorial.toggle.set(s.tutorial || replayTimer !== 0);
     master.slider.set(s.masterVolume);
     master.val.textContent = pct(s.masterVolume);
     sfx.slider.set(s.sfxVolume);
@@ -176,8 +252,8 @@ export function createSettingsPanel(o: SettingsPanelOptions): SettingsPanel {
   reset.type = 'button';
   reset.dataset.sfSnd = 'click';
   reset.addEventListener('click', () => {
-    // 画质是按设备探测出来的，不随「恢复默认」改动
-    const { quality: _keep, ...rest } = DEFAULT_SETTINGS;
+    // 画质是按设备探测出来的，不随「恢复默认」改动；新手引导也不动——老玩家点一下恢复默认不该又被教一遍
+    const { quality: _keepQuality, tutorial: _keepTutorial, ...rest } = DEFAULT_SETTINGS;
     o.update(rest);
     refresh();
   });

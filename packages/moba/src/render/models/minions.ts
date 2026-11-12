@@ -180,7 +180,7 @@ export function createMeleeMinion(): ModelDef {
         pose.rot(legR, -6 * back + 12 * fwd, 0, 0);
         pose.rot(armL, -34 - 10 * back, 0, 0);
         pose.rot(head, 6 * back - 6 * fwd, -14 * back + 8 * fwd, 0);
-        out.glow = 1 + 0.5 * back + 1.2 * bump(p, 0.36, 0.14);
+        out.glow = 1 + 0.3 * back + 0.7 * bump(p, 0.36, 0.14);
         break;
       }
       case 'stunned': {
@@ -325,7 +325,7 @@ export function createRangedMinion(): ModelDef {
         pose.rot(armL, -100 * wind * (1 - rec) - 30 * fwd, 0, -26 * wind * (1 - rec));
         pose.rot(armR, -100 * wind * (1 - rec) - 30 * fwd, 0, 26 * wind * (1 - rec));
         pose.scale(flame, flick * (1 + 0.5 * back - 0.25 * fwd));
-        out.glow = 1 + 1.8 * back + 1.4 * bump(p, 0.36, 0.12);
+        out.glow = 1 + 0.7 * back + 0.8 * bump(p, 0.36, 0.12);
         break;
       }
       case 'stunned': {
@@ -478,7 +478,7 @@ export function createSiegeMinion(): ModelDef {
         // 矢：射出后缩没，上弦时重新出现
         pose.scale(slide, Math.max(0.001, 1 - fire + easeIO(seg(p, 0.7, 0.95))));
         pose.pos(slide, 0, 0, 0.5 * fire * (1 - seg(p, 0.4, 0.5)));
-        out.glow = 1 + 1.6 * charge * (1 - fire) + 1.5 * kick;
+        out.glow = 1 + 0.7 * charge * (1 - fire) + 0.8 * kick;
         break;
       }
       case 'stunned': {
@@ -673,7 +673,7 @@ export function createSuperMinion(): ModelDef {
         pose.pos(hips, 0, 0.05 * up - 0.12 * down, 0.14 * down);
         pose.rot(legL, 8 * up - 20 * down, 0, 0);
         pose.rot(legR, -6 * up + 14 * down, 0, 0);
-        out.glow = 1 + 0.6 * up + 1.6 * bump(p, 0.36, 0.16);
+        out.glow = 1 + 0.3 * up + 0.8 * bump(p, 0.36, 0.16);
         break;
       }
       case 'stunned': {

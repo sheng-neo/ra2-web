@@ -32,10 +32,27 @@
  *    kitShadow() / kitAmbient(N) / kitSunDir() / kitSunColor() / kitPointLights(N, viewPos)，结尾接 GLSL_OUTPUT_FRAGMENT。
  *    写法可参考 terrain/decals.ts(预乘透明贴花) 与 terrain/water.ts。
  *
+ * 8) 第二阶段的光影接口(art-v2 §4)：
+ *    - 三阶明暗自定义阈值：`createToonMaterial({ ramp: [0.05, 0.42, 0.55], softness: 0.1, shadeTint: PALETTE.env.shadeRock })`
+ *      (岩石/建筑/构件)。在主光方向下：顶面与西立面 = 亮，朝镜头的南立面 = 灰，东立面 = 暗。
+ *    - 背光侧冷色边缘光：`kicker: 0.1`(岩石) / `0.3`(建筑)；自写 shader 用片段 GLSL_KICK 的 kitKick(N, V, uKickDir) × uKickColor。
+ *    - 顶面贴图：`mapTop: 草贴图, mapTopScale: 0.1, mapTopNoise: 噪声贴图`——法线朝上的片元按世界 xz 采样并叠大块色斑。
+ *    - 环境染色贴图：Toon 材质默认采样(lightTint: false 可关)；自写 shader 拼 GLSL_LIGHT_TINT，
+ *      `vec4 lt = kitLightTint(worldXZ); irr = kitTintAmbient(kitAmbient(N) * ao, lt) + 主光…`。写入见 engine/lighttint.ts。
+ *    - 暗部色：实体用 SHARED.uShadeTint(不传 shadeTint 的 Toon 材质自动跟随)，地表/水面/贴花声明
+ *      `uniform vec3 uShadeTintGround;` 即可(litUniforms 自动绑定)，然后 `col *= mix(uShadeTintGround, vec3(1.0), 受光量)`。
+ *    - kitAmbient(N) 自带「立面补光」：法线越水平多吃一份地面反光，岩壁与角色的背光面不会发黑；朝上的面不受影响。
+ *    - 色调映射：全工程统一用 TONE_MAPPING(Neutral 的高光段、暗部线性，见本文件「色调映射」一节)。
+ *      独立的小渲染器(立绘、头像、画廊)也请设 `renderer.toneMapping = TONE_MAPPING`，颜色才和对局里一致。
+ *
  * 光照约定与 three 内置材质一致(辐照度 × 反照率 / π)，所以同一场景里混用 MeshStandardMaterial 亮度也对得上。
  * 所有自定义 shader 结尾都带 tonemapping/colorspace/fog，直出屏幕(low 档)与走后期(HDR 目标)两条路径都正确。
  * 注意：low 档没有 HDR 中间目标，叠加混合发生在 gamma 空间，同样的数值会显得更亮。自写的叠加类 shader 可以用
  *   片段 GLSL_ADDITIVE 提供的 `kitAdditive(color)` 包一下输出颜色来对齐观感(HDR 路径下它原样返回)。
+ *
+ * 对色基准(1280×720，quality=high；用 /dev/lookdev.html 的亮度色卡实测，CIE L*)：
+ *   受光兵线石 #c0b08d ≈ 72、阴影里 ≈ 40；受光草 #6f9d4a ≈ 58；崖顶草 #5a9150 ≈ 53；岩·亮 #a9a39f 朝上 ≈ 67；
+ *   岩色 #7f7c86 的立面 亮 / 灰 / 暗 ≈ 60 / 49 / 35；白甲 #e9e9e9 受光 ≈ 93。亮度阶梯：墙体 < 地面 < 单位 < 特效核心。
  */
 import * as THREE from 'three';
 import type { TeamId } from '../core/types';
@@ -132,7 +149,7 @@ export const PALETTE = {
     outline: 0x1b2233,
     // 光影常量：单位暗部乘色 / 岩石暗部乘色 / 受光侧暖边 / 背光侧冷边
     shadeUnit: 0xc4d0ff,
-    shadeRock: 0xd2d8ff,
+    shadeRock: 0xe6e9ff,
     rimWarm: 0xffe9c4,
     kickCool: 0xbfe2ff,
   },
@@ -148,6 +165,12 @@ export function linearColor(hex: THREE.ColorRepresentation): THREE.Color {
 }
 
 // ───────────────────────────── 全局共享 uniform ─────────────────────────────
+
+/**
+ * 立面补光系数(见 kitAmbient)：水平法线的面额外得到 地面反光色 × 这个系数 的环境光。
+ * 与 lighting.ts 的 BOUNCE_GAIN 配合，把「岩石暗面」托到亮度表要求的 L* 35~40。
+ */
+export const SIDE_FILL = 0.45;
 
 /** 环境染色贴图覆盖的世界半径(米)：贴图覆盖 [-64, 64]²，1 米 / texel(128²) */
 export const LIGHT_TINT_EXTENT = 64;
@@ -768,13 +791,14 @@ float ditherThreshold(vec2 fragCoord) {
 
 /**
  * 自定义受光 shader 的公共头(片元)：引入 three 的灯光/阴影/雾定义，并提供
- *   vec3 kitAmbient(vec3 N)                 —— 环境 + 半球光辐照度
+ *   vec3 kitAmbient(vec3 N)                 —— 环境 + 半球光辐照度(含立面补光：水平法线多吃一份地面反光)
  *   float kitShadow()                       —— 主光阴影(0..1)
  *   vec3 kitSunDir() / vec3 kitSunColor()   —— 视图空间主光方向 / 颜色
  *   vec3 kitPointLights(vec3 N, vec3 viewPos) —— 所有点光(技能闪光)的平滑漫反射辐照度
  * 需要 varying：vViewPosition(= -mvPosition.xyz)。材质要 lights:true, fog:true。
  */
 export const GLSL_LIGHT_PARS_FRAGMENT = /* glsl */ `
+#define KIT_SIDE_FILL ${SIDE_FILL.toFixed(3)}
 #include <common>
 #include <packing>
 #include <fog_pars_fragment>
@@ -787,6 +811,10 @@ vec3 kitAmbient(vec3 N) {
   for (int i = 0; i < NUM_HEMI_LIGHTS; i++) {
     irr += getHemisphereLightIrradiance(hemisphereLights[i], N);
   }
+  // 立面补光：法线越接近水平，多吃一份地面反光(被太阳晒亮的地面与对面的墙弹回来的暖光)。
+  // 朝上的面(地表、台面)和朝下的面不受影响——只把岩壁、建筑和角色的背光立面托起来，暗面不发黑
+  float ny = dot(N, hemisphereLights[0].direction);
+  irr += hemisphereLights[0].groundColor * (KIT_SIDE_FILL * (1.0 - ny * ny));
   #endif
   return irr;
 }
@@ -901,6 +929,8 @@ vec3 kitTintAmbient(vec3 ambient, vec4 lt) {
  * 合并 three 的灯光/雾 uniform 与自定义 uniform（自定义项保持引用，不被克隆）。
  * 同时带上全局共享的光影 uniform：tLightTint / uShadeTintGround / uKickDir / uKickColor
  * (着色器里声明了同名 uniform 就能直接用；custom 里的同名项优先)。
+ * 注意：用它建出来的材质不要调 three 自带的 material.clone()——那会把共享 uniform(含环境染色贴图)拷成各自的副本，
+ * 之后全局改动就传不到副本上。需要第二份材质时重新构造一个(ToonMaterial.clone() 已经这样处理)。
  */
 export function litUniforms(custom: Record<string, THREE.IUniform>): Record<string, THREE.IUniform> {
   return {
@@ -1173,9 +1203,9 @@ void main() {
   #else
   vec2 tn = 0.5 + 0.5 * vec2(sin(vWorldPos.x * 0.13 + sin(vWorldPos.z * 0.11) * 1.7), sin(vWorldPos.z * 0.17 - vWorldPos.x * 0.09 + 1.3));
   #endif
-  vec3 patch = mix(vec3(0.84, 0.97, 1.06), vec3(1.0), smoothstep(0.34, 0.62, tn.x));
-  patch = mix(patch, vec3(1.16, 1.07, 0.8), smoothstep(0.5, 0.74, tn.y) * 0.6);
-  tg *= mix(vec3(1.0), patch, uMapTop.z);
+  vec3 topTint = mix(vec3(0.84, 0.97, 1.06), vec3(1.0), smoothstep(0.34, 0.62, tn.x));
+  topTint = mix(topTint, vec3(1.16, 1.07, 0.8), smoothstep(0.5, 0.74, tn.y) * 0.6);
+  tg *= mix(vec3(1.0), topTint, uMapTop.z);
   #endif
   base.rgb *= mix(vec3(1.0), tg, topW);
   #endif

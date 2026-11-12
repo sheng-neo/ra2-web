@@ -102,7 +102,8 @@ export function buildLaneCurbs(batch: SceneryBatcher, field: MapField): number {
           if (Math.abs(field.laneDist(x, z) - CURB_OFFSET) > 0.07) continue;
           if (field.riverDist(x, z) < 0.9) continue;
           if (field.baseDist(x, z) < 0.35 || field.padDist(x, z) < 0.45) continue;
-          if (field.solidDist(x, z) < 0.4) continue;
+          // 贴着崖脚也砌(石台的碰撞轮廓离路缘 0.2~0.4 米)：只有真被墙体或界外崖壁压住才跳过
+          if (field.wallDist(x, z, 2) < 0.14 || field.boundDist(x, z) < 0.25) continue;
           if (roll < 0.15) continue;
           const crooked = tiltRoll < 0.1;
           const h = (0.06 + hRoll * 0.06) * (crooked ? 0.6 : 1);
