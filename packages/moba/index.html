@@ -3,10 +3,12 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
-    <meta name="theme-color" content="#0b1020" />
+    <meta name="theme-color" content="#070a14" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="description" content="星陨战纪 Starfall：原创的网页 5v5 MOBA，一名玩家与九个 AI 的三路对决。" />
     <title>星陨战纪 · Starfall</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230a1128'/%3E%3Cellipse cx='32' cy='34' rx='25' ry='8.5' fill='none' stroke='%238fe9ff' stroke-width='2.4' transform='rotate(-18 32 34)'/%3E%3Cpath d='M32 5Q34.8 26.2 59 32Q34.8 37.8 32 59Q29.2 37.8 5 32Q29.2 26.2 32 5Z' fill='%23f3cf85'/%3E%3Ccircle cx='32' cy='32' r='4' fill='%23fffdf2'/%3E%3C/svg%3E" />
     <script>
       // 以 /moba（无尾斜杠）访问时补上斜杠，保证相对资源路径正确
       if (/\/moba$/.test(location.pathname)) location.replace(location.pathname + '/' + location.search + location.hash);
@@ -14,11 +16,101 @@
     <style>
       html, body { margin: 0; height: 100%; background: #070a14; overflow: hidden; overscroll-behavior: none; }
       body { touch-action: none; -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }
-      #app { position: fixed; inset: 0; }
+      #app { position: fixed; inset: 0; overflow: hidden; background: #070a14; }
+
+      /* 启动占位：纯 CSS，脚本就绪后由 app/shell.ts 淡出移除 */
+      #boot {
+        position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; overflow: hidden;
+        font-family: "PingFang SC", "HarmonyOS Sans SC", "Microsoft YaHei", system-ui, sans-serif; color: #eaf0ff;
+        background:
+          radial-gradient(1px 1px at 12% 22%, #fff 50%, transparent 51%), radial-gradient(1px 1px at 27% 68%, #cfe6ff 50%, transparent 51%),
+          radial-gradient(1.5px 1.5px at 41% 14%, #fff 50%, transparent 51%), radial-gradient(1px 1px at 58% 79%, #ffe7ad 50%, transparent 51%),
+          radial-gradient(1.5px 1.5px at 73% 31%, #fff 50%, transparent 51%), radial-gradient(1px 1px at 88% 61%, #cfe6ff 50%, transparent 51%),
+          radial-gradient(1px 1px at 93% 12%, #fff 50%, transparent 51%), radial-gradient(1px 1px at 6% 84%, #ffe7ad 50%, transparent 51%),
+          radial-gradient(120% 85% at 50% 0%, #16264f 0%, #0a1128 48%, #050814 100%);
+        transition: opacity 0.45s ease-out;
+      }
+      #boot.is-done { opacity: 0; pointer-events: none; }
+      .boot__inner { display: flex; flex-direction: column; align-items: center; padding: 16px; text-align: center; }
+      .boot__mark { width: min(30vmin, 132px); height: min(30vmin, 132px); filter: drop-shadow(0 0 14px rgba(255, 214, 130, 0.55)); }
+      .boot__ring { transform-origin: 60px 62px; animation: boot-ring 3.2s linear infinite; }
+      .boot__star { transform-origin: 60px 60px; animation: boot-star 2.4s ease-in-out infinite; }
+      .boot__name {
+        margin-top: 4px; font-size: clamp(30px, 8.4vmin, 58px); font-weight: 900; line-height: 1.2; letter-spacing: 0.22em; margin-right: -0.22em; color: #f3cf85;
+        background: linear-gradient(180deg, #fffbe9 0%, #ffe7ad 34%, #e0b160 62%, #a8742c 100%); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+      }
+      .boot__sub { display: flex; align-items: center; gap: 12px; margin-top: 2px; font-size: clamp(11px, 2.4vmin, 15px); font-weight: 700; letter-spacing: 0.56em; color: #8fe9ff; }
+      .boot__sub b { margin-right: -0.56em; }
+      .boot__sub i { width: clamp(28px, 9vmin, 64px); height: 1px; background: linear-gradient(90deg, transparent, #e0b160); }
+      .boot__sub i:last-child { transform: scaleX(-1); }
+      .boot__bar { position: relative; width: min(56vmin, 260px); height: 3px; margin-top: 26px; border-radius: 3px; background: rgba(143, 233, 255, 0.16); overflow: hidden; }
+      .boot__bar span { position: absolute; top: 0; bottom: 0; left: 0; width: 38%; border-radius: 3px; background: linear-gradient(90deg, transparent, #8fe9ff 40%, #ffe7ad 70%, transparent); animation: boot-bar 1.25s ease-in-out infinite; }
+      .boot__tip { min-height: 1.6em; margin: 12px 0 0; max-width: 30em; font-size: 13px; line-height: 1.6; letter-spacing: 0.08em; color: #7f8fb4; }
+      #boot.is-error .boot__bar { display: none; }
+      #boot.is-error .boot__tip { color: #ffb4a8; letter-spacing: 0.02em; }
+      @keyframes boot-ring { to { transform: rotate(360deg); } }
+      @keyframes boot-star { 0%, 100% { transform: scale(0.94); opacity: 0.88; } 50% { transform: scale(1.04); opacity: 1; } }
+      @keyframes boot-bar { 0% { transform: translateX(-110%); } 100% { transform: translateX(290%); } }
+      @media (prefers-reduced-motion: reduce) { .boot__ring, .boot__star, .boot__bar span { animation-duration: 6s; } }
     </style>
   </head>
   <body>
     <div id="app"></div>
+    <div id="boot" role="status" aria-live="polite">
+      <div class="boot__inner">
+        <svg class="boot__mark" viewBox="0 0 120 120" aria-hidden="true">
+          <defs>
+            <linearGradient id="boot-gold" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stop-color="#fffbe9" /><stop offset=".55" stop-color="#f3cf85" /><stop offset="1" stop-color="#a8742c" />
+            </linearGradient>
+            <radialGradient id="boot-halo">
+              <stop offset="0" stop-color="#ffe7ad" stop-opacity=".5" /><stop offset="1" stop-color="#ffe7ad" stop-opacity="0" />
+            </radialGradient>
+          </defs>
+          <circle cx="60" cy="60" r="44" fill="url(#boot-halo)" />
+          <g transform="rotate(-18 60 62)">
+            <ellipse cx="60" cy="62" rx="50" ry="16" fill="none" stroke="#8fe9ff" stroke-opacity=".28" stroke-width="1.6" />
+            <g class="boot__ring">
+              <ellipse cx="60" cy="62" rx="50" ry="16" fill="none" stroke="#8fe9ff" stroke-width="2" stroke-linecap="round" stroke-dasharray="46 400" />
+            </g>
+          </g>
+          <g class="boot__star">
+            <path d="M60 8Q64.6 50.4 112 60Q64.6 69.600 60 112Q55.400 69.600 8 60Q55.400 50.4 60 8Z" fill="url(#boot-gold)" />
+            <path d="M60 34Q62 54 82 60Q62 66 60 86Q58 66 38 60Q58 54 60 34Z" fill="#fffdf2" fill-opacity=".85" />
+            <circle cx="60" cy="60" r="5" fill="#fff" />
+          </g>
+          <circle cx="24" cy="30" r="2" fill="#c9f6ff" /><circle cx="99" cy="92" r="1.6" fill="#c9f6ff" />
+        </svg>
+        <div class="boot__name">星陨战纪</div>
+        <div class="boot__sub"><i></i><b>STARFALL</b><i></i></div>
+        <div class="boot__bar"><span></span></div>
+        <p class="boot__tip" id="boot-tip">正在载入…</p>
+        <noscript><p class="boot__tip">需要启用 JavaScript 才能运行游戏。</p></noscript>
+      </div>
+    </div>
+    <script>
+      // 启动看门狗：主脚本接管(置 __mobaBooted)之前出错或迟迟不来，都在占位页上说明，而不是一直转圈
+      (function () {
+        var boot = document.getElementById('boot');
+        var tip = document.getElementById('boot-tip');
+        if (!boot || !tip) return;
+        function say(text, isError) {
+          if (window.__mobaBooted) return;
+          tip.textContent = text;
+          if (isError) boot.classList.add('is-error');
+        }
+        window.addEventListener('error', function (ev) {
+          say('启动失败：' + ((ev && ev.message) || '脚本未能运行') + '。请刷新页面重试。', true);
+        });
+        setTimeout(function () {
+          say('载入时间比预期长，请稍候…若一直停在这里，请刷新页面或换用新版浏览器。', false);
+        }, 15000);
+      })();
+    </script>
+    <script nomodule>
+      document.getElementById('boot').classList.add('is-error');
+      document.getElementById('boot-tip').textContent = '当前浏览器版本过旧，无法运行游戏。请更新浏览器后再试。';
+    </script>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

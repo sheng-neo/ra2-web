@@ -7,7 +7,6 @@
 import { PALETTE } from '../materials';
 import { bump, seg } from './humanoid';
 import { ModelBuilder, X, lerp, shade } from './kit';
-import { trim } from './parts';
 import { type Pose, Rig } from './rig';
 import type { AnimInput, AnimOutput, ModelDef } from './types';
 
@@ -17,14 +16,16 @@ interface Look {
   stoneLight: number;
   trim: number;
   crystal: number;
+  /** 大块晶体(核心/星核)的亮面色：比主色稍亮，但不发白 */
+  crystalMid: number;
   crystalHot: number;
   /** 红方的造型更尖锐 */
   spiky: boolean;
 }
 
 const LOOKS: [Look, Look] = [
-  { stone: 0xc2cbdc, stoneDark: 0x8e9cba, stoneLight: 0xe6ebf5, trim: PALETTE.blue.trim, crystal: 0x2f9cff, crystalHot: 0xa8dcff, spiky: false },
-  { stone: 0x5e5059, stoneDark: 0x352b33, stoneLight: 0x7c6c76, trim: PALETTE.red.trim, crystal: 0xff4a30, crystalHot: 0xffb08a, spiky: true },
+  { stone: 0xaab6d2, stoneDark: 0x7686ac, stoneLight: 0xd4dcee, trim: PALETTE.blue.trim, crystal: 0x0f56d8, crystalMid: 0x2f86f8, crystalHot: 0x7cc0ff, spiky: false },
+  { stone: 0x5e5059, stoneDark: 0x352b33, stoneLight: 0x7c6c76, trim: PALETTE.red.trim, crystal: 0xff4a30, crystalMid: 0xff7448, crystalHot: 0xffb08a, spiky: true },
 ];
 
 const hash = (i: number, s: number): number => {
@@ -116,7 +117,7 @@ function createTower(tier: 1 | 2 | 3, team: 0 | 1): ModelDef {
     });
   }
   // 核心：悬浮的大晶体 + 更亮的内核
-  b.bone(core).paint(L.crystal, { c2: L.crystalHot, glow: 0.26, glow2: 0.46, gloss: 1, line: 1 });
+  b.bone(core).paint(L.crystal, { c2: L.crystalMid, glow: 0.24, glow2: 0.42, gloss: 0.7, line: 1 });
   const cr = 0.5 + tier * 0.05;
   b.g(X(0, coreY - 0.85, 0), () => b.crystal(cr, 1.7, 6, 0.5, 0.5, 1));
   b.paint(L.crystalHot, { glow: 0.6 });
@@ -338,13 +339,13 @@ function createCore(team: 0 | 1): ModelDef {
     });
   });
   // 星核：巨大的多面晶体，向六个方向伸出星芒
-  b.bone(star).paint(L.crystal, { c2: L.crystalHot, glow: 0.24, glow2: 0.44, gloss: 1, line: 1 });
+  b.bone(star).paint(L.crystal, { c2: L.crystalMid, glow: 0.16, glow2: 0.3, gloss: 0.6, line: 1 });
   b.g(X(0, coreY - 1.45, 0), () => b.crystal(1.0, 2.9, 6, 0.5, 0.5, 1));
   for (let k = 0; k < 6; k++) {
     const a = (k / 6) * Math.PI * 2;
     b.g(X(0, coreY, 0, 0, -(a * 180) / Math.PI, 0), () => b.g(X(0.72, 0, 0, 0, 0, -90), () => b.crystal(0.3, 1.25, 4, 0.8, 0.05)));
   }
-  b.bone(inner).paint(L.crystalHot, { glow: 0.6 });
+  b.bone(inner).paint(L.crystalHot, { glow: 0.42 });
   b.g(X(0, coreY - 0.7, 0), () => b.crystal(0.46, 1.4, 4, 0.5, 0.5, 1));
   // 两道陀螺环
   for (const [r, R] of [[ringA, 1.95], [ringB, 2.3]] as [number, number][]) {

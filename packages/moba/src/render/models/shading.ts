@@ -171,8 +171,10 @@ void main() {
   vec3 n = qrot(q0, aOutline.xyz);
   if (aSkin.z < 0.999) n = mix(qrot(q1, aOutline.xyz), n, aSkin.z);
   vec4 mvPosition = viewMatrix * vec4(skinnedPos, 1.0);
-  // 线宽按视距换算成恒定的屏幕像素
-  float w = aOutline.w * uLine * -mvPosition.z;
+  // 线宽按视距换算成恒定的屏幕像素；被缩没的部件(骨骼缩放趋零)不留描边残点
+  float sc = ps0.w;
+  if (aSkin.z < 0.999) sc = mix(ps1.w, ps0.w, aSkin.z);
+  float w = aOutline.w * uLine * -mvPosition.z * min(1.0, sc * 4.0);
   mvPosition = viewMatrix * vec4(skinnedPos + normalize(n) * w, 1.0);
   vOpacity = aInstA.x;
   gl_Position = projectionMatrix * mvPosition;

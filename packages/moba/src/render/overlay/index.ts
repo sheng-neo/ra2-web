@@ -52,6 +52,8 @@ export function createOverlayModule(ctx: RenderContext): OverlayModule {
   const marks = new WorldMarks(kit);
   const hook = (frame: FrameInfo): void => marks.update(frame);
   kit.hooks.push(hook);
+  const onClear = (): void => marks.reset();
+  kit.onClear.push(onClear);
   const anchors = (): UnitAnchors => kit.anchors;
 
   const resize = (): void => {
@@ -112,6 +114,8 @@ export function createOverlayModule(ctx: RenderContext): OverlayModule {
     dispose(): void {
       const i = kit.hooks.indexOf(hook);
       if (i >= 0) kit.hooks.splice(i, 1);
+      const j = kit.onClear.indexOf(onClear);
+      if (j >= 0) kit.onClear.splice(j, 1);
       marks.dispose();
       ownKit?.dispose();
       canvas.remove();

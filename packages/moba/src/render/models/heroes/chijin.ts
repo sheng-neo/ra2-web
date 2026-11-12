@@ -530,7 +530,8 @@ export function createChijin(): ModelDef {
         const p = strikeWarp(a.p, a.windup);
         sampleTrack(a.variant % 2 === 0 ? A.atkA : A.atkB, p, k);
         applyCKP(h, pose, k);
-        out.glow = 1 + 1.2 * bump(p, 0.36, 0.2);
+        // 余烬之刃(技能后的强化普攻)：刀光更盛
+        out.glow = 1 + ((a.mode & 1) !== 0 ? 2.8 : 1.2) * bump(p, 0.36, 0.2);
         break;
       }
       case 'cast_s1': {

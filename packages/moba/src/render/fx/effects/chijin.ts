@@ -113,7 +113,7 @@ const s2Dash: FxHandler = (k, e, env) => {
       .scale3(0.45, 1.5, 0.45, 0.75, 2.5, 0.75)
       .color(T.glow, 2.1, 0.9)
       .fade(0.1, 0.3)
-      .opt(0.8, 3, 1)
+      .opt(0.25, 3, 1)
       .delay(f * dur);
     flames(k, px, 0.2, pz, 3, 0.35, 0.8, dx * 1.5, dz * 1.5, f * dur);
   }
@@ -145,7 +145,7 @@ const ultStart: FxHandler = (k, e, env) => {
     .scale3(1.1, 0.6, 1.1, 2.3, 3.8, 2.3)
     .color(T.glow, 2.2, 0.95)
     .fade(0.1, 0.35)
-    .opt(0.8, 4, 1)
+    .opt(0.25, 4, 1)
     .spin(0, -9, 0);
   const pl = pillar(k, has ? 0 : x, has ? 0 : z, 1.2, 5.5, 0.5, T.accent, 1.8, 0.8);
   if (has) {

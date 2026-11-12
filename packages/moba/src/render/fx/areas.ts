@@ -164,8 +164,8 @@ const DEFS: Record<AreaVisual, AreaDef> = {
       k.decals.at(s).params(3, 2.4).color(TC.glow, 1.5, 0.9).under(TC.dark, 0.45);
       hostileEdge(k, v);
       const m = k.glow.hold(SHAPE.cone, MODE.vortex);
-      m.color(TC.glow, 2, 0.85);
-      m.add = 0.8;
+      m.color(TC.glow, 1.3, 0.85);
+      m.add = 0.25;
       m.k = 4;
       m.progress = 0.15;
       v.meshes.push(m);
@@ -202,7 +202,8 @@ const DEFS: Record<AreaVisual, AreaDef> = {
       const st = hold(k, v, DECAL.star, 0.08);
       k.decals.at(st).params(5, 2.4).color(TX.hot, 1.3, 0.8).under(C.black, 0);
       const m = k.glow.hold(SHAPE.hoop, MODE.hoop);
-      m.color(TX.glow, 2, 0.9);
+      m.color(TX.glow, 1.3, 0.9);
+      m.add = 0.3;
       v.meshes.push(m);
     },
     update(k, v, dt) {

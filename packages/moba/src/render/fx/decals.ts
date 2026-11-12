@@ -121,6 +121,28 @@ float sdStar(vec2 p, float r, float n, float m) {
   p += ecs * clamp(-dot(p, ecs), 0.0, r * acs.y / ecs.y);
   return length(p) * sign(p.x);
 }
+// Voronoi：返回 (到最近特征点的距离, F2 - F1)。后者在细胞边界处为 0，用来画龟裂
+vec2 voronoi(vec2 p) {
+  vec2 n = floor(p);
+  vec2 f = fract(p);
+  float f1 = 8.0;
+  float f2 = 8.0;
+  for (int j = -1; j <= 1; j++) {
+    for (int i = -1; i <= 1; i++) {
+      vec2 g = vec2(float(i), float(j));
+      vec2 rr = g + hash22(n + g) - f;
+      float d = dot(rr, rr);
+      if (d < f1) {
+        f2 = f1;
+        f1 = d;
+      } else if (d < f2) {
+        f2 = d;
+      }
+    }
+  }
+  f1 = sqrt(f1);
+  return vec2(f1, sqrt(f2) - f1);
+}
 // 一圈符文：圆环切成 n 格，每格用哈希画几道短划
 float runes(float r, float a, float r0, float w, float n, float seed) {
   float fr = (r - r0) / w;
@@ -148,7 +170,11 @@ void main() {
   float ang = atan(p.y, p.x);
   float aa = fwidth(r) * 1.2 + 1e-4;
   float now = uNow;
-  // e = A 色发光量，hot = 白热量，cov = B 色底衬的覆盖率
+  // 四个输出量：
+  //   fil = A 色「色块」的覆盖率(普通混合：先盖住地面再显色，亮地面上颜色才饱和)
+  //   e   = A 色发光线条(叠加，可溢出 bloom)，hot = 线条里的白热部分
+  //   cov = B 色深色底衬的覆盖率(线条两侧的暗晕、焦痕)
+  float fil = 0.0;
   float e = 0.0;
   float hot = 0.0;
   float cov = 0.0;
@@ -165,15 +191,17 @@ void main() {
     float trail = smoothstep(-w, 0.0, d);
     float body = front * trail * trail;
     float rim = band(d + 0.014, 0.014, aa);
+    float halo = band(d + 0.014, 0.07, 0.035);
     float fade = 1.0 - smoothstep(0.3, 1.0, t);
-    e = (body * 0.8 + rim * 1.5) * fade;
-    hot = rim * 0.55 * fade;
-    cov = (body * 0.45 + rim * 0.3) * fade;
+    fil = body * 0.7 * fade;
+    e = rim * 1.5 * fade;
+    hot = rim * 0.4 * fade;
+    cov = halo * 0.85 * fade;
   } else if (type < 1.5) {
     // ── 柔光斑 ──
     float g = pow(max(0.0, 1.0 - r), max(p0, 0.5));
     float f = persist > 0.5 ? 1.0 : smoothstep(0.0, 0.08, t) * (1.0 - t) * (1.0 - t);
-    e = g * f;
+    fil = g * f * 0.75;
     cov = g * f;
   } else if (type < 2.5) {
     // ── 扇形 ──
@@ -186,44 +214,50 @@ void main() {
       float lead = band(r - front + 0.03, 0.05, 0.03) * (1.0 - smoothstep(0.3, 0.45, t));
       float n = fbm(wp * 1.25 + vec2(seed * 7.0, -now * 0.5));
       float burn = smoothstep(t * 1.3 - 0.2, t * 1.3 + 0.25, n * 0.8 + r * 0.45);
-      float fill = (0.2 + 0.8 * r * r) * swept * burn;
+      float fill = (0.3 + 0.7 * r * r) * swept * burn;
       float edge = max(band(da + 0.012, 0.014, aa), band(r - 0.975, 0.02, aa)) * swept;
       float fade = 1.0 - smoothstep(0.6, 1.0, t);
-      e = (fill * 0.85 + lead * 1.4 + edge * 1.3 * (0.35 + 0.65 * burn)) * inside * fade;
+      fil = fill * 0.85 * inside * fade;
+      e = (lead * 1.4 + edge * 1.3 * (0.35 + 0.65 * burn) + fill * 0.25) * inside * fade;
       hot = (lead * 0.6 + edge * 0.25 * burn) * inside * fade;
-      cov = (fill * 0.5 + edge * 0.3) * inside * fade;
+      cov = (edge * 0.7 + swept * 0.35) * inside * fade;
     } else {
       float edge = max(band(da + 0.012, 0.012, aa), band(r - 0.98, 0.016, aa));
-      float flow = band(fract(r * 3.0 - now * 0.9) - 0.5, 0.05, 0.05) * 0.3 * smoothstep(0.15, 0.45, r);
-      float fill = 0.14 + 0.26 * r * r;
+      float flow = band(fract(r * 3.0 - now * 0.9) - 0.5, 0.05, 0.05) * 0.5 * smoothstep(0.15, 0.45, r);
       float apex = smoothstep(0.03, 0.22, r);
-      e = (fill + edge * 1.25 + flow) * inside * apex;
+      fil = (0.2 + 0.3 * r * r) * inside * apex;
+      e = (edge * 1.25 + flow) * inside * apex;
       hot = edge * 0.15 * inside * apex;
-      cov = (0.3 + edge * 0.35) * inside * apex;
+      cov = (0.25 + edge * 0.5) * inside * apex;
     }
   } else if (type < 3.5) {
-    // ── 地裂：细胞状裂纹 + 放射主裂缝，由中心向外迅速蔓延，结束时噪声溶解 ──
+    // ── 地裂：龟裂的碎块(Voronoi 边) + 几条放射的锯齿主裂缝，由中心向外迅速蔓延，结束时噪声溶解 ──
     float grow = min(1.0, t * 6.0 + 0.12);
-    vec2 q = wp * 0.95 + seed * 13.0;
-    float n1 = vnoise(q);
-    float n2 = vnoise(q + vec2(5.2, 1.3));
-    float cell = abs(n1 - n2);
-    float bend = (vnoise(wp * 0.7 + seed * 3.0) - 0.5) * 3.2;
-    float spokes = abs(sin(ang * (3.0 + floor(seed * 3.0)) + bend + r * 1.3));
-    float w = mix(0.085, 0.02, r);
-    float lineA = (1.0 - smoothstep(w * 0.4, w, cell)) * (1.0 - smoothstep(0.55, 1.0, r));
-    float lineB = 1.0 - smoothstep(w * 1.2, w * 2.6, spokes * (0.3 + r));
+    vec2 q = wp * 0.8 + seed * 13.0;
+    q += (vec2(vnoise(wp * 1.7 + seed * 3.0), vnoise(wp * 1.7 + seed * 3.0 + 9.1)) - 0.5) * 0.45;
+    vec2 vo = voronoi(q);
+    float n1 = vnoise(wp * 2.1 + seed * 5.0);
+    float n2 = vnoise(wp * 2.1 + seed * 5.0 + vec2(5.2, 1.3));
+    // 中心粗、外缘细；越往外碎块越稀
+    float w = mix(0.1, 0.02, smoothstep(0.0, 0.9, r));
+    float sparse = 1.0 - smoothstep(0.45, 1.0, r + (n1 - 0.5) * 0.5);
+    float lineA = (1.0 - smoothstep(w * 0.4, w, vo.y)) * sparse;
+    float wideA = (1.0 - smoothstep(w, w * 2.8, vo.y)) * sparse;
+    float kk = 2.0 + floor(seed * 2.99);
+    float jag = (vnoise(vec2(r * 8.0, seed * 7.0)) - 0.5) * 0.55 + (vnoise(vec2(r * 21.0, seed * 3.0)) - 0.5) * 0.22;
+    float sp = abs(sin((ang + jag + seed * 6.0) * kk));
+    float hw = mix(0.04, 0.007, r) * kk / max(r, 0.06);
+    float lineB = 1.0 - smoothstep(hw * 0.5, hw, sp);
+    float wideB = 1.0 - smoothstep(hw, hw * 2.8, sp);
     float crack = max(lineA, lineB);
-    float wideA = (1.0 - smoothstep(w, w * 3.0, cell)) * (1.0 - smoothstep(0.55, 1.0, r));
-    float wideB = 1.0 - smoothstep(w * 2.6, w * 6.0, spokes * (0.3 + r));
-    float mask = (1.0 - smoothstep(grow - 0.3, grow, r)) * (1.0 - smoothstep(0.82, 1.0, r + (n1 - 0.5) * 0.3));
+    float mask = (1.0 - smoothstep(grow - 0.3, grow, r)) * (1.0 - smoothstep(0.84, 1.0, r + (n1 - 0.5) * 0.25));
     float gone = 1.0 - smoothstep(0.72, 1.0, t + (n2 - 0.5) * 0.3);
     float heat = 1.0 - t;
     heat = 0.3 + heat * heat * 1.5 + p1;
     float flicker = 0.85 + 0.15 * sin(now * 7.0 + n1 * 30.0);
     e = crack * mask * heat * gone * flicker;
     hot = crack * mask * (1.0 - smoothstep(0.0, 0.2, t)) * 0.9;
-    cov = (max(wideA, wideB) * 0.8 + (1.0 - r) * 0.28) * mask * gone;
+    cov = (max(wideA, wideB) * 0.85 + (1.0 - r) * 0.3) * mask * gone;
   } else if (type < 4.5) {
     // ── 符文阵 ──
     float n = max(3.0, p0);
@@ -239,11 +273,11 @@ void main() {
     ln += runes(rs, ang + PI - spin * 0.5, 0.75, 0.065, floor(n * 3.0 + 0.5), seed * 9.0) * 0.9;
     ln += (1.0 - smoothstep(0.008, 0.008 + aa * 1.5, abs(st))) * 0.95;
     ln += (1.0 - smoothstep(0.006, 0.006 + aa * 1.5, abs(st2))) * 0.6;
-    float fill = (1.0 - rs) * 0.12 + (1.0 - smoothstep(-0.02, 0.0, st)) * 0.07;
     float inside = 1.0 - smoothstep(0.975, 1.0, rs);
-    e = (ln + fill) * appear * inside;
+    fil = ((1.0 - rs) * 0.3 + (1.0 - smoothstep(-0.02, 0.0, st)) * 0.22 + 0.1) * appear * inside;
+    e = ln * appear * inside;
     hot = ln * 0.2 * appear * inside;
-    cov = (min(ln, 1.0) * 0.5 + 0.2 * (1.0 - rs)) * appear * inside;
+    cov = (min(ln, 1.0) * 0.8 + 0.25) * appear * inside;
   } else if (type < 5.5) {
     // ── 预警圈：亮边 + 由内向外的倒计时填充 ──
     float prog = clamp(p0, 0.0, 1.0);
@@ -253,9 +287,10 @@ void main() {
     float inner = 1.0 - smoothstep(prog - aa, prog + aa, r);
     float lead = band(r - prog + 0.012, 0.016, aa) * step(0.03, prog) * (1.0 - step(0.985, prog));
     float ticks = band(fract(ang / TAU * 16.0) - 0.5, 0.07, 0.03) * band(r - 0.9, 0.035, aa);
-    e = (edge * (1.15 + 0.6 * pulse * urgent) + inner * (0.2 + 0.22 * r + 0.2 * urgent * pulse) + lead * 0.9 + ticks * 0.55 + 0.07) * disc;
+    fil = (0.16 + inner * (0.3 + 0.12 * r + 0.14 * urgent * pulse)) * disc;
+    e = (edge * (1.15 + 0.6 * pulse * urgent) + lead * 0.9 + ticks * 0.55) * disc;
     hot = (edge * 0.2 + lead * 0.3) * disc;
-    cov = (0.26 + inner * 0.22 + edge * 0.4) * disc;
+    cov = (0.2 + edge * 0.6) * disc;
   } else if (type < 6.5) {
     // ── 方向条：箭身 + 箭头 + 向前流动的尖纹 ──
     float L = vW.z;
@@ -272,21 +307,22 @@ void main() {
     float inside = 1.0 - smoothstep(-aw, aw, d);
     float edge = band(d + 0.06, 0.04, aw);
     float along = (px + L) / (2.0 * L);
-    float chev = band(fract((px - py * 0.9) * 0.5 - now * 1.5) - 0.5, 0.09, 0.07) * 0.3;
-    float fill = 0.13 + 0.3 * along * along;
+    float chev = band(fract((px - py * 0.9) * 0.5 - now * 1.5) - 0.5, 0.09, 0.07) * 0.5;
     float start = smoothstep(0.0, min(1.4, L * 0.5), px + L);
-    e = (fill + edge * 1.2 + chev) * inside * start;
+    fil = (0.2 + 0.3 * along * along) * inside * start;
+    e = (edge * 1.2 + chev) * inside * start;
     hot = edge * 0.12 * inside * start;
-    cov = (0.3 + edge * 0.4) * inside * start;
+    cov = (0.25 + edge * 0.5) * inside * start;
   } else if (type < 7.5) {
     // ── 细圈(射程 / 塔的攻击范围) ──
     float th = max(p0, 0.004);
     float ln = band(r - (1.0 - th * 1.5), th, aa);
     float dash = p1 > 0.5 ? 1.0 - smoothstep(0.3, 0.34, abs(fract(ang / TAU * p1 + now * 0.03) - 0.5)) : 1.0;
-    float halo = smoothstep(0.72, 1.0, r) * disc * 0.14;
-    e = ln * dash + halo;
+    float halo = smoothstep(0.72, 1.0, r) * disc;
+    fil = halo * 0.16;
+    e = ln * dash;
     hot = ln * dash * 0.1;
-    cov = ln * dash * 0.5 + halo * 0.5;
+    cov = band(r - (1.0 - th * 1.5), th * 3.0, aa * 2.0) * dash * 0.7 + halo * 0.12;
   } else if (type < 8.5) {
     // ── 锁定圈 ──
     float a2 = ang + now * 1.6;
@@ -296,9 +332,10 @@ void main() {
     float tw = clamp((r - 0.52) / 0.26, 0.0, 1.0) * 0.1;
     float tri = (1.0 - smoothstep(tw - 0.012, tw + 0.012, seg)) * step(0.52, r) * (1.0 - smoothstep(0.78 - aa, 0.78 + aa, r));
     float inner = band(r - 0.6, 0.012, aa) * 0.5;
-    e = (brack * 1.2 + tri * 1.1 + inner) * pulse;
+    fil = (brack + tri) * 0.8 * pulse;
+    e = (brack * 0.6 + tri * 0.5 + inner) * pulse;
     hot = brack * 0.2;
-    cov = (brack + tri) * 0.5;
+    cov = (band(r - 0.88, 0.11, aa) * (1.0 - smoothstep(0.22, 0.27, seg)) + tri) * 0.6;
   } else if (type < 9.5) {
     // ── 旋涡 ──
     float arms = max(1.0, p0);
@@ -306,11 +343,12 @@ void main() {
     float dirS = p1 >= 0.0 ? 1.0 : -1.0;
     float s = fract(ang / TAU * arms + r * p1 - now * 0.9 * dirS);
     float nz = fbm(vec2(ang * 2.0 + now * dirS, r * 5.0 - now * 1.3) + seed * 5.0);
-    float arm = s * s * s * (1.0 - smoothstep(0.9, 1.0, s));
+    float arm = s * s * (1.0 - smoothstep(0.9, 1.0, s));
     float env = smoothstep(0.06, 0.35, r) * (1.0 - smoothstep(0.72, 1.0, r));
-    e = arm * env * (0.55 + 0.9 * nz) * appear;
-    hot = arm * arm * arm * env * 0.35 * appear;
-    cov = arm * env * 0.4 * appear;
+    fil = arm * env * (0.5 + 0.6 * nz) * appear;
+    e = arm * arm * arm * env * 0.7 * appear;
+    hot = arm * arm * arm * arm * env * 0.3 * appear;
+    cov = arm * env * 0.5 * appear;
   } else if (type < 10.5) {
     // ── 焦痕 ──
     float n = fbm(wp * 1.7 + seed * 9.0);
@@ -328,9 +366,10 @@ void main() {
     float outline = 1.0 - smoothstep(0.014, 0.014 + aa * 1.5, abs(st));
     float fill = 1.0 - smoothstep(-0.015, 0.0, st);
     float fade = persist > 0.5 ? 1.0 : 1.0 - smoothstep(0.25, 1.0, t);
-    e = (outline * 1.3 + fill * (0.14 + 0.5 * (1.0 - t))) * fade;
+    fil = fill * (0.35 + 0.4 * (1.0 - t)) * fade;
+    e = outline * 1.3 * fade;
     hot = outline * 0.3 * fade;
-    cov = fill * 0.4 * fade;
+    cov = (fill * 0.4 + outline * 0.5) * fade;
   } else if (type < 12.5) {
     // ── 斩痕 / 流光 ──
     float x = p.x;
@@ -340,37 +379,50 @@ void main() {
     float sweep = p1 > 0.0 ? 1.0 - smoothstep(-0.2, 0.1, x + 1.0 - 2.3 * min(1.0, t * p1)) : 1.0;
     float n = p0 > 0.0 ? mix(1.0, fbm(vec2(x * vW.z * 1.4 - now * 2.2, p.y * 2.0) + seed * 5.0) * 1.7, p0) : 1.0;
     float fade = (1.0 - t) * (1.0 - t);
-    e = prof * taper * sweep * n * fade * 1.2;
-    hot = pow(prof, 6.0) * taper * sweep * fade * 0.8;
-    cov = prof * taper * sweep * fade * 0.55;
+    fil = min(1.0, prof * taper * sweep * n) * fade * 0.85;
+    e = pow(prof, 5.0) * taper * sweep * fade * 1.1;
+    hot = pow(prof, 9.0) * taper * sweep * fade * 0.7;
+    cov = pow(prof, 0.6) * taper * sweep * fade * 0.6;
   } else if (type < 13.5) {
     // ── 脚下指向环 ──
     float ring = band(r - 0.6, 0.022, aa);
     float ty = abs(p.y);
     float tri = (1.0 - smoothstep(-aa, aa, ty - (0.99 - p.x) * 0.62)) * smoothstep(0.7 - aa, 0.7 + aa, p.x);
     float breath = 0.85 + 0.15 * sin(now * 3.0);
-    e = (ring * 0.9 + tri * 1.25) * breath;
+    fil = tri * 0.8 * breath;
+    e = (ring * 0.9 + tri * 0.5) * breath;
     hot = tri * 0.2;
-    cov = (ring + tri) * 0.4;
+    cov = (band(r - 0.6, 0.05, aa) + tri) * 0.45;
   } else {
     // ── 持续区域边界 ──
     float edge = band(r - 0.972, 0.022, aa);
-    float falloff = exp(-(1.0 - r) * 7.0) * 0.42 * disc;
+    float falloff = exp(-(1.0 - r) * 6.0) * disc;
     float dashes = p0 > 0.5 ? band(r - 0.885, 0.012, aa) * (1.0 - smoothstep(0.3, 0.34, abs(fract(ang / TAU * p0 + now * 0.06) - 0.5))) * 0.7 : 0.0;
     float pulse = 1.0 + 0.25 * sin(now * 4.0 + p1);
-    e = edge * 1.2 * pulse + falloff + dashes + 0.06 * disc;
+    fil = (falloff * 0.5 + 0.13) * disc;
+    e = edge * 1.3 * pulse + dashes;
     hot = edge * 0.18;
-    cov = edge * 0.45 + falloff * 0.5 + 0.12 * disc;
+    cov = band(r - 0.972, 0.06, 0.03) * 0.8 + 0.1 * disc;
   }
 
   float alpha = vC0.a * uAlpha;
   float m = max(vC0.r, max(vC0.g, vC0.b));
-  vec3 em = (vC0.rgb * e + vec3(hot * m)) * alpha;
-  float c = clamp(cov * vC1.a, 0.0, 1.0) * min(alpha, 1.0);
+  vec3 hue = vC0.rgb / max(m, 1e-3);
+  // 发光线条(叠加)
+  vec3 em = (vC0.rgb * (e + hot * 0.6) + vec3(hot * m * 0.25)) * alpha;
+  // 色块：亮度取 A 色亮度的一部分(上限略高于 1)，保持色相饱和
+  float cf = clamp(fil, 0.0, 0.92) * min(alpha, 1.0) * step(1e-3, m);
+  vec3 fillCol = hue * min(m * 0.62, 1.15);
+  // 底衬：参数 0 = 不要底衬；其余按 0.25 + 1.3k 放大。带一点 A 色色相，深色不发灰
+  float cd = vC1.a > 0.0 ? clamp(cov * (0.25 + vC1.a * 1.3), 0.0, 0.95) * min(alpha, 1.0) : 0.0;
+  vec3 dark = vC1.rgb + hue * 0.12 * step(1e-3, m);
+  // 先铺底衬，再在上面盖色块
+  vec3 baseCol = dark * cd * (1.0 - cf) + fillCol * cf;
+  float c = 1.0 - (1.0 - cd) * (1.0 - cf);
   if (c + em.r + em.g + em.b < 0.004) discard;
   #ifdef TONE_MAPPING
-  // 直出屏幕(low 档)：底衬与发光分别映射后再合成，半透明边缘不出亮边
-  gl_FragColor = vec4(vC1.rgb, 1.0);
+  // 直出屏幕(low 档)：底色与发光分别映射后再合成，半透明边缘不出亮边
+  gl_FragColor = vec4(baseCol / max(c, 1e-3), 1.0);
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
   vec3 baseMapped = gl_FragColor.rgb;
@@ -379,7 +431,7 @@ void main() {
   #include <colorspace_fragment>
   gl_FragColor = vec4(baseMapped * c + gl_FragColor.rgb, c);
   #else
-  gl_FragColor = vec4(vC1.rgb * c + em, c);
+  gl_FragColor = vec4(baseCol + em, c);
   #endif
 }
 `;

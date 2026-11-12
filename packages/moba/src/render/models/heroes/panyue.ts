@@ -238,6 +238,8 @@ function build(): { h: Human; b: ModelBuilder; extra: Extra } {
 
 const RUN: RunStyle = { ...RUN_DEFAULT, stride: 2.9, stance: 0.44, lift: 0.22, bob: 0.07, drop: 0.08, lean: 10, sway: 0.06, twist: 7, width: 0.22, arm: 0 };
 
+const CHARGE_RUN: RunStyle = { ...RUN, lean: 34, drop: 0.16, bob: 0.03, stance: 0.36, lift: 0.26 };
+
 interface Anims {
   stance: CKP;
   guard: CKP;
@@ -350,7 +352,7 @@ function makeAnims(h: Human): Anims {
     head: [8, 0, 0],
     armR: [-165, 0, -24],
     foreR: [-50, 0, 0],
-    propR: [-30, 0, 0],
+    propR: [105, 0, 0],
     armL: [-40, 0, 40],
     foreL: [-60, -40, 0],
   });
@@ -364,7 +366,7 @@ function makeAnims(h: Human): Anims {
     footR: [-0.3, 0.11, -0.16, 10, -20],
     armR: [-48, 0, -10],
     foreR: [-8, 0, 0],
-    propR: [60, 14, 0],
+    propR: [95, 10, 0],
     armL: [20, 0, 40],
     foreL: [-50, -40, 0],
   });
@@ -394,7 +396,7 @@ function makeAnims(h: Human): Anims {
     footR: [-0.24, 0.3, -0.22, 50, -10],
     armR: [-170, 0, -20],
     foreR: [-46, 0, 0],
-    propR: [-34, 0, 0],
+    propR: [106, 0, 0],
     armL: [-60, 0, 50],
     foreL: [-70, -50, 0],
   });
@@ -408,11 +410,11 @@ function makeAnims(h: Human): Anims {
     footR: [-0.3, 0.16, -0.2, 30, -16],
     armR: [-60, 0, -8],
     foreR: [-6, 0, 0],
-    propR: [54, 10, 0],
+    propR: [90, 8, 0],
     armL: [10, 0, 60],
     foreL: [-50, -50, 0],
   });
-  const lLand = kp(h, lFall, { hipsPos: [0, -0.3, 0.16], footL: [0.32, 0.11, 0.34, 0, 12], footR: [-0.32, 0.11, -0.18, 10, -20], armR: [-44, 0, -8], propR: [62, 12, 0] });
+  const lLand = kp(h, lFall, { hipsPos: [0, -0.3, 0.16], footL: [0.32, 0.11, 0.34, 0, 12], footR: [-0.32, 0.11, -0.18, 10, -20], armR: [-44, 0, -8], propR: [100, 8, 0] });
   const crouch = kp(h, stance, { hipsPos: [0, -0.26, 0], hips: [16, 0, 0], chest: [10, 0, 0], armR: [20, 0, -30], propR: [110, -10, 0] });
   const leap = track([
     [0, crouch],
@@ -476,7 +478,7 @@ export function createPanyue(): ModelDef {
       case 'cast_s1':
       case 'dash': {
         // 冲撞：腿按时间快速交替蹬地，上身保持顶盾
-        runCycle(h, pose, a.t * 3.4, { ...RUN, lean: 34, drop: 0.16, bob: 0.03, stance: 0.36, lift: 0.26 }, () => {
+        runCycle(h, pose, a.t * 3.4, CHARGE_RUN, () => {
           const e = A.charge.e;
           for (const j of [J.armL, J.foreL, J.armR, J.foreR, J.propR]) pose.rot(j, e[j * 3], e[j * 3 + 1], e[j * 3 + 2]);
           pose.add(J.head, e[J.head * 3], 0, 0);

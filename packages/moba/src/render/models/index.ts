@@ -9,6 +9,8 @@ import { createPanyue } from './heroes/panyue';
 import { createXingli } from './heroes/xingli';
 import { createYeque } from './heroes/yeque';
 import { createMeleeMinion, createRangedMinion, createSiegeMinion, createSuperMinion } from './minions';
+import { createAbyssDrake, createGlimwing, createMossback } from './monsters/beasts';
+import { createEmberGolem, createFrostGolem, createStarColossus } from './monsters/giants';
 import { structureFactories } from './structures';
 import type { ModelDef } from './types';
 
@@ -27,6 +29,12 @@ const factories: Record<string, () => ModelDef> = {
   'minion:siege': createSiegeMinion,
   'minion:super': createSuperMinion,
   ...structureFactories,
+  'monster:mossback': createMossback,
+  'monster:glimwing': createGlimwing,
+  'monster:frost_golem': createFrostGolem,
+  'monster:ember_golem': createEmberGolem,
+  'monster:abyss_drake': createAbyssDrake,
+  'monster:star_colossus': createStarColossus,
 };
 
 const cache = new Map<string, ModelDef>();

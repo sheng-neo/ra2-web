@@ -161,6 +161,8 @@ void main() {
     float sr = sin(rot);
     mv = viewMatrix * vec4(pos, 1.0);
     mv.xy += vec2(corner.x * cr - corner.y * sr, corner.x * sr + corner.y * cr) * size;
+    // 朝相机拉近半个身位：贴近地面的公告板下半截不会被地面裁掉
+    mv.z += size * 0.5;
   } else if (orient < 1.5) {
     mv = viewMatrix * vec4(pos, 1.0);
     vec3 vv = (viewMatrix * vec4(vel, 0.0)).xyz;
@@ -168,6 +170,7 @@ void main() {
     vec2 d = sp > 1e-4 ? vv.xy / sp : vec2(1.0, 0.0);
     float len = size + aS.z * length(vel);
     mv.xy += d * (corner.x * len) + vec2(-d.y, d.x) * (corner.y * size);
+    mv.z += size * 0.5;
   } else {
     float cr = cos(rot);
     float sr = sin(rot);
@@ -196,7 +199,8 @@ void main() {
   float fxA = min(1.0, tx.r * vColor.a);
   if (fxA < 0.004) discard;
   float fxAdd = vMix.x;
-  vec3 fxC = vColor.rgb * tx.g + vec3(tx.b * vMix.y);
+  // 亮核主要是把本色提亮，只掺一点白：大量粒子叠在一起时颜色不至于被冲成纯白
+  vec3 fxC = vColor.rgb * (tx.g + tx.b * 0.6) + vec3(tx.b * vMix.y * 0.3);
   ${GLSL_FX_OUT}
 }
 `;
@@ -238,6 +242,10 @@ export class ParticleSystem {
     geo.setAttribute('position', quad.getAttribute('position'));
     const buf = new THREE.InstancedInterleavedBuffer(this.data, STRIDE, 1);
     buf.setUsage(THREE.DynamicDrawUsage);
+    // 「待上传」区间一直累积到 three 真正上传为止：两次绘制之间可能 flush 多次(快进、掉帧补帧)
+    buf.onUpload(() => {
+      this.dirtyCount = 0;
+    });
     const names = ['aP', 'aV', 'aM', 'aS', 'aC0', 'aC1', 'aX'];
     names.forEach((n, i) => geo.setAttribute(n, new THREE.InterleavedBufferAttribute(buf, 4, i * 4)));
     geo.instanceCount = this.cap;
@@ -320,7 +328,7 @@ export class ParticleSystem {
     d[o + 26] = st.fadeIn;
     d[o + 27] = st.fadeOut;
     if (this.dirtyCount === 0) this.dirtyStart = i;
-    this.dirtyCount++;
+    if (this.dirtyCount < this.cap) this.dirtyCount++;
     this.cursor = i + 1 >= this.cap ? 0 : i + 1;
     this.spawned++;
     return o;
@@ -353,7 +361,7 @@ export class ParticleSystem {
     d[o + 6] = r1;
   }
 
-  /** 每帧一次：同步时钟并把本帧新出生的粒子上传 */
+  /** 每帧一次：同步时钟，并把上次上传以来新出生的粒子标记为待上传 */
   flush(): void {
     this.mat.uniforms.uNow.value = this.now;
     const n = this.dirtyCount;
@@ -375,7 +383,6 @@ export class ParticleSystem {
       }
     }
     buf.needsUpdate = true;
-    this.dirtyCount = 0;
   }
 
   /** 立刻清空所有粒子(画廊页切换效果时用) */

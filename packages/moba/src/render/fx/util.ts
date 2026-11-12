@@ -75,15 +75,15 @@ export interface Theme {
 
 export const THEME: Record<HeroId, Theme> = {
   // 磐岳：岩石 / 琥珀金
-  panyue: { glow: col(0xffb84a), hot: col(0xffe9b0), deep: col(0xd9741c), accent: col(0xf2b75a), dark: col(0x6e5f4e) },
+  panyue: { glow: col(0xff9218), hot: col(0xffd27a), deep: col(0xd9580a), accent: col(0xf2b75a), dark: col(0x2e2218) },
   // 赤烬：烈焰 / 橙红
-  chijin: { glow: col(0xff6a2a), hot: col(0xffd98a), deep: col(0xd22a1a), accent: col(0xffb347), dark: col(0x2a1a18) },
+  chijin: { glow: col(0xff4c14), hot: col(0xffbe50), deep: col(0xcc1e12), accent: col(0xff9428), dark: col(0x26100e) },
   // 星璃：星辉 / 青蓝
-  xingli: { glow: col(0x6fc8ff), hot: col(0xe8f8ff), deep: col(0x4a5ee0), accent: col(0xffd98a), dark: col(0x1c2452) },
+  xingli: { glow: col(0x3aa8ff), hot: col(0xb8e6ff), deep: col(0x3c50dc), accent: col(0xffd98a), dark: col(0x101a48) },
   // 风翎：疾风 / 翠绿
-  fengling: { glow: col(0x6ff0b8), hot: col(0xe8fff4), deep: col(0x2f9e7c), accent: col(0xe9c46a), dark: col(0x2a5a4a) },
+  fengling: { glow: col(0x2ee096), hot: col(0xbcffde), deep: col(0x1f9670), accent: col(0xe9c46a), dark: col(0x0e3428) },
   // 夜阙：暗影 / 紫
-  yeque: { glow: col(0xa070ff), hot: col(0xe6d4ff), deep: col(0x5a2ec8), accent: col(0xd08cff), dark: col(0x1a1030) },
+  yeque: { glow: col(0x9050ff), hot: col(0xd2aeff), deep: col(0x5626c8), accent: col(0xd08cff), dark: col(0x140a28) },
 };
 
 export const C = {

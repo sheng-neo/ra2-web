@@ -95,13 +95,13 @@ export class FloaterLayer {
       wz = a.z;
       wy = a.y + Math.min(a.height * 0.82, 4.2);
     }
-    // 同一目标 0.4 秒内的后续数字换一个错位槽
+    // 同一目标在上一个数字还没淡出前(0.8 秒内)出的后续数字，换下一个错位槽
     let st = this.stagger.get(targetId);
     if (!st) {
       st = { t: -9, n: 0 };
       this.stagger.set(targetId, st);
     }
-    st.n = this.now - st.t < 0.4 ? st.n + 1 : 0;
+    st.n = this.now - st.t < 0.8 ? st.n + 1 : 0;
     st.t = this.now;
     const slot = SLOTS[st.n % SLOTS.length];
     const f = this.take();

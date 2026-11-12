@@ -11,20 +11,25 @@
  *   ?pitch=&yaw=&dist=&fov=&h=                      自定义镜头(h 为注视高度)
  *   ?bg=map&x=&y=                                   放到真实地图上看(默认是中性影棚地面)
  *   ?spin=1                                         模型缓慢自转
- *   ?hp=0..1 / ?death=<秒>                          建筑受损程度 / 被毁演出的时间点
- *   ?mode=game[&x=&y=]                              用假对局状态 + 正式的单位视图模块渲染(集成观感/性能)；?run=1 让单位动起来
+ *   ?hp=0..1 / ?death=<秒>|sheet                    建筑受损程度 / 被毁演出的时间点(sheet = 配合 ?sheet=N 按时间排开)
+ *   ?mode=game[&x=&y=]                              用假对局状态 + 正式的单位视图模块渲染(集成观感/性能)
+ *   ?mode=sim[&ff=秒&pause=秒&seed=&speed=&follow=英雄下标]   跑真实模拟(全 AI 对局)，检查实际对局状态流下的表现；?top=1 俯瞰全图
+ *   ?portraits=1[&play=attack|cast_s1|cast_s2|cast_ult]  头像九宫格 + 五个立绘展示画布
  *   ?quality=low|medium|high   ?hud=0
  */
 import * as THREE from 'three';
+import { HEROES, HERO_IDS } from '../core/data/heroes';
 import { createMockState } from '../core/mock';
-import type { HeroId, UnitAnim } from '../core/types';
+import { type HeroId, TICK_DT, type UnitAnim } from '../core/types';
+import { createWorld } from '../core/world';
 import type { Quality } from '../render/api';
 import type { RenderModule, RenderModuleFactory } from '../render/engine/context';
-import { createRendererCore } from '../render/engine/core';
+import { type GameRendererCore, createRendererCore } from '../render/engine/core';
 import { PALETTE, createToonMaterial } from '../render/materials';
 import { type InstanceLook, type ModelDef, Puppet, RigBatch, allModelKeys, createInstanceLook, getModel, hasModel } from '../render/models';
+import { createHeroPreview, getHeroPortrait } from '../render/preview';
 import { createTerrainModule } from '../render/terrain';
-import { createUnitsModule } from '../render/units';
+import { type UnitsModule, createUnitsModule } from '../render/units';
 
 const params = new URLSearchParams(location.search);
 const num = (k: string): number | null => {
@@ -84,6 +89,7 @@ function keysFor(show: string): string[] {
 
 const base = { x: num('x') ?? 0, y: num('y') ?? 0 };
 const slots: Slot[] = [];
+const buildStart = performance.now();
 const single = params.get('model') ?? (params.get('hero') ? `hero:${params.get('hero')}` : null);
 const teamColor = new THREE.Color(team === 0 ? PALETTE.blue.main : PALETTE.red.main);
 
@@ -119,6 +125,7 @@ if (single && hasModel(single)) {
   });
 }
 void teamColor;
+const buildMs = Math.round(performance.now() - buildStart);
 
 // ── 镜头 ──
 let minX = Infinity;
@@ -145,8 +152,19 @@ const cam = {
   cz: base.y,
 };
 
-const gameMode = params.get('mode') === 'game';
-const state = createMockState((params.get('hero') as HeroId | null) ?? 'chijin');
+const simMode = params.get('mode') === 'sim';
+const gameMode = params.get('mode') === 'game' || simMode;
+const playerHero = (params.get('hero') as HeroId | null) ?? 'chijin';
+// 真实模拟(全 AI 对局)：检查单位视图在实际对局状态流下的表现；?ff=秒 先快进
+const world = simMode ? createWorld({ seed: num('seed') ?? 7, playerHero, difficulty: 'normal', autoPlay: true }) : null;
+if (world) {
+  const ff = num('ff') ?? 0;
+  while (world.state.time < ff && !world.state.over) {
+    world.step();
+    world.drainEvents();
+  }
+}
+const state = world ? world.state : createMockState(playerHero);
 if (!gameMode) {
   state.units.length = 0;
   state.heroes.length = 0;
@@ -205,7 +223,8 @@ const createStudio: RenderModuleFactory = (ctx): RenderModule => {
         a.time = time;
         a.variant = variant;
         a.hp = hp;
-        a.deathT = deathT ?? -1;
+        // ?death=sheet：配合 ?sheet=N 把被毁演出按时间排开
+        a.deathT = params.get('death') === 'sheet' ? (s.p ?? 0) * (num('dur') ?? 2.4) : (deathT ?? -1);
         a.windup = 0.35;
         const dur = num('dur') ?? (s.anim === 'attack' ? 0.8 : s.anim === 'dead' ? 2.2 : 1.0);
         if (s.p !== null) {
@@ -237,83 +256,161 @@ const createStudio: RenderModuleFactory = (ctx): RenderModule => {
   };
 };
 
-const modules: RenderModuleFactory[] = [];
-if (onMap || gameMode) modules.push(createTerrainModule);
-modules.push(gameMode ? createUnitsModule : createStudio);
-const renderer = createRendererCore(app, state, { quality }, modules);
-const engine = renderer.engine;
-if (gameMode) {
-  if (num('x') !== null || num('y') !== null) {
-    renderer.setCameraPeek({ x: base.x, y: base.y });
+function startStudio(): void {
+  const modules: RenderModuleFactory[] = [];
+  if (onMap || gameMode) modules.push(createTerrainModule);
+  modules.push(gameMode ? createUnitsModule : createStudio);
+  const renderer = createRendererCore(app, state, { quality }, modules);
+  const engine = renderer.engine;
+  if (gameMode) {
+    if (num('x') !== null || num('y') !== null) {
+      renderer.setCameraPeek({ x: base.x, y: base.y });
+      renderer.snapCamera();
+    }
+    if (params.get('top') === '1') engine.rig.setTopView(true, state.map.half + 14);
+    if (num('pitch') !== null) engine.rig.setOverride({ pitch: cam.pitch, distance: num('dist') ?? 33, yaw: cam.yaw, fov: cam.fov });
+  } else {
+    // 标记为调试视角：关闭镜头夹取并把雾推远(镜头本身由 studio 模块每帧覆盖)
+    engine.rig.setOverride({ pitch: cam.pitch, distance: 33 });
+    renderer.setCameraPeek({ x: cam.cx, y: cam.cz });
     renderer.snapCamera();
   }
-  if (params.get('top') === '1') engine.rig.setTopView(true, state.map.half + 14);
-  if (num('pitch') !== null) engine.rig.setOverride({ pitch: cam.pitch, distance: num('dist') ?? 33, yaw: cam.yaw, fov: cam.fov });
-} else {
-  // 标记为调试视角：关闭镜头夹取并把雾推远(镜头本身由 studio 模块每帧覆盖)
-  engine.rig.setOverride({ pitch: cam.pitch, distance: 33 });
-  renderer.setCameraPeek({ x: cam.cx, y: cam.cz });
-  renderer.snapCamera();
-}
 
-if (params.get('hud') === '0') {
-  hud.style.display = 'none';
-  help.style.display = 'none';
-}
-help.textContent = '?show=heroes|minions|structures|monsters|all  ?hero=&anim=&t=  ?sheet=8  ?view=game  ?team=1\n拖动旋转 · 滚轮缩放';
+  if (params.get('hud') === '0') {
+    hud.style.display = 'none';
+    help.style.display = 'none';
+  }
+  help.textContent = '?show=heroes|minions|structures|monsters|all  ?hero=&anim=&t=  ?sheet=8  ?view=game  ?team=1\n拖动旋转 · 滚轮缩放';
 
-let dragX: number | null = null;
-let dragY = 0;
-app.addEventListener('pointerdown', (e) => {
-  dragX = e.clientX;
-  dragY = e.clientY;
-});
-addEventListener('pointermove', (e) => {
-  if (dragX === null) return;
-  cam.yaw -= (e.clientX - dragX) * 0.4;
-  cam.pitch = Math.min(88, Math.max(-5, cam.pitch + (e.clientY - dragY) * 0.3));
-  dragX = e.clientX;
-  dragY = e.clientY;
-});
-addEventListener('pointerup', () => (dragX = null));
-addEventListener(
-  'wheel',
-  (e) => {
-    if (cam.dist <= 0) cam.dist = 12;
-    cam.dist = Math.min(80, Math.max(1.5, cam.dist * (e.deltaY > 0 ? 1.1 : 0.9)));
-  },
-  { passive: true },
-);
-addEventListener('resize', () => renderer.resize());
+  let dragX: number | null = null;
+  let dragY = 0;
+  app.addEventListener('pointerdown', (e) => {
+    dragX = e.clientX;
+    dragY = e.clientY;
+  });
+  addEventListener('pointermove', (e) => {
+    if (dragX === null) return;
+    cam.yaw -= (e.clientX - dragX) * 0.4;
+    cam.pitch = Math.min(88, Math.max(-5, cam.pitch + (e.clientY - dragY) * 0.3));
+    dragX = e.clientX;
+    dragY = e.clientY;
+  });
+  addEventListener('pointerup', () => (dragX = null));
+  addEventListener(
+    'wheel',
+    (e) => {
+      if (cam.dist <= 0) cam.dist = 12;
+      cam.dist = Math.min(80, Math.max(1.5, cam.dist * (e.deltaY > 0 ? 1.1 : 0.9)));
+    },
+    { passive: true },
+  );
+  addEventListener('resize', () => renderer.resize());
 
-let last = performance.now();
-let hudTimer = 0;
-function frame(now: number): void {
-  const dt = Math.min(0.1, (now - last) / 1000);
-  last = now;
-  renderer.render(state, 1, dt);
-  hudTimer -= dt;
-  if (hudTimer <= 0) {
-    hudTimer = 0.25;
-    const s = renderer.getStats();
-    const tris = slots.reduce((acc, sl) => acc + sl.def.triangles, 0);
-    hud.textContent =
-      `画质 ${engine.quality}  FPS ${s.fps}  draw calls ${s.drawCalls}  三角形 ${s.triangles.toLocaleString()}\n` +
-      slots
-        .filter((sl, i) => slots.findIndex((o) => o.key === sl.key) === i)
-        .map((sl) => `${sl.key}: ${sl.def.triangles} 三角 / ${sl.def.rig.count} 骨`)
-        .join('\n') +
-      `\n合计 ${tris.toLocaleString()} 三角`;
+  let last = performance.now();
+  let hudTimer = 0;
+  let simAcc = 0;
+  function frame(now: number): void {
+    const dt = Math.min(0.1, (now - last) / 1000);
+    last = now;
+    let alpha = 1;
+    if (world && state.time < (num('pause') ?? Infinity)) {
+      simAcc += dt * (num('speed') ?? 1);
+      let n = 0;
+      while (simAcc >= TICK_DT && n < 6) {
+        world.step();
+        simAcc -= TICK_DT;
+        n++;
+      }
+      if (n === 6) simAcc = 0;
+      renderer.handleEvents(world.drainEvents(), state);
+      alpha = simAcc / TICK_DT;
+      const follow = num('follow');
+      if (follow !== null && state.heroes[follow]) renderer.setCameraPeek(state.heroes[follow].pos);
+    }
+    renderer.render(state, alpha, dt);
+    hudTimer -= dt;
+    if (hudTimer <= 0) {
+      hudTimer = 0.25;
+      const s = renderer.getStats();
+      const head = `画质 ${engine.quality}  FPS ${s.fps}  draw calls ${s.drawCalls}  三角形 ${s.triangles.toLocaleString()}\n`;
+      if (gameMode) {
+        const um = renderer.context.getModule<UnitsModule>('units');
+        hud.textContent = head + `模拟时间 ${state.time.toFixed(1)}s  单位 ${state.units.length}  本帧模型实例 ${um ? um.instanceCount : 0}`;
+      } else {
+        const tris = slots.reduce((acc, sl) => acc + sl.def.triangles, 0);
+        hud.textContent =
+          head +
+          slots
+            .filter((sl, i) => slots.findIndex((o) => o.key === sl.key) === i)
+            .map((sl) => `${sl.key}: ${sl.def.triangles} 三角 / ${sl.def.rig.count} 骨`)
+            .join('\n') +
+          `\n合计 ${tris.toLocaleString()} 三角   模型构建 ${buildMs}ms`;
+      }
+    }
+    requestAnimationFrame(frame);
   }
   requestAnimationFrame(frame);
+  window.__renderer = renderer;
+  window.__slots = slots;
 }
-requestAnimationFrame(frame);
+
+/** 头像与立绘检查：五位英雄的头像(三种常用尺寸) + 五个立绘展示画布(点击按钮播放动作) */
+function startPortraits(): void {
+  const grid = document.getElementById('grid') as HTMLElement;
+  grid.style.display = 'block';
+  hud.style.display = 'none';
+  help.style.display = 'none';
+  const el = <K extends keyof HTMLElementTagNameMap>(tag: K, parent: HTMLElement, text = ''): HTMLElementTagNameMap[K] => {
+    const e = document.createElement(tag);
+    if (text) e.textContent = text;
+    parent.appendChild(e);
+    return e;
+  };
+  const t0 = performance.now();
+  const urls = HERO_IDS.map((id) => getHeroPortrait(id));
+  const ms = Math.round(performance.now() - t0);
+  el('h3', grid, `头像(首次生成五张共 ${ms}ms)`);
+  for (const size of [192, 96, 56]) {
+    const row = el('div', grid);
+    row.className = 'row';
+    HERO_IDS.forEach((id, i) => {
+      const fig = el('figure', row);
+      const img = el('img', fig);
+      img.src = urls[i];
+      img.width = img.height = size;
+      if (size === 192) el('figcaption', fig, `${HEROES[id].name} · ${HEROES[id].title}`);
+    });
+  }
+  el('h3', grid, '立绘展示(createHeroPreview)');
+  const row = el('div', grid);
+  row.className = 'row';
+  const playParam = params.get('play') as 'attack' | 'cast_s1' | 'cast_s2' | 'cast_ult' | null;
+  HERO_IDS.forEach((id) => {
+    const fig = el('figure', row);
+    const canvas = el('canvas', fig);
+    canvas.style.width = `${num('pw') ?? 230}px`;
+    canvas.style.height = `${num('ph') ?? 300}px`;
+    const pv = createHeroPreview(canvas, id);
+    pv.resize();
+    const cap = el('figcaption', fig);
+    for (const a of ['attack', 'cast_s1', 'cast_s2', 'cast_ult'] as const) {
+      const btn = el('button', cap, a.replace('cast_', ''));
+      btn.style.cssText = 'margin:0 2px;font:12px sans-serif;';
+      btn.onclick = () => pv.play(a);
+    }
+    if (playParam) {
+      pv.play(playParam);
+      setInterval(() => pv.play(playParam), 2200);
+    }
+  });
+}
+
+if (params.get('portraits') === '1') startPortraits();
+else startStudio();
 
 declare global {
   interface Window {
-    __renderer: typeof renderer;
-    __slots: typeof slots;
+    __renderer: GameRendererCore;
+    __slots: Slot[];
   }
 }
-window.__renderer = renderer;
-window.__slots = slots;

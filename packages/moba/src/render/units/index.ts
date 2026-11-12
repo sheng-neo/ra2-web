@@ -93,6 +93,8 @@ interface View {
   ring: number;
   tintAmount: number;
   windup: number;
+  /** 本次普攻是强化的一击(出手时锁定) */
+  special: boolean;
 }
 
 interface Ruin {
@@ -185,6 +187,7 @@ export function createUnitsModule(ctx: RenderContext): UnitsModule {
   let time = 0;
   let instanceCount = 0;
   let lastStateTime = -1;
+  let booted = false;
   // 可见地面范围(裁剪用)
   let cMinX = -Infinity;
   let cMaxX = Infinity;
@@ -252,12 +255,14 @@ export function createUnitsModule(ctx: RenderContext): UnitsModule {
       deathDur: 0,
       culled: false,
       fresh: true,
-      pop: true,
+      // 开局已在场的单位直接出现；对局中新刷出来的(小兵/野怪)淡入
+      pop: !booted,
       radius: Math.max(u.radius, def.radius * def.scale),
       height: def.height * def.scale,
       hp: 1,
       ring: u.kind === 'hero' ? (u.id === st.playerId ? RING_PLAYER : RING_HERO) : u.kind === 'minion' ? RING_MINION : -1,
       tintAmount: 0,
+      special: false,
       windup: u.kind === 'hero' ? HEROES[u.heroId].basicAttack.windup : STATIC_KINDS[u.kind] ? 0.3 : 0.35,
     };
     v.deathDur = deathDuration(v);
@@ -379,11 +384,15 @@ export function createUnitsModule(ctx: RenderContext): UnitsModule {
 
     // 受击闪白
     const since = tRender - u.lastHitTime;
-    v.flash = since >= 0 && since < 0.16 && u.alive ? (1 - since / 0.16) ** 2 * (STATIC_KINDS[u.kind] ? 0.45 : 0.7) : 0;
+    v.flash = since >= 0 && since < 0.16 && u.alive ? (1 - since / 0.16) ** 2 * (STATIC_KINDS[u.kind] ? 0.4 : 0.6) : 0;
 
     // 动画输入
     const inp = v.puppet.input;
-    if (u.anim === 'attack' && (u.animStart !== v.lastStart || v.lastAnim !== 'attack')) v.variant++;
+    const newSwing = u.anim === 'attack' && (u.animStart !== v.lastStart || v.lastAnim !== 'attack');
+    if (newSwing) {
+      v.variant++;
+      v.special = false;
+    }
     v.lastStart = u.animStart;
     v.lastAnim = u.anim;
     inp.anim = u.anim;
@@ -398,12 +407,11 @@ export function createUnitsModule(ctx: RenderContext): UnitsModule {
     if (u.kind === 'hero') {
       for (let i = 0; i < u.buffs.length; i++) {
         const b = u.buffs[i];
-        // 磐岳：第三击用重击动作；壁垒期间举盾
-        if (b.id === 'panyue_passive' && b.stacks >= 2) inp.mode |= 1;
+        // 磐岳：攒满两层后的下一击(第三击)用重击动作——在出手那一刻锁定，命中后层数清零也不会中途换动作；壁垒期间举盾
+        if (newSwing && ((b.id === 'panyue_passive' && b.stacks >= 2) || b.id === 'fengling_crit' || b.id === 'chijin_ember')) v.special = true;
         else if (b.id === 'panyue_bulwark') inp.mode |= 2;
-        else if (b.id === 'chijin_blaze') inp.mode |= 1;
-        else if (b.id === 'fengling_crit') inp.mode |= 1;
       }
+      if (v.special && u.anim === 'attack') inp.mode |= 1;
     }
 
     // 腾空高度：跃击按进度走抛物线；击飞高度随时长
@@ -481,7 +489,7 @@ export function createUnitsModule(ctx: RenderContext): UnitsModule {
       rings.push(v.x, gy, v.z, v.radius * 1.25 * squash, colors.shadow, (shadows ? 0.3 : 0.5) * fade * squash, RING_BLOB);
       if (v.ring >= 0 && v.alive) {
         const c = v.isPlayer ? colors.player : teamColor(v.team);
-        rings.push(v.x, gy + 0.01, v.z, v.radius * (v.kind === 'hero' ? 1.3 : 1.15), c, (v.kind === 'hero' ? 0.95 : 0.7) * fade, v.ring, Math.PI / 2 - v.yaw);
+        rings.push(v.x, gy + 0.01, v.z, v.radius * (v.kind === 'hero' ? 1.3 : 1.15), c, (v.kind === 'hero' ? 0.85 : 0.6) * fade, v.ring, Math.PI / 2 - v.yaw);
       }
     }
   };
@@ -499,6 +507,7 @@ export function createUnitsModule(ctx: RenderContext): UnitsModule {
         views.clear();
         list.length = 0;
         ruins.length = 0;
+        booted = false;
       }
       lastStateTime = st.time;
       updateCullRect();
@@ -520,6 +529,7 @@ export function createUnitsModule(ctx: RenderContext): UnitsModule {
         sync(v, u, frame);
       }
 
+      booted = true;
       for (let i = 0; i < batchList.length; i++) batchList[i].begin();
       rings.begin();
       instanceCount = 0;

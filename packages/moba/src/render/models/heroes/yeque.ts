@@ -10,9 +10,9 @@ import type { Pose } from '../rig';
 import type { AnimInput, AnimOutput, ModelDef } from '../types';
 
 const C = {
-  suit: 0x4a3c74,
-  suitDark: 0x2a2244,
-  black: 0x1c1828,
+  suit: 0x5c4a92,
+  suitDark: 0x382d5e,
+  black: 0x241f36,
   wrap: 0x6a5a9c,
   metal: 0x5a5470,
   metalLight: 0x8a84a4,

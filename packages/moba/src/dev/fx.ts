@@ -28,7 +28,11 @@ import type { RenderModule, RenderModuleFactory } from '../render/engine/context
 import { createRendererCore } from '../render/engine/core';
 import { createPlaceholderUnits } from '../render/engine/placeholders';
 import { AREA_VISUALS, FX_KEYS, PROJECTILE_VISUALS, STATUS_BUFFS, createFxModule, type FxModule } from '../render/fx';
-import { createOverlayModule } from '../render/overlay';
+import { DECAL } from '../render/fx/decals';
+import { MODE, SHAPE } from '../render/fx/glow';
+import { particleStyle } from '../render/fx/particles';
+import { createOverlayModule, type OverlayModule } from '../render/overlay';
+import * as THREE from 'three';
 import { createTerrainModule } from '../render/terrain';
 
 const params = new URLSearchParams(location.search);
@@ -850,6 +854,62 @@ for (const [k, mk] of Object.entries(AIMS)) {
   });
 }
 
+// ───────────────────────── 底层样例(逐个形状/贴花/图集，检查着色器) ─────────────────────────
+
+const DBG_COLORS = [0xff5a1e, 0x3aa8ff, 0x2ee096, 0x9050ff, 0xffa22a, 0xffd04a];
+PLAYS.set('dbg:shapes', () => {
+  const kit = fxModule.kit;
+  const modes: [number, number, string][] = [
+    [SHAPE.pillar, MODE.pillar, '光柱'], [SHAPE.sphere, MODE.rim, '光壳'], [SHAPE.sphere, MODE.core, '光球'], [SHAPE.sphere, MODE.hex, '护罩'],
+    [SHAPE.slash, MODE.slash, '斩弧'], [SHAPE.cone, MODE.vortex, '旋风'], [SHAPE.hoop, MODE.hoop, '环箍'], [SHAPE.diamond, MODE.core, '晶弹'],
+    [SHAPE.arrow, MODE.solid, '箭'], [SHAPE.blade, MODE.solid, '飞刃'], [SHAPE.spike, MODE.plain, '岩刺'], [SHAPE.rock, MODE.plain, '碎岩'],
+  ];
+  modes.forEach(([shape, mode], i) => {
+    const p = at(-6 + (i % 6) * 2.6, i < 6 ? -1.6 : 2.2);
+    const m = kit.glow.hold(shape, mode);
+    const c = new THREE.Color(DBG_COLORS[i % DBG_COLORS.length]);
+    const lit = shape === SHAPE.spike || shape === SHAPE.rock;
+    m.color(lit ? new THREE.Color(0xffffff) : c, lit ? 1 : 1.4, 0.95);
+    m.add = mode === MODE.solid ? 0.3 : 0.5;
+    m.k = mode === MODE.slash ? 1 : mode === MODE.vortex ? 4 : 2;
+    m.progress = mode === MODE.slash ? -2 : mode === MODE.vortex ? 0.15 : 0;
+    const flat = shape === SHAPE.slash || shape === SHAPE.hoop || shape === SHAPE.blade;
+    m.at(p.x, flat ? 0.8 : shape === SHAPE.sphere || shape === SHAPE.diamond || shape === SHAPE.arrow ? 1.1 : 0.05, p.y);
+    const tall = shape === SHAPE.pillar || shape === SHAPE.cone || shape === SHAPE.spike;
+    m.scale3(1, tall ? 2.6 : 1, 1);
+    if (shape === SHAPE.rock) m.scale(0.6);
+  });
+});
+PLAYS.set('dbg:decals', () => {
+  const kit = fxModule.kit;
+  const entries = Object.entries(DECAL);
+  entries.forEach(([, type], i) => {
+    const p = at(-6.6 + (i % 5) * 3.3, -3.4 + Math.floor(i / 5) * 3.3);
+    const c = new THREE.Color(DBG_COLORS[i % DBG_COLORS.length]);
+    const pen = kit.decals.at(kit.decals.hold(type, 0)).at(p.x, p.y).radius(1.45).color(c, 1.6, 1).under(new THREE.Color(0x120c20), 0.6);
+    if (type === DECAL.cone) pen.params(0.96, 1);
+    else if (type === DECAL.rune) pen.params(6, 0.6);
+    else if (type === DECAL.telegraph) pen.params(0.6);
+    else if (type === DECAL.rect) pen.rot(0, 0.3);
+    else if (type === DECAL.range) pen.params(0.02, 24);
+    else if (type === DECAL.swirl) pen.params(3, 2.4);
+    else if (type === DECAL.star) pen.params(5, 2.6);
+    else if (type === DECAL.streak) pen.rot(0, 0.3).params(0.5, 0);
+    else if (type === DECAL.zone) pen.params(16, 0);
+    else if (type === DECAL.ring) pen.params(0.2, 1);
+    else if (type === DECAL.glow) pen.params(1.5);
+  });
+});
+PLAYS.set('dbg:sprites', () => {
+  // 图集里的每个图形各发一个长寿命粒子
+  const kit = fxModule.kit;
+  for (let i = 0; i < 32; i++) {
+    const p = at(-7 + (i % 8) * 2, -2.4 + Math.floor(i / 8) * 1.8);
+    const st = particleStyle({ sprite: i, add: i % 2 ? 1 : 0.3, color: DBG_COLORS[i % DBG_COLORS.length], intensity: 1.4, fadeIn: 0.01, fadeOut: 0.98, rot: 0 });
+    kit.particles.use(st).spawn(p.x, 1, p.y, 0, 0, 0, 60, 1.5, 1.5);
+  }
+});
+
 // ───────────────────────── 渲染器 ─────────────────────────
 
 const factories: RenderModuleFactory[] = [createTerrainModule, createPlaceholderUnits, createFxModule, createOverlayModule];
@@ -857,6 +917,7 @@ const renderer = createRendererCore(app, state, { quality }, factories);
 const engine = renderer.engine;
 const ctx = renderer.context;
 const fxModule = ctx.getModule<FxModule>('fx') as FxModule;
+const overlayModule = ctx.getModule<OverlayModule>('overlay') as OverlayModule;
 const modules = ['terrain', 'units', 'fx', 'overlay'].map((n) => ctx.getModule(n)).filter((m): m is RenderModule => !!m);
 if (!overlayDemo) {
   renderer.setCameraPeek({ x: center.x + F.x * 0.5, y: center.y + F.y * 0.5 - 1.5 });
@@ -893,13 +954,17 @@ function advance(dt: number, draw: boolean): void {
 }
 
 let frozen = false;
+let settledFrames = 0;
 let current = '';
 function play(name: string, freezeAt?: number): boolean {
   const fn = PLAYS.get(name);
   if (!fn) return false;
   current = name;
   frozen = false;
+  settledFrames = 0;
+  if (window.__fx) window.__fx.settled = false;
   fxModule.reset();
+  overlayModule.reset();
   resetStage();
   // 先空跑两帧让锚点/镜头就位，再触发
   advance(1 / 60, false);
@@ -936,6 +1001,7 @@ section('投射物', keysOf('proj:'), strip);
 section('区域', keysOf('area:'), strip);
 section('状态 buff', keysOf('buff:'), strip);
 section('瞄准指示器', keysOf('aim:'), strip);
+section('底层样例', keysOf('dbg:'), strip);
 if (params.get('panel') === '0' || overlayDemo) panel.style.display = 'none';
 if (params.get('hud') === '0') hud.style.display = 'none';
 
@@ -984,8 +1050,12 @@ function frame(now: number): void {
   const real = Math.min(0.1, (now - last) / 1000);
   last = now;
   if (frozen) {
-    // 定格：dt = 0，特效时钟不走，画面可稳定截图
-    renderer.render(state, Math.min(1, tickAcc / TICK_DT), 0);
+    // 定格：dt = 0，特效时钟不走。画够三帧就停止重绘(软件渲染很慢，停下来截图才不会超时)
+    if (settledFrames < 3) {
+      renderer.render(state, Math.min(1, tickAcc / TICK_DT), 0);
+      settledFrames++;
+      window.__fx.settled = settledFrames >= 3;
+    }
   } else {
     const dt = real * speed;
     if (overlayDemo) overlayEvents(dt);
@@ -1014,19 +1084,19 @@ function frame(now: number): void {
 addEventListener('resize', () => renderer.resize());
 addEventListener('keydown', (e) => {
   if (e.code === 'Digit1' || e.code === 'Digit2' || e.code === 'Digit3') renderer.setQuality(e.code === 'Digit1' ? 'low' : e.code === 'Digit2' ? 'medium' : 'high');
-  if (e.code === 'Space') frozen = !frozen;
+  if (e.code === 'Space') {
+    frozen = !frozen;
+    settledFrames = 0;
+  }
 });
 
-if (playParam) {
-  const t = num('t');
-  if (!play(playParam, t ?? undefined)) console.warn('未知的 play 名字：' + playParam);
-}
-requestAnimationFrame(frame);
 
 declare global {
   interface Window {
     __fx: {
       play: typeof play;
+      /** 定格后画面已经稳定(可以截图) */
+      settled: boolean;
       names: string[];
       stats: () => { renderer: ReturnType<typeof renderer.getStats>; fx: ReturnType<FxModule['getStats']> };
       state: GameState;
@@ -1039,6 +1109,7 @@ declare global {
 }
 window.__fx = {
   play,
+  settled: false,
   names: [...PLAYS.keys()],
   stats: () => ({ renderer: { ...renderer.getStats() }, fx: { ...fxModule.getStats() } }),
   state,
@@ -1046,3 +1117,9 @@ window.__fx = {
   w2s: (x, y, h = 0) => renderer.worldToScreen({ x, y }, h),
   stage: { center, player: () => cp(player.pos), foe: () => cp(foe.pos) },
 };
+
+if (playParam) {
+  const t = num('t');
+  if (!play(playParam, t ?? undefined)) console.warn('未知的 play 名字：' + playParam);
+}
+requestAnimationFrame(frame);

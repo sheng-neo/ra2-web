@@ -146,7 +146,8 @@ void main() {
   if (fxA < 0.004) discard;
   float fxAdd = vCol.a;
   float m = max(vCol.r, max(vCol.g, vCol.b));
-  vec3 fxC = vCol.rgb + vec3(m * vFx.y * prof * prof * prof);
+  float core = vFx.y * prof * prof * prof;
+  vec3 fxC = vCol.rgb * (1.0 + core * 0.6) + vec3(m * core * 0.3);
   ${GLSL_FX_OUT}
 }
 `;

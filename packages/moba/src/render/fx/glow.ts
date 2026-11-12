@@ -121,7 +121,7 @@ void main() {
   float hot = 0.0;
   if (mode < 0.5) {
   } else if (mode < 1.5) {
-    a *= pow(1.0 - ndv, k);
+    a *= min(1.0, pow(1.0 - ndv, k) * 2.2 + 0.08);
   } else if (mode < 2.5) {
     float f = pow(ndv, k);
     a *= f;
@@ -129,12 +129,12 @@ void main() {
   } else if (mode < 3.5) {
     float n = fbm(vec2(vUv.x * 18.0 + seed * 31.0, vUv.y * 2.5 - uNow * 1.8));
     float fall = pow(max(0.0, 1.0 - vUv.y), k);
-    a *= fall * (0.5 + 0.95 * n) * (0.3 + 0.7 * ndv) * smoothstep(0.0, 0.03, vUv.y);
+    a *= min(1.0, fall * (0.55 + 0.9 * n) * (0.45 + 0.55 * ndv) * 2.2) * smoothstep(0.0, 0.03, vUv.y);
     hot = fall * fall * fall * 0.3;
   } else if (mode < 4.5) {
     float v = vUv.y;
     float u = vUv.x;
-    float prof = pow(v, 2.4) * (1.0 - smoothstep(0.93, 1.0, v));
+    float prof = pow(v, 1.5) * (1.0 - smoothstep(0.94, 1.0, v));
     // k = 可见弧长占整段弧的比例(1 = 全弧 2.5 弧度)：按技能的扇形角裁剪
     float uu = clamp((u - 0.5) / max(k, 0.05) + 0.5, 0.0, 1.0);
     float ends = pow(max(0.0, sin(uu * PI)), 0.6);
@@ -144,33 +144,33 @@ void main() {
       float h = pr * 1.8;
       sw = (1.0 - smoothstep(h - 0.06, h, u)) * smoothstep(h - 1.0, h - 0.25, u);
     }
-    a *= prof * ends * sw * 1.6;
-    hot = pow(v, 9.0) * ends * sw * 0.8;
+    a *= prof * ends * sw * 1.9;
+    hot = pow(v, 7.0) * ends * sw * 1.2;
   } else if (mode < 5.5) {
     vec3 d = normalize(vObj);
     vec2 hp = vec2(atan(d.z, d.x) * 2.6, asin(clamp(d.y, -1.0, 1.0)) * 3.6);
     float rim = pow(1.0 - ndv, 2.4);
     float pulse = 0.5 + 0.5 * sin(uNow * 3.0 - d.y * 5.0 + seed * 6.0);
     float cell = hexEdge(hp * 1.5);
-    a *= rim * 0.95 + cell * (0.16 + 0.22 * pulse) * (0.4 + 0.6 * rim) + 0.05;
+    a *= min(1.0, rim * 1.35 + cell * (0.3 + 0.3 * pulse) * (0.5 + 0.5 * rim) + 0.07);
     hot = rim * rim * 0.3;
   } else if (mode < 6.5) {
     float n = fbm(vec2(vUv.x * 5.0 + vUv.y * k - uNow * 1.6, vUv.y * 3.0 - uNow * 2.2) + seed * 9.0);
     float th = mix(0.2, 1.0, pr);
-    float body = smoothstep(th, th + 0.3, n + (1.0 - vUv.y) * 0.35);
-    a *= body * smoothstep(0.0, 0.1, vUv.y) * pow(max(0.0, 1.0 - vUv.y), 0.6) * (0.4 + 0.6 * ndv);
+    float body = smoothstep(th - 0.12, th + 0.18, n + (1.0 - vUv.y) * 0.5);
+    a *= min(1.0, body * smoothstep(0.0, 0.08, vUv.y) * pow(max(0.0, 1.0 - vUv.y), 0.5) * (0.55 + 0.45 * ndv) * 1.4);
     hot = body * (1.0 - vUv.y) * 0.25;
   } else if (mode < 7.5) {
     float l = 0.55 + 0.45 * max(0.0, dot(N, normalize(vec3(-0.3, 0.8, 0.5))));
     c = c * l + vTint.rgb * pow(1.0 - ndv, 2.5) * 0.45;
   } else {
     float prof = sin(vUv.y * PI);
-    a *= prof * prof;
-    hot = pow(prof, 6.0) * 0.4;
+    a *= min(1.0, prof * prof * 2.0);
+    hot = pow(prof, 6.0) * 0.5;
   }
   float fxA = min(1.0, a);
   if (fxA < 0.004) discard;
-  vec3 fxC = c + vec3(hot * max(c.r, max(c.g, c.b)));
+  vec3 fxC = c * (1.0 + hot * 0.7) + vec3(hot * 0.3 * max(c.r, max(c.g, c.b)));
   ${GLSL_FX_OUT}
 }
 `;
@@ -450,8 +450,8 @@ function buildSpike(): THREE.BufferGeometry {
   g.computeVertexNormals();
   // 岩石底色 → 顶端透出琥珀晶光
   setColorAttr(g, (_x, y) => {
-    const k = Math.max(0, (y - 0.45) / 0.55);
-    return [0.4 + 0.6 * k, 0.37 + 0.3 * k, 0.34 - 0.12 * k];
+    const k = Math.max(0, (y - 0.5) / 0.5);
+    return [0.15 + 0.85 * k, 0.125 + 0.42 * k, 0.11 - 0.02 * k];
   });
   withFx(g, (_x, y) => Math.max(0, (y - 0.55) / 0.45) * 0.55);
   return g;
@@ -474,7 +474,7 @@ function buildRock(): THREE.BufferGeometry {
   }
   src.computeVertexNormals();
   setColorAttr(src, (_x, y, _z, i) => {
-    const s = 0.34 + 0.1 * (((i / 3) | 0) % 3) + y * 0.05;
+    const s = 0.14 + 0.05 * (((i / 3) | 0) % 3) + y * 0.03;
     return [s * 1.04, s, s * 0.94];
   });
   withFx(src, () => 0);

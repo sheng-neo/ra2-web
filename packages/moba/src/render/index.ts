@@ -13,9 +13,8 @@
  *   createRendererCore(container, state, { quality }, [createTerrainModule, 自己的模块])
  * 做隔离测试(参考 src/dev/terrain.ts)。
  */
-import type { GameState, HeroId } from '../core/types';
-import { HEROES } from '../core/data/heroes';
-import type { GameRenderer, HeroPreview, RendererOptions } from './api';
+import type { GameState } from '../core/types';
+import type { GameRenderer, RendererOptions } from './api';
 import type { RenderModuleFactory } from './engine/context';
 import { createRendererCore, type GameRendererCore } from './engine/core';
 import { createTerrainModule } from './terrain';
@@ -41,70 +40,5 @@ export function createGameRenderer(container: HTMLElement, state: GameState, opt
   return core;
 }
 
-// ───────────── 占位实现(R2 会用真实 3D 模型替换) ─────────────
-
-function drawPlaceholderHero(ctx: CanvasRenderingContext2D, w: number, h: number, heroId: HeroId, portrait: boolean): void {
-  const def = HEROES[heroId];
-  const g = ctx.createLinearGradient(0, 0, 0, h);
-  g.addColorStop(0, def.palette.secondary);
-  g.addColorStop(1, '#0b1020');
-  ctx.fillStyle = g;
-  ctx.fillRect(0, 0, w, h);
-  const cx = w / 2;
-  const s = Math.min(w, h);
-  // 简化的半身剪影：头 + 肩
-  ctx.fillStyle = def.palette.primary;
-  ctx.beginPath();
-  ctx.ellipse(cx, h * (portrait ? 0.98 : 0.9), s * 0.36, s * 0.34, 0, Math.PI, 0);
-  ctx.fill();
-  ctx.fillStyle = def.palette.accent;
-  ctx.beginPath();
-  ctx.arc(cx, h * (portrait ? 0.46 : 0.42), s * 0.17, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.fillStyle = def.palette.glow;
-  ctx.font = `bold ${Math.round(s * 0.2)}px "PingFang SC","Microsoft YaHei",sans-serif`;
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(def.name.slice(0, 1), cx, h * (portrait ? 0.47 : 0.43));
-}
-
-export function createHeroPreview(canvas: HTMLCanvasElement, heroId: HeroId): HeroPreview {
-  let current = heroId;
-  const draw = (): void => {
-    const w = Math.max(1, canvas.clientWidth || canvas.width);
-    const h = Math.max(1, canvas.clientHeight || canvas.height);
-    if (canvas.width !== w) canvas.width = w;
-    if (canvas.height !== h) canvas.height = h;
-    const ctx = canvas.getContext('2d');
-    if (ctx) drawPlaceholderHero(ctx, w, h, current, false);
-  };
-  draw();
-  return {
-    setHero(id) {
-      current = id;
-      draw();
-    },
-    play() {
-      /* 占位：无动作 */
-    },
-    resize: draw,
-    dispose() {
-      /* 占位：无资源 */
-    },
-  };
-}
-
-const portraitCache = new Map<HeroId, string>();
-
-export function getHeroPortrait(heroId: HeroId): string {
-  let url = portraitCache.get(heroId);
-  if (!url) {
-    const c = document.createElement('canvas');
-    c.width = c.height = 128;
-    const ctx = c.getContext('2d');
-    if (ctx) drawPlaceholderHero(ctx, 128, 128, heroId, true);
-    url = c.toDataURL('image/png');
-    portraitCache.set(heroId, url);
-  }
-  return url;
-}
+// 英雄展示(选人界面的 3D 立绘)与头像：见 preview.ts(独立小场景，不依赖主渲染器)
+export { createHeroPreview, getHeroPortrait } from './preview';

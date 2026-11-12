@@ -167,8 +167,8 @@ const DEFS: Partial<Record<BuffId, StatusDef>> = {
       // 磐岳自己的壁垒是琥珀色，其余护盾是冰蓝白
       const src = k.anchors.unit(b.sourceId);
       const amber = src !== undefined && src.kind === 'hero' && src.heroId === 'panyue';
-      m.color(amber ? SHIELD_AMBER : SHIELD, 2, 0);
-      m.add = 0.85;
+      m.color(amber ? SHIELD_AMBER : SHIELD, 1.25, 0);
+      m.add = 0.4;
       v.meshes.push(m);
       void a;
     },
@@ -205,12 +205,12 @@ const DEFS: Partial<Record<BuffId, StatusDef>> = {
   // 灼烧：身上的火苗
   burn: {
     update(k, v, a, _b, dt) {
-      emit(k, v, dt, 11, () => {
+      emit(k, v, dt, 18, () => {
         const r = k.rnd;
-        const x = a.x + r.signed() * a.radius * 0.7;
-        const z = a.z + r.signed() * a.radius * 0.7;
-        const y = a.y + r.range(0.3, a.height * 0.75);
-        if (r.chance(0.7)) k.particles.use(P.flame).spawn(x, y, z, 0, r.range(1, 2.2), 0, r.range(0.3, 0.5), 0.55, 0.25);
+        const x = a.x + r.signed() * a.radius * 0.8;
+        const z = a.z + r.signed() * a.radius * 0.8;
+        const y = a.y + r.range(0.2, a.height * 0.7);
+        if (r.chance(0.7)) k.particles.use(P.flame).spawn(x, y, z, 0, r.range(1, 2.2), 0, r.range(0.35, 0.55), 0.95, 0.4);
         else k.particles.use(P.ember).tint(EMBER_HOT, EMBER).spawn(x, y, z, r.signed() * 0.5, r.range(1, 2.5), r.signed() * 0.5, 0.6, 0.13, 0.04);
       });
     },
@@ -243,8 +243,9 @@ const DEFS: Partial<Record<BuffId, StatusDef>> = {
       const s = holdDecal(k, v, DECAL.rune, 0.3);
       k.decals.at(s).params(6, 1.6).color(RECALL, 1.7, 0.9).under(C.shadow, 0.3);
       const m = k.glow.hold(SHAPE.pillar, MODE.pillar);
-      m.color(RECALL, 1.6, 0);
-      m.k = 1.6;
+      m.color(RECALL, 1.1, 0);
+      m.add = 0.3;
+      m.k = 1.2;
       v.meshes.push(m);
     },
     update(k, v, a, b, dt) {
@@ -256,7 +257,7 @@ const DEFS: Partial<Record<BuffId, StatusDef>> = {
       m.at(a.x, 0.05, a.z).scale3(rad * 0.62, 3 + 5 * t, rad * 0.62);
       m.a = 0.2 + 0.65 * t;
       emit(k, v, dt, 2.4 + t * 2, () => {
-        k.glow.spawn(SHAPE.hoop, MODE.hoop, 0.9).at(a.x, 0.15, a.z).vel(0, 2.6 + t * 2, 0).scale(rad, rad * 0.6).color(RECALL, 1.9, 0.9).fade(0.15, 0.5);
+        k.glow.spawn(SHAPE.hoop, MODE.hoop, 0.9).at(a.x, 0.15, a.z).vel(0, 2.6 + t * 2, 0).scale(rad, rad * 0.6).color(RECALL, 1.2, 0.9).fade(0.15, 0.5).opt(0.3, 2, 1);
         for (let i = 0; i < 3; i++) k.particles.use(P.glint).tint(C.white, RECALL).orbit(a.x, 0.1, a.z, rad, rad * 0.4, k.rnd.next() * TAU, 5, k.rnd.range(2, 4), 0.8, 0.3, 0.08);
       });
     },
@@ -292,7 +293,8 @@ const DEFS: Partial<Record<BuffId, StatusDef>> = {
   respawn_guard: {
     create(k, v) {
       const m = k.glow.hold(SHAPE.sphere, MODE.rim);
-      m.color(GOLD, 1.8, 0);
+      m.color(GOLD, 1.2, 0);
+      m.add = 0.4;
       m.k = 2.6;
       v.meshes.push(m);
       const s = holdDecal(k, v, DECAL.range, 0.1);

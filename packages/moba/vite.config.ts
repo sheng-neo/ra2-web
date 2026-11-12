@@ -10,6 +10,8 @@ export default defineConfig(({ mode }) => ({
     target: 'es2022',
     outDir: mode === 'single' ? 'dist-single' : 'dist',
     chunkSizeWarningLimit: 4000,
+    // 只有一个入口块，用不上 modulepreload 的兼容垫片；去掉它，产物里就不含任何 fetch 调用(受限宿主的 CSP 禁止一切外部请求)
+    modulePreload: { polyfill: false },
   },
   server: {
     port: 5183,

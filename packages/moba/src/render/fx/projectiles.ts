@@ -53,8 +53,8 @@ const POISON: ProjColors = { glow: C.poison, hot: C.white, deep: C.poisonDeep };
 function def(o: Partial<ProjDef> & Pick<ProjDef, 'shape' | 'scale' | 'colors'>): ProjDef {
   return {
     mode: MODE.core,
-    intensity: 2.2,
-    add: 1,
+    intensity: 1.8,
+    add: 0.6,
     k: 1,
     roll: 0,
     yawSpin: 0,

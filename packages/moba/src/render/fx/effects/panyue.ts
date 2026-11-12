@@ -62,7 +62,7 @@ const s1Dash: FxHandler = (k, e) => {
   k.trail(id, R.dust, dur + 0.05, 0.5);
   k.trail(id, R.energy, dur + 0.05, 1.3, T.hot, T.deep);
   // 顶在身前的琥珀冲击罩
-  k.glow.spawn(SHAPE.sphere, MODE.rim, dur + 0.08).follow(id).at(dx * 0.6, 1.2, dz * 0.6).scale(1.3, 1.6).color(T.glow, 1.7, 0.8).fade(0.15, 0.7).opt(1, 2.4, 1);
+  k.glow.spawn(SHAPE.sphere, MODE.rim, dur + 0.08).follow(id).at(dx * 0.6, 1.2, dz * 0.6).scale(1.3, 1.6).color(T.glow, 1.7, 0.8).fade(0.15, 0.7).opt(0.35, 2.4, 1);
   let acc = 0;
   k.track(id, dur, (a, _t, dt) => {
     acc += dt;
@@ -140,7 +140,7 @@ const ultLeap: FxHandler = (k, e, env) => {
   if (k.anchor(id)) {
     k.trail(id, R.energy, leap, 1.3, T.hot, T.deep);
     k.trail(id, R.dust, leap * 0.6, 0.4);
-    k.glow.spawn(SHAPE.sphere, MODE.rim, leap + 0.05).follow(id).at(0, 1.2, 0).scale(1.5, 1.9).color(T.glow, 1.6, 0.75).fade(0.2, 0.75).opt(1, 2.2, 1);
+    k.glow.spawn(SHAPE.sphere, MODE.rim, leap + 0.05).follow(id).at(0, 1.2, 0).scale(1.5, 1.9).color(T.glow, 1.6, 0.75).fade(0.2, 0.75).opt(0.35, 2.2, 1);
   }
   k.shake(e.unitId === env.playerId ? 0.2 : 0.1, x, z);
 };
@@ -152,7 +152,7 @@ const ultLand: FxHandler = (k, e, env) => {
   const R0 = e.radius ?? 4.5;
   const r = k.rnd;
   flash(k, x, 0.9, z, R0 * 2, T.hot, 0.3, true);
-  orb(k, x, 0.8, z, 0.6, R0 * 0.6, 0.3, T.hot, 2.4);
+  orb(k, x, 0.8, z, 0.5, R0 * 0.45, 0.26, T.hot, 2);
   shockShell(k, x, 0.4, z, 1, R0 * 1.12, 0.45, T.glow, 1.9);
   pillar(k, x, z, R0 * 0.45, 6.5, 0.5, T.glow, 1.7, 0.8);
   ring(k, x, z, R0, 0.5, T.glow, 2.2, 0.1, 0.45);

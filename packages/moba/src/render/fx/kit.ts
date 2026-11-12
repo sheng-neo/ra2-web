@@ -55,6 +55,8 @@ export class FxKit {
   density = 1;
   /** 每帧在各子系统上传之前调用的钩子(叠加层的世界标记挂在这里，保证与本帧镜头同步) */
   readonly hooks: ((frame: FrameInfo) => void)[] = [];
+  /** clear() 时通知各个持有常驻贴花/网格句柄的模块：句柄已全部失效 */
+  readonly onClear: (() => void)[] = [];
 
   private timers: Timer[] = [];
   private trackers: Tracker[] = [];
@@ -209,6 +211,7 @@ export class FxKit {
     this.ribbons.clear();
     this.decals.clear();
     this.glow.clear();
+    for (const fn of this.onClear) fn();
   }
 
   /** 临时向量(仅限当前表达式内使用) */
@@ -228,5 +231,6 @@ export class FxKit {
     this.timers.length = 0;
     this.trackers.length = 0;
     this.hooks.length = 0;
+    this.onClear.length = 0;
   }
 }

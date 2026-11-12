@@ -71,7 +71,7 @@ void main() {
       float tri = max(abs(t.y) * 1.25 + t.x * 0.9 - 0.2, -t.x - 0.16);
       float arrow = 1.0 - smoothstep(0.0, aa * 1.5, tri);
       ring = max(ring, arrow);
-      fill = smoothstep(0.35, 0.93, r) * step(r, 0.93) * 0.22;
+      fill = smoothstep(0.45, 0.93, r) * step(r, 0.93) * 0.16;
       if (style > 2.5) {
         // 玩家：内圈一环缓慢转动的刻度
         float a2 = atan(p.y, p.x) + uTime * 0.6;

@@ -227,7 +227,7 @@ function build(): { h: Human; b: ModelBuilder; extra: Extra } {
       // 反曲：中段向前鼓，弓梢再向后勾
       const y = -0.04 + 0.2 * t * t + 0.06 * Math.pow(t, 6);
       const w = lerp(0.03, 0.018, t);
-      out.push([0, y, z, lerp(0.022, 0.012, t), w]);
+      out.push([0, y, z, lerp(0.03, 0.016, t), w * 1.25]);
     }
     return out;
   };
@@ -322,11 +322,11 @@ function makeAnims(h: Human): Anims {
   // 仰射(大招)：上身后仰，弓指向天空
   const aimUp = kp(h, aim, {
     hipsPos: [0, -0.1, -0.04],
-    spine: [0, -16, -14],
-    chest: [-2, -22, -24],
-    neck: [-10, 34, 10],
+    spine: [0, -16, 12],
+    chest: [-2, -22, 20],
+    neck: [-10, 34, -8],
     head: [-24, 42, 0],
-    armL: [0, 6, 132],
+    armL: [0, 6, 104],
   });
   const runArms = kp(h, null, { armL: [-22, 0, 16], foreL: [-52, 0, 0], propL: [-30, 0, 20], armR: [0, 0, -12], foreR: [-70, 0, 0] });
   // 逐风步：团身翻跃
@@ -462,8 +462,11 @@ export function createFengling(): ModelDef {
         applyCKP(h, pose, A.tuck, () => {
           // 整个人团身前翻一圈，离地划一道弧
           const p = a.anim === 'dash' ? a.p : 0;
+          const th = p * Math.PI * 2;
+          // 绕身体重心(而不是脚底)翻转：根关节按 c − R·c 补偿平移，再叠一个小跳
+          const pivot = 0.95;
           pose.rot(J.root, 360 * p, 0, 0);
-          pose.pos(J.root, 0, 0.55 * Math.sin(p * Math.PI) + 0.45 * (1 - Math.cos(p * Math.PI * 2)) * 0.5, 0);
+          pose.pos(J.root, 0, pivot * (1 - Math.cos(th)) + 0.3 * Math.sin(p * Math.PI), -pivot * Math.sin(th));
         });
         out.glow = 1.8;
         break;
