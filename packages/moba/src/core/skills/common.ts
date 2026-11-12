@@ -7,7 +7,7 @@ import type { Sim } from '../world';
 import type { CastContext } from './registry';
 import * as tk from './toolkit';
 
-export { CAST_POINT, castPoint, fixedValue } from './timing';
+export { CAST_POINT, castPoint, castRange, fixedValue } from './timing';
 
 export function copyVec(v: Vec2): Vec2 {
   return { x: v.x, y: v.y };

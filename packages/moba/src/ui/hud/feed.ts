@@ -13,13 +13,14 @@ const CSS = sfCss(`
 .sf-hud__feed { position: absolute; right: var(--hud-r); top: calc(var(--hud-t) + max(46px, 50u)); z-index: 3; display: flex; flex-direction: column; align-items: flex-end; gap: 5u; }
 .sf-hud__kf {
   --tone: 77, 163, 255;
-  display: flex; align-items: center; gap: 6u; height: 34u; padding: 0 8u 0 22u; border-radius: 0 6u 6u 0;
-  background: linear-gradient(90deg, rgba(var(--tone), 0), rgba(var(--tone), 0.34) 30%, rgba(9, 15, 36, 0.9) 78%);
-  box-shadow: inset -2px 0 0 rgba(var(--tone), 0.95);
+  position: relative; display: flex; align-items: center; gap: 6u; height: 34u; padding: 0 10u 0 30u; border-radius: 0 6u 6u 0;
+  background: linear-gradient(90deg, rgba(var(--tone), 0), rgba(var(--tone), 0.3) 26%, rgba(var(--tone), 0.12) 70%), linear-gradient(90deg, rgba(9, 15, 36, 0), rgba(9, 15, 36, 0.88) 14%, rgba(9, 15, 36, 0.93));
+  box-shadow: inset -3px 0 0 rgba(var(--tone), 0.95);
   animation: sf-hud-kf-in 0.32s var(--sf-ease-out) both;
 }
 .sf-hud__kf.is-foe { --tone: 255, 93, 93; }
-.sf-hud__kf.is-me { box-shadow: inset -2px 0 0 var(--sf-c-me), inset 0 0 0 1px rgba(183, 243, 107, 0.45); }
+.sf-hud__kf.is-me { box-shadow: inset -3px 0 0 var(--sf-c-me); }
+.sf-hud__kf.is-me::after { content: ''; position: absolute; left: 22%; right: 0; top: 0; bottom: 0; border-radius: 0 6u 6u 0; pointer-events: none; box-shadow: inset 0 1px 0 rgba(183, 243, 107, 0.55), inset 0 -1px 0 rgba(183, 243, 107, 0.55); }
 .sf-hud__kf.is-out { animation: sf-hud-kf-out 0.4s var(--sf-ease-in) both; }
 .sf-hud__kf .sf-hud__face { --sz: 26u; }
 .sf-hud__kf-assists { display: flex; align-items: center; margin-right: 2u; }

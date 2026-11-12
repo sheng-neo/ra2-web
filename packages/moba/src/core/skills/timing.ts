@@ -21,3 +21,9 @@ export function castPoint(heroId: HeroId, slot: AbilitySlot): number {
 export function fixedValue(heroId: HeroId, slot: AbilitySlot, key: string): number {
   return skillValue(HEROES[heroId].skills[slot], key, 1);
 }
+
+/** 技能的施法距离（自身型为 0） */
+export function castRange(heroId: HeroId, slot: AbilitySlot): number {
+  const cast = HEROES[heroId].skills[slot].cast;
+  return 'range' in cast ? cast.range : 0;
+}

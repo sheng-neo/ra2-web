@@ -95,6 +95,8 @@ tk.registerSkill('yeque', 's2', {
 });
 
 tk.registerSkill('yeque', 'ult', {
+  // 现身也是位移：和其他位移技能一样，被定身时放不出来
+  movement: true,
   cast(ctx) {
     const { sim, caster } = ctx;
     const target = ctx.target;

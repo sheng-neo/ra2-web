@@ -4,7 +4,7 @@
  * 被动 余烬之刃：放技能后获得 chijin_ember，窗口内下一次普攻附带额外物理伤害并回血。
  * S1 烈焰斩：前方扇形物理伤害 + 减速。
  * S2 炎步：突进，路径上的敌人各受一次物理伤害；获得攻速(chijin_blaze，value = 加成比例)。
- * 大招 焚天旋舞：火焰旋风跟随自身逐跳伤害；期间可移动/放技能、不能普攻、免疫减速、减伤。
+ * 大招 焚天旋舞：火焰旋风跟随自身逐跳伤害；期间可移动/放技能、不能普攻、免疫减速(起手解除已有减速)、减伤。
  *   旋风不是引导：被眩晕/击飞只会让赤烬动不了，旋风照常灼烧，只有阵亡才会中断。
  */
 import { HEROES } from '../data/heroes';
@@ -35,7 +35,6 @@ tk.registerHeroHooks('chijin', {
   statMods(_sim, hero, acc) {
     const blaze = tk.findBuff(hero, 'chijin_blaze');
     if (blaze) acc.asPct += blaze.value;
-    if (tk.hasBuff(hero, 'chijin_spin')) acc.slowResist = 1;
   },
   onTick(sim, hero) {
     // 旋舞中放了别的技能：施法动作结束后回到旋转
@@ -98,7 +97,9 @@ tk.registerSkill('chijin', 'ult', {
     const enemies = tk.enemyFilter(caster.team);
     let done = 0;
     tk.fx(sim, 'chijin_ult_start', caster.pos, caster.team, { unitId: caster.id });
+    // chijin_spin 期间引擎不再接受新的减速(buffs.ts)；身上已有的减速在起手时一并解除
     tk.addBuff(sim, caster, 'chijin_spin', { duration, sourceId: caster.id, merge: 'replace' });
+    tk.cleanse(sim, caster, ['slow']);
     tk.addBuff(sim, caster, 'dmg_reduction', { duration, value: ctx.val('reduction'), sourceId: caster.id, key: 'chijin_ult', merge: 'replace' });
     tk.playAnim(sim, caster, 'spin', duration, false);
     tk.disarm(sim, caster, duration);

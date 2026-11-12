@@ -474,7 +474,7 @@ export function createMinimap(ctx: HudCtx): Minimap {
   }
 
   // ── 交互：按住/拖动 = 临时观察；鼠标右键 = 走过去 ──
-  let peekId = -1;
+  let peekId: number | null = null;
   const toWorld = (ev: PointerEvent): Vec2 => {
     const rect = canvas.getBoundingClientRect();
     const b = map.bound;
@@ -484,8 +484,8 @@ export function createMinimap(ctx: HudCtx): Minimap {
     };
   };
   const endPeek = (): void => {
-    if (peekId < 0) return;
-    peekId = -1;
+    if (peekId === null) return;
+    peekId = null;
     el.classList.remove('is-peek');
     host.setCameraPeek(null);
   };
@@ -496,7 +496,7 @@ export function createMinimap(ctx: HudCtx): Minimap {
       return;
     }
     if (ev.pointerType === 'mouse' && ev.button !== 0) return;
-    if (peekId >= 0) return;
+    if (peekId !== null) return;
     peekId = ev.pointerId;
     try {
       el.setPointerCapture(ev.pointerId);
@@ -516,7 +516,9 @@ export function createMinimap(ctx: HudCtx): Minimap {
   el.addEventListener('pointermove', onMove);
   el.addEventListener('pointerup', onUp);
   el.addEventListener('pointercancel', onUp);
-  el.addEventListener('lostpointercapture', onUp);
+  el.addEventListener('lostpointercapture', (ev) => {
+    if (ev.target === el) onUp(ev);
+  });
   const onResize = (): void => {
     sizeDirty = true;
   };
@@ -531,7 +533,7 @@ export function createMinimap(ctx: HudCtx): Minimap {
         lastMeasure = now;
         measure();
       }
-      const interval = pings.length > 0 || peekId >= 0 ? 1 / 30 : 1 / 12;
+      const interval = pings.length > 0 || peekId !== null ? 1 / 30 : 1 / 12;
       if (now - lastDraw >= interval) {
         lastDraw = now;
         draw(now);

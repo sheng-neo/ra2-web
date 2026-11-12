@@ -327,7 +327,7 @@ function resolveAim(sim: Sim, hero: SimHero, spec: CastSpec, impl: SkillImpl, cm
       else if (validFinite(cmd.pos)) dir = unitDir(hero, cmd.pos.x, cmd.pos.y, facing);
       else if (explicit) dir = dirAtUnit(hero, explicit, impl, facing);
       else {
-        const t = auto ? pickAimTarget(sim, hero, spec.range + AIM_MARGIN, false) : null;
+        const t = auto ? pickAimTarget(sim, hero, (impl.aimRange ?? spec.range) + AIM_MARGIN, false) : null;
         dir = t ? dirAtUnit(hero, t, impl, facing) : facing;
       }
       return { dir, pos: { x: p.x + dir.x * spec.range, y: p.y + dir.y * spec.range }, target: null };

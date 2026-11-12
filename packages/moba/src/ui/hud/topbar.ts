@@ -9,16 +9,17 @@ const CSS = sfCss(`
 /* ── 比分牌：贴着屏幕上沿的倒梯形，左蓝右红，中间垂下一块计时牌 ── */
 .sf-hud__score { position: absolute; left: 50%; top: 0; z-index: 3; transform: translateX(-50%); padding-top: var(--sf-safe-t); filter: drop-shadow(0 4u 10u rgba(2, 4, 12, 0.55)); }
 .sf-hud__score-plate {
-  position: relative; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; width: 318u; height: 40u; padding: 0 22u;
+  position: relative; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; width: 356u; height: 40u; padding: 0 22u;
   clip-path: polygon(0 0, 100% 0, calc(100% - 16u) 100%, 16u 100%);
   background:
     linear-gradient(90deg, rgba(232, 199, 122, 0), rgba(255, 231, 173, 0.9) 22%, rgba(255, 231, 173, 0.25) 42%, rgba(255, 231, 173, 0.25) 58%, rgba(255, 231, 173, 0.9) 78%, rgba(232, 199, 122, 0)) left bottom / 100% 1.5px no-repeat,
     linear-gradient(90deg, rgba(34, 104, 214, 0.62), rgba(9, 15, 36, 0.94) 36%, rgba(9, 15, 36, 0.94) 64%, rgba(196, 44, 58, 0.62));
 }
 /* 击杀数靠近计时牌：蓝侧「队名 塔 击杀」靠右排，红侧镜像 */
-.sf-hud__score-side { display: flex; align-items: center; justify-content: flex-end; gap: 10u; min-width: 0; }
+.sf-hud__score-side { display: flex; align-items: center; justify-content: flex-end; gap: 9u; min-width: 0; }
 .sf-hud__score-side.is-red { flex-direction: row-reverse; }
-.sf-hud__score-kills { font-size: max(20px, 28u); font-weight: 800; line-height: 1; text-shadow: 0 1px 0 rgba(2, 4, 12, 0.9), 0 0 10u currentColor; min-width: 1.3em; text-align: center; }
+/* 两位数击杀也要放得下：数字列留足宽度，且不允许被压缩 */
+.sf-hud__score-kills { flex: none; font-size: max(20px, 28u); font-weight: 800; line-height: 1; text-shadow: 0 1px 0 rgba(2, 4, 12, 0.9), 0 0 10u currentColor; min-width: 1.35em; text-align: center; }
 .is-blue > .sf-hud__score-kills { color: #8cc6ff; }
 .is-red > .sf-hud__score-kills { color: #ff8d8d; }
 .sf-hud__score-kills.is-bump { animation: sf-hud-bump 0.5s var(--sf-ease-spring); }
@@ -55,16 +56,24 @@ const CSS = sfCss(`
 .sf-hud__gold > b { display: inline-block; font-weight: 800; transform-origin: left center; }
 @keyframes sf-hud-goldpop { 0% { transform: scale(1.35); color: #fff; } 100% { transform: none; } }
 .sf-hud__tr .sf-iconbtn { width: max(38px, 40u); height: max(38px, 40u); }
-.sf-hud__tr .sf-hud__key { right: -3u; bottom: -5u; }
+.sf-hud__tr .sf-hud__key { right: -4u; bottom: -8u; min-width: max(15px, 16u); height: max(14px, 15u); font-size: max(9px, 9.5u); }
 
 /* 窄横屏(小手机)：收起补刀、缩窄比分牌，给左右两侧让位 */
 @media (orientation: landscape) and (max-width: 760px) {
-  .sf-hud__score-plate { width: 262u; padding: 0 18u; }
+  .sf-hud__score-plate { width: 286u; padding: 0 18u; }
+  .sf-hud__score-side { gap: 6u; }
   .sf-hud__score-team { display: none; }
   .sf-hud__kda-cs { display: none; }
   .sf-hud__gold { min-width: 0; }
   .sf-hud__tr { gap: 4u; }
   .sf-hud__tr .sf-hud__chip { padding: 0 8u; }
+}
+/* 极窄横屏(568 宽一类的小屏)：比分牌只留击杀与计时 */
+@media (orientation: landscape) and (max-width: 620px) {
+  .sf-hud { --hud-mini: 156u; }
+  .sf-hud__score-plate { width: 222u; padding: 0 20u; }
+  .sf-hud__score-towers { display: none; }
+  .sf-hud__kda > .sf-i { display: none; }
 }
 /* 竖屏：比分牌挪到小地图右侧，第二行放个人数据与按钮 */
 @media (orientation: portrait) {

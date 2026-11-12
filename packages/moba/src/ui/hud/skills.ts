@@ -23,16 +23,16 @@ const SLOT_NAME: Record<AbilitySlot, string> = { s1: '一技能', s2: '二技能
  */
 const ATK = { x: 0.86, y: 0.86 };
 const polar = (deg: number, r: number): { x: number; y: number } => ({ x: ATK.x - Math.cos((deg * Math.PI) / 180) * r, y: ATK.y + Math.sin((deg * Math.PI) / 180) * r });
-const R_IN = 1.38;
-const R_OUT = 2.36;
+const R_IN = 1.52;
+const R_OUT = 2.62;
 const LAYOUT: Record<ButtonId, { x: number; y: number }> = {
   attack: ATK,
   s1: polar(187, R_IN),
   s2: polar(138.5, R_IN),
   ult: polar(90, R_IN),
-  recall: polar(160, R_OUT),
-  heal: polar(136.5, R_OUT),
-  flash: polar(113, R_OUT),
+  recall: polar(159.5, R_OUT),
+  heal: polar(138.5, R_OUT),
+  flash: polar(117.5, R_OUT),
 };
 
 const CSS = sfCss(`
@@ -43,6 +43,8 @@ const CSS = sfCss(`
   padding: 0; margin: 0; border: 0; border-radius: 50%; background: none; color: #fff; cursor: pointer; touch-action: none;
   transition: transform 0.09s var(--sf-ease-out), filter 0.15s linear;
 }
+/* 设计系统给所有按钮设了 touch-action: manipulation；技能键要自己处理拖动瞄准，必须彻底关掉浏览器手势 */
+.sf-hud .sf-hud__sk { touch-action: none; }
 .sf-hud__sk:focus-visible { outline: none; }
 .sf-hud__sk.is-ult { --d: calc(var(--hud-sk) * 1.07); }
 .sf-hud__sk.is-sum { --d: calc(var(--hud-sk) * 0.74); }
@@ -88,7 +90,7 @@ const CSS = sfCss(`
 .sf-hud__sk-pips { position: absolute; left: 50%; bottom: calc(var(--d) * -0.1); display: flex; gap: max(1.5px, calc(var(--d) * 0.028)); transform: translateX(-50%); pointer-events: none; }
 .sf-hud__sk-pips > i { width: max(4px, calc(var(--d) * 0.085)); height: max(4px, calc(var(--d) * 0.085)); border-radius: 50%; background: #0a1128; box-shadow: 0 0 0 1px rgba(150, 178, 235, 0.6); }
 .sf-hud__sk-pips > i.is-on { background: #ffe7ad; box-shadow: 0 0 0 1px #6b4614, 0 0 4px rgba(255, 214, 130, 0.9); }
-.sf-hud__sk > .sf-hud__key { left: calc(var(--d) * -0.04); top: calc(var(--d) * -0.04); }
+.sf-hud__sk > .sf-hud__key { left: calc(var(--d) * -0.06); top: calc(var(--d) * -0.06); }
 .sf-hud__sk.is-atk > .sf-hud__key { left: 6%; top: 6%; }
 
 /* 就绪 / 升级闪光 */
@@ -117,7 +119,7 @@ const CSS = sfCss(`
 /* 「取消」区：手动瞄准时出现，拖进去松手 = 不放 */
 .sf-hud__cancel {
   --d: calc(var(--hud-sk) * 1.16);
-  position: absolute; right: calc(var(--hud-sk) * 4.3); bottom: calc(var(--hud-sk) * 2.55); width: var(--d); height: var(--d); border-radius: 50%; display: grid; place-items: center; pointer-events: none;
+  position: absolute; right: calc(var(--hud-sk) * 4.4); bottom: calc(var(--hud-sk) * 2.7); width: var(--d); height: var(--d); border-radius: 50%; display: grid; place-items: center; pointer-events: none;
   color: #ffd0d0; background: radial-gradient(circle at 50% 35%, rgba(90, 22, 34, 0.9), rgba(30, 8, 16, 0.92)); box-shadow: 0 0 0 1px rgba(8, 13, 31, 0.9), 0 0 0 max(2px, 2.5u) rgba(255, 120, 120, 0.75), 0 4u 14u rgba(0, 0, 0, 0.55);
   opacity: 0; transform: scale(0.6); transition: opacity 0.12s linear, transform 0.16s var(--sf-ease-spring), background 0.1s linear;
 }

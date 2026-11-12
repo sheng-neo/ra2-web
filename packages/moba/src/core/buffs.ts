@@ -42,10 +42,14 @@ const HARD_CC: ReadonlySet<BuffId> = new Set<BuffId>(['stun', 'airborne', 'root'
 /** 会影响属性的 buff：增删时立即重算属性 */
 const STAT_BUFFS: ReadonlySet<BuffId> = new Set<BuffId>(['slow', 'haste', 'attack_speed', 'frost_insight', 'star_blessing']);
 
+/** 持有期间免疫减速的 buff(只挡减速，硬控照吃) */
+const SLOW_IMMUNE: ReadonlySet<BuffId> = new Set<BuffId>(['chijin_spin']);
+
 /** 该单位是否免疫某种控制 */
 export function isCcImmune(u: SimUnit, id: BuffId): boolean {
   if (u.kind === 'tower' || u.kind === 'core') return true;
   if (u.invulnerable || u.rt.untargetable || u.rt.unstoppable) return true;
+  if (id === 'slow' && u.rt.slowImmune) return true;
   // 史诗野怪只吃减速
   if (u.kind === 'monster' && id !== 'slow' && MONSTERS[u.monsterType].epic) return true;
   return false;
@@ -83,6 +87,7 @@ export function refreshFlags(u: SimUnit): void {
   let untargetable = false;
   let unstoppable = false;
   let guard = false;
+  let slowImmune = false;
   let airborne: SimBuff | null = null;
   let shield = 0;
   const buffs = u.buffs;
@@ -97,7 +102,7 @@ export function refreshFlags(u: SimUnit): void {
       case 'unstoppable': unstoppable = true; break;
       case 'respawn_guard': guard = true; break;
       case 'shield': shield += b.value; break;
-      default: break;
+      default: if (SLOW_IMMUNE.has(b.id)) slowImmune = true; break;
     }
   }
   rt.stunned = stun || airborne !== null;
@@ -106,6 +111,7 @@ export function refreshFlags(u: SimUnit): void {
   rt.silenced = silence;
   rt.untargetable = untargetable;
   rt.unstoppable = unstoppable;
+  rt.slowImmune = slowImmune;
   u.shield = shield;
   // 建筑的无敌由推塔顺序决定(structures.ts)，这里只管英雄的复活保护
   if (u.kind === 'hero') u.invulnerable = guard;

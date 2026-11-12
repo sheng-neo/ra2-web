@@ -16,8 +16,8 @@ const CSS = sfCss(`
   --hud-l: max(10u, var(--sf-safe-l)); --hud-r: max(10u, var(--sf-safe-r));
   --hud-t: max(8u, var(--sf-safe-t)); --hud-b: max(6u, var(--sf-safe-b));
   --hud-sk: clamp(46px, 14vmin, 92px);
-  --hud-cw: calc(var(--hud-sk) * 3.52 + var(--hud-r));
-  --hud-ch: calc(var(--hud-sk) * 3.5 + var(--hud-b));
+  --hud-cw: calc(var(--hud-sk) * 3.72 + var(--hud-r));
+  --hud-ch: calc(var(--hud-sk) * 3.6 + var(--hud-b));
   --hud-mini: 172u;
   --hud-plate: linear-gradient(180deg, rgba(20, 33, 72, 0.88), rgba(7, 12, 30, 0.92));
   --hud-shadow-text: 0 1px 2px rgba(2, 4, 12, 0.95), 0 0 6u rgba(2, 4, 12, 0.7);

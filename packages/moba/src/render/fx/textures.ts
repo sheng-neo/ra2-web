@@ -1,0 +1,680 @@
+/**
+ * 特效贴图：全部程序化生成的粒子图集(一张 DataTexture，8×4 格)。
+ * 通道约定(线性数据，不用 alpha 通道存数据)：R = 形状/透明度蒙版，G = 明暗细节(乘到颜色上)，B = 亮核(把颜色推向白热)。
+ * 图形一律画在格子中央 ~86% 的范围内，四周留黑边，mipmap 不会串格。
+ */
+import * as THREE from 'three';
+import { Rng, fbm2 } from '../materials';
+
+export const ATLAS_COLS = 8;
+export const ATLAS_ROWS = 4;
+const CELL = 128;
+
+/** 图集里各图形的下标 */
+export const SPRITE = {
+  dot: 0, // 柔光点
+  glow: 1, // 带白热核心的光晕
+  spark: 2, // 四芒星闪光
+  star: 3, // 实心五角星
+  smoke: 4, // 烟团
+  streak: 5, // 拉长的火花(头在 +x)
+  shard: 6, // 岩石碎片(带切面明暗)
+  feather: 7, // 羽毛(尖在 +x)
+  rune1: 8,
+  rune2: 9,
+  rune3: 10,
+  ring: 11, // 细圆环
+  flame: 12, // 火舌(尖朝上)
+  leaf: 13, // 风叶
+  crescent: 14, // 月牙斩痕
+  hex: 15, // 六边形框
+  diamond: 16, // 菱形晶片
+  coin: 17, // 金币
+  plus: 18, // 治疗十字
+  wisp: 19, // 烟缕
+  arrow: 20, // 箭(尖在 +x)
+  lock: 21, // 锁定准星
+  swirl: 22, // 旋涡臂
+  burst: 23, // 放射状爆闪
+  bubble: 24, // 空心泡
+  chevron: 25, // 尖角(指向 +x)
+  ember: 26, // 不规则余烬
+  frost: 27, // 六角冰晶
+  smoke2: 28, // 烟团变体
+  bolt: 29, // 眩晕用的折线闪电
+  drop: 30, // 水滴/黏液
+  soft: 31, // 极柔的大光斑
+} as const;
+
+type PixFn = (x: number, y: number, o: Float32Array) => void;
+type PathFn = (m: CanvasRenderingContext2D, s: CanvasRenderingContext2D) => void;
+interface SpriteDef {
+  /** 逐像素函数：x,y ∈ [-1,1]，y 向上；写 o[0]=蒙版 o[1]=明暗 o[2]=亮核 */
+  pix?: PixFn;
+  /** 路径绘制：m 上画白色形状，s 上画明暗(默认全白)。坐标系同上 */
+  path?: PathFn;
+  /** 路径图形的亮核系数(乘在蒙版平方上) */
+  core?: number;
+}
+
+const sat = (v: number): number => (v < 0 ? 0 : v > 1 ? 1 : v);
+const sstep = (a: number, b: number, x: number): number => {
+  const t = sat((x - a) / (b - a));
+  return t * t * (3 - 2 * t);
+};
+const TAU = Math.PI * 2;
+
+function smokePix(seed: number): PixFn {
+  return (x, y, o) => {
+    const r = Math.hypot(x, y);
+    const n = fbm2(x * 1.7 + 5.3, y * 1.7 + 2.1, 3, seed) - 0.5;
+    const n2 = fbm2(x * 4.1 + 1.3, y * 4.1 + 8.7, 2, seed + 9) - 0.5;
+    const d = r + n * 0.7 + n2 * 0.22;
+    o[0] = sstep(0.92, 0.28, d) * sstep(1.0, 0.82, r);
+    // 上亮下暗的体积感 + 团块明暗
+    o[1] = sat(0.72 + y * 0.16 + n * 0.5 + n2 * 0.25);
+    o[2] = 0;
+  };
+}
+
+function star(ctx: CanvasRenderingContext2D, n: number, r0: number, r1: number, rot = Math.PI / 2): void {
+  ctx.beginPath();
+  for (let i = 0; i < n * 2; i++) {
+    const a = rot + (i * Math.PI) / n;
+    const r = i % 2 === 0 ? r0 : r1;
+    if (i === 0) ctx.moveTo(Math.cos(a) * r, Math.sin(a) * r);
+    else ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r);
+  }
+  ctx.closePath();
+}
+
+function glowStroke(m: CanvasRenderingContext2D, width: number, draw: () => void): void {
+  // 先画一层宽而淡的辉光，再画实线
+  m.lineCap = 'round';
+  m.lineJoin = 'round';
+  m.strokeStyle = 'rgba(255,255,255,0.28)';
+  m.lineWidth = width * 2.6;
+  draw();
+  m.stroke();
+  m.strokeStyle = '#fff';
+  m.lineWidth = width;
+  draw();
+  m.stroke();
+}
+
+function rune(seed: number): PathFn {
+  return (m) => {
+    const rng = new Rng(seed);
+    // 骨架：一根主干 + 若干折划/弧/点，像一个陌生的字符
+    glowStroke(m, 0.1, () => {
+      m.beginPath();
+      m.moveTo(0, -0.62);
+      m.lineTo(0, 0.62);
+      const k = 2 + rng.int(2);
+      for (let i = 0; i < k; i++) {
+        const y0 = rng.range(-0.5, 0.5);
+        const side = rng.chance(0.5) ? 1 : -1;
+        const len = rng.range(0.28, 0.5);
+        m.moveTo(0, y0);
+        m.lineTo(side * len, y0 + rng.range(-0.3, 0.3));
+        if (rng.chance(0.5)) m.lineTo(side * len, y0 + rng.range(-0.45, 0.45));
+      }
+      if (rng.chance(0.7)) {
+        m.moveTo(0.42, 0.5);
+        m.arc(0, 0.5, 0.42, 0, Math.PI * rng.range(0.5, 1));
+      }
+    });
+    m.fillStyle = '#fff';
+    for (let i = 0; i < 2; i++) {
+      m.beginPath();
+      m.arc(rng.range(-0.5, 0.5), rng.range(-0.6, 0.6), 0.07, 0, TAU);
+      m.fill();
+    }
+  };
+}
+
+const DEFS: Record<number, SpriteDef> = {
+  [SPRITE.dot]: {
+    pix: (x, y, o) => {
+      const r = Math.hypot(x, y);
+      const f = sat(1 - r);
+      o[0] = f * f;
+      o[1] = 1;
+      o[2] = 0;
+    },
+  },
+  [SPRITE.glow]: {
+    pix: (x, y, o) => {
+      const r2 = x * x + y * y;
+      const r = Math.sqrt(r2);
+      o[0] = sat(Math.exp(-r2 * 4.5) * 0.85 + Math.exp(-r2 * 30) * 0.5) * sstep(1, 0.75, r);
+      o[1] = 1;
+      o[2] = Math.exp(-r2 * 34);
+    },
+  },
+  [SPRITE.spark]: {
+    pix: (x, y, o) => {
+      const ax = Math.abs(x);
+      const ay = Math.abs(y);
+      const fx = Math.exp(-y * y * 420) * Math.pow(sat(1 - ax), 2.2);
+      const fy = Math.exp(-x * x * 420) * Math.pow(sat(1 - ay), 2.2);
+      // 对角的短芒
+      const u = (x + y) * 0.7071;
+      const v = (x - y) * 0.7071;
+      const fd = (Math.exp(-v * v * 600) * Math.pow(sat(1 - Math.abs(u) * 2.2), 2) + Math.exp(-u * u * 600) * Math.pow(sat(1 - Math.abs(v) * 2.2), 2)) * 0.6;
+      const g = Math.exp(-(x * x + y * y) * 26);
+      o[0] = sat(Math.max(fx, fy) + fd + g * 0.9);
+      o[1] = 1;
+      o[2] = sat(g * 1.2 + Math.max(fx, fy) * 0.5);
+    },
+  },
+  [SPRITE.star]: {
+    core: 0.25,
+    path: (m, s) => {
+      m.fillStyle = '#fff';
+      m.shadowColor = '#fff';
+      m.shadowBlur = 5;
+      star(m, 5, 0.9, 0.42);
+      m.fill();
+      const g = s.createRadialGradient(0, 0.1, 0, 0, 0, 0.95);
+      g.addColorStop(0, '#fff');
+      g.addColorStop(1, '#b0b0b0');
+      s.fillStyle = g;
+      s.fillRect(-1.2, -1.2, 2.4, 2.4);
+    },
+  },
+  [SPRITE.smoke]: { pix: smokePix(11) },
+  [SPRITE.smoke2]: { pix: smokePix(47) },
+  [SPRITE.streak]: {
+    pix: (x, y, o) => {
+      // 头部(+x)粗亮，尾部细淡
+      const k = (x + 1) * 0.5;
+      const w = 0.03 + 0.2 * k * k;
+      const body = Math.exp(-(y * y) / (w * w)) * sstep(-1, -0.7, x) * sstep(1, 0.72, x);
+      o[0] = sat(body * (0.25 + 0.75 * k));
+      o[1] = 1;
+      o[2] = sat(body * k * k * 0.9);
+    },
+  },
+  [SPRITE.shard]: {
+    path: (m, s) => {
+      const pts: [number, number][] = [[-0.55, -0.5], [0.3, -0.75], [0.8, -0.1], [0.45, 0.62], [-0.3, 0.8], [-0.82, 0.15]];
+      const poly = (c: CanvasRenderingContext2D, idx: number[]): void => {
+        c.beginPath();
+        idx.forEach((i, k) => (k === 0 ? c.moveTo(pts[i][0], pts[i][1]) : c.lineTo(pts[i][0], pts[i][1])));
+        c.closePath();
+        c.fill();
+      };
+      m.fillStyle = '#fff';
+      poly(m, [0, 1, 2, 3, 4, 5]);
+      // 三个切面：亮 / 中 / 暗
+      s.fillStyle = '#8c8c8c';
+      s.fillRect(-1.2, -1.2, 2.4, 2.4);
+      s.fillStyle = '#ffffff';
+      s.beginPath();
+      s.moveTo(-0.3, 0.8);
+      s.lineTo(0.45, 0.62);
+      s.lineTo(0.05, 0.05);
+      s.lineTo(-0.82, 0.15);
+      s.closePath();
+      s.fill();
+      s.fillStyle = '#5a5a5a';
+      s.beginPath();
+      s.moveTo(-0.55, -0.5);
+      s.lineTo(0.3, -0.75);
+      s.lineTo(0.05, 0.05);
+      s.closePath();
+      s.fill();
+    },
+  },
+  [SPRITE.feather]: {
+    core: 0.15,
+    path: (m, s) => {
+      m.fillStyle = '#fff';
+      m.beginPath();
+      m.moveTo(0.92, 0);
+      m.quadraticCurveTo(0.35, 0.42, -0.5, 0.26);
+      m.lineTo(-0.34, 0.08);
+      m.lineTo(-0.62, 0.02);
+      m.lineTo(-0.36, -0.1);
+      m.quadraticCurveTo(-0.2, -0.36, -0.52, -0.24);
+      m.quadraticCurveTo(0.35, -0.42, 0.92, 0);
+      m.closePath();
+      m.fill();
+      m.strokeStyle = '#fff';
+      m.lineWidth = 0.05;
+      m.beginPath();
+      m.moveTo(-0.92, 0);
+      m.lineTo(0.8, 0);
+      m.stroke();
+      const g = s.createLinearGradient(-1, 0, 1, 0);
+      g.addColorStop(0, '#9a9a9a');
+      g.addColorStop(1, '#ffffff');
+      s.fillStyle = g;
+      s.fillRect(-1.2, -1.2, 2.4, 2.4);
+      // 羽枝纹
+      s.strokeStyle = 'rgba(90,90,90,0.55)';
+      s.lineWidth = 0.025;
+      for (let i = -4; i <= 6; i++) {
+        const x = i * 0.13;
+        s.beginPath();
+        s.moveTo(x, 0);
+        s.lineTo(x - 0.16, 0.4);
+        s.moveTo(x, 0);
+        s.lineTo(x - 0.16, -0.4);
+        s.stroke();
+      }
+      s.strokeStyle = '#fff';
+      s.lineWidth = 0.04;
+      s.beginPath();
+      s.moveTo(-0.92, 0);
+      s.lineTo(0.8, 0);
+      s.stroke();
+    },
+  },
+  [SPRITE.rune1]: { core: 0.6, path: rune(3) },
+  [SPRITE.rune2]: { core: 0.6, path: rune(18) },
+  [SPRITE.rune3]: { core: 0.6, path: rune(77) },
+  [SPRITE.ring]: {
+    pix: (x, y, o) => {
+      const r = Math.hypot(x, y);
+      const d = Math.abs(r - 0.78);
+      o[0] = sat(sstep(0.075, 0.02, d) + Math.exp(-d * d * 60) * 0.3) * sstep(1, 0.93, r);
+      o[1] = 1;
+      o[2] = sstep(0.03, 0.0, d) * 0.6;
+    },
+  },
+  [SPRITE.flame]: {
+    pix: (x, y, o) => {
+      const v = sat((y + 0.92) / 1.84);
+      const wob = (fbm2(x * 2.2 + 3.1, y * 2.6 + 1.7, 3, 5) - 0.5) * 0.5 * v;
+      const h = 0.6 * Math.sin(Math.PI * Math.pow(v, 0.55)) * (1 - v * 0.25) + 0.02;
+      const ax = Math.abs(x + wob);
+      const m = sstep(h, h * 0.25, ax) * sstep(0, 0.06, v) * sstep(1, 0.9, v);
+      o[0] = m;
+      o[1] = sat(0.55 + (1 - v) * 0.5);
+      o[2] = sstep(h * 0.55, 0, ax) * sat(1 - v * 1.5) * m;
+    },
+  },
+  [SPRITE.leaf]: {
+    core: 0.1,
+    path: (m, s) => {
+      m.fillStyle = '#fff';
+      m.beginPath();
+      m.moveTo(-0.85, -0.1);
+      m.quadraticCurveTo(-0.1, 0.62, 0.88, 0.12);
+      m.quadraticCurveTo(0.0, -0.18, -0.85, -0.1);
+      m.closePath();
+      m.fill();
+      const g = s.createLinearGradient(0, -0.3, 0, 0.5);
+      g.addColorStop(0, '#8a8a8a');
+      g.addColorStop(1, '#fff');
+      s.fillStyle = g;
+      s.fillRect(-1.2, -1.2, 2.4, 2.4);
+    },
+  },
+  [SPRITE.crescent]: {
+    pix: (x, y, o) => {
+      // 大圆减去偏心小圆 → 月牙，弧背朝 -x
+      const a = Math.hypot(x, y);
+      const b = Math.hypot(x - 0.42, y);
+      const outer = sstep(0.93, 0.86, a);
+      const inner = sstep(0.8, 0.9, b);
+      const m = outer * inner;
+      o[0] = m;
+      o[1] = 1;
+      // 弧背亮
+      o[2] = m * sstep(0.6, 0.9, a) * 0.8;
+    },
+  },
+  [SPRITE.hex]: {
+    core: 0.4,
+    path: (m) => {
+      m.fillStyle = 'rgba(255,255,255,0.16)';
+      star(m, 3, 0.86, 0.86, Math.PI / 2);
+      m.fill();
+      glowStroke(m, 0.09, () => star(m, 3, 0.8, 0.8, Math.PI / 2));
+    },
+  },
+  [SPRITE.diamond]: {
+    pix: (x, y, o) => {
+      const d = Math.abs(x) / 0.5 + Math.abs(y) / 0.92;
+      const m = sstep(1, 0.9, d);
+      o[0] = m;
+      // 四个切面明暗不同
+      o[1] = x < 0 ? (y > 0 ? 1 : 0.62) : y > 0 ? 0.8 : 0.45;
+      o[2] = sstep(0.5, 0, d) * 0.5;
+    },
+  },
+  [SPRITE.coin]: {
+    path: (m, s) => {
+      m.fillStyle = '#fff';
+      m.beginPath();
+      m.arc(0, 0, 0.8, 0, TAU);
+      m.fill();
+      s.fillStyle = '#c8c8c8';
+      s.fillRect(-1.2, -1.2, 2.4, 2.4);
+      s.fillStyle = '#8a8a8a';
+      s.beginPath();
+      s.arc(0, 0, 0.6, 0, TAU);
+      s.fill();
+      s.fillStyle = '#ffffff';
+      star(s, 4, 0.46, 0.17);
+      s.fill();
+      // 左上高光弧
+      s.strokeStyle = '#fff';
+      s.lineWidth = 0.09;
+      s.beginPath();
+      s.arc(0, 0, 0.7, Math.PI * 0.55, Math.PI * 1.0);
+      s.stroke();
+    },
+  },
+  [SPRITE.plus]: {
+    core: 0.5,
+    path: (m) => {
+      m.fillStyle = '#fff';
+      m.shadowColor = '#fff';
+      m.shadowBlur = 8;
+      const r = 0.22;
+      // 不用 roundRect：旧版移动浏览器没有
+      m.fillRect(-r, -0.78, r * 2, 1.56);
+      m.fillRect(-0.78, -r, 1.56, r * 2);
+    },
+  },
+  [SPRITE.wisp]: {
+    pix: (x, y, o) => {
+      const cx = 0.34 * Math.sin(y * 2.6 + 0.4);
+      const env = Math.pow(sat(1 - Math.abs(y) / 0.92), 0.8);
+      const w = 0.07 + 0.2 * env * (0.6 + 0.4 * fbm2(y * 2 + 3, 0.5, 2, 21));
+      const d = x - cx;
+      o[0] = sat(Math.exp(-(d * d) / (w * w)) * env);
+      o[1] = sat(0.7 + y * 0.25);
+      o[2] = 0;
+    },
+  },
+  [SPRITE.arrow]: {
+    core: 0.5,
+    path: (m) => {
+      m.strokeStyle = '#fff';
+      m.fillStyle = '#fff';
+      m.lineCap = 'round';
+      m.lineWidth = 0.07;
+      m.beginPath();
+      m.moveTo(-0.85, 0);
+      m.lineTo(0.55, 0);
+      m.stroke();
+      m.beginPath();
+      m.moveTo(0.92, 0);
+      m.lineTo(0.46, 0.2);
+      m.lineTo(0.56, 0);
+      m.lineTo(0.46, -0.2);
+      m.closePath();
+      m.fill();
+      m.lineWidth = 0.06;
+      m.beginPath();
+      for (const x of [-0.82, -0.66]) {
+        m.moveTo(x, 0);
+        m.lineTo(x - 0.12, 0.2);
+        m.moveTo(x, 0);
+        m.lineTo(x - 0.12, -0.2);
+      }
+      m.stroke();
+    },
+  },
+  [SPRITE.lock]: {
+    core: 0.5,
+    path: (m) => {
+      glowStroke(m, 0.09, () => {
+        m.beginPath();
+        for (let i = 0; i < 4; i++) {
+          const a = (i * Math.PI) / 2 + Math.PI / 4;
+          m.moveTo(Math.cos(a - 0.5) * 0.66, Math.sin(a - 0.5) * 0.66);
+          m.arc(0, 0, 0.66, a - 0.5, a + 0.5);
+          const b = (i * Math.PI) / 2;
+          m.moveTo(Math.cos(b) * 0.9, Math.sin(b) * 0.9);
+          m.lineTo(Math.cos(b) * 0.5, Math.sin(b) * 0.5);
+        }
+      });
+      m.fillStyle = '#fff';
+      m.beginPath();
+      m.arc(0, 0, 0.13, 0, TAU);
+      m.fill();
+    },
+  },
+  [SPRITE.swirl]: {
+    pix: (x, y, o) => {
+      const r = Math.hypot(x, y);
+      const a = Math.atan2(y, x) / TAU + 0.5;
+      // 两条对数螺旋臂，越向外越细
+      const s = (((a * 2 + r * 1.9) % 1) + 1) % 1;
+      const band = sstep(0.24, 0.02, Math.abs(s - 0.5));
+      const env = sstep(0.06, 0.3, r) * sstep(0.96, 0.6, r);
+      o[0] = sat(band * env);
+      o[1] = 1;
+      o[2] = sat(band * band * env * 0.5);
+    },
+  },
+  [SPRITE.burst]: {
+    pix: (x, y, o) => {
+      const r = Math.hypot(x, y);
+      const a = Math.atan2(y, x);
+      // 长短不一的放射芒
+      const k = Math.floor(((a + Math.PI) / TAU) * 12 + 0.5) % 12;
+      const len = 0.55 + 0.4 * (((k * 7919) % 13) / 13);
+      const ray = Math.pow(Math.abs(Math.cos(a * 6)), 26) * sstep(len, len * 0.2, r);
+      const g = Math.exp(-r * r * 14);
+      o[0] = sat(ray * 0.9 + g) * sstep(1, 0.9, r);
+      o[1] = 1;
+      o[2] = sat(g * 1.1 + ray * 0.3);
+    },
+  },
+  [SPRITE.bubble]: {
+    pix: (x, y, o) => {
+      const r = Math.hypot(x, y);
+      const rim = sstep(0.07, 0.01, Math.abs(r - 0.8));
+      const fill = sstep(0.82, 0.3, r) * 0.12;
+      const hl = Math.exp(-((x + 0.38) * (x + 0.38) + (y - 0.42) * (y - 0.42)) * 28) * 0.9;
+      o[0] = sat(rim * 0.85 + fill + hl) * sstep(1, 0.9, r);
+      o[1] = 1;
+      o[2] = hl;
+    },
+  },
+  [SPRITE.chevron]: {
+    core: 0.5,
+    path: (m) => {
+      glowStroke(m, 0.16, () => {
+        m.beginPath();
+        m.moveTo(-0.4, 0.62);
+        m.lineTo(0.42, 0);
+        m.lineTo(-0.4, -0.62);
+      });
+    },
+  },
+  [SPRITE.ember]: {
+    pix: (x, y, o) => {
+      const r = Math.hypot(x, y);
+      const n = fbm2(x * 2.4 + 9.1, y * 2.4 + 4.4, 2, 31) - 0.5;
+      const m = sstep(0.8, 0.25, r + n * 0.6);
+      o[0] = m;
+      o[1] = 1;
+      o[2] = sstep(0.45, 0, r + n * 0.4);
+    },
+  },
+  [SPRITE.frost]: {
+    core: 0.5,
+    path: (m) => {
+      glowStroke(m, 0.07, () => {
+        m.beginPath();
+        for (let i = 0; i < 6; i++) {
+          const a = (i * Math.PI) / 3;
+          const c = Math.cos(a);
+          const s = Math.sin(a);
+          m.moveTo(0, 0);
+          m.lineTo(c * 0.84, s * 0.84);
+          for (const t of [0.46, 0.66]) {
+            for (const side of [-1, 1]) {
+              const b = a + side * 0.9;
+              m.moveTo(c * t, s * t);
+              m.lineTo(c * t + Math.cos(b) * 0.2, s * t + Math.sin(b) * 0.2);
+            }
+          }
+        }
+      });
+    },
+  },
+  [SPRITE.bolt]: {
+    core: 0.6,
+    path: (m) => {
+      glowStroke(m, 0.1, () => {
+        m.beginPath();
+        m.moveTo(0.3, 0.86);
+        m.lineTo(-0.3, 0.12);
+        m.lineTo(0.18, 0.02);
+        m.lineTo(-0.34, -0.86);
+      });
+    },
+  },
+  [SPRITE.drop]: {
+    pix: (x, y, o) => {
+      // 上尖下圆的水滴
+      const v = sat((y + 0.85) / 1.7);
+      const h = 0.52 * Math.sqrt(sat(1 - v)) * sstep(0, 0.22, v) + 0.01;
+      const m = sstep(h, h * 0.6, Math.abs(x)) * sstep(1, 0.92, v);
+      o[0] = m;
+      o[1] = sat(0.7 + (x < 0 ? 0.3 : 0) * sstep(0.3, 0.1, v));
+      o[2] = Math.exp(-((x + 0.14) * (x + 0.14) + (y + 0.4) * (y + 0.4)) * 40) * 0.8;
+    },
+  },
+  [SPRITE.soft]: {
+    pix: (x, y, o) => {
+      const r2 = x * x + y * y;
+      o[0] = Math.exp(-r2 * 3.2) * sstep(1, 0.7, Math.sqrt(r2));
+      o[1] = 1;
+      o[2] = 0;
+    },
+  },
+};
+
+/** 生成粒子图集。调用方负责 dispose */
+export function createFxAtlas(): THREE.DataTexture {
+  const W = ATLAS_COLS * CELL;
+  const H = ATLAS_ROWS * CELL;
+  const mk = (fill: string): [HTMLCanvasElement, CanvasRenderingContext2D] => {
+    const c = document.createElement('canvas');
+    c.width = W;
+    c.height = H;
+    const ctx = c.getContext('2d', { willReadFrequently: true });
+    if (!ctx) throw new Error('2D canvas 不可用');
+    ctx.fillStyle = fill;
+    ctx.fillRect(0, 0, W, H);
+    return [c, ctx];
+  };
+  const [, mctx] = mk('#000');
+  const [, sctx] = mk('#fff');
+  const data = new Uint8Array(W * H * 4);
+  const cores = new Float32Array(ATLAS_COLS * ATLAS_ROWS);
+  const pixCells: number[] = [];
+  const scale = (CELL / 2) * 0.86;
+
+  for (let i = 0; i < ATLAS_COLS * ATLAS_ROWS; i++) {
+    const def = DEFS[i];
+    if (!def) continue;
+    const cx = (i % ATLAS_COLS) * CELL;
+    const cy = Math.floor(i / ATLAS_COLS) * CELL;
+    if (def.path) {
+      for (const c of [mctx, sctx]) {
+        c.save();
+        c.beginPath();
+        c.rect(cx, cy, CELL, CELL);
+        c.clip();
+        c.setTransform(scale, 0, 0, -scale, cx + CELL / 2, cy + CELL / 2);
+      }
+      def.path(mctx, sctx);
+      mctx.restore();
+      sctx.restore();
+      cores[i] = def.core ?? 0;
+    } else if (def.pix) pixCells.push(i);
+  }
+
+  // 路径图形：从两张画布读回
+  const mimg = mctx.getImageData(0, 0, W, H).data;
+  const simg = sctx.getImageData(0, 0, W, H).data;
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const o = (y * W + x) * 4;
+      const cell = Math.floor(y / CELL) * ATLAS_COLS + Math.floor(x / CELL);
+      const m = mimg[o];
+      data[o] = m;
+      data[o + 1] = simg[o];
+      data[o + 2] = Math.min(255, ((m * m) / 255) * cores[cell]);
+      data[o + 3] = 255;
+    }
+  }
+  // 逐像素图形：直接写数据
+  const out = new Float32Array(3);
+  for (const i of pixCells) {
+    const fn = DEFS[i].pix as PixFn;
+    const cx = (i % ATLAS_COLS) * CELL;
+    const cy = Math.floor(i / ATLAS_COLS) * CELL;
+    for (let py = 0; py < CELL; py++) {
+      for (let px = 0; px < CELL; px++) {
+        const x = (px + 0.5 - CELL / 2) / scale;
+        const y = -(py + 0.5 - CELL / 2) / scale;
+        const o = ((cy + py) * W + cx + px) * 4;
+        if (Math.abs(x) >= 1 || Math.abs(y) >= 1) {
+          data[o] = 0;
+          data[o + 1] = 255;
+          data[o + 2] = 0;
+          data[o + 3] = 255;
+          continue;
+        }
+        fn(x, y, out);
+        data[o] = sat(out[0]) * 255;
+        data[o + 1] = sat(out[1]) * 255;
+        data[o + 2] = sat(out[2]) * 255;
+        data[o + 3] = 255;
+      }
+    }
+  }
+
+  const tex = new THREE.DataTexture(data, W, H, THREE.RGBAFormat, THREE.UnsignedByteType);
+  tex.colorSpace = THREE.NoColorSpace;
+  tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
+  tex.generateMipmaps = true;
+  tex.minFilter = THREE.LinearMipmapLinearFilter;
+  tex.magFilter = THREE.LinearFilter;
+  tex.anisotropy = 2;
+  tex.needsUpdate = true;
+  tex.name = 'fx.atlas';
+  return tex;
+}
+
+/**
+ * 预乘混合输出片段：要求 main 里已有 `vec3 fxC`(HDR 颜色)、`float fxA`(覆盖率)、`float fxAdd`(1 = 纯叠加，0 = 普通透明)。
+ * 材质用 CustomBlending(ONE, ONE_MINUS_SRC_ALPHA)，这样同一个 draw call 里可以混排叠加与遮挡两种粒子。
+ * low 档直出屏幕时(TONE_MAPPING 已定义)先对未预乘的颜色做色调映射，再预乘，叠加部分用 kitAdditive 压到等效观感。
+ */
+export const GLSL_FX_OUT = /* glsl */ `
+  #ifdef TONE_MAPPING
+  gl_FragColor = vec4(mix(fxC, kitAdditive(fxC * fxA), fxAdd), 1.0);
+  #include <tonemapping_fragment>
+  #include <colorspace_fragment>
+  gl_FragColor.rgb *= mix(fxA, 1.0, fxAdd);
+  gl_FragColor.a = fxA * (1.0 - fxAdd);
+  #else
+  gl_FragColor = vec4(fxC * fxA, fxA * (1.0 - fxAdd));
+  #endif
+`;
+
+/** 与 GLSL_FX_OUT 配套的材质混合设置 */
+export function applyFxBlending(mat: THREE.Material): void {
+  mat.transparent = true;
+  mat.depthWrite = false;
+  mat.blending = THREE.CustomBlending;
+  mat.blendEquation = THREE.AddEquation;
+  mat.blendSrc = THREE.OneFactor;
+  mat.blendDst = THREE.OneMinusSrcAlphaFactor;
+  mat.blendSrcAlpha = THREE.OneFactor;
+  mat.blendDstAlpha = THREE.OneMinusSrcAlphaFactor;
+  mat.premultipliedAlpha = true;
+}

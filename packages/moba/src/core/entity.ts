@@ -25,7 +25,7 @@ export function makeStats(p: Partial<Stats>): Stats {
 function newRt(radius: number, weight: number, sight: number, base: Stats, atk: AttackProfile): UnitRt {
   return {
     navR: Math.min(radius, MAX_NAV_RADIUS), weight, sight, base, atk,
-    stunned: false, rooted: false, silenced: false, untargetable: false, unstoppable: false, airborne: null,
+    stunned: false, rooted: false, silenced: false, untargetable: false, unstoppable: false, slowImmune: false, airborne: null,
     moveMode: MOVE_NONE, dirX: 0, dirY: 0, path: null, pathIdx: 0, goalX: 0, goalY: 0, pathTime: -999, stuck: 0, moved: false,
     pushX: 0, pushY: 0, dash: null,
     atkCd: 0, windupLeft: 0, windupTarget: -1, disarmUntil: 0,

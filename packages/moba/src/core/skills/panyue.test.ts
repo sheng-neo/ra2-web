@@ -161,6 +161,14 @@ describe('磐岳 · S1 裂地冲撞', () => {
     const cast = eventsOf(sim.drainEvents(), 'skillCast')[0];
     expect(cast.dir.x).toBeCloseTo(0, 5);
     expect(cast.dir.y).toBeCloseTo(1, 5);
+
+    // 比冲锋距离(7.5)稍远、但终点震击够得着的英雄：也朝他冲，并且打得到
+    const far = arena('panyue', 1, -8, 0, Math.PI / 2);
+    const e = enemyAt(far.sim, 'xingli', 1, 0);
+    far.sim.command(far.hero.id, { type: 'cast', slot: 's1' });
+    const c2 = eventsOf(far.sim.drainEvents(), 'skillCast')[0];
+    expect(c2.dir.x).toBeCloseTo(1, 5);
+    expect(damageTo(stepFor(far.sim, 0.6), far.hero, e).length).toBe(1);
   });
 });
 
@@ -218,6 +226,25 @@ describe('磐岳 · S2 不动壁垒', () => {
     const ev = sim.drainEvents();
     expect(fxOf(ev, 'shield_break').length).toBe(1);
     expect(eventsOf(ev, 'areaEnd').some((x) => x.visual === 'panyue_s2_aura')).toBe(true);
+  });
+
+  it('上一面壁垒还在时再次施放：旧的正常收尾，只留下新的一面', () => {
+    const { sim, hero } = arena('panyue', 3);
+    sim.command(hero.id, { type: 'cast', slot: 's2' });
+    stepFor(sim, 1);
+    hero.skills.s2.cd = 0;
+    sim.drainEvents();
+    sim.command(hero.id, { type: 'cast', slot: 's2' });
+    const ev = sim.drainEvents();
+    expect(eventsOf(ev, 'areaEnd').filter((e) => e.visual === 'panyue_s2_aura').length).toBe(1);
+    expect(hero.buffs.filter((b) => b.id === 'shield').length).toBe(1);
+    expect(hero.shield).toBeCloseTo(val(hero, 's2', 'shield') + val(hero, 's2', 'hpRatio') * hero.stats.maxHp, 6);
+    expect(hasBuff(hero, 'panyue_bulwark')).toBe(true);
+    stepFor(sim, TICK_DT);
+    expect(sim.areas.filter((a) => a.visual === 'panyue_s2_aura').length).toBe(1);
+    stepFor(sim, 4.1);
+    expect(hero.buffs.length).toBe(0);
+    expect(sim.areas.length).toBe(0);
   });
 });
 

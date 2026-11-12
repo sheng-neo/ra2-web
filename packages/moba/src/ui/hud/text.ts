@@ -156,7 +156,7 @@ export const KILL_TITLES: Partial<Record<AnnounceKey, string>> = {
   double_kill: '双杀',
   triple_kill: '三杀',
   quadra_kill: '四杀',
-  penta_kill: '五杀 · 星陨降临',
+  penta_kill: '五杀·星陨降临',
   killing_spree: '锋芒毕露',
   unstoppable: '势不可挡',
   legendary: '星陨传说',

@@ -18,9 +18,11 @@ import { HEROES } from '../core/data/heroes';
 import type { GameRenderer, HeroPreview, RendererOptions } from './api';
 import type { RenderModuleFactory } from './engine/context';
 import { createRendererCore, type GameRendererCore } from './engine/core';
-import { createPlaceholderUnits } from './engine/placeholders';
 import { createTerrainModule } from './terrain';
+import { createUnitsModule } from './units';
 
+export { createUnitsModule } from './units';
+export type { UnitViewInfo, UnitsModule } from './units';
 export { detectQuality } from './engine/quality';
 export { createRendererCore } from './engine/core';
 export type { GameRendererCore } from './engine/core';
@@ -32,7 +34,7 @@ export { createPlaceholderUnits } from './engine/placeholders';
  * 正式对局使用的模块列表(顺序即 update 顺序)。
  * R2：用单位视图模块替换 createPlaceholderUnits；R3：追加特效与叠加层模块。
  */
-export const DEFAULT_MODULES: RenderModuleFactory[] = [createTerrainModule, createPlaceholderUnits];
+export const DEFAULT_MODULES: RenderModuleFactory[] = [createTerrainModule, createUnitsModule];
 
 export function createGameRenderer(container: HTMLElement, state: GameState, opts: RendererOptions): GameRenderer {
   const core: GameRendererCore = createRendererCore(container, state, opts, DEFAULT_MODULES);

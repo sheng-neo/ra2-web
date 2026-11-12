@@ -22,7 +22,7 @@ type Tier = 1 | 2 | 3 | 4;
 const CSS = sfCss(`
 .sf-hud__banner-wrap { position: absolute; left: 0; right: 0; top: calc(var(--hud-t) + max(54px, 64u)); z-index: 4; display: flex; justify-content: center; pointer-events: none; }
 .sf-hud__banner {
-  --tone: 150, 178, 235; --fs: max(14px, 17u); --face: 0px;
+  --tone: 92, 214, 247; --fs: max(14px, 17u); --face: 0px;
   position: relative; isolation: isolate; display: flex; align-items: center; justify-content: center; gap: 12u; min-width: min(300u, 80vw); max-width: 96vw; padding: 5u 64u 6u;
   animation: sf-hud-bn-in 0.4s var(--sf-ease-out) both;
 }
@@ -46,6 +46,11 @@ const CSS = sfCss(`
 .sf-hud__banner-title {
   margin: 0; font-weight: 900; font-size: var(--fs); line-height: 1.22; letter-spacing: 0.22em; margin-right: -0.22em; white-space: nowrap;
   animation: sf-hud-bn-slam 0.5s var(--sf-ease-out) both;
+}
+/* 中立播报(开战/兵线/野怪现身)：青白色的星辉金属字 */
+.sf-hud__banner.is-neutral .sf-hud__banner-title {
+  background-image: linear-gradient(180deg, #ffffff 0%, #d9f8ff 30%, #7fdcf5 54%, #2b8fb8 62%, #a5ebff 82%, #f0fdff 100%);
+  filter: drop-shadow(0 1u 0 rgba(6, 30, 48, 0.9)) drop-shadow(0 3u 8u rgba(0, 0, 0, 0.55));
 }
 .sf-hud__banner.is-foe .sf-hud__banner-title {
   background-image: linear-gradient(180deg, #fff3ee 0%, #ffc2b3 28%, #f25b50 54%, #9c1f2b 62%, #ff8d7a 82%, #ffe6dd 100%);
@@ -97,7 +102,7 @@ const CSS = sfCss(`
 @keyframes sf-hud-bn-flash { 0% { filter: brightness(3.5); } 100% { filter: none; } }
 
 @media (orientation: portrait) {
-  .sf-hud__banner-wrap { top: calc(var(--hud-t) + var(--hud-mini) + max(46px, 54u)); }
+  .sf-hud__banner-wrap { top: calc(var(--hud-t) + var(--hud-mini) + max(58px, 68u)); }
   .sf-hud__banner.is-t2 { padding-left: 58u; padding-right: 58u; }
   .sf-hud__banner.is-t3 { padding-left: 70u; padding-right: 70u; }
   .sf-hud__banner.is-t4 { padding-left: 78u; padding-right: 78u; --fs: min(max(24px, 34u), 6.6vw); }
@@ -132,7 +137,7 @@ export interface Banner extends HudPart {
   demo(ev: AnnounceEvent, c: HudCtx): void;
 }
 
-export function createBanner(ctx: HudCtx): Banner {
+export function createBanner(): Banner {
   injectStyle('sf-hud-banner', CSS);
   const wrap = h('div', 'sf-hud__banner-wrap');
   wrap.setAttribute('aria-live', 'polite');
@@ -155,7 +160,7 @@ export function createBanner(ctx: HudCtx): Banner {
   }
 
   function show(item: Item, now: number): void {
-    const titleCls = `sf-hud__banner-title sf-metal${item.tone === 'neutral' ? ' sf-metal--steel' : ''}`;
+    const titleCls = 'sf-hud__banner-title sf-metal';
     const el = h(
       'div',
       `sf-hud__banner is-t${item.tier} is-${item.tone}${item.left || item.right ? '' : ' is-noface'}`,
@@ -180,26 +185,28 @@ export function createBanner(ctx: HudCtx): Banner {
     if (!victim) return null;
     const killer = c.hero(k.killerId);
     const mePart = victim.isPlayer || !!killer?.isPlayer || k.assistIds.indexOf(c.state.playerId) >= 0;
-    // 没有称号的普通击杀：只有与玩家有关才上横幅，其余交给右侧击杀流
-    if (!a && !mePart) return null;
+    // 没有称号的普通击杀：只有玩家击杀/助攻才上横幅，其余交给右侧击杀流；
+    // 玩家自己阵亡有专门的阵亡面板(带击杀者)，不再重复播一条
+    if (!a && (!mePart || victim.isPlayer)) return null;
     const right = heroFace(c.host, victim, c.team, 'is-dead');
     if (!killer) {
+      // 被塔/小兵/野怪打死的敌人：只有玩家有助攻才值得一条横幅（上面已筛过）
       const src = c.unit(k.killerId);
       const kind = src?.kind;
       const by = kind === 'tower' || kind === 'core' ? '防御塔' : kind === 'monster' ? '野怪' : kind === 'minion' ? '小兵' : '战场';
       const glyph = kind === 'tower' || kind === 'core' ? uiIcon('tower') : kind === 'monster' ? uiIcon('monster') : uiIcon('cs');
       const foeTeam = victim.team === 0 ? 1 : 0;
-      return { tier: 2, tone: victim.team === c.team ? 'foe' : 'ally', title: victim.isPlayer ? '阵亡' : '击杀', sub: [who(victim, c), `被${by}击杀`], left: glyphFace(glyph, teamCls(foeTeam, c.team)), right, slain: true };
+      return { tier: 2, tone: victim.team === c.team ? 'foe' : 'ally', title: '击杀', sub: [who(victim, c), `被${by}击杀`], left: glyphFace(glyph, teamCls(foeTeam, c.team)), right, slain: true };
     }
     const tone: Tone = killer.team === c.team ? 'ally' : 'foe';
     const key = a?.key ?? null;
-    let title = key ? KILL_TITLES[key] ?? '击杀' : victim.isPlayer ? '阵亡' : killer.isPlayer ? '击杀' : '助攻';
+    let title = key ? KILL_TITLES[key] ?? '击杀' : killer.isPlayer ? '击杀' : '助攻';
     let tier: Tier = key ? ANNOUNCE_TIER[key] : 2;
     let sub: Child[];
     if (key === 'shutdown') sub = [who(killer, c), '终结了', who(victim, c), '的连杀'];
     else if (key === 'killing_spree' || key === 'unstoppable' || key === 'legendary') sub = [who(killer, c), `已连续击杀 ${k.streak} 人`];
     else sub = [who(killer, c), '击杀了', who(victim, c)];
-    if (key === 'legendary' && k.streak > 7) title = `${title} · ${k.streak} 连杀`;
+    if (key === 'legendary' && k.streak > 7) title = `${title}·${k.streak}连杀`;
     // 玩家自己的高光再提一级
     if (killer.isPlayer && tier < 4 && key) tier = (tier + 1) as Tier;
     if (killer.isPlayer && k.bounty > 0) sub.push(h('span', 'is-gold', icon(uiIcon('gold')), `+${Math.round(k.bounty)}`));

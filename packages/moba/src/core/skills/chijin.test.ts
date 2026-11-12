@@ -155,7 +155,12 @@ describe('赤烬 · 大招 焚天旋舞', () => {
     const a = enemyAt(sim, 'panyue', 3, 0);
     const out = enemyAt(sim, 'xingli', 6.5, 0);
     const speed = hero.stats.moveSpeed;
+    // 起手时身上已有的减速被解除
+    addBuff(sim, hero, 'slow', { duration: 10, value: 0.3 });
+    expect(hero.stats.moveSpeed).toBeCloseTo(speed * 0.7, 6);
     sim.command(hero.id, { type: 'cast', slot: 'ult' });
+    expect(hasBuff(hero, 'slow')).toBe(false);
+    expect(hero.stats.moveSpeed).toBeCloseTo(speed, 6);
     let ev = sim.drainEvents();
     expect(fxOf(ev, 'chijin_ult_start').length).toBe(1);
     const area = eventsOf(ev, 'areaSpawn').find((e) => e.visual === 'chijin_ult_spin');
@@ -169,8 +174,8 @@ describe('赤烬 · 大招 焚天旋舞', () => {
     expect(hero.animDur).toBe(3);
     // 减伤
     expect(dealDamage(sim, a, hero, 1000, 'true')).toBeCloseTo(750, 6);
-    // 免疫减速
-    addBuff(sim, hero, 'slow', { duration: 10, value: 0.5 });
+    // 免疫减速(不会挂上减速状态)，但硬控照吃(见下一个用例)
+    expect(addBuff(sim, hero, 'slow', { duration: 10, value: 0.5 })).toBeNull();
     expect(hero.stats.moveSpeed).toBeCloseTo(speed, 6);
     // 可以移动，不能普攻
     sim.command(hero.id, { type: 'attack', targetId: a.id });
@@ -193,12 +198,14 @@ describe('赤烬 · 大招 焚天旋舞', () => {
     const ticks = fxOf(ev, 'chijin_ult_tick');
     expect(ticks.length).toBe(10);
     expect(ticks[0].radius).toBe(4.2);
-    // 结束：状态清除，减速重新生效
+    // 结束：状态清除，之后又能被减速了
     expect(hasBuff(hero, 'chijin_spin')).toBe(false);
     expect(hasBuff(hero, 'dmg_reduction')).toBe(false);
     expect(sim.areas.length).toBe(0);
     expect(hero.anim).not.toBe('spin');
+    expect(addBuff(sim, hero, 'slow', { duration: 0.5, value: 0.5 })).not.toBeNull();
     expect(hero.stats.moveSpeed).toBeCloseTo(speed * 0.5, 6);
+    stepFor(sim, 0.6);
     // 之后可以普攻了
     sim.command(hero.id, { type: 'attack', targetId: a.id });
     expect(eventsOf(stepFor(sim, 1.5), 'attack').filter((e) => e.unitId === hero.id).length).toBeGreaterThan(0);

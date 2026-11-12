@@ -1,21 +1,21 @@
 /**
  * 底部英雄状态栏：头像(阵亡变灰 + 复活倒计时)、等级、被动、生命/法力(数值、护盾段、千血刻度、掉血残影)、
- * 经验条、属性速览、状态图标行(剩余时间转圈 + 层数，点按/悬停看说明)、6 格装备(点按看属性)。
+ * 经验条、属性速览、状态图标行(剩余时间转圈 + 层数，点按/悬停看说明)、6 格装备(点按看属性)、金币与商店入口。
  */
 import { HEROES } from '../../core/data/heroes';
 import { ITEMS } from '../../core/data/items';
 import type { Buff, BuffId, GameEvent, HeroUnit, ItemId } from '../../core/types';
-import { BUFF_META, buffIcon, itemIcon, skillIcon } from '../icons';
+import { BUFF_META, buffIcon, itemIcon, skillIcon, uiIcon } from '../icons';
 import { itemTooltipHtml } from '../menu/select';
 import { createPortrait, escapeHtml } from '../menu/shared';
-import { attachTooltip, createSlot, h, injectStyle, sfCss } from '../theme';
+import { attachTooltip, createSlot, h, icon, injectStyle, sfCss } from '../theme';
 import { classSlot, clamp01, numSlot, replay, textSlot, varSlot, type HudCtx, type HudPart } from './common';
 import { buffDesc } from './text';
 
 const CSS = sfCss(`
 .sf-hud { --hud-lift: 0px; }
 .sf-hud__status {
-  --w: 404u;
+  --w: 458u;
   position: absolute; bottom: 0; z-index: 3; left: min(50%, calc(100% - var(--hud-cw) - var(--w) / 2 - 6u)); transform: translateX(-50%);
   display: flex; align-items: flex-end; gap: 8u; width: var(--w); padding: 7u 10u max(6u, var(--sf-safe-b)); border-radius: 12u 12u 0 0;
   background: var(--hud-plate); box-shadow: 0 -4u 16u rgba(2, 4, 12, 0.5), inset 0 1px 0 rgba(143, 233, 255, 0.12);
@@ -25,7 +25,7 @@ const CSS = sfCss(`
 .sf-hud__status.is-dead .sf-hud__st-bars, .sf-hud__status.is-dead .sf-hud__st-items { filter: saturate(0.25) brightness(0.8); }
 
 /* ── 头像 ── */
-.sf-hud__st-por { position: relative; flex: none; width: 62u; height: 62u; margin-top: -16u; }
+.sf-hud__st-por { position: relative; flex: none; width: 62u; height: 62u; margin: -18u 2u 2u 2u; }
 .sf-hud__st-por > .sf-portrait { width: 100%; height: 100%; border-radius: 50%; box-shadow: 0 0 0 max(2px, 2.5u) #0a1128, 0 0 0 max(3.5px, 4.5u) var(--sf-c-gold-400), 0 0 14u rgba(255, 214, 130, 0.35), 0 4u 10u rgba(0, 0, 0, 0.6); transition: filter 0.4s linear; }
 .sf-hud__status.is-dead .sf-hud__st-por > .sf-portrait { filter: grayscale(1) brightness(0.55); }
 .sf-hud__st-respawn { position: absolute; inset: 0; display: none; place-items: center; font-size: max(20px, 27u); font-weight: 800; color: #fff; text-shadow: 0 1px 3px #000, 0 0 12u rgba(255, 93, 93, 0.9); }
@@ -56,6 +56,7 @@ const CSS = sfCss(`
 .sf-hud__bar-gloss { background: linear-gradient(180deg, rgba(255, 255, 255, 0.3), rgba(255, 255, 255, 0) 48%, rgba(0, 0, 0, 0.16)); }
 .sf-hud__bar-text { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 5u; font-size: max(11px, 12.5u); font-weight: 800; line-height: 1; color: #fff; text-shadow: 0 1px 1px rgba(2, 4, 12, 0.95), 0 0 4u rgba(2, 4, 12, 0.9); white-space: nowrap; }
 .sf-hud__bar-text em { font-style: normal; color: #dff0ff; }
+.sf-hud__bar-text em:empty { display: none; }
 .sf-hud__bar.is-mp { height: 13u; }
 .sf-hud__bar.is-mp .sf-hud__bar-text { font-size: max(10px, 10.5u); }
 .sf-hud__xp { --p: 0; position: relative; height: max(3px, 4u); border-radius: 2u; overflow: hidden; background: rgba(3, 6, 16, 0.82); box-shadow: inset 0 0 0 1px rgba(150, 178, 235, 0.22); }
@@ -65,6 +66,23 @@ const CSS = sfCss(`
 .sf-hud__st-items { flex: none; display: grid; grid-template-columns: repeat(3, auto); gap: 3u; }
 .sf-hud__st-items .sf-slot { --sf-slot: 27u; border-radius: 5u; box-shadow: 0 0 0 1px rgba(8, 13, 31, 0.95), 0 0 0 max(1.5px, 2u) rgba(224, 177, 96, 0.5); }
 .sf-hud__st-items .sf-slot--empty { box-shadow: inset 0 0 0 1px var(--sf-c-line-strong); }
+
+/* ── 金币 + 商店入口（与小地图下方的商店按钮是同一个入口，放在装备旁边顺手） ── */
+.sf-hud__st-shop {
+  flex: none; align-self: stretch; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4u; width: 46u; padding: 0; margin: 0; border: 0; border-radius: 6u; cursor: pointer;
+  color: var(--sf-c-gold-200); background: linear-gradient(180deg, rgba(74, 54, 14, 0.7), rgba(22, 16, 6, 0.8)); box-shadow: inset 0 0 0 1px rgba(243, 207, 133, 0.55), inset 0 1px 0 1px rgba(255, 244, 214, 0.12);
+  transition: transform 0.1s var(--sf-ease-out), filter 0.12s linear;
+}
+@media (hover: hover) { .sf-hud__st-shop:hover { filter: brightness(1.25); } }
+.sf-hud__st-shop:active { transform: scale(0.95); }
+.sf-hud__st-shop-ico { display: grid; place-items: center; width: 24u; height: 24u; border-radius: 50%; color: #2b1a04; background: var(--sf-grad-gold); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6), 0 0 0 1px #6b4614; }
+.sf-hud__st-shop-ico > .sf-i { width: 64%; height: 64%; }
+.sf-hud__st-shop-gold { font-size: max(11px, 12.5u); font-weight: 800; line-height: 1; }
+/* 窄横屏放不下：收起这个入口，状态栏变窄（左侧的商店按钮还在） */
+@media (orientation: landscape) and (max-width: 760px) {
+  .sf-hud__status { --w: 404u; }
+  .sf-hud__st-shop { display: none; }
+}
 
 /* ── 状态图标行 ── */
 .sf-hud__buffs { position: absolute; left: 80u; right: 6u; bottom: calc(100% + 5u); display: flex; flex-wrap: wrap-reverse; gap: 4u; pointer-events: none; }
@@ -83,13 +101,17 @@ const CSS = sfCss(`
 
 /* 竖屏：铺满底边的一条；技能区与摇杆整体上移让位 */
 @media (orientation: portrait) {
-  .sf-hud { --hud-lift: max(56px, 66u); }
+  .sf-hud { --hud-lift: max(58px, 68u); }
   .sf-hud__status { left: 0; right: 0; width: auto; transform: none; border-radius: 0; padding-left: max(10u, var(--sf-safe-l)); padding-right: max(10u, var(--sf-safe-r)); align-items: center; }
-  .sf-hud__st-por { width: 50u; height: 50u; margin-top: -10u; }
+  .sf-hud__st-por { width: 48u; height: 48u; margin: -12u 3u 3u 3u; }
   .sf-hud__st-stats { display: none; }
+  .sf-hud__st-shop { display: none; }
   .sf-hud__st-items { grid-template-columns: repeat(6, auto); }
   .sf-hud__st-items .sf-slot { --sf-slot: 28u; }
-  .sf-hud__buffs { left: 66u; }
+  .sf-hud__st-passive { --sf-slot: max(20px, 22u); left: -7u; top: -9u; bottom: auto; }
+  .sf-hud__st-lv { right: -7u; }
+  /* 状态图标只排到技能区左缘为止，多了向上换行 */
+  .sf-hud__buffs { left: 68u; right: calc(var(--hud-sk) * 2.9 + var(--hud-r)); }
 }
 `);
 
@@ -101,7 +123,6 @@ interface BuffView {
   el: HTMLElement;
   setT: (v: number) => void;
   setN: (s: string) => void;
-  n: HTMLElement;
   off: () => void;
 }
 
@@ -203,12 +224,22 @@ export function createStatusBar(ctx: HudCtx): StatusBar {
     itemSlots.push({ el, id: null, off: null });
   }
 
+  // ── 金币 + 商店入口 ──
+  const goldN = h('span', 'sf-hud__st-shop-gold sf-num', '0');
+  const shopTile = h('button', 'sf-hud__st-shop', h('span', 'sf-hud__st-shop-ico', icon(uiIcon('shop'))), goldN);
+  shopTile.type = 'button';
+  shopTile.tabIndex = -1;
+  shopTile.dataset.sfSnd = 'click';
+  shopTile.setAttribute('aria-label', '金币 / 打开商店');
+  shopTile.addEventListener('click', () => ctx.actions.toggleShop());
+  const setGold = numSlot(goldN);
+
   // ── 状态 ──
   const buffsBox = h('div', 'sf-hud__buffs');
   const buffViews = new Map<BuffId, BuffView>();
   const shown: Buff[] = [];
 
-  const el = h('div', 'sf-hud__status', buffsBox, por, bars, itemsBox);
+  const el = h('div', 'sf-hud__status', buffsBox, por, bars, itemsBox, shopTile);
   el.setAttribute('data-hud-hit', '');
 
   const setHpP = varSlot(hpBar, '--p');
@@ -294,7 +325,7 @@ export function createStatusBar(ctx: HudCtx): StatusBar {
         bEl.append(cd, n);
         bEl.setAttribute('aria-label', meta.name);
         const id = b.id;
-        v = { el: bEl, setT: varSlot(bEl, '--t', 1 / 90), setN: textSlot(n), n, off: attachTooltip(bEl, () => buffTip(id)) };
+        v = { el: bEl, setT: varSlot(bEl, '--t', 1 / 90), setN: textSlot(n), off: attachTooltip(bEl, () => buffTip(id)) };
         buffViews.set(b.id, v);
         // 按固定次序插入，图标不会因为刷新而来回跳
         const next = buffsBox.children[i] ?? null;
@@ -336,6 +367,7 @@ export function createStatusBar(ctx: HudCtx): StatusBar {
       }
       setXpP(me.xpToNext > 0 ? clamp01(me.xp / me.xpToNext) : 1);
       setLv(me.level);
+      setGold(Math.floor(me.gold));
       setDead(!me.alive);
       if (!me.alive) setRespawn(Math.ceil(me.respawnIn));
       for (let i = 0; i < statDefs.length; i++) statSetters[i](statDefs[i][1](me));

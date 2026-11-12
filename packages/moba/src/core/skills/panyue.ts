@@ -8,7 +8,7 @@
  */
 import { HEROES } from '../data/heroes';
 import { isStructure } from '../entity';
-import { copyVec, fixedValue, strike } from './common';
+import { castRange, copyVec, fixedValue, strike } from './common';
 import * as tk from './toolkit';
 
 const P = HEROES.panyue.passive.values;
@@ -17,6 +17,8 @@ const FISSURE_TICK = 0.25;
 const FISSURE_SLOW_TIME = 0.5;
 /** 霸体比跃起多留的余量：落地回调里会主动移除，这里只防止计时误差出现空档 */
 const UNSTOPPABLE_PAD = 0.1;
+/** 冲撞自动瞄准时，把震击半径的多大比例算进搜索距离 */
+const AIM_IMPACT_SHARE = 0.6;
 
 tk.registerHeroHooks('panyue', {
   modifyBasicAttack(_sim, hero, target, mod) {
@@ -41,6 +43,8 @@ tk.registerSkill('panyue', 's1', {
   noAnim: true,
   lockTime: 0,
   aimSpeed: fixedValue('panyue', 's1', 'dashSpeed'),
+  // 冲到终点还会震击一圈：比冲锋距离稍远的英雄也值得朝他冲(留一点余量，别指望刚好蹭到边)
+  aimRange: castRange('panyue', 's1') + fixedValue('panyue', 's1', 'impactRadius') * AIM_IMPACT_SHARE,
   cast(ctx) {
     const { sim, caster } = ctx;
     const enemies = tk.enemyFilter(caster.team);

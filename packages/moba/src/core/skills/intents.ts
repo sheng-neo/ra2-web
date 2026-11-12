@@ -7,8 +7,8 @@
  */
 import { HEROES, HERO_IDS, skillValue } from '../data/heroes';
 import { ARMOR_K } from '../data/units';
-import type { AbilitySlot, BuffId, CastSpec, DamageType, HeroId, HeroUnit, Unit } from '../types';
-import { castPoint, fixedValue } from './timing';
+import type { AbilitySlot, AreaVisual, BuffId, CastSpec, DamageType, HeroId, HeroUnit, Unit } from '../types';
+import { castPoint, castRange, fixedValue } from './timing';
 
 export type SkillRole =
   | 'engage' // 先手开团/留人
@@ -129,10 +129,7 @@ function build(heroId: HeroId, slot: AbilitySlot, b: Partial<Behavior> & Pick<Be
 }
 
 const v = fixedValue;
-const rangeOf = (heroId: HeroId, slot: AbilitySlot): number => {
-  const c = HEROES[heroId].skills[slot].cast;
-  return 'range' in c ? c.range : 0;
-};
+const rangeOf = castRange;
 const dash = (heroId: HeroId, slot: AbilitySlot, stopsAtHero = false): SkillMobility => {
   const distance = rangeOf(heroId, slot);
   return { kind: 'dash', distance, duration: distance / v(heroId, slot, 'dashSpeed'), wallBlocked: true, stopsAtHero, destination: 'aim' };
@@ -329,6 +326,24 @@ export const COMBOS: Record<HeroId, AbilitySlot[]> = {
   xingli: ['s2', 'ult', 's1'],
   fengling: ['s1', 'ult', 's2'],
   yeque: ['s2', 's1', 'ult'],
+};
+
+/**
+ * 敌方区域效果对「站在里面的我」意味着什么（配合 BotView.hostileAreas() 做走位）：
+ * incoming = 预警，结束的那一刻才生效(趁早走出去)；damage = 待在里面持续掉血；slow = 只减速；none = 纯表现。
+ * 跟随型区域(chijin_ult_spin)会追着敌方英雄移动，躲它等于远离那个英雄。
+ */
+export type AreaThreat = 'incoming' | 'damage' | 'slow' | 'none';
+
+export const AREA_THREATS: Record<AreaVisual, AreaThreat> = {
+  telegraph: 'incoming',
+  xingli_s2_well: 'incoming',
+  chijin_ult_spin: 'damage',
+  xingli_ult_storm: 'damage',
+  fengling_ult_rain: 'damage',
+  panyue_ult_fissure: 'slow',
+  panyue_s2_aura: 'none',
+  fountain_zone: 'none',
 };
 
 // ───────────────────────── 伤害估算 ─────────────────────────

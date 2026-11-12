@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+    <meta name="theme-color" content="#0b1020" />
+    <title>星陨战纪 · HUD 画廊</title>
+    <style>
+      html, body { margin: 0; height: 100%; background: #070a14; overflow: hidden; overscroll-behavior: none; }
+      body { touch-action: none; -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }
+      #app { position: fixed; inset: 0; }
+      #stage { position: absolute; inset: 0; }
+      #stage > canvas { display: block; width: 100%; height: 100%; }
+      #hudlog {
+        position: fixed; left: 8px; top: 46%; z-index: 50; max-width: 46vw; padding: 5px 8px; border-radius: 6px; pointer-events: none;
+        font: 10px/1.45 ui-monospace, Menlo, Consolas, monospace; color: #cfe6ff; background: rgba(6, 10, 22, 0.66); white-space: pre; overflow: hidden;
+      }
+      #hudlog b { color: #ffe7ad; font-weight: 700; }
+    </style>
+  </head>
+  <body>
+    <!--
+      HUD 画廊：假战场(2D 俯视) + 真 HUD + 假推进器。参数见 src/dev/hud.ts 顶部。
+      常用：?touch=1  ?shop=1  ?scoreboard=1  ?dead=1  ?settings=1  ?banner=penta_kill  ?hero=xingli  ?log=0  ?sim=1  ?real=1
+    -->
+    <div id="app"><div id="stage"></div></div>
+    <pre id="hudlog"></pre>
+    <script type="module" src="/src/dev/hud.ts"></script>
+  </body>
+</html>

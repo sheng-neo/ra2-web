@@ -12,11 +12,11 @@ import type { Sim } from '../world';
 export type FxEvent = Extract<GameEvent, { type: 'fx' }>;
 export type DamageEvent = Extract<GameEvent, { type: 'damage' }>;
 
-/** 安静的世界 + 玩家英雄(蓝方)站在 (x, y) 面朝 +x，升到指定等级 */
-export function arena(heroId: HeroId, level = 1, x = 0, y = 0): { sim: Sim; hero: SimHero } {
+/** 安静的世界 + 玩家英雄(蓝方)站在 (x, y)、缺省面朝 +x，升到指定等级 */
+export function arena(heroId: HeroId, level = 1, x = 0, y = 0, facing = 0): { sim: Sim; hero: SimHero } {
   const sim = quietWorld(heroId);
   const hero = heroOf(sim, 0, heroId);
-  place(sim, hero, x, y, 0);
+  place(sim, hero, x, y, facing);
   levelTo(sim, hero, level);
   sim.drainEvents();
   return { sim, hero };

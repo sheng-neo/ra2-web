@@ -21,7 +21,8 @@
  *   projectiles.ts / areas.ts   投射物与区域效果       anim.ts     动作状态机
  *   hero.ts       命令处理、施法管线、智能目标、装备、复活
  *   minions.ts / structures.ts / monsters.ts / vision.ts
- *   skills/       registry(注册表) toolkit(技能工具箱) summoner(召唤师技能) heroes(英雄技能占位)
+ *   skills/       registry(注册表) toolkit(技能工具箱) summoner(召唤师技能) panyue/chijin/xingli/fengling/yeque(英雄技能与被动)
+ *                 timing(出手点约定) intents(给 Bot 的技能意图表与伤害估算)
  *   passives.ts   装备被动                             ai/         Bot 接口、公平视图、兜底 AI
  *   headless.ts   无头跑完整对局                       testkit.ts  测试辅助
  */

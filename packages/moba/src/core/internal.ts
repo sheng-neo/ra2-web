@@ -105,6 +105,8 @@ export interface UnitRt {
   silenced: boolean;
   untargetable: boolean;
   unstoppable: boolean;
+  /** 免疫减速（由特定 buff 提供，如赤烬旋舞；不影响其他控制） */
+  slowImmune: boolean;
   airborne: SimBuff | null;
 
   // —— 移动 ——

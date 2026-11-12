@@ -184,8 +184,7 @@ describe('星璃 · S2 引力星环', () => {
 });
 
 describe('星璃 · 大招 星陨天降', () => {
-  function castUlt(seed: number): { sim: Sim; hero: SimHero; a: SimHero; out: SimHero } {
-    void seed;
+  function castUlt(): { sim: Sim; hero: SimHero; a: SimHero; out: SimHero } {
     const { sim, hero } = arena('xingli', 4);
     const a = enemyAt(sim, 'panyue', 8, 4.5);
     const out = enemyAt(sim, 'chijin', 8, 7);
@@ -195,7 +194,7 @@ describe('星璃 · 大招 星陨天降', () => {
   }
 
   it('预警 0.5 秒 → 2.5 秒内 5 波：每波对整个区域法术伤害 + 减速 + 印记(第三波引爆)', () => {
-    const { sim, hero, a, out } = castUlt(1);
+    const { sim, hero, a, out } = castUlt();
     let ev = sim.drainEvents();
     expect(fxOf(ev, 'xingli_ult_cast').length).toBe(1);
     const warn = eventsOf(ev, 'areaSpawn');
@@ -241,7 +240,7 @@ describe('星璃 · 大招 星陨天降', () => {
 
   it('每波减速 30% 持续 1 秒；陨星落点由种子随机决定(可复现)', () => {
     const run = (): { spots: Vec2[]; slow: number } => {
-      const { sim, a } = castUlt(1);
+      const { sim, a } = castUlt();
       let slow = 0;
       let spots: Vec2[] = [];
       for (let i = 0; i < 30 * 3.2; i++) {
@@ -260,7 +259,7 @@ describe('星璃 · 大招 星陨天降', () => {
   });
 
   it('星域放出后不随星璃阵亡而消失，击杀仍归她', () => {
-    const { sim, hero, a } = castUlt(1);
+    const { sim, hero, a } = castUlt();
     stepFor(sim, 0.2);
     killUnit(sim, hero, null);
     a.hp = 100;
