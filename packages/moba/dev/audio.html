@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>星陨战纪 · 音频画廊与自检</title>
+    <style>
+      :root { --bg: #070b18; --panel: rgba(17, 27, 54, 0.88); --line: rgba(201, 169, 97, 0.45); --gold: #e6c988; --cyan: #6fe3ff; --txt: #dfe7ff; --dim: #8e9bc4; --bad: #ff6b6b; --ok: #6fe3a0; }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; background: radial-gradient(1200px 700px at 70% -10%, #18264d 0%, var(--bg) 60%); color: var(--txt); font: 13px/1.45 "PingFang SC", "HarmonyOS Sans SC", "Microsoft YaHei", sans-serif; min-height: 100%; }
+      header { position: sticky; top: 0; z-index: 5; display: flex; align-items: center; gap: 16px; padding: 10px 18px; background: rgba(7, 11, 24, 0.92); border-bottom: 1px solid var(--line); backdrop-filter: blur(6px); }
+      header h1 { margin: 0; font-size: 18px; letter-spacing: 2px; background: linear-gradient(180deg, #fff3cf, #c9a961); -webkit-background-clip: text; background-clip: text; color: transparent; }
+      header .stat { color: var(--dim); font-variant-numeric: tabular-nums; white-space: nowrap; }
+      header .stat b { color: var(--cyan); font-weight: 600; }
+      main { padding: 14px 18px 60px; display: grid; gap: 14px; grid-template-columns: minmax(0, 1fr) 340px; align-items: start; }
+      section { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; box-shadow: 0 0 0 1px rgba(111, 227, 255, 0.05) inset; }
+      section h2 { margin: 0 0 8px; font-size: 14px; color: var(--gold); letter-spacing: 1px; display: flex; align-items: baseline; gap: 8px; }
+      section h2 small { color: var(--dim); font-weight: 400; letter-spacing: 0; }
+      .grid { display: flex; flex-wrap: wrap; gap: 6px; }
+      button { font: inherit; color: var(--txt); background: linear-gradient(180deg, #223463, #172448); border: 1px solid rgba(111, 227, 255, 0.28); border-radius: 6px; padding: 5px 9px; cursor: pointer; transition: transform 0.05s, border-color 0.15s; }
+      button:hover { border-color: var(--cyan); }
+      button:active { transform: translateY(1px); }
+      button.gold { border-color: var(--line); color: var(--gold); }
+      button.dark { background: linear-gradient(180deg, #3a2030, #24121c); border-color: rgba(255, 107, 107, 0.4); }
+      button.on { background: linear-gradient(180deg, #2f6f8a, #1d4a66); border-color: var(--cyan); }
+      button small { color: var(--dim); margin-left: 4px; font-size: 11px; }
+      .row { display: flex; align-items: center; gap: 8px; margin: 6px 0; }
+      .row label { width: 76px; color: var(--dim); }
+      .row input[type="range"] { flex: 1; accent-color: var(--cyan); }
+      .row output { width: 44px; text-align: right; font-variant-numeric: tabular-nums; color: var(--cyan); }
+      .side { display: grid; gap: 14px; position: sticky; top: 58px; }
+      .full { grid-column: 1 / -1; }
+      table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+      th, td { padding: 3px 6px; text-align: right; border-bottom: 1px solid rgba(255, 255, 255, 0.06); white-space: nowrap; }
+      th { color: var(--gold); font-weight: 500; position: sticky; top: 46px; background: #111b36; }
+      td:first-child, th:first-child, td:nth-child(2), th:nth-child(2) { text-align: left; }
+      tr.bad td { color: var(--bad); }
+      td.ok { color: var(--ok); }
+      td canvas, .card canvas { display: block; }
+      .bar { display: inline-flex; width: 72px; height: 8px; border-radius: 4px; overflow: hidden; vertical-align: middle; background: #0b1226; }
+      .bar i { display: block; height: 100%; }
+      .summary { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 8px; }
+      .pill { padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line); color: var(--gold); }
+      .pill.bad { border-color: var(--bad); color: var(--bad); }
+      .pill.ok { border-color: var(--ok); color: var(--ok); }
+      .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 10px; }
+      .card { border: 1px solid rgba(111, 227, 255, 0.18); border-radius: 8px; padding: 8px 10px; background: rgba(8, 14, 32, 0.6); }
+      .card h3 { margin: 0 0 4px; font-size: 13px; color: var(--cyan); display: flex; justify-content: space-between; }
+      .card p { margin: 3px 0; color: var(--dim); }
+      .card p b { color: var(--txt); font-weight: 500; }
+      pre { margin: 6px 0 0; padding: 8px; background: #0a1124; border-radius: 6px; max-height: 180px; overflow: auto; color: var(--dim); white-space: pre-wrap; word-break: break-all; }
+      @media (max-width: 900px) { main { grid-template-columns: 1fr; } .side { position: static; } }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>星陨战纪 · 音频画廊</h1>
+      <span class="stat" id="stat">点击任意按钮解锁音频</span>
+    </header>
+    <main id="app"></main>
+    <script type="module" src="/src/dev/audio.ts"></script>
+  </body>
+</html>

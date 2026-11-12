@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+    <title>星陨战纪 · 地形画廊</title>
+    <style>
+      html, body { margin: 0; height: 100%; background: #070a14; overflow: hidden; }
+      #app { position: fixed; inset: 0; }
+      #hud {
+        position: fixed; left: 8px; top: 8px; z-index: 10; padding: 6px 10px; border-radius: 6px;
+        font: 12px/1.5 ui-monospace, Menlo, Consolas, monospace; color: #dff3ff; background: rgba(8, 14, 30, 0.72);
+        pointer-events: none; white-space: pre;
+      }
+      #help {
+        position: fixed; right: 8px; bottom: 8px; z-index: 10; padding: 6px 10px; border-radius: 6px;
+        font: 12px/1.5 "PingFang SC", "Microsoft YaHei", sans-serif; color: #b8c8e0; background: rgba(8, 14, 30, 0.6);
+        pointer-events: none; white-space: pre;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app"></div>
+    <div id="hud"></div>
+    <div id="help"></div>
+    <script type="module" src="/src/dev/terrain.ts"></script>
+  </body>
+</html>
