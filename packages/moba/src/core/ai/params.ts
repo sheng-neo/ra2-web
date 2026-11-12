@@ -84,19 +84,23 @@ export interface Style {
 
 export const STYLES: Record<HeroId, Style> = {
   panyue: { fleeHp: 0.22, recallHp: 0.33, engage: 0.9, initiator: true, diveBackline: 0.2, support: true },
-  chijin: { fleeHp: 0.23, recallHp: 0.34, engage: 0.87, initiator: true, diveBackline: 0.5, support: false },
+  chijin: { fleeHp: 0.23, recallHp: 0.34, engage: 0.82, initiator: true, diveBackline: 0.5, support: false },
   xingli: { fleeHp: 0.3, recallHp: 0.38, engage: 1.05, initiator: false, diveBackline: 0, support: false },
   fengling: { fleeHp: 0.3, recallHp: 0.38, engage: 1.05, initiator: false, diveBackline: 0, support: false },
-  yeque: { fleeHp: 0.28, recallHp: 0.38, engage: 1, initiator: false, diveBackline: 1.2, support: false },
+  yeque: { fleeHp: 0.28, recallHp: 0.38, engage: 0.94, initiator: false, diveBackline: 1.2, support: false },
 };
 
 /** 全局阈值 */
 export const TUNE = {
   /** 感知半径：这个范围内的英雄参与「局部战力」评估 */
   senseRadius: 15,
-  /** 战力评估的距离权重：队友在 allyNear 内算满、allyFar 外不算；敌人同理但范围更大(偏谨慎) */
-  allyNear: 7,
-  allyFar: 14,
+  /**
+   * 战力评估的距离权重：队友在 allyNear 内算满、allyFar 外不算；敌人同理，范围只略大一点(略偏谨慎)。
+   * 这组数决定「抱团对峙时敢不敢开团」：队友的范围比敌人小得多时(早期是 7/14)，站在前排的人永远觉得自己人少，
+   * 5v5 只会互相消耗、没人先手 —— 整局击杀偏少，近战英雄也打不出伤害。
+   */
+  allyNear: 10,
+  allyFar: 18,
   foeNear: 11,
   foeFar: 18,
   /** 战力评估的时间窗（秒）：伤害输出 = 普攻 DPS × 窗口 + 可用技能爆发 */
@@ -171,6 +175,8 @@ export const TUNE = {
   teamTick: 0.8,
   /** 清线放技能要求的最低法力比例 */
   waveclearMana: 0.55,
+  /** 抱团对峙(推进/回防)时，消耗意愿在难度档案 harass 的基础上再加多少 */
+  groupHarass: 0.3,
   /** 消耗放技能后要保留的法力比例 */
   pokeMana: 0.35,
   /** 打野用技能要求的最低法力比例 */

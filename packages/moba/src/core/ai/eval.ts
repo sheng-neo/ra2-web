@@ -48,8 +48,8 @@ export function heroOutput(h: HeroUnit, ready: (slot: AbilitySlot) => boolean): 
 }
 
 /**
- * 距离权重：离交战点越远，赶到并参战的可能越小。对敌人更悲观(远一点的也算进来)、对队友更保守，
- * 这样估出来的优势偏谨慎 —— 宁可少打一场五五开的架，也不要因为没算上旁边的敌人而送掉。
+ * 距离权重：离交战点越远，赶到并参战的可能越小。敌人的范围比队友略大(远一点的也算进来)，
+ * 估出来的优势略偏谨慎；两者差太多会让抱团对峙时没人敢先手(见 params.ts 的 allyNear/allyFar)。
  */
 export function allyWeight(d: number): number {
   if (d <= TUNE.allyNear) return 1;

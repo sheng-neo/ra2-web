@@ -104,7 +104,7 @@ function pickMinion(b: HeroBot, carry: HeroUnit | null, alone: boolean): MinionP
 function harass(b: HeroBot, waiting: boolean, grouped: boolean): boolean {
   if (b.foes.length === 0 || b.adv < TUNE.advPoke || b.inFoeRange) return false;
   // 抱团对峙时更愿意出手消耗
-  if (!b.inMood(MOOD_POKE, grouped ? Math.min(1, b.prof.harass + 0.3) : b.prof.harass)) return false;
+  if (!b.inMood(MOOD_POKE, grouped ? Math.min(1, b.prof.harass + TUNE.groupHarass) : b.prof.harass)) return false;
   const me = b.me;
   const v = b.v;
   let t: HeroUnit | null = null;

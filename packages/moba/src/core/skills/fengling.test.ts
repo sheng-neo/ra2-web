@@ -9,7 +9,7 @@ import { arena, damageTo, dist, dummyAt, enemyAt, fxOf, mitigate, val } from './
 const P = HEROES.fengling.passive.values;
 
 describe('风翎 · 被动 风之眷顾', () => {
-  it('普攻命中叠层：每层 +7% 攻速；满 5 层 +10% 移速且普攻附带 30(+每级5) 物理伤害；3 秒不续则消失', () => {
+  it('普攻命中叠层：每层 +6% 攻速；满 5 层 +10% 移速且普攻附带 20(+每级4) 物理伤害；3 秒不续则消失', () => {
     const { sim, hero } = arena('fengling', 3);
     const d = dummyAt(sim, 5, 0, 'siege');
     const as0 = hero.stats.attackSpeed;
@@ -30,7 +30,7 @@ describe('风翎 · 被动 风之眷顾', () => {
     expect(stacks).toEqual([1, 2, 3, 4, 5, 5, 5, 5]);
     const plain = mitigate(hero.stats.ad, d.stats.armor);
     const boosted = mitigate(hero.stats.ad + P.bonus + P.bonusPerLevel * hero.level, d.stats.armor);
-    expect(P.bonus + P.bonusPerLevel * hero.level).toBe(45);
+    expect(P.bonus + P.bonusPerLevel * hero.level).toBe(32);
     // 满层之后的普攻才带附加伤害(并入普攻本体，一个伤害数字)
     for (let i = 0; i < 5; i++) expect(amounts[i]).toBeCloseTo(plain, 4);
     for (let i = 5; i < 8; i++) expect(amounts[i]).toBeCloseTo(boosted, 4);
@@ -75,7 +75,7 @@ describe('风翎 · S1 贯风矢', () => {
     expect(fxOf(ev, 'fengling_s1_cast')[0].dir).toEqual({ x: 1, y: 0 });
     ev = ev.concat(stepFor(sim, 0.6));
     const raw = val(hero, 's1', 'damage') + val(hero, 's1', 'adRatio') * hero.stats.ad;
-    expect(raw).toBeCloseTo(280 + 1.1 * hero.stats.ad, 6);
+    expect(raw).toBeCloseTo(280 + 1.0 * hero.stats.ad, 6);
     const hm = damageTo(ev, hero, m1);
     expect(hm.length).toBe(1);
     expect(hm[0].amount).toBeCloseTo(mitigate(raw * 0.6, m1.stats.armor), 4);
@@ -207,7 +207,7 @@ describe('风翎 · 大招 千羽天幕', () => {
     expect(hitTicks).toEqual([15, 30, 45, 60, 75, 90]);
     expect(slowSeen).toBe(6);
     const raw = val(hero, 'ult', 'damage') + val(hero, 'ult', 'adRatio') * hero.stats.ad;
-    expect(raw).toBeCloseTo(110 + 0.4 * hero.stats.ad, 6);
+    expect(raw).toBeCloseTo(95 + 0.4 * hero.stats.ad, 6);
     for (const h of damageTo(all, hero, a)) expect(h.amount).toBeCloseTo(mitigate(raw, a.stats.armor), 4);
     expect(damageTo(all, hero, out).length).toBe(0);
     const rain = eventsOf(all, 'areaSpawn').find((e) => e.visual === 'fengling_ult_rain');

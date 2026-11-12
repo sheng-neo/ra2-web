@@ -10,11 +10,11 @@
  */
 import * as THREE from 'three';
 import { HEROES } from '../../core/data/heroes';
-import { type GameState, TICK_DT, type Unit, type UnitAnim, type UnitKind } from '../../core/types';
+import { type GameState, type HeroId, TICK_DT, type Unit, type UnitAnim, type UnitKind } from '../../core/types';
 import type { FrameInfo, RenderContext, RenderModule } from '../engine/context';
 import type { QualitySettings } from '../engine/quality';
 import { PALETTE } from '../materials';
-import { type AttachName, type InstanceLook, type ModelDef, Puppet, RigBatch, coreKey, createInstanceLook, getModel, hasModel, heroKey, minionKey, monsterKey, ruinKey, towerKey } from '../models';
+import { type AttachName, type InstanceLook, type ModelDef, Puppet, RigBatch, allModelKeys, coreKey, createInstanceLook, getModel, hasModel, heroKey, minionKey, monsterKey, ruinKey, towerKey } from '../models';
 import { getFallbackModel } from '../models/fallback';
 import { RING_BLOB, RING_HERO, RING_MINION, RING_PLAYER, RingBatch } from './rings';
 
@@ -111,11 +111,13 @@ interface Ruin {
 const STATIC_KINDS: Record<UnitKind, boolean> = { hero: false, minion: false, monster: false, tower: true, core: true };
 
 /**
- * 显示缩放：对局镜头为了装下技能射程拉得比较远(可视纵深约 28 米)，按真实尺寸画的话英雄在 720p 下只有五六十像素高。
- * 所以会动的单位按种类放大显示(品类惯例：模型比碰撞体大一圈)，剪影、动作、队伍色才看得清；建筑本来就高，不放大。
- * 只影响画面：碰撞、射程、拾取以外的判定仍然用模拟层的半径。
+ * 显示缩放：对局镜头要装下技能射程(16:9 下左右各约 14 米)，按真实尺寸画的话英雄偏小、看不清模型细节。
+ * 所以会动的单位按种类放大显示(品类惯例：模型比碰撞体大一圈)，配合镜头(见 engine/camera.ts)让英雄在 720p 下站立约 110 像素高；
+ * 建筑本来就高，不放大。只影响画面：碰撞、射程、拾取以外的判定仍然用模拟层的半径。
  */
-const VIEW_SCALE: Record<UnitKind, number> = { hero: 1.26, minion: 1.22, monster: 1.12, tower: 1, core: 1 };
+const VIEW_SCALE: Record<UnitKind, number> = { hero: 1.32, minion: 1.28, monster: 1.17, tower: 1, core: 1 };
+/** 个别英雄再微调：磐岳的模型本来就比别人高一头，按统一倍率会超出「720p 下 105~125 像素」的上限 */
+const HERO_VIEW_TRIM: Partial<Record<HeroId, number>> = { panyue: 0.94 };
 /** 点选敌方单位时在模型轮廓之外再放宽的像素数 */
 const PICK_SLOP = 20;
 
@@ -203,6 +205,10 @@ export function createUnitsModule(ctx: RenderContext): UnitsModule {
   let booted = false;
   /** 视图被清空后，下一帧要按新状态重新摆废墟 */
   let needRuins = false;
+  /** 预热帧：给本帧没有实例的批各塞一个替身(见 prewarm) */
+  let warming = false;
+  const warmLook = createInstanceLook();
+  const _focus = new THREE.Vector3();
   // 可见地面范围(裁剪用)
   let cMinX = -Infinity;
   let cMaxX = Infinity;
@@ -247,7 +253,7 @@ export function createUnitsModule(ctx: RenderContext): UnitsModule {
     const seed = (u.id * 0.618034) % 1;
     const look = createInstanceLook();
     look.team.copy(teamColor(u.team));
-    const scale = VIEW_SCALE[u.kind];
+    const scale = VIEW_SCALE[u.kind] * (u.kind === 'hero' ? (HERO_VIEW_TRIM[u.heroId] ?? 1) : 1);
     const v: View = {
       id: u.id,
       kind: u.kind,
@@ -416,9 +422,9 @@ export function createUnitsModule(ctx: RenderContext): UnitsModule {
     }
     v.targetOpacity = target;
 
-    // 受击闪白
+    // 受击闪白。镜头拉近后模型在屏幕上大了一圈：闪得太白会在对线时(一秒挨好几下)把模型细节反复盖掉，峰值压低一些
     const since = tRender - u.lastHitTime;
-    v.flash = since >= 0 && since < 0.16 && u.alive ? (1 - since / 0.16) ** 2 * (STATIC_KINDS[u.kind] ? 0.4 : 0.6) : 0;
+    v.flash = since >= 0 && since < 0.16 && u.alive ? (1 - since / 0.16) ** 2 * (STATIC_KINDS[u.kind] ? 0.3 : 0.42) : 0;
 
     // 动画输入
     const inp = v.puppet.input;
@@ -611,8 +617,29 @@ export function createUnitsModule(ctx: RenderContext): UnitsModule {
         instanceCount++;
       }
 
+      if (warming) {
+        // 预热帧(被加载页盖着)：还没出场的模型各画一个在镜头前，把几何上传、把第一次绘制的开销提前付掉
+        ctx.rig.getFocus(_focus);
+        for (const key of allModelKeys()) {
+          const def = getModel(key);
+          const b = batchFor(def);
+          if (b.count > 0) continue;
+          const puppet = new Puppet(def, 0);
+          puppet.update(0, 0, _focus.x, 0, _focus.z, 0, 1);
+          b.push(puppet.skeleton, warmLook);
+        }
+      }
+
       for (let i = 0; i < batchList.length; i++) batchList[i].end();
       rings.end();
+    },
+    prewarm() {
+      // 小兵 / 野怪 / 废墟等开局不在场的模型：现在就把几何建好、把批建好，免得它们第一次出场的那一帧又建模又上传
+      for (const key of allModelKeys()) batchFor(getModel(key));
+      warming = true;
+      return () => {
+        warming = false;
+      };
     },
     setQuality(s: QualitySettings) {
       outlines = s.name !== 'low';

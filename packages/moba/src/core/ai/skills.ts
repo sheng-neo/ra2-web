@@ -1,9 +1,10 @@
 /**
  * 技能层：五位英雄各自的连招与释放条件。
  *
- * 对外四个入口，由战术层在不同场合调用，每次最多下一条施法命令：
- *   fightSkills  全力交战(连招)          pokeSkills  对线消耗(留蓝)
- *   waveSkills   清兵/打野               escapeSkills 逃生位移
+ * 对外五个入口，由战术层在不同场合调用，每次最多下一条施法命令：
+ *   fightSkills  全力交战(连招)          pokeSkills   对线消耗(留蓝)
+ *   finisherSkills 补一个技能收残血      waveSkills   清兵/打野
+ *   escapeSkills 逃生位移
  * 瞄准统一走 lead()：按目标速度预判，难度档案决定预判比例与角度误差(不用引擎的自动瞄准，否则各难度一样准)。
  */
 import { HEROES, skillValue } from '../data/heroes';

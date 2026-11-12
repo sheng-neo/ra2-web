@@ -11,7 +11,7 @@ const P = HEROES.chijin.passive.values;
 const DEG = Math.PI / 180;
 
 describe('赤烬 · 被动 余烬之刃', () => {
-  it('放技能后 4 秒内的下一次普攻：+60(+40%物攻) 物理伤害并回复 4% 最大生命，只触发一次', () => {
+  it('放技能后 4 秒内的下一次普攻：+80(+50%物攻) 物理伤害并回复 5% 最大生命，只触发一次', () => {
     const { sim, hero } = arena('chijin');
     const d = dummyAt(sim, 2.5, 0, 'siege');
     hero.hp = 1000;
@@ -66,7 +66,7 @@ describe('赤烬 · S1 烈焰斩', () => {
     expect(hero.animDur).toBe(castTime);
     const ev = stepFor(sim, 2 * TICK_DT);
     const raw = val(hero, 's1', 'damage') + val(hero, 's1', 'adRatio') * hero.stats.ad;
-    expect(raw).toBeCloseTo(220 + 0.7 * hero.stats.ad, 6);
+    expect(raw).toBeCloseTo(220 + 0.8 * hero.stats.ad, 6);
     const hit = damageTo(ev, hero, front);
     expect(hit.length).toBe(1);
     expect(hit[0]).toMatchObject({ dtype: 'physical', skill: true, crit: false });
@@ -150,7 +150,7 @@ describe('赤烬 · S2 炎步', () => {
 });
 
 describe('赤烬 · 大招 焚天旋舞', () => {
-  it('3 秒内 10 跳物理伤害；spin 动画；可移动、区域跟随；免疫减速、减伤 25%、不能普攻', () => {
+  it('3 秒内 10 跳物理伤害；spin 动画；可移动、区域跟随；免疫减速、减伤 30%、不能普攻', () => {
     const { sim, hero } = arena('chijin', 4);
     const a = enemyAt(sim, 'panyue', 3, 0);
     const out = enemyAt(sim, 'xingli', 6.5, 0);
@@ -173,7 +173,7 @@ describe('赤烬 · 大招 焚天旋舞', () => {
     expect(hero.anim).toBe('spin');
     expect(hero.animDur).toBe(3);
     // 减伤
-    expect(dealDamage(sim, a, hero, 1000, 'true')).toBeCloseTo(750, 6);
+    expect(dealDamage(sim, a, hero, 1000, 'true')).toBeCloseTo(700, 6);
     // 免疫减速(不会挂上减速状态)，但硬控照吃(见下一个用例)
     expect(addBuff(sim, hero, 'slow', { duration: 10, value: 0.5 })).toBeNull();
     expect(hero.stats.moveSpeed).toBeCloseTo(speed, 6);
@@ -192,7 +192,7 @@ describe('赤烬 · 大招 焚天旋舞', () => {
     const hits = damageTo(ev, hero, a);
     expect(hits.length).toBe(10);
     const raw = val(hero, 'ult', 'damage') + val(hero, 'ult', 'adRatio') * hero.stats.ad;
-    expect(raw).toBeCloseTo(90 + 0.45 * hero.stats.ad, 6);
+    expect(raw).toBeCloseTo(100 + 0.45 * hero.stats.ad, 6);
     for (const h of hits) expect(h.amount).toBeCloseTo(mitigate(raw, a.stats.armor), 4);
     expect(damageTo(ev, hero, out).length).toBe(0);
     const ticks = fxOf(ev, 'chijin_ult_tick');

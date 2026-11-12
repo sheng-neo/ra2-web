@@ -36,5 +36,5 @@ export function runHeadless(config: MatchConfig, opts: HeadlessOptions = {}): He
     for (const e of events) eventCounts[e.type] = (eventCounts[e.type] ?? 0) + 1;
     if (opts.onTick && opts.onTick(sim, events) === true) break;
   }
-  return { sim, winner: sim.state.winner, time: sim.state.time, ticks: sim.state.tick, eventCounts };
+  return { sim, winner: sim.state.winner, time: sim.state.endTime ?? sim.state.time, ticks: sim.state.tick, eventCounts };
 }

@@ -4,7 +4,7 @@
  * 两者都不依赖主渲染器：各自建一个很小的独立场景(暖色主光 + 冷色环境光 + 英雄辉光色的背光)，
  * 用与对局内完全相同的模型、动画与着色。
  *   createHeroPreview(canvas, heroId)  —— 透明底：展台 + 缓慢转动的英雄，可播放出招动作
- *   getHeroPortrait(heroId)            —— 离屏渲染胸像并合成到主题色底图上，返回 data URL(首次调用时一次画完五位并缓存)
+ *   getHeroPortrait(heroId)            —— 离屏渲染胸像并合成到主题色底图上，返回 data URL(要哪位画哪位并缓存，其余在空闲时逐张补齐)
  * WebGL 不可用时退回到 2D 的剪影占位，界面不会因此出错。
  */
 import * as THREE from 'three';
@@ -312,7 +312,6 @@ export function createHeroPreview(canvas: HTMLCanvasElement, heroId: HeroId): He
 
 const PORTRAIT_SIZE = 192;
 const portraitCache = new Map<HeroId, string>();
-let portraitsTried = false;
 
 function composePortrait(heroId: HeroId, layer: HTMLCanvasElement | null): string {
   const def = HEROES[heroId];
@@ -359,63 +358,112 @@ function composePortrait(heroId: HeroId, layer: HTMLCanvasElement | null): strin
   return c.toDataURL('image/png');
 }
 
-function renderAllPortraits(): void {
-  portraitsTried = true;
-  let renderer: THREE.WebGLRenderer | null = null;
-  const size = PORTRAIT_SIZE * 2;
-  try {
-    const canvas = document.createElement('canvas');
-    canvas.width = canvas.height = size;
-    renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, premultipliedAlpha: true, preserveDrawingBuffer: true });
-    setupRenderer(renderer);
-    renderer.setPixelRatio(1);
-    renderer.setSize(size, size, false);
-    const stage = createStage(false);
-    for (const id of HERO_IDS) {
+/** 头像用的离屏渲染器：按需建，五张都画完(或失败)就释放 */
+interface PortraitRig {
+  renderer: THREE.WebGLRenderer;
+  stage: Stage;
+}
+let portraitRig: PortraitRig | null = null;
+/** WebGL 不可用：之后一律用 2D 占位 */
+let portraitGlFailed = false;
+let portraitTimer = false;
+
+function releasePortraitRig(): void {
+  const rig = portraitRig;
+  portraitRig = null;
+  if (!rig) return;
+  rig.renderer.dispose();
+  rig.renderer.forceContextLoss();
+}
+
+/** 画一位英雄的头像并写入缓存。WebGL 不可用或出错时用 2D 占位 */
+function renderPortrait(id: HeroId): string {
+  let url = '';
+  if (!portraitGlFailed) {
+    try {
+      if (!portraitRig) {
+        const size = PORTRAIT_SIZE * 2;
+        const canvas = document.createElement('canvas');
+        canvas.width = canvas.height = size;
+        const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, premultipliedAlpha: true, preserveDrawingBuffer: true });
+        setupRenderer(renderer);
+        renderer.setPixelRatio(1);
+        renderer.setSize(size, size, false);
+        portraitRig = { renderer, stage: createStage(false) };
+      }
+      const { renderer, stage } = portraitRig;
       const def = getModel(heroKey(id));
       const puppet = new Puppet(def, 0.37);
       const batch = new RigBatch(def.geometry, def.rig.count, 1, { outline: 2.2 }, `portrait:${id}`);
       batch.setShadows(false);
       batch.addTo(stage.scene);
-      const glow = new THREE.Color(HEROES[id].palette.glow);
-      stage.rim.color.copy(glow).lerp(new THREE.Color(1, 1, 1), 0.3);
-      const bust = BUST[id];
-      const a = puppet.input;
-      a.anim = bust.anim ?? 'idle';
-      a.time = 1.3;
-      puppet.update(0, 0, 0, 0, 0, (bust.yaw * Math.PI) / 180, 1);
-      puppet.settle();
-      const look = createInstanceLook();
-      look.team.set(PALETTE.blue.main);
-      look.glow = puppet.output.glow;
-      batch.begin();
-      batch.push(puppet.skeleton, look);
-      batch.end();
-      const cam = stage.camera;
-      const y = def.height * def.scale * bust.y;
-      cam.aspect = 1;
-      cam.fov = 24;
-      cam.position.set(bust.x, y + 0.12, bust.dist);
-      cam.lookAt(bust.x, y, 0);
-      cam.updateProjectionMatrix();
-      renderer.clear();
-      renderer.render(stage.scene, cam);
-      portraitCache.set(id, composePortrait(id, renderer.domElement));
-      batch.removeFrom(stage.scene);
-      batch.dispose();
-    }
-  } catch {
-    // WebGL 不可用：缺的头像用 2D 占位补齐
-  } finally {
-    if (renderer) {
-      renderer.dispose();
-      renderer.forceContextLoss();
+      try {
+        const glow = new THREE.Color(HEROES[id].palette.glow);
+        stage.rim.color.copy(glow).lerp(new THREE.Color(1, 1, 1), 0.3);
+        const bust = BUST[id];
+        const a = puppet.input;
+        a.anim = bust.anim ?? 'idle';
+        a.time = 1.3;
+        puppet.update(0, 0, 0, 0, 0, (bust.yaw * Math.PI) / 180, 1);
+        puppet.settle();
+        const look = createInstanceLook();
+        look.team.set(PALETTE.blue.main);
+        look.glow = puppet.output.glow;
+        batch.begin();
+        batch.push(puppet.skeleton, look);
+        batch.end();
+        const cam = stage.camera;
+        const y = def.height * def.scale * bust.y;
+        cam.aspect = 1;
+        cam.fov = 24;
+        cam.position.set(bust.x, y + 0.12, bust.dist);
+        cam.lookAt(bust.x, y, 0);
+        cam.updateProjectionMatrix();
+        renderer.clear();
+        renderer.render(stage.scene, cam);
+        url = composePortrait(id, renderer.domElement);
+      } finally {
+        batch.removeFrom(stage.scene);
+        batch.dispose();
+      }
+    } catch {
+      // WebGL 不可用：这张和之后的都用 2D 占位
+      portraitGlFailed = true;
+      releasePortraitRig();
     }
   }
-  for (const id of HERO_IDS) if (!portraitCache.get(id)) portraitCache.set(id, composePortrait(id, null));
+  if (!url) url = composePortrait(id, null);
+  portraitCache.set(id, url);
+  return url;
 }
 
+/** 剩下没画的头像放到空闲时一张一张画(每次只占主线程一小段)，画完释放离屏渲染器 */
+function schedulePortraits(): void {
+  if (portraitTimer) return;
+  const next = HERO_IDS.find((id) => !portraitCache.has(id));
+  if (next === undefined) {
+    releasePortraitRig();
+    return;
+  }
+  portraitTimer = true;
+  const run = (): void => {
+    portraitTimer = false;
+    const id = HERO_IDS.find((h) => !portraitCache.has(h));
+    if (id !== undefined) renderPortrait(id);
+    schedulePortraits();
+  };
+  if (typeof window.requestIdleCallback === 'function') window.requestIdleCallback(run, { timeout: 400 });
+  else window.setTimeout(run, 60);
+}
+
+/**
+ * 英雄头像(data URL，已缓存)。第一次要某位英雄时只同步画这一张(建模 + 一次离屏渲染)，
+ * 其余几位随后在空闲时逐张补齐——不再像以前那样第一次调用就一口气画完五张卡住主线程。
+ */
 export function getHeroPortrait(heroId: HeroId): string {
-  if (!portraitsTried) renderAllPortraits();
-  return portraitCache.get(heroId) ?? '';
+  const cached = portraitCache.get(heroId);
+  if (cached !== undefined) return cached;
+  const url = renderPortrait(heroId);
+  schedulePortraits();
+  return url;
 }

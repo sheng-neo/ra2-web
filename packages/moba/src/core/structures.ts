@@ -131,6 +131,7 @@ export function onCoreKilled(sim: Sim, core: SimCore): void {
   sim.nav.removeObstacle(core.id);
   st.over = true;
   st.winner = winner;
+  st.endTime = st.time;
   sim.fx('core_destroyed', core.pos, core.team, { unitId: core.id });
   sim.emit({ type: 'gameOver', winner });
   // 玩家永远在蓝方：以玩家视角播报胜负

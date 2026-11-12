@@ -35,32 +35,41 @@ export const QUALITY: Record<Quality, QualitySettings> = {
   high: { name: 'high', dprCap: 2, shadows: true, shadowMapSize: 2048, post: true, msaa: 4, bloom: 0.75, bloomLevels: 5, grade: true, pointLights: 4, foliage: 1, groundDetail: 2, motes: 1 },
 };
 
-/** 是否软件光栅(SwiftShader/llvmpipe 等)：这类环境帧率极低，应默认最低档 */
-function isSoftwareRenderer(): boolean {
+/** 读一次显卡名(小写)；拿不到 WebGL 返回 null */
+function gpuName(): string | null {
   try {
     const c = document.createElement('canvas');
     const gl = c.getContext('webgl2') ?? c.getContext('webgl');
-    if (!gl) return true;
+    if (!gl) return null;
     const ext = gl.getExtension('WEBGL_debug_renderer_info');
     const name = String(ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER)).toLowerCase();
     gl.getExtension('WEBGL_lose_context')?.loseContext();
-    return /swiftshader|llvmpipe|software|basic render/.test(name);
+    return name;
   } catch {
-    return true;
+    return null;
   }
 }
 
 /**
- * 依据设备给出默认画质：软件渲染 → low；低内存/少核手机 → low；其余手机 → medium；桌面 → high。
+ * 依据设备给出默认画质(玩家随时可以在设置里改；帧率长期过低时引擎还会自动降渲染分辨率，见 engine.ts)：
+ *   软件光栅(SwiftShader/llvmpipe，帧率极低)或拿不到 WebGL → low
+ *   手机/平板：内存 ≤3GB、核心 ≤4、或老一代移动显卡(Adreno 3~5 系、Mali-4xx/T 系、PowerVR) → low；其余 → medium
+ *     (medium = 1024 阴影 + 轻 bloom + DPR≤1.5，是中端机能稳住 30 帧的上限；high 的 2048 阴影 + 4×MSAA + DPR 2 在手机上太重)
+ *   桌面：内存 ≤2GB / 核心 ≤2 / Intel 核显(高分屏下 4×MSAA 的 HDR 目标吃不消) → medium；其余 → high
  */
 export function detectQuality(): Quality {
   if (typeof navigator === 'undefined' || typeof document === 'undefined') return 'medium';
-  if (isSoftwareRenderer()) return 'low';
+  const gpu = gpuName();
+  if (gpu === null || /swiftshader|llvmpipe|software|basic render/.test(gpu)) return 'low';
   const ua = navigator.userAgent;
   const coarse = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
   const mobile = /Android|iPhone|iPad|iPod|Mobile|HarmonyOS/i.test(ua) || (coarse && Math.min(screen.width, screen.height) < 900);
   const mem = (navigator as Navigator & { deviceMemory?: number }).deviceMemory ?? 8;
   const cores = navigator.hardwareConcurrency ?? 8;
-  if (mobile) return mem <= 3 || cores <= 4 ? 'low' : 'medium';
-  return mem <= 2 || cores <= 2 ? 'medium' : 'high';
+  if (mobile) {
+    const oldGpu = /adreno \(tm\) [3-5]\d\d|mali-4|mali-t|powervr/.test(gpu);
+    return mem <= 3 || cores <= 4 || oldGpu ? 'low' : 'medium';
+  }
+  const integrated = /intel/.test(gpu) && !/arc/.test(gpu);
+  return mem <= 2 || cores <= 2 || integrated ? 'medium' : 'high';
 }

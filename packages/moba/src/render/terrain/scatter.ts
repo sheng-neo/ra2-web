@@ -10,6 +10,7 @@ import { PALETTE, Rng, fbm2 } from '../materials';
 import type { CliffInfo } from './cliffs';
 import { type MapField, WATER_LEVEL, campRadius, polygonSignedDist } from './field';
 import { type RGB, type SceneryBatcher, mixRgb, rgb, scaleRgb } from './geo';
+import { VIEW_OCCLUDE_PER_METER } from '../engine/camera';
 import type { PropLibrary } from './models';
 
 const _m = new THREE.Matrix4();
@@ -63,8 +64,8 @@ function canopyTint(x: number, z: number, rng: Rng): RGB {
   return [v * (1 + warm * 0.5), v * (1 + warm * 0.08), v * (1 - warm * 0.35)];
 }
 
-/** 对局镜头俯角约 52°：高度 h 的东西会挡住它北边 h × cot(52°) 远的地面 */
-const OCCLUDE_PER_METER = 0.78;
+/** 高度 h 的东西会挡住它北边 h × cot(镜头俯角) 远的地面(俯角以相机装置为准) */
+const OCCLUDE_PER_METER = VIEW_OCCLUDE_PER_METER;
 /** 树模型在缩放 1 时的大致顶高 / 树冠半径 */
 const TREE_TOP = 3.6;
 const TREE_CANOPY = 1.7;

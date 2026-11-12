@@ -74,7 +74,7 @@ describe('星璃 · 被动 星辉印记', () => {
 });
 
 describe('星璃 · S1 流星矢', () => {
-  it('出手点放出穿透弹：沿途敌人各受一次 300(+65%法强) 法术伤害，射程 12', () => {
+  it('出手点放出穿透弹：沿途敌人各受一次 280(+55%法强) 法术伤害，射程 12', () => {
     const { sim, hero } = arena('xingli', 1, -6, 0);
     sim.command(hero.id, { type: 'buy', itemId: 'spell_tome' });
     expect(hero.stats.ap).toBe(40);
@@ -98,7 +98,7 @@ describe('星璃 · S1 流星矢', () => {
     expect(cast[0].dir).toEqual({ x: 1, y: 0 });
     ev = ev.concat(stepFor(sim, 0.6));
     const raw = val(hero, 's1', 'damage') + val(hero, 's1', 'apRatio') * hero.stats.ap;
-    expect(raw).toBeCloseTo(300 + 0.65 * 40, 6);
+    expect(raw).toBeCloseTo(280 + 0.55 * 40, 6);
     for (const t of [m1, a, m2] as SimUnit[]) {
       const hit = damageTo(ev, hero, t);
       expect(hit.length).toBe(1);
@@ -217,7 +217,7 @@ describe('星璃 · 大招 星陨天降', () => {
     // 第一波在预警结束的同一刻(施放后 0.5 秒)，之后每 0.5 秒一波
     expect(waveTicks).toEqual([15, 30, 45, 60, 75]);
     const raw = val(hero, 'ult', 'damage') + val(hero, 'ult', 'apRatio') * hero.stats.ap;
-    expect(raw).toBe(180);
+    expect(raw).toBe(160);
     const waves = damageTo(all, hero, a).filter((d) => d.skill);
     for (const w of waves) expect(w.amount).toBeCloseTo(mitigate(raw, a.stats.mr), 4);
     // 目标站在圈边(离中心 4.5 米)：伤害判定是整个区域，与陨星落点无关

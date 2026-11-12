@@ -46,6 +46,23 @@ export interface GameRenderer {
   setCameraPeek(pos: Vec2 | null): void;
   getStats(): RendererStats;
   dispose(): void;
+
+  // ── 以下为可选扩展(向后兼容的追加)：调用方按 renderer.xxx?.() 使用，没有实现时自行退化 ──
+
+  /** 设置里的「镜头震动」开关 */
+  setCameraShake?(enabled: boolean): void;
+  /** 立即把镜头对准跟随目标，不走缓动(开局、复活、重建渲染器之后) */
+  snapCamera?(): void;
+  /**
+   * 阵亡去色：amount ∈ [0,1]，0 = 正常，1 = 完全进入阵亡灰屏(去色 + 略微压暗)。渐变由调用方逐帧给出。
+   * 渲染层自己适配画质档：有后期时走调色，没有后期(low 档)时给 canvas 加 CSS 滤镜；调用方不必再区分。
+   */
+  setDeathTint?(amount: number): void;
+  /**
+   * 预热：把整张地图、全部单位/建筑/野怪模型与特效的着色器编译好，几何与贴图上传，之后对局中不再因为「第一次出现」而卡顿。
+   * 同步执行，耗时较长(放在加载页后面)。不调用也可以：第一次 render() 会自动做一遍；切换画质后下一帧会自动重做。
+   */
+  prewarm?(): void;
 }
 
 export interface RendererOptions {

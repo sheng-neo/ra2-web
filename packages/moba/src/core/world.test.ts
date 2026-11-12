@@ -277,6 +277,8 @@ describe('防御塔与水晶', () => {
     const end = sim.drainEvents();
     expect(sim.state.over).toBe(true);
     expect(sim.state.winner).toBe(0);
+    const endTime = sim.state.time;
+    expect(sim.state.endTime).toBe(endTime);
     expect(eventsOf(end, 'gameOver')[0].winner).toBe(0);
     expect(eventsOf(end, 'announce').some((e) => e.key === 'victory')).toBe(true);
     expect(eventsOf(end, 'fx').some((e) => e.key === 'core_destroyed')).toBe(true);
@@ -289,6 +291,9 @@ describe('防御塔与水晶', () => {
     expect(sim.state.tick).toBe(tick + 30);
     expect(hero.pos).toEqual(pos);
     expect(after.length).toBe(0);
+    // time 继续走，endTime 停在水晶被毁的那一刻
+    expect(sim.state.time).toBeGreaterThan(endTime + 0.9);
+    expect(sim.state.endTime).toBe(endTime);
   });
 
   it('红方获胜时以玩家视角播报 defeat', () => {

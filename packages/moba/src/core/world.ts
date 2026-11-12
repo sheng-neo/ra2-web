@@ -9,7 +9,8 @@
  *
  * 确定性：只用 sim.rng(种子 PRNG)；不读真实时间；单位按创建顺序遍历，每 tick 由 rng 决定正序还是倒序
  * (否则先创建的蓝方永远先手)。同种子 + 同命令序列 → 逐 tick 完全相同的状态(见 hash.ts)。
- * 对局结束(state.over)后 step() 只推进 time/tick(供渲染层继续播放结束动画)，世界不再变化、命令被忽略。
+ * 对局结束(state.over)后 step() 只推进 time/tick(供渲染层继续播放结束动画)，世界不再变化、命令被忽略；
+ * 分出胜负那一刻的时间记在 state.endTime。
  *
  * 模块地图(都在 core/ 下)：
  *   internal.ts   内部类型：SimUnit(=契约单位+rt 运行时字段)、SimBuff、HeroHooks、DamageInfo…

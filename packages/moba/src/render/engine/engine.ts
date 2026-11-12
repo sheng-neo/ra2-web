@@ -16,6 +16,58 @@ const _ray = new THREE.Ray();
 const _v = new THREE.Vector3();
 const _ground = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
 
+/**
+ * 跨对局复用同一个 WebGLRenderer(同一个 canvas、同一个 GL 上下文)。
+ *
+ * 以前每局结束都 forceContextLoss()：那是一次同步的 GL 调用，要等 GPU 进程把排队的帧全部画完才返回，
+ * 软件渲染下能把主线程卡住十几秒(结算页刚淡入就僵住)；不丢上下文又会攒出「Too many active WebGL contexts」。
+ * 现在释放时只销毁场景资源(几何/材质/贴图/渲染目标，全是异步的删除指令)，把渲染器停放在这里，下一局接着用：
+ * 整个会话只占一个上下文，释放不再阻塞，开局也省掉一次上下文创建。
+ * 上下文已经丢失的渲染器不停放(直接弃用，下次新建)；同时存在第二个渲染器时(画廊页/异常流程)多出来的那个照旧销毁。
+ */
+let parked: THREE.WebGLRenderer | null = null;
+
+function contextLost(r: THREE.WebGLRenderer): boolean {
+  try {
+    return r.getContext().isContextLost();
+  } catch {
+    return true;
+  }
+}
+
+function acquireRenderer(): THREE.WebGLRenderer {
+  const r = parked;
+  parked = null;
+  if (r) {
+    if (!contextLost(r)) return r;
+    r.dispose();
+  }
+  const created = new THREE.WebGLRenderer({ antialias: true, alpha: false, stencil: false, depth: true, powerPreference: 'high-performance' });
+  created.info.autoReset = false;
+  return created;
+}
+
+function releaseRenderer(r: THREE.WebGLRenderer): void {
+  r.setRenderTarget(null);
+  r.renderLists.dispose();
+  const lost = contextLost(r);
+  if (!lost && !parked) {
+    // 停放期间把绘图缓冲缩到最小，不白占显存
+    r.setPixelRatio(1);
+    r.setSize(1, 1, false);
+    parked = r;
+    return;
+  }
+  r.dispose();
+  // 上下文还活着的多余渲染器：主动丢掉上下文，别占着浏览器的上下文名额
+  if (!lost) r.forceContextLoss();
+}
+
+/** 没有后期管线(low 档)时阵亡去色的兜底：给 canvas 加 CSS 滤镜 */
+function cssTint(amount: number): string {
+  return amount > 0.004 ? `grayscale(${(amount * 0.9).toFixed(3)}) brightness(${(1 - amount * 0.16).toFixed(3)})` : '';
+}
+
 export class RenderEngine {
   readonly renderer: THREE.WebGLRenderer;
   readonly canvas: HTMLCanvasElement;
@@ -32,6 +84,9 @@ export class RenderEngine {
   /** 画质或尺寸变化后的回调(模块据此调整) */
   onQualityChanged: ((s: QualitySettings) => void) | null = null;
   onResized: (() => void) | null = null;
+  /** 浏览器把丢失的 GL 上下文还回来之后(three 已重建内部状态；所有着色器都要重新编译) */
+  onContextRestored: (() => void) | null = null;
+  private readonly handleRestored = (): void => this.onContextRestored?.();
 
   private container: HTMLElement;
   private post: PostPipeline | null = null;
@@ -40,6 +95,13 @@ export class RenderEngine {
   private fpsAccum = 0;
   private fpsFrames = 0;
   private disposed = false;
+  /** canvas 在视口里的位置与尺寸(resize 时缓存；坐标换算每帧要调很多次，不能每次都触发布局查询) */
+  private rect = { left: 0, top: 0, width: 1, height: 1 };
+  private rectFrame = 0;
+  /** 阵亡去色 0..1(见 setDeathTint)。没人调用过 setDeathTint 时不碰调色参数(老的调用方可能还在直接写 grade) */
+  private deathTint = 0;
+  private tintUsed = false;
+  private cssFilter = '';
   /**
    * 自适应分辨率：帧率持续低于约 26fps 时逐级降低渲染分辨率(最低到档位上限的 0.6 倍)，只降不升，
    * 切换画质时复位。自动化测试(navigator.webdriver)下关闭，保证截图分辨率稳定。
@@ -52,16 +114,18 @@ export class RenderEngine {
 
   constructor(container: HTMLElement, quality: Quality) {
     this.container = container;
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, stencil: false, depth: true, powerPreference: 'high-performance' });
+    const renderer = acquireRenderer();
     this.renderer = renderer;
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    renderer.info.autoReset = false;
+    renderer.shadowMap.needsUpdate = true;
+    renderer.info.reset();
     renderer.setClearColor(PALETTE.env.fog, 1);
     this.canvas = renderer.domElement;
     const st = this.canvas.style;
+    st.filter = '';
     st.position = 'absolute';
     st.left = '0';
     st.top = '0';
@@ -70,6 +134,7 @@ export class RenderEngine {
     st.display = 'block';
     st.touchAction = 'none';
     container.appendChild(this.canvas);
+    this.canvas.addEventListener('webglcontextrestored', this.handleRestored);
 
     this.scene = new THREE.Scene();
     // 轻雾：对局镜头内(≤50m)几乎无感，只给远处山石/云海拉开层次
@@ -113,6 +178,7 @@ export class RenderEngine {
       this.post.dispose();
       this.post = null;
     }
+    if (this.tintUsed) this.applyDeathTint();
     // 直出屏幕时由材质内的色调映射负责；走后期时场景渲染到线性 HDR 目标(three 自动关闭材质端映射)
     r.toneMappingExposure = this.grade.exposure;
     // 阴影开关/点光数量变化 → 受光材质需要重编译
@@ -155,7 +221,78 @@ export class RenderEngine {
     this.renderer.setSize(w, h, false);
     this.post?.setSize(w, h, dpr);
     this.rig.setAspect(w / h);
+    this.readRect();
     this.onResized?.();
+  }
+
+  private readRect(): void {
+    const r = this.canvas.getBoundingClientRect();
+    this.rect.left = r.left;
+    this.rect.top = r.top;
+    this.rect.width = r.width;
+    this.rect.height = r.height;
+    this.rectFrame = this.frame;
+  }
+
+  /**
+   * 阵亡去色(0 = 正常，1 = 完全灰屏)。有后期管线时写调色参数；没有(low 档)时给 canvas 加 CSS 滤镜。
+   * 画质切换后自动换到另一条路，调用方不用管。
+   */
+  setDeathTint(amount: number): void {
+    const a = Math.min(1, Math.max(0, amount));
+    if (a === this.deathTint && this.tintUsed) return;
+    this.deathTint = a;
+    this.tintUsed = true;
+    this.applyDeathTint();
+  }
+
+  private applyDeathTint(): void {
+    const a = this.deathTint;
+    this.grade.desaturate = this.post ? a * 0.9 : 0;
+    this.grade.dim = this.post ? a * 0.16 : 0;
+    const css = this.post ? '' : cssTint(a);
+    if (css !== this.cssFilter) {
+      this.cssFilter = css;
+      this.canvas.style.filter = css;
+    }
+  }
+
+  /**
+   * 预热绘制：临时让场景里所有对象可见并关掉视锥裁剪，完整画一帧(走与正式绘制相同的管线：阴影、后期都在)，再原样恢复。
+   * 这样镜头外的地形(河道/对面基地)、还没用到的特效材质、还没出场的单位，着色器都在加载阶段编译完，几何与贴图也传完。
+   */
+  prewarm(): void {
+    if (this.disposed) return;
+    const hidden: THREE.Object3D[] = [];
+    const culled: THREE.Object3D[] = [];
+    this.scene.traverse((o) => {
+      // 灯不能动：可见灯的数量变了会让所有受光着色器按另一套参数重编译
+      if ((o as THREE.Light).isLight) return;
+      if (!o.visible) {
+        o.visible = true;
+        hidden.push(o);
+      }
+      if (o.frustumCulled) {
+        o.frustumCulled = false;
+        culled.push(o);
+      }
+    });
+    try {
+      this.lights.fitShadow(this.rig.camera);
+      const r = this.renderer;
+      // 画两遍：three 的阴影通道用的是「上一次绘制」留下的灯光参数(灯数、带阴影的灯数都进着色器的缓存键)，
+      // 第一次绘制(或刚换画质)时那份参数还是旧的，编出来的阴影着色器变体下一帧就不用了；第二遍才是之后一直用的那套
+      for (let pass = 0; pass < 2; pass++) {
+        if (this.post) this.post.render(0);
+        else {
+          r.setRenderTarget(null);
+          r.render(this.scene, this.rig.camera);
+        }
+      }
+    } finally {
+      for (const o of hidden) o.visible = false;
+      for (const o of culled) o.frustumCulled = true;
+    }
   }
 
   /** 推进相机/灯光并画一帧。模块的 update 应在调用前完成(相机先由 updateCamera 更新) */
@@ -177,6 +314,8 @@ export class RenderEngine {
     const debugView = this.rig.isDebugView;
     fog.near = debugView ? 600 : 42;
     fog.far = debugView ? 3000 : 520;
+    // 兜底：canvas 被挪动而尺寸没变时(不会触发 resize)，大约每秒重读一次位置。此刻布局是干净的，读一次很便宜
+    if (this.frame - this.rectFrame >= 60) this.readRect();
     const r = this.renderer;
     r.info.reset();
     if (this.post) this.post.render(dt);
@@ -219,7 +358,7 @@ export class RenderEngine {
 
   /** 屏幕坐标(clientX/clientY) → 地面(y=0)坐标 */
   screenToGround(clientX: number, clientY: number): Vec2 | null {
-    const rect = this.canvas.getBoundingClientRect();
+    const rect = this.rect;
     if (rect.width <= 0 || rect.height <= 0) return null;
     const nx = ((clientX - rect.left) / rect.width) * 2 - 1;
     const ny = -(((clientY - rect.top) / rect.height) * 2 - 1);
@@ -236,14 +375,17 @@ export class RenderEngine {
     _v.set(x, height, z).applyMatrix4(cam.matrixWorldInverse);
     const front = _v.z < 0;
     _v.applyMatrix4(cam.projectionMatrix);
-    const rect = this.canvas.getBoundingClientRect();
+    const rect = this.rect;
     out.x = rect.left + (_v.x * 0.5 + 0.5) * rect.width;
     out.y = rect.top + (-_v.y * 0.5 + 0.5) * rect.height;
     out.visible = front && Math.abs(_v.x) <= 1.05 && Math.abs(_v.y) <= 1.05;
     return out;
   }
 
-  /** 释放场景里所有几何/材质/贴图与 GL 资源，并移除 canvas */
+  /**
+   * 释放场景里所有几何/材质/贴图/渲染目标并移除 canvas。不阻塞：全是异步的 GL 删除指令，
+   * 渲染器本身(GL 上下文)停放起来给下一局复用，见文件顶部的说明。
+   */
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
@@ -253,8 +395,9 @@ export class RenderEngine {
     this.post = null;
     this.lights.dispose();
     this.scene.clear();
-    this.renderer.dispose();
-    this.renderer.forceContextLoss();
+    this.canvas.removeEventListener('webglcontextrestored', this.handleRestored);
+    this.canvas.style.filter = '';
     this.canvas.remove();
+    releaseRenderer(this.renderer);
   }
 }

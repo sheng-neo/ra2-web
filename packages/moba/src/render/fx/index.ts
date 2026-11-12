@@ -94,6 +94,11 @@ export function createFxModule(ctx: RenderContext): FxModule {
 
   /** 敌方在迷雾里放的技能不画：事件属于己方、施放者/目标可见、或落点在己方视野内才播放 */
   const fxVisible = (e: FxEvent): boolean => {
+    // 命中类特效打在玩家看不见的敌人身上(技能蒙中了草里/视野外的目标)：不画，否则火花会把位置漏出来
+    if (e.targetId !== undefined && e.key.startsWith('hit_') && kit.anchor(e.targetId)) {
+      const t = kit.a.unit;
+      if (t && t.team !== env.playerTeam && t.team !== 2 && t.id !== env.playerId && !t.visible[env.playerTeam]) return false;
+    }
     if (e.team === env.playerTeam) return true;
     if (kit.anchor(e.unitId) && kit.a.visible) return true;
     if (kit.anchor(e.targetId) && kit.a.visible) return true;
@@ -119,7 +124,7 @@ export function createFxModule(ctx: RenderContext): FxModule {
         projectiles.handle(e, env.playerId, env.playerTeam);
         break;
       case 'attack': {
-        // 近战英雄普攻：在出手点(动作约 35% 处)补一道主题色刀光
+        // 近战英雄普攻：在命中点(出手动作的 windup 比例处，与模型挥砍动作、模拟层结算同一时刻)前一瞬补一道主题色刀光
         if (!kit.anchor(e.unitId) || !kit.a.visible) return;
         const u = kit.a.unit;
         if (!u || u.kind !== 'hero' || HEROES[u.heroId].attackType !== 'melee') return;
@@ -128,7 +133,7 @@ export function createFxModule(ctx: RenderContext): FxModule {
         const id = u.id;
         const n = (swingCount.get(id) ?? 0) + 1;
         swingCount.set(id, n);
-        const delay = Math.max(0.03, (u.animDur > 0 ? u.animDur : 0.5) * 0.35 - 0.06);
+        const delay = Math.max(0.03, (u.animDur > 0 ? u.animDur : 0.5) * HEROES[u.heroId].basicAttack.windup - 0.05);
         kit.after(delay, () => {
           if (!kit.anchor(id) || !kit.a.unit || !kit.a.unit.alive || kit.a.unit.anim !== 'attack') return;
           const f = kit.a.unit.facing;

@@ -613,6 +613,11 @@ export interface GameState {
   wave: number;
   over: boolean;
   winner: PlayerTeam | null;
+  /**
+   * 对局分出胜负(水晶被毁)那一 tick 的模拟时间；未结束时为 undefined。
+   * 结束后 time/tick 仍会继续推进(供渲染层播放结束演出)，结算页的「对局时长」应读这个字段。
+   */
+  endTime?: number;
 }
 
 export interface World {

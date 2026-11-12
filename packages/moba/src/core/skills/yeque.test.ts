@@ -98,7 +98,7 @@ describe('夜阙 · S1 瞬影斩', () => {
     expect(hero.pos.x).toBeCloseTo(3.5, 3);
     expect(hero.rt.dash).toBeNull();
     const raw = val(hero, 's1', 'damage') + val(hero, 's1', 'adRatio') * hero.stats.ad;
-    expect(raw).toBeCloseTo(200 + 0.9 * hero.stats.ad, 6);
+    expect(raw).toBeCloseTo(200 + 1.0 * hero.stats.ad, 6);
     for (const t of [a, b, m]) {
       const hit = damageTo(ev, hero, t);
       expect(hit.length).toBe(1);
@@ -159,7 +159,7 @@ describe('夜阙 · S2 影刃飞旋', () => {
     expect(fxOf(ev, 'yeque_s2_cast')[0].dir).toEqual({ x: 1, y: 0 });
     ev = ev.concat(stepFor(sim, 0.5));
     const raw = val(hero, 's2', 'damage') + val(hero, 's2', 'adRatio') * hero.stats.ad;
-    expect(raw).toBeCloseTo(150 + 0.5 * hero.stats.ad, 6);
+    expect(raw).toBeCloseTo(165 + 0.65 * hero.stats.ad, 6);
     const full = mitigate(raw, a.stats.armor);
     const hits = damageTo(ev, hero, a).map((h) => h.amount);
     expect(hits.length).toBe(3);
@@ -194,7 +194,7 @@ describe('夜阙 · S2 影刃飞旋', () => {
 });
 
 describe('夜阙 · 大招 幽夜处决', () => {
-  it('遁影 0.35 秒(不可选中、免疫控制) → 出现在目标身后 → 380(+120%物攻) + 20% 已损生命的物理伤害', () => {
+  it('遁影 0.35 秒(不可选中、免疫控制) → 出现在目标身后 → 340(+120%物攻) + 20% 已损生命的物理伤害', () => {
     const { sim, hero } = arena('yeque', 4);
     const a = enemyAt(sim, 'panyue', 5, 0, Math.PI);
     noRegen(sim, a);
@@ -226,7 +226,7 @@ describe('夜阙 · 大招 幽夜处决', () => {
     expect(strike[0]).toMatchObject({ pos: { x: 5, y: 0 }, targetId: a.id, from: { x: 0, y: 0 } });
     expect(strike[0].to && dist(strike[0].to, hero.pos)).toBeLessThan(1e-9);
     const raw = val(hero, 'ult', 'damage') + val(hero, 'ult', 'adRatio') * hero.stats.ad + val(hero, 'ult', 'missingRatio') * missing;
-    expect(raw).toBeCloseTo(380 + 1.2 * hero.stats.ad + 0.2 * 0.5 * a.stats.maxHp, 4);
+    expect(raw).toBeCloseTo(340 + 1.2 * hero.stats.ad + 0.2 * 0.5 * a.stats.maxHp, 4);
     const hit = damageTo(ev, hero, a);
     expect(hit.length).toBe(1);
     expect(hit[0]).toMatchObject({ dtype: 'physical', skill: true });

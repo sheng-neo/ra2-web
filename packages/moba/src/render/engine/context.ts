@@ -126,6 +126,11 @@ export interface RenderModule {
   pickUnit?(clientX: number, clientY: number, state: GameState): number;
   /** 换了一局/时间轴跳变(不重建渲染器)：丢掉所有跟对局状态绑定的视图与进行中的效果 */
   reset?(): void;
+  /**
+   * 预热(加载阶段)：把还没出场的东西(小兵/野怪/废墟模型等)提前建好并放进场景，让随后的一次全场景绘制能编译到它们的着色器、
+   * 上传它们的几何。返回一个可选的收尾函数，在那次绘制之后调用。
+   */
+  prewarm?(): (() => void) | void;
   dispose(): void;
 }
 

@@ -3,23 +3,12 @@
  * 进度 p：沿兵线从己方基地(0)到敌方基地(total)的弧长，蓝红双方用同一套逻辑而不必区分方向。
  */
 import { LanePath } from '../lanes';
-import type { LaneId, MapData, PlayerTeam, Unit, Vec2 } from '../types';
+import type { LaneId, MapData, PlayerTeam, Vec2 } from '../types';
 
 export const LANES: LaneId[] = ['top', 'mid', 'bot'];
 
 export function dist(a: Vec2, b: Vec2): number {
   return Math.hypot(a.x - b.x, a.y - b.y);
-}
-
-export function dist2(a: Vec2, b: Vec2): number {
-  const dx = a.x - b.x;
-  const dy = a.y - b.y;
-  return dx * dx + dy * dy;
-}
-
-/** a 到单位 u 身体边缘的距离 */
-export function edgeDist(a: Vec2, u: Unit): number {
-  return Math.hypot(u.pos.x - a.x, u.pos.y - a.y) - u.radius;
 }
 
 export function clamp(x: number, lo: number, hi: number): number {

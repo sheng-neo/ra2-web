@@ -1,17 +1,43 @@
 /**
- * 相机装置：俯角约 52°、朝北(-z)看的透视相机，平滑跟随目标、地图边界夹取、peek 覆盖、震屏。
- * 竖屏/窄屏时自动加大 FOV 并拉远，保证横向视野不小于 MIN_HALF_WIDTH。
+ * 相机装置：朝北(-z)看的透视相机，平滑跟随目标、按「屏幕占比」夹取地图边界、peek 覆盖、瞄准时的镜头前探、震屏。
+ *
+ * 取景(总监定的指标：1280×720 下英雄站立约 105~125 像素高，同时装下最远的技能射程)：
+ *   横屏  俯角 46°、垂直 FOV 32°、距离 27.5 米。16:9 下以英雄为准：左右各约 14.3 米、向北约 14.5 米、向南约 9.3 米
+ *         (透视下近处被放大，南向装不下 14 米；瞄准长射程技能时镜头会朝瞄准方向前探，见 setReach)。
+ *         英雄脚底在屏幕高度约 46.5% 处(略高于中心：下方有状态栏/技能键)。
+ *   竖屏  横向太窄：加大 FOV 并拉远到左右各 7.5 米，俯角加到 54°(少看一些被压扁的远处)，英雄放在约 43% 高度(下半屏是摇杆与技能键)。
+ * 边界夹取不用固定米数而用屏幕占比：地图边线最多退到屏幕的某个位置，界外装饰带在任何宽高比下都只占一小条。
  */
 import * as THREE from 'three';
 
 const DEG = Math.PI / 180;
-/** 横屏基准：俯角 / 垂直 FOV / 到注视点的距离(可视纵深约 28 米) */
-const BASE_PITCH = 52;
-const BASE_FOV = 35;
-const BASE_DIST = 33;
-/** 注视点处最小的横向半视野(米)：再窄就拉远 */
-const MIN_HALF_WIDTH = 10.5;
-const MAX_FOV = 46;
+/** 横屏基准：俯角 / 垂直 FOV / 到注视点的距离 */
+const BASE_PITCH = 46;
+const BASE_FOV = 32;
+const BASE_DIST = 27.5;
+/** 高度 1 米的东西在对局镜头下会挡住它北边多远的地面(= cot 俯角)：地形摆树、裁剪判断都用它 */
+export const VIEW_OCCLUDE_PER_METER = 1 / Math.tan(BASE_PITCH * DEG);
+/** 竖屏的俯角 */
+const PORTRAIT_PITCH = 54;
+/** 注视点处最小的横向半视野(米)：再窄就加 FOV、拉远 */
+const MIN_HALF_WIDTH = 7.5;
+const MAX_FOV = 44;
+/** 英雄脚底在屏幕上的纵向位置(NDC，+1 = 上沿)：横屏 / 竖屏 */
+const HERO_NDC = 0.07;
+const HERO_NDC_PORTRAIT = 0.14;
+/** 地图边线最多退到屏幕的哪里(NDC)：北 / 南 / 东西。竖屏时北边放宽(远处被压得很扁)、南边收紧(下半屏是操作区) */
+const EDGE_N = 0.42;
+const EDGE_N_PORTRAIT = 0.6;
+const EDGE_S = 0.5;
+const EDGE_S_PORTRAIT = 0.35;
+const EDGE_X = 0.5;
+/** 瞄准前探：落点要进入的安全框(NDC)，以及前探时英雄自己最多被推到屏幕的哪里 */
+const REACH_TOP = 0.8;
+const REACH_BOTTOM = 0.66;
+const REACH_X = 0.86;
+const REACH_HERO_TOP = 0.55;
+const REACH_HERO_BOTTOM = 0.5;
+const REACH_HERO_X = 0.6;
 
 export interface CameraBounds {
   minX: number;
@@ -24,13 +50,20 @@ export class CameraRig {
   readonly camera: THREE.PerspectiveCamera;
   /** 震屏总开关(设置里的「镜头震动」) */
   shakeEnabled = true;
-  /** 注视点夹取范围(地图边界) */
-  bounds: CameraBounds = { minX: -52, maxX: 52, minZ: -52, maxZ: 54 };
+  /** 可走区域的边界(地图 bound)；注视点的夹取范围由它和当前取景按屏幕占比推出 */
+  bounds: CameraBounds = { minX: -57.5, maxX: 57.5, minZ: -57.5, maxZ: 57.5 };
 
   private pitch = BASE_PITCH * DEG;
   private distance = BASE_DIST;
-  /** 英雄在画面中略低于中心：注视点向北偏移的米数 */
-  private lead = 2.2;
+  /** 注视点相对跟随目标向北偏移的米数(负数 = 注视点在英雄南边，英雄显示在屏幕中心偏上) */
+  private lead = 0;
+  /** 竖屏程度 0..1(宽高比 1 → 0.6 之间过渡) */
+  private tall = 0;
+  private tanHalf = Math.tan((BASE_FOV / 2) * DEG);
+  /** 瞄准时要看见的地面点(世界坐标)与当前前探量 */
+  private reach: THREE.Vector3 | null = null;
+  private reachX = 0;
+  private reachZ = 0;
   private aspect = 16 / 9;
   private follow = new THREE.Vector3();
   private peek: THREE.Vector3 | null = null;
@@ -74,25 +107,45 @@ export class CameraRig {
       cam.near = 1;
       cam.far = 1600;
     } else {
+      const tall = Math.min(1, Math.max(0, (1 - this.aspect) / 0.4));
       let fov = BASE_FOV;
       let dist = BASE_DIST;
-      let pitch = BASE_PITCH;
-      const halfW = (f: number, d: number): number => d * Math.tan((f / 2) * DEG) * this.aspect;
-      if (halfW(fov, dist) < MIN_HALF_WIDTH) {
-        // 先加 FOV 再拉远；窄屏时俯角稍大一点，避免远端看得太远
-        const need = Math.atan(MIN_HALF_WIDTH / (dist * this.aspect)) * 2 / DEG;
-        fov = Math.min(MAX_FOV, need);
-        dist = Math.max(dist, MIN_HALF_WIDTH / (Math.tan((fov / 2) * DEG) * this.aspect));
-        pitch = 57;
+      const halfH = MIN_HALF_WIDTH / this.aspect;
+      if (dist * Math.tan((fov / 2) * DEG) < halfH) {
+        // 先加 FOV 再拉远
+        fov = Math.min(MAX_FOV, (Math.atan(halfH / dist) * 2) / DEG);
+        dist = Math.max(dist, halfH / Math.tan((fov / 2) * DEG));
       }
       cam.fov = fov;
+      this.tall = tall;
       this.distance = dist;
-      this.pitch = pitch * DEG;
-      this.lead = 2.2 * (dist / BASE_DIST);
+      this.pitch = (BASE_PITCH + (PORTRAIT_PITCH - BASE_PITCH) * tall) * DEG;
+      this.tanHalf = Math.tan((fov / 2) * DEG);
+      this.lead = this.groundZ(HERO_NDC + (HERO_NDC_PORTRAIT - HERO_NDC) * tall);
       cam.near = 2;
       cam.far = 900;
     }
     cam.updateProjectionMatrix();
+  }
+
+  /** 屏幕纵向 NDC(+1 = 上沿) → 该处地面相对注视点向南的距离(米，北为负)。只对对局取景有意义 */
+  private groundZ(ndcY: number): number {
+    const k = ndcY * this.tanHalf;
+    return (-k * this.distance) / (Math.sin(this.pitch) - k * Math.cos(this.pitch));
+  }
+
+  /** 注视点以南 z 米处(北为负)屏幕横向的半视野(米) */
+  private halfWidthAt(z: number): number {
+    return (this.distance - z * Math.cos(this.pitch)) * this.tanHalf * this.aspect;
+  }
+
+  /**
+   * 瞄准时希望看见的地面点(技能指示器的末端)；null = 结束瞄准。
+   * 该点落在安全框之外时镜头朝它前探(缓动)，英雄自己不会被推出画面。
+   */
+  setReach(x: number | null, z = 0): void {
+    if (x === null) this.reach = null;
+    else (this.reach ??= new THREE.Vector3()).set(x, 0, z);
   }
 
   /** 俯瞰全图的调试相机 */
@@ -164,8 +217,36 @@ export class CameraRig {
       gx = g.x;
       gz = g.z - (this.peek ? 0 : this.lead);
       if (!this.override) {
-        gx = Math.min(b.maxX, Math.max(b.minX, gx));
-        gz = Math.min(b.maxZ, Math.max(b.minZ, gz));
+        // 瞄准前探：把指示器末端收进安全框
+        let wantX = 0;
+        let wantZ = 0;
+        if (this.reach && !this.peek) {
+          const rx = this.reach.x - gx;
+          const rz = this.reach.z - gz;
+          const zLo = this.groundZ(REACH_TOP);
+          const zHi = this.groundZ(-REACH_BOTTOM);
+          wantZ = rz - Math.min(zHi, Math.max(zLo, rz));
+          // 英雄自己(相对注视点在 lead 处)不能被推得太靠边
+          wantZ = Math.min(this.lead - this.groundZ(REACH_HERO_TOP), Math.max(this.lead - this.groundZ(-REACH_HERO_BOTTOM), wantZ));
+          const half = this.halfWidthAt(rz - wantZ) * REACH_X;
+          wantX = rx - Math.min(half, Math.max(-half, rx));
+          const heroHalf = this.halfWidthAt(this.lead - wantZ) * REACH_HERO_X;
+          wantX = Math.min(heroHalf, Math.max(-heroHalf, wantX));
+        }
+        const kr = this.snapped ? 1 - Math.exp(-(this.reach ? 7 : 5) * dt) : 1;
+        this.reachX += (wantX - this.reachX) * kr;
+        this.reachZ += (wantZ - this.reachZ) * kr;
+        if (!this.peek) {
+          gx += this.reachX;
+          gz += this.reachZ;
+        }
+        // 地图边线最多退到屏幕的 EDGE_* 处(按当前取景换算成注视点的范围)
+        const t = this.tall;
+        const mx = this.halfWidthAt(0) * EDGE_X;
+        const mn = -this.groundZ(EDGE_N + (EDGE_N_PORTRAIT - EDGE_N) * t);
+        const ms = this.groundZ(-(EDGE_S + (EDGE_S_PORTRAIT - EDGE_S) * t));
+        gx = Math.min(Math.max(b.maxX - mx, 0), Math.max(Math.min(b.minX + mx, 0), gx));
+        gz = Math.min(Math.max(b.maxZ - ms, 0), Math.max(Math.min(b.minZ + mn, 0), gz));
       }
     }
     if (!this.snapped) {

@@ -116,13 +116,13 @@ describe('技能意图表', () => {
     const d = SKILL_INTENTS.fengling.s1.damage;
     if (!d) throw new Error('no damage');
     const raw = skillRawDamage(hero, 's1');
-    expect(raw).toBeCloseTo(630 + 1.1 * hero.stats.ad, 6);
+    expect(raw).toBeCloseTo(630 + 1.0 * hero.stats.ad, 6);
     const minion = dummyAt(sim, 3, 3);
     expect(skillRawDamage(hero, 's1', minion)).toBeCloseTo(raw * 0.6, 6);
     expect(estimateSkillDamage(hero, 's1', minion)).toBeCloseTo(mitigate(raw * 0.6, minion.stats.armor), 6);
     // 箭雨只算 2 跳
-    expect(skillRawDamage(hero, 'ult', target, 2)).toBeCloseTo(2 * (210 + 0.4 * hero.stats.ad), 6);
-    expect(skillRawDamage(hero, 'ult', target, 99)).toBeCloseTo(6 * (210 + 0.4 * hero.stats.ad), 6);
+    expect(skillRawDamage(hero, 'ult', target, 2)).toBeCloseTo(2 * (185 + 0.4 * hero.stats.ad), 6);
+    expect(skillRawDamage(hero, 'ult', target, 99)).toBeCloseTo(6 * (185 + 0.4 * hero.stats.ad), 6);
     expect(skillRawDamage(hero, 's2')).toBe(0);
     expect(mitigatedDamage(1000, 'true', hero, target)).toBe(1000);
     expect(mitigatedDamage(1000, 'physical', hero, target)).toBeCloseTo(mitigate(1000, target.stats.armor, hero.stats.armorPen), 6);
@@ -140,7 +140,7 @@ describe('技能意图表', () => {
     const y = duel('yeque', 4);
     y.target.hp = y.target.stats.maxHp * 0.35;
     const missing = y.target.stats.maxHp * 0.65;
-    const rawUlt = 740 + 1.2 * y.hero.stats.ad + 0.2 * missing;
+    const rawUlt = 680 + 1.2 * y.hero.stats.ad + 0.2 * missing;
     expect(skillRawDamage(y.hero, 'ult', y.target)).toBeCloseTo(rawUlt, 4);
     const expected = mitigate(rawUlt * 1.18, y.target.stats.armor);
     expect(estimateSkillDamage(y.hero, 'ult', y.target)).toBeCloseTo(expected, 4);
@@ -214,7 +214,7 @@ describe('技能描述', () => {
     }
     expect(formatSkillDesc(HEROES.panyue.skills.s1, 1)).toContain('240(+60%物攻)');
     expect(formatSkillDesc(HEROES.panyue.skills.s1, 0)).toContain('240/300/360/420/480/540');
-    expect(formatSkillDesc(HEROES.yeque.skills.ult, 3)).toContain('740(+120%物攻) 外加目标 20% 已损生命');
+    expect(formatSkillDesc(HEROES.yeque.skills.ult, 3)).toContain('680(+120%物攻) 外加目标 20% 已损生命');
   });
 
   it('被动描述里写死的数字与 passive.values 一致', () => {

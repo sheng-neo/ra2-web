@@ -8,14 +8,14 @@ import type { AimIndicator, GameRenderer, Quality, RendererOptions, RendererStat
 import type { FrameInfo, RenderContext, RenderModule, RenderModuleFactory, TerrainQuery, UnitQuery } from './context';
 import { RenderEngine } from './engine';
 
-/** 契约之外的扩展能力(main.ts / 画廊页可选用) */
+/** 契约之外的扩展能力(画廊页 / 调试用)。契约里的可选方法在这里都有实现 */
 export interface GameRendererCore extends GameRenderer {
   readonly engine: RenderEngine;
   readonly context: RenderContext;
-  /** 设置里的「镜头震动」开关 */
   setCameraShake(enabled: boolean): void;
-  /** 立即把镜头对准玩家(开局、复活) */
   snapCamera(): void;
+  setDeathTint(amount: number): void;
+  prewarm(): void;
   /** 与 render 相同的一帧推进(相机/模块/时钟)，但不提交绘制：快进、无头长跑、定格前的预滚 */
   advance(state: GameState, alpha: number, dtReal: number): void;
   /**
@@ -56,7 +56,13 @@ export function createRendererCore(container: HTMLElement, state: GameState, opt
   layers.fx.name = 'fx';
   engine.scene.add(layers.terrain, layers.units, layers.fx);
 
-  const playerTeamOf = (s: GameState): PlayerTeam => s.heroes.find((h) => h.id === s.playerId)?.team ?? 0;
+  /** 玩家英雄(每帧要查好几次：用循环，不建闭包) */
+  const playerOf = (s: GameState): GameState['heroes'][number] | null => {
+    const heroes = s.heroes;
+    for (let i = 0; i < heroes.length; i++) if (heroes[i].id === s.playerId) return heroes[i];
+    return null;
+  };
+  const playerTeamOf = (s: GameState): PlayerTeam => playerOf(s)?.team ?? 0;
   const frame: FrameInfo = { state, alpha: 1, dt: 0, time: 0, frame: 0, playerTeam: playerTeamOf(state) };
 
   // 默认的单位位置查询：按模拟状态插值。每帧重建 id 索引(复用同一个 Map)
@@ -116,11 +122,14 @@ export function createRendererCore(container: HTMLElement, state: GameState, opt
     },
   };
 
-  // 镜头夹取范围：注视点不越出可走区域太多，边角处仍能看到装饰带而不穿帮
+  // 镜头夹取以可走区域的边界为准(相机装置按屏幕占比换算：界外装饰带只露出一小条)
   const b = state.map.bound;
-  engine.rig.bounds = { minX: -b + 5, maxX: b - 5, minZ: -b + 4, maxZ: b - 3 };
+  engine.rig.bounds = { minX: -b, maxX: b, minZ: -b, maxZ: b };
 
   for (const f of factories) modules.push(f(ctx));
+
+  /** 预热做过了吗(切画质、上下文恢复后所有材质要重编译，需要再做一遍) */
+  let warmed = false;
 
   engine.onQualityChanged = (s) => {
     for (const m of modules) m.setQuality?.(s);
@@ -128,9 +137,13 @@ export function createRendererCore(container: HTMLElement, state: GameState, opt
   engine.onResized = () => {
     for (const m of modules) m.resize?.(engine.viewport);
   };
+  // 上下文失而复得：着色器全部要重编译，下一帧出图前再预热一遍
+  engine.onContextRestored = () => {
+    warmed = false;
+  };
 
   const followPlayer = (s: GameState, alpha: number): void => {
-    const hero = s.heroes.find((h) => h.id === s.playerId);
+    const hero = playerOf(s);
     if (!hero) return;
     engine.rig.setFollow(hero.prevPos.x + (hero.pos.x - hero.prevPos.x) * alpha, hero.prevPos.y + (hero.pos.y - hero.prevPos.y) * alpha);
   };
@@ -166,9 +179,71 @@ export function createRendererCore(container: HTMLElement, state: GameState, opt
   };
 
   let disposed = false;
+
+  // 瞄准前探：长射程技能朝屏幕外(尤其是朝南)瞄的时候，镜头往那边让一让，保证指示器末端看得见
+  let aim: AimIndicator | null = null;
+  const updateReach = (s: GameState, alpha: number): void => {
+    const rig = engine.rig;
+    if (!aim || aim.kind === 'self' || aim.kind === 'target') {
+      rig.setReach(null);
+      return;
+    }
+    const hero = playerOf(s);
+    if (!hero || !hero.alive) {
+      rig.setReach(null);
+      return;
+    }
+    const hx = hero.prevPos.x + (hero.pos.x - hero.prevPos.x) * alpha;
+    const hz = hero.prevPos.y + (hero.pos.y - hero.prevPos.y) * alpha;
+    let dx: number;
+    let dz: number;
+    let len: number;
+    if (aim.kind === 'position') {
+      // 落点(超出射程时夹到射程圈上)再往外带一点落点圈的半径
+      dx = aim.pos.x - hx;
+      dz = aim.pos.y - hz;
+      const d = Math.hypot(dx, dz);
+      len = Math.min(d, aim.range) + Math.min(aim.radius, 2.5);
+    } else {
+      dx = aim.dir.x;
+      dz = aim.dir.y;
+      len = aim.range;
+    }
+    const d = Math.hypot(dx, dz);
+    if (d < 1e-4) rig.setReach(null);
+    else rig.setReach(hx + (dx / d) * len, hz + (dz / d) * len);
+  };
+
+  const prewarm = (): void => {
+    if (disposed) return;
+    warmed = true;
+    // 用当前帧信息(步长 0)让各模块把本帧的实例摆好，再让引擎把整个场景不分可见与否画一遍
+    frame.dt = 0;
+    engine.updateCamera(0);
+    const finish: (() => void)[] = [];
+    for (const m of modules) {
+      const f = m.prewarm?.();
+      if (f) finish.push(f);
+    }
+    try {
+      for (const m of modules) m.update(frame);
+      engine.prewarm();
+    } finally {
+      for (const f of finish) f();
+    }
+  };
+
   const step = (s: GameState, alpha: number, dtReal: number, draw: boolean): void => {
     if (disposed) return;
     const dt = Math.min(Math.max(dtReal, 0), 0.1);
+    if (draw && !warmed) {
+      // 第一次出图前自动预热(集成层的加载页正好盖着)；同一次调用里紧接着画正常的一帧，预热画面不会被呈现出来
+      frame.state = s;
+      frame.alpha = alpha;
+      frame.playerTeam = playerTeamOf(s);
+      followPlayer(s, alpha);
+      prewarm();
+    }
     frame.state = s;
     frame.alpha = alpha;
     frame.dt = dt;
@@ -176,6 +251,7 @@ export function createRendererCore(container: HTMLElement, state: GameState, opt
     frame.frame = engine.frame + 1;
     frame.playerTeam = playerTeamOf(s);
     followPlayer(s, alpha);
+    updateReach(s, alpha);
     engine.updateCamera(dt);
     for (const m of modules) m.update(frame);
     engine.render(dt, draw);
@@ -198,11 +274,15 @@ export function createRendererCore(container: HTMLElement, state: GameState, opt
       if (disposed || events.length === 0) return;
       for (const m of modules) m.handleEvents?.(events, s);
     },
-    setAim(aim: AimIndicator | null): void {
-      for (const m of modules) m.setAim?.(aim);
+    setAim(a: AimIndicator | null): void {
+      aim = a;
+      for (const m of modules) m.setAim?.(a);
     },
     setQuality(q: Quality): void {
+      if (q === engine.quality) return;
       engine.setQuality(q);
+      // 换档后受光材质全部重编译：下一帧出图前重新预热，免得之后边打边卡
+      warmed = false;
     },
     resize(): void {
       engine.resize();
@@ -230,6 +310,10 @@ export function createRendererCore(container: HTMLElement, state: GameState, opt
     snapCamera(): void {
       engine.rig.snap();
     },
+    setDeathTint(amount: number): void {
+      engine.setDeathTint(amount);
+    },
+    prewarm,
     dispose(): void {
       if (disposed) return;
       disposed = true;

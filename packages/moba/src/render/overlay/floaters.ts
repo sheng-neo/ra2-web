@@ -3,7 +3,7 @@
  * 同一目标短时间内的多段伤害按「错位槽」散开不重叠；只显示屏幕内、且与英雄有关的(小兵互殴的数字是噪音)。
  * 数字用预渲染的字形条逐个贴图，任何数值都不产生新的文字精灵。
  */
-import type { DamageType, GameEvent, GameState } from '../../core/types';
+import type { DamageType, GameEvent, GameState, Unit } from '../../core/types';
 import type { UnitAnchor, UnitAnchors } from '../fx/anchors';
 import type { Projector } from './bars';
 import { GlyphStrip, type GlyphStyle, type IconCache, type Sprite2D, type TextCache } from './sprites2d';
@@ -60,6 +60,8 @@ export class FloaterLayer {
   private p = { x: 0, y: 0 };
   private text: TextCache;
   private icons: IconCache;
+  /** 玩家所在队伍(handle 时更新) */
+  private team: 0 | 1 = 0;
 
   constructor(text: TextCache, icons: IconCache, dpr: number) {
     this.text = text;
@@ -124,20 +126,27 @@ export class FloaterLayer {
     return f;
   }
 
+  /** 玩家看不见的敌方单位(草丛里/视野外)：身上不出任何飘字，否则数字会把位置漏出来。玩家自己和中立单位不受限 */
+  private hidden(u: Unit | undefined, pid: number): boolean {
+    return u !== undefined && u.id !== pid && u.team !== this.team && u.team !== 2 && !u.visible[this.team];
+  }
+
   handle(events: GameEvent[], state: GameState, anchors: UnitAnchors, playerTeam: number): void {
     const pid = state.playerId;
+    this.team = playerTeam === 1 ? 1 : 0;
     for (const e of events) {
       switch (e.type) {
         case 'damage': {
           if (e.amount < 1) break;
           const mine = e.sourceId === pid || e.targetId === pid;
+          const t = anchors.unit(e.targetId);
+          // 技能蒙中了藏在草里/视野外的敌人：模拟层照样发 damage，但不能出字(哪怕是玩家自己打的)
+          if (this.hidden(t, pid)) break;
           let related = mine;
           if (!related) {
             // 与玩家无关的：至少一方是英雄才显示
-            const t = anchors.unit(e.targetId);
             const s = anchors.unit(e.sourceId);
             related = (t !== undefined && t.kind === 'hero') || (s !== undefined && s.kind === 'hero');
-            if (related && t && t.team !== playerTeam && !t.visible[playerTeam as 0 | 1]) related = false;
           }
           if (!related) break;
           const style = e.crit ? STYLE.crit : styleOf(e.dtype);
@@ -163,6 +172,7 @@ export class FloaterLayer {
           break;
         }
         case 'levelUp': {
+          if (this.hidden(anchors.unit(e.unitId), pid)) break;
           const f = this.spawn(e.unitId, anchors, 0, 0, STYLE.gold, '', 1, 1, false);
           if (f) {
             f.sprite = this.text.get(`升级 Lv.${e.level}`, 17, '#ffe58a', 'rgba(60,34,0,0.95)', 800);
@@ -185,7 +195,7 @@ export class FloaterLayer {
         if (this.now - h.t < 0.45) continue;
         this.heals.delete(id);
         const u = anchors.unit(id);
-        if (h.sum >= 15 && u && (id === state.playerId || u.kind === 'hero')) {
+        if (h.sum >= 15 && u && (id === state.playerId || u.kind === 'hero') && !this.hidden(u, state.playerId)) {
           const f = this.spawn(id, anchors, u.pos.x, u.pos.y, STYLE.heal, `+${Math.round(h.sum)}`, id === state.playerId ? 1 : 0.8, 1, false);
           // 治疗数字偏左上，和偏右的伤害数字错开
           if (f) {
