@@ -11,8 +11,8 @@ import { DECAL } from './decals';
 import type { FxKit } from './kit';
 import { C, col } from './util';
 
-const AIM = col(0x7fe4ff);
-const AIM_HOT = col(0xdff8ff);
+const AIM = col(0x2ab8ff);
+const AIM_HOT = col(0x6fd8ff);
 const AIM_UNDER = col(0x06243a);
 const CANCEL = col(0xff4a3a);
 const CANCEL_UNDER = col(0x3a0a08);
@@ -87,12 +87,12 @@ export class AimIndicators {
         const dx = aim.dir.x / l;
         const dz = aim.dir.y / l;
         const half = aim.range / 2;
-        this.style(s1, c, under, 1.5, 0.9, 0.55);
+        this.style(s1, c, under, 1.25, 0.9, 0.55);
         d.at(s1).at(px + dx * half, pz + dz * half).radius(half).rot(Math.atan2(dz, dx), Math.max(0.3, aim.width / 2) / half);
         break;
       }
       case 'cone': {
-        this.style(s1, c, under, 1.5, 0.9, 0.55);
+        this.style(s1, c, under, 1.25, 0.9, 0.55);
         d.at(s1).at(px, pz).radius(aim.range).rot(Math.atan2(aim.dir.y, aim.dir.x)).params(aim.angle / 2, 1);
         break;
       }
@@ -105,9 +105,9 @@ export class AimIndicators {
           tx *= aim.range / dist;
           tz *= aim.range / dist;
         }
-        this.style(s0, c, under, 1.3, 0.75, 0.35);
+        this.style(s0, c, under, 1.1, 0.75, 0.35);
         d.at(s0).at(px, pz).radius(aim.range).params(0.008, 0);
-        this.style(s1, hot, under, 1.6, 0.95, 0.5);
+        this.style(s1, hot, under, 1.25, 0.95, 0.5);
         d.at(s1).at(px + tx, pz + tz).radius(Math.max(0.6, aim.radius)).params(16, 0);
         this.style(s2, c, C.black, 0.5, 0.8, 0);
         d.at(s2).at(px + tx, pz + tz).radius(Math.max(0.6, aim.radius)).params(0.7);
@@ -118,7 +118,7 @@ export class AimIndicators {
         d.at(s0).at(px, pz).radius(aim.range).params(0.008, 0);
         const py = k.a.y + k.a.height * 0.45;
         if (k.anchor(aim.targetId) && k.a.visible) {
-          this.style(s2, hot, under, 1.9, 1, 0.5);
+          this.style(s2, hot, under, 1.4, 1, 0.5);
           d.at(s2).at(k.a.x, k.a.z).radius(k.a.radius + 0.75);
           k.ribbons.line(R.link, px, py, pz, k.a.x, k.a.y + k.a.height * 0.45, k.a.z, c, 1);
         } else d.at(s2).alpha(0);
@@ -126,7 +126,7 @@ export class AimIndicators {
       }
       case 'self': {
         const r = aim.radius > 0 ? aim.radius : 1.4;
-        this.style(s1, hot, under, 1.6, 0.95, 0.5);
+        this.style(s1, hot, under, 1.25, 0.95, 0.5);
         d.at(s1).at(px, pz).radius(r).params(aim.radius > 0 ? 16 : 0, 0);
         this.style(s2, c, C.black, 0.45, 0.8, 0);
         d.at(s2).at(px, pz).radius(r).params(0.6);

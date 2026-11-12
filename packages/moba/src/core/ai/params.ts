@@ -1,0 +1,157 @@
+/**
+ * Bot 的全部可调参数：难度档案(反应/准头/进攻性…)、各英雄的打法参数、全局阈值。
+ * 调平衡/调手感只改这里；逻辑文件里不出现魔法数字(几何常量除外)。
+ */
+import type { Difficulty, HeroId } from '../types';
+
+/** 难度档案：只描述「操作与判断的水平」，不改变规则、不给额外信息或数值 */
+export interface Profile {
+  /** 决策间隔（秒） */
+  think: number;
+  /** 反应时间（秒）：敌人/预警圈/弹道出现后多久才会对它做出反应 */
+  reaction: number;
+  /** 技能瞄准的角度误差上限（弧度），均匀分布在 ±aimError */
+  aimError: number;
+  /** 预判比例：0 = 瞄当前位置，1 = 按目标速度完全预判 */
+  aimLead: number;
+  /** 看到预警圈/直线弹道后选择躲的概率 */
+  dodge: number;
+  /** 补刀时对「这一刀能不能收掉」的估计误差（比例，±） */
+  lastHitError: number;
+  /** 明明能补却没出手的概率 */
+  lastHitSkip: number;
+  /** 进攻性：>1 更敢打（开战门槛按它缩放） */
+  aggression: number;
+  /** 骚扰/越线意愿 0..1：对线时主动上前消耗的频率 */
+  harass: number;
+  /** 是否考虑越塔强杀 */
+  dive: boolean;
+  /** 连招中两个技能之间的最短间隔（秒）：越大越「手慢」 */
+  comboGap: number;
+  /** 远程是否走 A（攻击间隙移动） */
+  orbwalk: boolean;
+  /** 用闪现追杀的概率（每次机会掷一次） */
+  flashKill: number;
+  /** 用闪现/位移逃生的血量门槛倍率（1 = 标准；越小越晚交） */
+  escapeSense: number;
+  /** 跟随队友集火目标的概率 */
+  focus: number;
+  /** 地图意识 0..1：对「消失在视野里的敌人」的警惕程度 */
+  awareness: number;
+  /** 团队协作 0..1：支援、反蹲、争夺史诗野怪的积极性 */
+  teamwork: number;
+  /** 发呆：每秒触发概率与持续时间范围（秒） */
+  idleRate: number;
+  idleMin: number;
+  idleMax: number;
+  /** 打野 gank 的最短间隔（秒） */
+  gankCooldown: number;
+}
+
+export const PROFILES: Record<Difficulty, Profile> = {
+  easy: {
+    think: 0.3, reaction: 0.6, aimError: 0.3, aimLead: 0, dodge: 0.12, lastHitError: 0.3, lastHitSkip: 0.4,
+    aggression: 0.72, harass: 0.15, dive: false, comboGap: 0.75, orbwalk: false, flashKill: 0, escapeSense: 0.6,
+    focus: 0, awareness: 0, teamwork: 0.25, idleRate: 0.045, idleMin: 0.7, idleMax: 1.8, gankCooldown: 75,
+  },
+  normal: {
+    think: 0.16, reaction: 0.28, aimError: 0.09, aimLead: 0.8, dodge: 0.6, lastHitError: 0.1, lastHitSkip: 0.1,
+    aggression: 1, harass: 0.55, dive: true, comboGap: 0.22, orbwalk: true, flashKill: 0.45, escapeSense: 1,
+    focus: 0.6, awareness: 0.4, teamwork: 0.7, idleRate: 0, idleMin: 0, idleMax: 0, gankCooldown: 40,
+  },
+  hard: {
+    think: 0.1, reaction: 0.12, aimError: 0.025, aimLead: 1, dodge: 0.95, lastHitError: 0.03, lastHitSkip: 0,
+    aggression: 1.12, harass: 0.85, dive: true, comboGap: 0.05, orbwalk: true, flashKill: 0.9, escapeSense: 1.15,
+    focus: 1, awareness: 0.8, teamwork: 1, idleRate: 0, idleMin: 0, idleMax: 0, gankCooldown: 28,
+  },
+};
+
+/** 各英雄的打法参数（与难度无关） */
+export interface Style {
+  /** 战斗中血量比例低于此值就脱离战斗 */
+  fleeHp: number;
+  /** 脱战后血量比例低于此值就回城补给 */
+  recallHp: number;
+  /** 团战站位：相对兵线/队伍中心的前后偏移（米，正 = 靠前） */
+  frontline: number;
+  /** 开战门槛修正：<1 更愿意先手（坦克/战士），>1 更谨慎（法师/射手） */
+  engage: number;
+  /** 是否由它来开团(先手位移进场) */
+  initiator: boolean;
+  /** 选目标时对后排(法师/射手)的偏好 */
+  diveBackline: number;
+  /** 对线时是否把补刀让给同路队友 */
+  support: boolean;
+}
+
+export const STYLES: Record<HeroId, Style> = {
+  panyue: { fleeHp: 0.22, recallHp: 0.33, frontline: 2.5, engage: 0.9, initiator: true, diveBackline: 0.2, support: true },
+  chijin: { fleeHp: 0.26, recallHp: 0.36, frontline: 1.5, engage: 0.95, initiator: true, diveBackline: 0.5, support: false },
+  xingli: { fleeHp: 0.3, recallHp: 0.38, frontline: -4, engage: 1.05, initiator: false, diveBackline: 0, support: false },
+  fengling: { fleeHp: 0.3, recallHp: 0.38, frontline: -4.5, engage: 1.05, initiator: false, diveBackline: 0, support: false },
+  yeque: { fleeHp: 0.28, recallHp: 0.38, frontline: 0, engage: 1, initiator: false, diveBackline: 1.2, support: false },
+};
+
+/** 全局阈值 */
+export const TUNE = {
+  /** 感知半径：这个范围内的英雄参与「局部战力」评估 */
+  senseRadius: 15,
+  /** 战力评估的距离权重：队友在 allyNear 内算满、allyFar 外不算；敌人同理但范围更大(偏谨慎) */
+  allyNear: 7,
+  allyFar: 14,
+  foeNear: 11,
+  foeFar: 18,
+  /** 战力评估的时间窗（秒）：伤害输出 = 普攻 DPS × 窗口 + 可用技能爆发 */
+  fightHorizon: 5,
+  /** 优势比(adv)门槛：≥ allIn 全力开打；≥ poke 可以消耗；< flee 撤退 */
+  advAllIn: 1.22,
+  advPoke: 0.85,
+  advFlee: 0.62,
+  /** 够得着我的敌人一套能打掉我这么大比例的血(接近致命)：退到他们够不着的地方 */
+  respectLethal: 0.8,
+  /** 优势比低于此值(明显打不过，比如被多打少)：同样敬而远之 */
+  advOutgunned: 0.7,
+  /** 被人打了、且对方在手边时的还手门槛 */
+  advFightBack: 0.95,
+  /** 还手换血每持续 1 秒，继续换下去所需的优势比增加多少 */
+  tradeFatigue: 0.05,
+  /** 正被追着打时，优势比低于此值就撤 */
+  advPressed: 0.85,
+  /** 击杀窗口的宽限（秒）：估计的击杀时间可以比目标逃回塔下的时间长这么多 */
+  killSlack: 1.5,
+  /** 撤退状态至少保持多久（防止进退抖动） */
+  fleeHold: 1.4,
+  /** 开战状态的最短承诺时间 */
+  fightHold: 1.0,
+  /** 回城后在泉水补到多少才出门 */
+  baseHpReady: 0.92,
+  baseManaReady: 0.8,
+  /** 用「恢复」的血量门槛 */
+  healHp: 0.5,
+  /** 塔下判定的余量（米）：离塔射程边缘多远算「危险」 */
+  towerMargin: 1.2,
+  /** 小兵仇恨半径（与引擎 MINION_AGGRO 一致）：打英雄时这个范围内的敌方小兵会转火 */
+  minionAggro: 8,
+  /** 对线期结束时间（秒）：之后队伍开始按目标转线/抱团 */
+  laneEnd: 300,
+  /** 进入后期抱团推进的时间（秒） */
+  lateStart: 570,
+  /** 抱团推进时，至少聚齐多少人才越过河道/进塔 */
+  groupMin: 3,
+  /** 史诗野怪：开打所需的人数 / 平均等级 */
+  drakeHeroes: 2,
+  drakeLevel: 5,
+  colossusHeroes: 3,
+  colossusLevel: 8,
+  /** 打野 gank：同一个目标 / 同一条路 的最短间隔（秒） */
+  gankSameTarget: 80,
+  gankSameLane: 45,
+  /** 团队决策刷新间隔（秒） */
+  teamTick: 0.8,
+  /** 清线放技能要求的最低法力比例 */
+  waveclearMana: 0.55,
+  /** 消耗放技能后要保留的法力比例 */
+  pokeMana: 0.35,
+  /** 打野用技能要求的最低法力比例 */
+  jungleMana: 0.25,
+};

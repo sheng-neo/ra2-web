@@ -27,6 +27,7 @@ function makeCanvas(w: number, h: number, dpr: number): [HTMLCanvasElement, Canv
 export class TextCache {
   private map = new Map<string, Sprite2D>();
   private dpr: number;
+  private gen = 0;
   constructor(dpr: number) {
     this.dpr = dpr;
   }
@@ -35,13 +36,19 @@ export class TextCache {
     if (dpr === this.dpr) return;
     this.dpr = dpr;
     this.map.clear();
+    this.gen++;
+  }
+
+  /** 随像素比变化的键分量(持有精灵引用的调用方据此判断缓存是否失效) */
+  get dprKey(): number {
+    return this.gen * 16777216;
   }
 
   get(text: string, size: number, fill: string, stroke: string, weight = 700, font = FONT_UI): Sprite2D {
     const key = `${text}|${size}|${fill}|${stroke}|${weight}|${font === FONT_UI ? 0 : 1}`;
     let s = this.map.get(key);
     if (s) return s;
-    // 名字/等级的种类有限；万一被灌入大量不同字符串，整表清掉重来
+    // 名字/等级的种类有限；万一被灌入大量不同字符串，整表清掉重来(已发出去的精灵仍可用，只是不再共享)
     if (this.map.size > 400) this.map.clear();
     const fontStr = `${weight} ${size}px ${font}`;
     const [probe, pg] = makeCanvas(4, 4, 1);

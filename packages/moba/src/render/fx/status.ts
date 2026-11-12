@@ -31,27 +31,29 @@ interface StatusDef {
 }
 
 const GOLD = col(0xffd04a);
+const STUN = col(0xffc81e);
 const GOLD_HOT = col(0xfff2b0);
 const ROOT = THEME.panyue;
-const FROST = col(0x8fdcff);
-const FROST_DEEP = col(0x3f8cff);
+const FROST = col(0x58c0ff);
+const FROST_DEEP = col(0x2a6cf0);
 const SHIELD = col(0xa8d8ff);
 const SHIELD_AMBER = col(0xffc060);
 const EMBER = col(0xff6a2a);
 const EMBER_HOT = col(0xffc070);
 const RECALL = col(0x58b4ff);
-const HEAL = col(0x7dffa0);
+const HEAL = col(0x58f088);
+const HEAL_DEEP = col(0x1fc060);
 const SHADOW = THEME.yeque;
 const WIND = THEME.fengling;
 const MARK = THEME.xingli;
 const LOCK = col(0xff3a28);
 
-function emit(k: FxKit, v: StatusView, dt: number, rate: number, fn: () => void): void {
+/** 按每秒 rate 个的速率，本帧该发射几个(受画质倍率影响)。用返回值驱动循环，不为每帧每个状态分配闭包 */
+function due(k: FxKit, v: StatusView, dt: number, rate: number): number {
   v.acc += dt * rate * k.density;
-  while (v.acc >= 1) {
-    v.acc -= 1;
-    fn();
-  }
+  const n = Math.floor(v.acc);
+  v.acc -= n;
+  return n;
 }
 
 function holdDecal(k: FxKit, v: StatusView, type: number, fadeIn = 0.15): number {
@@ -72,28 +74,38 @@ function runeRing(color: THREE.Color, hot: THREE.Color, sides: number, spin: num
       // 一枚绕身的小图标，远看也能认出是哪种增益
       const ang = v.phase + v.age * 2.2 * Math.sign(spin);
       const r = a.radius + 0.55;
-      k.sprites.draw(sprite, a.x + Math.cos(ang) * r, a.y + a.height * 0.45 + Math.sin(v.age * 3) * 0.12, a.z + Math.sin(ang) * r, 0.5, 0, hot, 2, 0.95, 0.9);
-      emit(k, v, dt, 2.5, () => {
+      k.sprites.icon(sprite, a.x + Math.cos(ang) * r, a.y + a.height * 0.45 + Math.sin(v.age * 3) * 0.12, a.z + Math.sin(ang) * r, 0.58, 0, hot, 1.3, 0.95, 0.25, 0.2);
+      for (let n = due(k, v, dt, 2.5); n > 0; n--) {
         const t = k.rnd.next() * TAU;
         k.particles.use(P.glint).tint(hot, color).spawn(a.x + Math.cos(t) * r, a.y + 0.1, a.z + Math.sin(t) * r, 0, k.rnd.range(0.8, 1.6), 0, 0.8, 0.26, 0.06);
-      });
+      }
     },
   };
 }
 
 const DEFS: Partial<Record<BuffId, StatusDef>> = {
-  // 眩晕：头顶旋转星
+  // 眩晕：头顶旋转星(绕在头的高度，比血条低，不会被叠加层盖住)
   stun: {
+    create(k, _v, a) {
+      // 被晕住的一瞬：头上炸开几道折线闪电
+      const y = a.y + a.height * 0.9;
+      const p = k.particles.use(P.bolt).tint(STUN, GOLD);
+      for (let i = 0; i < 4; i++) {
+        const ang = (i * TAU) / 4 + 0.6;
+        p.spawn(a.x + Math.cos(ang) * 0.5, y + 0.2, a.z + Math.sin(ang) * 0.3, Math.cos(ang) * 2.5, 1.5, Math.sin(ang) * 1.5, 0.3, 0.5, 0.8);
+      }
+      k.particles.use(P.flash).tint(STUN).spawn(a.x, y, a.z, 0, 0, 0, 0.2, 0.8, 1.6);
+    },
     update(k, v, a, _b, dt) {
-      const y = a.y + a.height + 0.35;
-      const r = 0.34 + a.radius * 0.35;
+      const y = a.y + a.height * 0.9;
+      const r = 0.5 + a.radius * 0.45;
       for (let i = 0; i < 3; i++) {
         const ang = v.age * 5.2 + (i * TAU) / 3;
-        // 压扁的椭圆轨道：像在头顶绕圈
-        k.sprites.draw(SPRITE.star, a.x + Math.cos(ang) * r, y + Math.sin(ang) * 0.1, a.z + Math.sin(ang) * r * 0.45, 0.44, ang * 1.3, GOLD_HOT, 2, 1, 0.85, 0.4);
+        // 压扁的椭圆轨道：像在头顶绕圈；转到后半圈时略小略暗
+        const back = Math.sin(ang) < 0 ? 0.75 : 1;
+        k.sprites.icon(SPRITE.star, a.x + Math.cos(ang) * r, y + Math.sin(ang) * 0.14, a.z + Math.sin(ang) * r * 0.5, 0.62 * back, ang * 1.3, STUN, 1.25, back, 0.15, 0.6);
       }
-      k.sprites.draw(SPRITE.bolt, a.x, y + 0.02, a.z, 0.36, Math.sin(v.age * 14) * 0.4, GOLD, 2, 0.8, 0.9, 0.4);
-      emit(k, v, dt, 4, () => k.particles.use(P.glint).tint(C.white, GOLD).spawn(a.x + k.rnd.signed() * r, y, a.z + k.rnd.signed() * r * 0.5, 0, 0.4, 0, 0.4, 0.22, 0.05));
+      for (let n = due(k, v, dt, 5); n > 0; n--) k.particles.use(P.glint).tint(GOLD_HOT, GOLD).spawn(a.x + k.rnd.signed() * r, y, a.z + k.rnd.signed() * r * 0.5, 0, 0.5, 0, 0.4, 0.26, 0.06);
     },
   },
   // 击飞：模型由单位视图抛起，这里补地面的落点暗影与上卷的气流
@@ -104,10 +116,10 @@ const DEFS: Partial<Record<BuffId, StatusDef>> = {
     },
     update(k, v, a, _b, dt) {
       k.decals.at(v.slots[0]).at(a.x, a.z).radius(a.radius + 0.7);
-      emit(k, v, dt, 16, () => {
+      for (let n = due(k, v, dt, 16); n > 0; n--) {
         const t = k.rnd.next() * TAU;
         k.particles.use(P.streak).tint(C.white, C.dust).spawn(a.x + Math.cos(t) * a.radius, 0.2, a.z + Math.sin(t) * a.radius, 0, k.rnd.range(4, 8), 0, 0.25, 0.1, 0.04);
-      });
+      }
     },
   },
   // 定身：脚下岩晶锁
@@ -144,20 +156,20 @@ const DEFS: Partial<Record<BuffId, StatusDef>> = {
   slow: {
     create(k, v) {
       const s = holdDecal(k, v, DECAL.swirl, 0.15);
-      k.decals.at(s).params(6, -1.5).color(FROST, 1.5, 0.9).under(FROST_DEEP, 0.3);
+      k.decals.at(s).params(5, -1.5).color(FROST, 1.0, 0.75).under(FROST_DEEP, 0.15);
       const e = holdDecal(k, v, DECAL.range, 0.15);
-      k.decals.at(e).params(0.03, 0).color(FROST, 1.5, 0.8).under(C.shadow, 0.2);
+      k.decals.at(e).params(0.04, 0).color(FROST, 1.4, 0.75).under(C.shadow, 0.2);
     },
     update(k, v, a, b, dt) {
       // 减速越重，环越大越亮
       const strength = Math.min(1, 0.5 + b.value);
-      const rad = a.radius + 0.75 + b.value * 0.5;
-      k.decals.at(v.slots[0]).at(a.x, a.z).radius(rad).alpha(0.6 + 0.4 * strength);
+      const rad = a.radius + 0.4 + b.value * 0.5;
+      k.decals.at(v.slots[0]).at(a.x, a.z).radius(rad).alpha(0.45 + 0.3 * strength);
       k.decals.at(v.slots[1]).at(a.x, a.z).radius(rad);
-      emit(k, v, dt, 3, () => {
+      for (let n = due(k, v, dt, 3); n > 0; n--) {
         const t = k.rnd.next() * TAU;
         k.particles.use(P.frost).spawn(a.x + Math.cos(t) * rad * 0.8, a.y + k.rnd.range(0.1, 0.5), a.z + Math.sin(t) * rad * 0.8, 0, 0.5, 0, 0.8, 0.3, 0.14);
-      });
+      }
     },
   },
   // 护盾：半透明六边形护罩
@@ -183,7 +195,7 @@ const DEFS: Partial<Record<BuffId, StatusDef>> = {
       m.a = 0.85 * grow * blink;
     },
   },
-  // 加速：风痕
+  // 加速：风痕(移动时在身后拉出一道道流线，脚下卷起风叶)
   haste: {
     update(k, v, a, _b, dt) {
       const u = a.unit;
@@ -191,50 +203,64 @@ const DEFS: Partial<Record<BuffId, StatusDef>> = {
       const vx = (u.pos.x - u.prevPos.x) / TICK_DT;
       const vz = (u.pos.y - u.prevPos.y) / TICK_DT;
       const sp = Math.hypot(vx, vz);
-      emit(k, v, dt, sp > 0.5 ? 16 : 4, () => {
+      for (let n = due(k, v, dt, sp > 0.5 ? 26 : 8); n > 0; n--) {
         const r = k.rnd;
-        const ox = r.signed() * (a.radius + 0.25);
-        const oz = r.signed() * (a.radius + 0.25);
-        k.particles
-          .use(P.streak)
-          .tint(WIND.hot, WIND.glow)
-          .spawn(a.x + ox, a.y + r.range(0.2, 1.5), a.z + oz, -vx * 0.6, r.signed() * 0.3, -vz * 0.6, 0.28, 0.12, 0.04);
-      });
+        const ox = r.signed() * (a.radius + 0.35);
+        const oz = r.signed() * (a.radius + 0.35);
+        if (sp > 0.5) {
+          k.particles
+            .use(P.streak)
+            .tint(WIND.glow, WIND.deep)
+            .spawn(a.x + ox - (vx / sp) * 0.4, a.y + r.range(0.2, 1.6), a.z + oz - (vz / sp) * 0.4, -vx * 0.7, r.signed() * 0.3, -vz * 0.7, 0.34, 0.2, 0.07);
+        } else k.particles.use(P.leaf).orbit(a.x, a.y + 0.2, a.z, a.radius + 0.3, a.radius + 0.6, r.next() * TAU, 7, r.range(0.5, 1.5), 0.5, 0.28, 0.14);
+      }
     },
   },
   // 灼烧：身上的火苗
   burn: {
     update(k, v, a, _b, dt) {
-      emit(k, v, dt, 18, () => {
+      for (let n = due(k, v, dt, 18); n > 0; n--) {
         const r = k.rnd;
         const x = a.x + r.signed() * a.radius * 0.8;
         const z = a.z + r.signed() * a.radius * 0.8;
         const y = a.y + r.range(0.2, a.height * 0.7);
         if (r.chance(0.7)) k.particles.use(P.flame).spawn(x, y, z, 0, r.range(1, 2.2), 0, r.range(0.35, 0.55), 0.95, 0.4);
         else k.particles.use(P.ember).tint(EMBER_HOT, EMBER).spawn(x, y, z, r.signed() * 0.5, r.range(1, 2.5), r.signed() * 0.5, 0.6, 0.13, 0.04);
-      });
+      }
     },
   },
-  // 不可选中：半透明残影(暗影烟缕裹身)
+  // 不可选中：半透明残影(暗影烟缕裹身 + 脚下影池)
   untargetable: {
+    create(k, v) {
+      const s = holdDecal(k, v, DECAL.glow, 0.1);
+      k.decals.at(s).params(1.2).color(SHADOW.deep, 0.8, 0.9).under(SHADOW.dark, 0.7);
+    },
     update(k, v, a, _b, dt) {
-      emit(k, v, dt, 14, () => {
+      k.decals.at(v.slots[0]).at(a.x, a.z).radius(a.radius + 0.9);
+      for (let n = due(k, v, dt, 26); n > 0; n--) {
         const r = k.rnd;
-        const x = a.x + r.signed() * a.radius;
-        const z = a.z + r.signed() * a.radius;
-        if (r.chance(0.6)) k.particles.use(P.wisp).spawn(x, a.y + r.range(0.1, 1.2), z, r.signed() * 0.4, r.range(0.6, 1.6), r.signed() * 0.4, 0.5, 0.6, 1.1);
-        else k.particles.use(P.glint).tint(SHADOW.hot, SHADOW.glow).spawn(x, a.y + r.range(0.3, 1.8), z, 0, 0.5, 0, 0.4, 0.26, 0.06);
-      });
+        const t = r.next() * TAU;
+        const d = a.radius * r.range(0.6, 1.2);
+        const x = a.x + Math.cos(t) * d;
+        const z = a.z + Math.sin(t) * d;
+        if (r.chance(0.65)) k.particles.use(P.wisp).spawn(x, a.y + r.range(0.1, 1.4), z, r.signed() * 0.4, r.range(0.8, 1.8), r.signed() * 0.4, 0.5, 0.7, 1.3);
+        else k.particles.use(P.glint).tint(SHADOW.hot, SHADOW.glow).spawn(x, a.y + r.range(0.3, 1.9), z, 0, 0.6, 0, 0.4, 0.3, 0.08);
+      }
     },
   },
-  // 免疫控制：身周上升的金色流光
+  // 免疫控制：身周上升的金色流光 + 脚下金环
   unstoppable: {
+    create(k, v) {
+      const s = holdDecal(k, v, DECAL.range, 0.1);
+      k.decals.at(s).params(0.05, 12).color(GOLD, 1.6, 0.9).under(C.shadow, 0.3);
+    },
     update(k, v, a, _b, dt) {
-      emit(k, v, dt, 12, () => {
+      k.decals.at(v.slots[0]).at(a.x, a.z).radius(a.radius + 0.7);
+      for (let n = due(k, v, dt, 22); n > 0; n--) {
         const t = k.rnd.next() * TAU;
-        const d = a.radius + 0.3;
-        k.particles.use(P.streak).tint(GOLD_HOT, GOLD).spawn(a.x + Math.cos(t) * d, a.y + 0.1, a.z + Math.sin(t) * d, 0, k.rnd.range(3.5, 6), 0, 0.35, 0.12, 0.04);
-      });
+        const d = a.radius + 0.35;
+        k.particles.use(P.streak).tint(GOLD_HOT, GOLD).spawn(a.x + Math.cos(t) * d, a.y + 0.1, a.z + Math.sin(t) * d, 0, k.rnd.range(3.5, 6.5), 0, 0.4, 0.14, 0.05);
+      }
     },
   },
   // 回城：脚下逐渐收拢的上升光环
@@ -256,37 +282,42 @@ const DEFS: Partial<Record<BuffId, StatusDef>> = {
       const m = v.meshes[0];
       m.at(a.x, 0.05, a.z).scale3(rad * 0.62, 3 + 5 * t, rad * 0.62);
       m.a = 0.2 + 0.65 * t;
-      emit(k, v, dt, 2.4 + t * 2, () => {
+      for (let n = due(k, v, dt, 2.4 + t * 2); n > 0; n--) {
         k.glow.spawn(SHAPE.hoop, MODE.hoop, 0.9).at(a.x, 0.15, a.z).vel(0, 2.6 + t * 2, 0).scale(rad, rad * 0.6).color(RECALL, 1.2, 0.9).fade(0.15, 0.5).opt(0.3, 2, 1);
         for (let i = 0; i < 3; i++) k.particles.use(P.glint).tint(C.white, RECALL).orbit(a.x, 0.1, a.z, rad, rad * 0.4, k.rnd.next() * TAU, 5, k.rnd.range(2, 4), 0.8, 0.3, 0.08);
-      });
+      }
     },
   },
   // 恢复：上升的绿色光点
   restore: {
     create(k, v) {
       const s = holdDecal(k, v, DECAL.glow, 0.2);
-      k.decals.at(s).params(1.5).color(HEAL, 0.7, 0.8).under(C.black, 0);
+      k.decals.at(s).params(1.3).color(HEAL, 1.1, 0.85).under(C.black, 0);
     },
     update(k, v, a, _b, dt) {
       k.decals.at(v.slots[0]).at(a.x, a.z).radius(a.radius + 0.9);
-      emit(k, v, dt, 9, () => {
+      // 每 0.7 秒一道上升的绿环
+      const beat = Math.floor(v.age / 0.7);
+      if (beat !== Math.floor((v.age - dt) / 0.7) || v.age <= dt) {
+        k.glow.spawn(SHAPE.hoop, MODE.hoop, 0.8).at(a.x, a.y + 0.2, a.z).vel(0, 2.2, 0).scale(a.radius + 0.5, a.radius + 0.25).color(HEAL, 1.0, 0.9).fade(0.15, 0.5).opt(0.3, 2, 1);
+      }
+      for (let n = due(k, v, dt, 16); n > 0; n--) {
         const r = k.rnd;
         const t = r.next() * TAU;
-        const d = r.range(0.2, a.radius + 0.4);
-        if (r.chance(0.25)) k.particles.use(P.plus).spawn(a.x + Math.cos(t) * d, a.y + r.range(0.3, 1), a.z + Math.sin(t) * d, 0, r.range(1, 1.8), 0, 0.7, 0.2, 0.32);
-        else k.particles.use(P.glint).tint(C.white, HEAL).spawn(a.x + Math.cos(t) * d, a.y + r.range(0.1, 0.8), a.z + Math.sin(t) * d, 0, r.range(1.2, 2.4), 0, 0.7, 0.26, 0.06);
-      });
+        const d = r.range(0.5, a.radius + 0.6);
+        if (r.chance(0.3)) k.particles.use(P.plus).spawn(a.x + Math.cos(t) * d, a.y + r.range(0.3, 1), a.z + Math.sin(t) * d, 0, r.range(1, 1.8), 0, 0.8, 0.26, 0.4);
+        else k.particles.use(P.glint).tint(HEAL, HEAL_DEEP).spawn(a.x + Math.cos(t) * d, a.y + r.range(0.1, 0.8), a.z + Math.sin(t) * d, 0, r.range(1.2, 2.4), 0, 0.8, 0.34, 0.08);
+      }
     },
   },
   // 泉水回复：脚边淡淡的队伍色光点
   fountain: {
     update(k, v, a, _b, dt) {
       const th = teamTheme(a.unit ? a.unit.team : 2);
-      emit(k, v, dt, 4, () => {
+      for (let n = due(k, v, dt, 8); n > 0; n--) {
         const t = k.rnd.next() * TAU;
-        k.particles.use(P.glint).tint(th.hot, th.glow).spawn(a.x + Math.cos(t) * (a.radius + 0.2), a.y + 0.1, a.z + Math.sin(t) * (a.radius + 0.2), 0, k.rnd.range(1, 2), 0, 0.8, 0.24, 0.06);
-      });
+        k.particles.use(P.glint).tint(th.glow, th.deep).spawn(a.x + Math.cos(t) * (a.radius + 0.3), a.y + 0.1, a.z + Math.sin(t) * (a.radius + 0.3), 0, k.rnd.range(1, 2.2), 0, 0.9, 0.32, 0.08);
+      }
     },
   },
   // 复活保护：金色光晕
@@ -307,10 +338,10 @@ const DEFS: Partial<Record<BuffId, StatusDef>> = {
       m.at(a.x, a.y + a.height * 0.46, a.z).scale3(r, Math.max(r, a.height * 0.58), r);
       m.a = 0.75;
       k.decals.at(v.slots[0]).at(a.x, a.z).radius(a.radius + 0.9);
-      emit(k, v, dt, 6, () => {
+      for (let n = due(k, v, dt, 6); n > 0; n--) {
         const t = k.rnd.next() * TAU;
         k.particles.use(P.glint).tint(GOLD_HOT, GOLD).spawn(a.x + Math.cos(t) * r, a.y + k.rnd.range(0.2, 1.8), a.z + Math.sin(t) * r, 0, 0.8, 0, 0.6, 0.26, 0.06);
-      });
+      }
     },
   },
   // 霜晶之智：蓝色符文环
@@ -325,40 +356,54 @@ const DEFS: Partial<Record<BuffId, StatusDef>> = {
     },
     update(k, v, a, _b, dt) {
       k.decals.at(v.slots[0]).at(a.x, a.z).radius(a.radius + 0.95).rot(v.age * 0.7);
-      const y = a.y + a.height + 0.75 + Math.sin(v.age * 2.4) * 0.08;
-      k.sprites.draw(SPRITE.star, a.x, y, a.z, 0.4, v.age * 1.2, GOLD_HOT, 2.1, 0.95, 0.85, 0.3);
-      k.sprites.draw(SPRITE.glow, a.x, y, a.z, 0.9, 0, GOLD, 1.2, 0.6, 1, 0.3);
-      emit(k, v, dt, 4, () => {
+      // 一颗小金星绕身(不放头顶：那里是血条和名字)
+      const ang = v.phase + v.age * 1.8;
+      const rr = a.radius + 0.6;
+      k.sprites.icon(SPRITE.star, a.x + Math.cos(ang) * rr, a.y + a.height * 0.5 + Math.sin(v.age * 2.4) * 0.1, a.z + Math.sin(ang) * rr, 0.52, v.age * 1.2, STUN, 1.25, 0.95, 0.15, 0.2);
+      for (let n = due(k, v, dt, 4); n > 0; n--) {
         const t = k.rnd.next() * TAU;
         const d = k.rnd.range(0.2, a.radius + 0.5);
         k.particles.use(P.glint).tint(GOLD_HOT, GOLD).spawn(a.x + Math.cos(t) * d, a.y + k.rnd.range(0.2, 1), a.z + Math.sin(t) * d, 0, k.rnd.range(0.8, 1.8), 0, 0.9, 0.28, 0.06);
-      });
-    },
-  },
-  // 星辉印记：目标头顶 1~3 颗星印
-  xingli_mark: {
-    update(k, v, a, b) {
-      const n = Math.max(1, Math.min(3, b.stacks));
-      const y = a.y + a.height + 0.62;
-      const pop = Math.min(1, v.age * 8);
-      for (let i = 0; i < n; i++) {
-        const ox = (i - (n - 1) / 2) * 0.46;
-        const bob = Math.sin(v.age * 3.2 + i * 1.1) * 0.05;
-        // 最新的一颗弹一下
-        const s = 0.46 * (i === n - 1 ? 0.6 + 0.4 * pop : 1);
-        k.sprites.draw(SPRITE.glow, a.x + ox, y + bob, a.z, s * 2, 0, MARK.glow, 1.4, 0.7, 1, 0.5);
-        k.sprites.draw(SPRITE.star, a.x + ox, y + bob, a.z, s, 0, MARK.hot, 2.2, 1, 0.75, 0.5);
       }
     },
   },
-  // 防御塔锁定：头顶红色锁定标记，层数 = 小红菱
-  tower_focus: {
+  // 星辉印记：1~3 颗星印(头顶的图标由叠加层画在名字上方；这里是绕身飞旋的同样数量的星 + 脚下星印)
+  xingli_mark: {
+    create(k, v) {
+      const s = holdDecal(k, v, DECAL.star, 0.15);
+      k.decals.at(s).params(4, 2.4).color(MARK.glow, 1.5, 0).under(MARK.dark, 0.3);
+    },
     update(k, v, a, b) {
-      const y = a.y + a.height + 1.0;
-      const pulse = 1 + 0.12 * Math.sin(v.age * 10);
-      k.sprites.draw(SPRITE.lock, a.x, y, a.z, 0.8 * pulse, v.age * 1.5, LOCK, 2.2, 1, 0.8, 0.5);
-      const n = Math.min(5, b.stacks);
-      for (let i = 0; i < n; i++) k.sprites.draw(SPRITE.diamond, a.x + (i - (n - 1) / 2) * 0.24, y - 0.55, a.z, 0.22, 0, LOCK, 2.2, 1, 0.7, 0.5);
+      const n = Math.max(1, Math.min(3, b.stacks));
+      // 层数越高，脚下星印越亮；两层以上才显出来
+      k.decals.at(v.slots[0]).at(a.x, a.z).radius(a.radius + 0.75).rot(v.age * 0.9).alpha(n >= 3 ? 1 : n === 2 ? 0.6 : 0.3);
+      const pop = Math.min(1, v.age * 8);
+      const r = a.radius + 0.55;
+      for (let i = 0; i < n; i++) {
+        const ang = v.phase + v.age * 2.6 + (i * TAU) / 3;
+        const s = 0.5 * (i === n - 1 ? 0.6 + 0.4 * pop : 1);
+        const x = a.x + Math.cos(ang) * r;
+        const z = a.z + Math.sin(ang) * r;
+        const y = a.y + a.height * 0.55 + Math.sin(v.age * 3.2 + i * 2.1) * 0.12;
+        k.sprites.icon(SPRITE.star, x, y, z, s * 1.15, ang, MARK.glow, 1.3, 1, 0.2, 0.2);
+      }
+    },
+  },
+  // 防御塔锁定：脚下红色锁定圈，层数越高转得越急(层数数字由叠加层画在名字上方)
+  tower_focus: {
+    create(k, v) {
+      const s = holdDecal(k, v, DECAL.lock, 0.1);
+      k.decals.at(s).y(0.075).color(LOCK, 1.8, 0.95).under(C.shadow, 0.45);
+    },
+    update(k, v, a, b) {
+      const n = Math.min(5, Math.max(1, b.stacks));
+      k.decals.at(v.slots[0]).at(a.x, a.z).radius(a.radius + 0.55 + 0.06 * n).alpha(0.7 + 0.3 * Math.abs(Math.sin(v.age * (3 + n))));
+      // 身侧的小红菱 = 层数
+      const r = a.radius + 0.5;
+      for (let i = 0; i < n; i++) {
+        const ang = v.phase - v.age * 3 + (i * TAU) / n;
+        k.sprites.icon(SPRITE.diamond, a.x + Math.cos(ang) * r, a.y + 0.4, a.z + Math.sin(ang) * r, 0.4, 0, LOCK, 1.3, 1, 0.2, 0.2);
+      }
     },
   },
   // 磐岳：第三击就绪时胸前的琥珀星芒
@@ -366,7 +411,7 @@ const DEFS: Partial<Record<BuffId, StatusDef>> = {
     update(k, v, a, b) {
       if (b.stacks < 2) return;
       const s = 0.55 + 0.12 * Math.sin(v.age * 9);
-      k.sprites.draw(SPRITE.spark, a.x, a.y + a.height * 0.58, a.z, s, v.age * 2, ROOT.hot, 2.2, 0.95, 1, a.radius + 0.4);
+      k.sprites.icon(SPRITE.spark, a.x, a.y + a.height * 0.58, a.z, s * 1.3, v.age * 2, ROOT.glow, 1.5, 0.95, 0.5, a.radius + 0.4);
     },
   },
   // 赤烬：余烬之刃就绪——双刃带火
@@ -374,22 +419,26 @@ const DEFS: Partial<Record<BuffId, StatusDef>> = {
     update(k, v, a, _b, dt) {
       const u = a.unit;
       const f = u ? u.facing : 0;
-      emit(k, v, dt, 12, () => {
+      for (let n = due(k, v, dt, 18); n > 0; n--) {
         const side = k.rnd.chance(0.5) ? 1 : -1;
-        const x = a.x - Math.sin(f) * side * 0.65 + Math.cos(f) * 0.3;
-        const z = a.z + Math.cos(f) * side * 0.65 + Math.sin(f) * 0.3;
-        k.particles.use(P.flame).spawn(x, a.y + k.rnd.range(0.7, 1.2), z, 0, k.rnd.range(0.8, 1.6), 0, 0.32, 0.42, 0.18);
-      });
+        const x = a.x - Math.sin(f) * side * (a.radius + 0.35) + Math.cos(f) * 0.35;
+        const z = a.z + Math.cos(f) * side * (a.radius + 0.35) + Math.sin(f) * 0.35;
+        k.particles.use(P.flame).spawn(x, a.y + k.rnd.range(0.6, 1.2), z, 0, k.rnd.range(0.8, 1.8), 0, 0.5, 0.85, 0.35);
+      }
     },
   },
   // 赤烬：炎步后的攻速加成——脚下带火
   chijin_blaze: {
     update(k, v, a, _b, dt) {
-      emit(k, v, dt, 9, () => {
+      for (let n = due(k, v, dt, 16); n > 0; n--) {
         const r = k.rnd;
-        if (r.chance(0.6)) k.particles.use(P.flame).spawn(a.x + r.signed() * 0.4, a.y + 0.1, a.z + r.signed() * 0.4, 0, r.range(1, 2), 0, 0.35, 0.5, 0.22);
-        else k.particles.use(P.ember).tint(EMBER_HOT, EMBER).spawn(a.x + r.signed() * 0.4, a.y + 0.3, a.z + r.signed() * 0.4, r.signed(), r.range(1, 2.5), r.signed(), 0.6, 0.12, 0.04);
-      });
+        const t = r.next() * TAU;
+        const d = a.radius + r.range(0.05, 0.4);
+        const x = a.x + Math.cos(t) * d;
+        const z = a.z + Math.sin(t) * d;
+        if (r.chance(0.6)) k.particles.use(P.flame).spawn(x, a.y + 0.25, z, 0, r.range(1, 2), 0, 0.5, 0.85, 0.35);
+        else k.particles.use(P.ember).tint(EMBER_HOT, EMBER).spawn(x, a.y + 0.3, z, r.signed(), r.range(1, 2.5), r.signed(), 0.6, 0.14, 0.05);
+      }
     },
   },
   // 风翎：风之眷顾——层数 = 绕身的风叶数，满层脚下起风环
@@ -405,7 +454,7 @@ const DEFS: Partial<Record<BuffId, StatusDef>> = {
       const r = a.radius + 0.5;
       for (let i = 0; i < n; i++) {
         const ang = v.phase + v.age * (full ? 5.5 : 3.5) + (i * TAU) / n;
-        k.sprites.draw(SPRITE.leaf, a.x + Math.cos(ang) * r, a.y + a.height * 0.42 + Math.sin(ang * 2 + i) * 0.1, a.z + Math.sin(ang) * r, 0.42, -ang, full ? WIND.hot : WIND.glow, full ? 2.2 : 1.7, 0.95, 0.7);
+        k.sprites.icon(SPRITE.leaf, a.x + Math.cos(ang) * r, a.y + a.height * 0.42 + Math.sin(ang * 2 + i) * 0.1, a.z + Math.sin(ang) * r, 0.5, -ang, WIND.glow, full ? 1.5 : 1.2, 0.95, 0.2, 0.2);
       }
     },
   },
@@ -415,7 +464,7 @@ const DEFS: Partial<Record<BuffId, StatusDef>> = {
       const u = a.unit;
       const f = u ? u.facing : 0;
       const s = 0.6 + 0.15 * Math.sin(v.age * 10);
-      k.sprites.draw(SPRITE.spark, a.x + Math.cos(f) * 0.7, a.y + a.height * 0.6, a.z + Math.sin(f) * 0.7, s, v.age * 3, WIND.accent, 2.3, 1, 1, 0.3);
+      k.sprites.icon(SPRITE.spark, a.x + Math.cos(f) * 0.7, a.y + a.height * 0.6, a.z + Math.sin(f) * 0.7, s * 1.3, v.age * 3, WIND.accent, 1.5, 1, 0.5, 0.3);
     },
   },
   // 夜阙：猎影(击杀刷新) —— 身周的紫色影缕
@@ -426,10 +475,10 @@ const DEFS: Partial<Record<BuffId, StatusDef>> = {
     },
     update(k, v, a, _b, dt) {
       k.decals.at(v.slots[0]).at(a.x, a.z).radius(a.radius + 0.9);
-      emit(k, v, dt, 7, () => {
+      for (let n = due(k, v, dt, 7); n > 0; n--) {
         const r = k.rnd;
         k.particles.use(P.wisp).spawn(a.x + r.signed() * a.radius, a.y + r.range(0.1, 0.8), a.z + r.signed() * a.radius, 0, r.range(0.8, 1.6), 0, 0.5, 0.5, 0.9);
-      });
+      }
     },
   },
 };
@@ -441,6 +490,7 @@ const BUFF_INDEX = new Map<BuffId, number>(STATUS_BUFFS.map((id, i) => [id, i]))
 
 export class StatusViews {
   private views = new Map<number, StatusView>();
+  private list: StatusView[] = [];
   private k: FxKit;
   private stamp = 0;
   private phaseN = 0;
@@ -483,6 +533,7 @@ export class StatusViews {
           this.phaseN = (this.phaseN + 2.399) % TAU;
           v = { key, def: DEFS[b.id] as StatusDef, seen: stamp, slots: [], meshes: [], acc: 0, age: 0, phase: this.phaseN };
           this.views.set(key, v);
+          this.list.push(v);
           v.def.create?.(k, v, k.a, best);
         }
         v.seen = stamp;
@@ -490,11 +541,14 @@ export class StatusViews {
         v.def.update(k, v, k.a, best, dt);
       }
     }
-    for (const [key, v] of this.views) {
-      if (v.seen !== stamp) {
-        this.release(v);
-        this.views.delete(key);
-      }
+    const list = this.list;
+    for (let i = list.length - 1; i >= 0; i--) {
+      const v = list[i];
+      if (v.seen === stamp) continue;
+      this.release(v);
+      this.views.delete(v.key);
+      list[i] = list[list.length - 1];
+      list.pop();
     }
   }
 
@@ -503,7 +557,8 @@ export class StatusViews {
   }
 
   reset(): void {
-    for (const v of this.views.values()) this.release(v);
+    for (const v of this.list) this.release(v);
+    this.list.length = 0;
     this.views.clear();
   }
 }

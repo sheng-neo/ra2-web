@@ -13,15 +13,13 @@ import { C, TAU } from './util';
 
 export const P = {
   /** 拉伸火花：受重力下坠 */
-  spark: particleStyle({ sprite: SPRITE.streak, orient: ORIENT.stretch, color: 0xfff0c8, color2: 0xff8a30, intensity: 2.0, intensity2: 1.1, gravity: 13, drag: 3.2, stretch: 0.045, fadeIn: 0.01, fadeOut: 0.35 }),
+  spark: particleStyle({ scale: 2.2, sprite: SPRITE.streak, orient: ORIENT.stretch, add: 0.45, color: 0xffc040, color2: 0xff5a10, intensity: 1.7, intensity2: 1.1, gravity: 13, drag: 3.2, stretch: 0.045, fadeIn: 0.01, fadeOut: 0.35 }),
   /** 无重力的能量流线 */
-  streak: particleStyle({ sprite: SPRITE.streak, orient: ORIENT.stretch, color: 0xffffff, intensity: 1.8, intensity2: 1.0, drag: 2.2, stretch: 0.05, fadeIn: 0.02, fadeOut: 0.35, add: 0.85 }),
+  streak: particleStyle({ scale: 2.5, sprite: SPRITE.streak, orient: ORIENT.stretch, color: 0xffffff, intensity: 1.8, intensity2: 1.0, drag: 2.2, stretch: 0.05, fadeIn: 0.02, fadeOut: 0.35, add: 0.5 }),
   /** 四芒星闪烁 */
-  glint: particleStyle({ sprite: SPRITE.spark, color: 0xffffff, intensity: 1.8, intensity2: 1.1, drag: 2.4, spin: 2.5, fadeIn: 0.15, fadeOut: 0.35 }),
+  glint: particleStyle({ pull: 0.3, scale: 1.4, sprite: SPRITE.spark, add: 0.55, color: 0xffffff, intensity: 1.7, intensity2: 1.1, drag: 2.4, spin: 2.5, fadeIn: 0.15, fadeOut: 0.35 }),
   /** 瞬间光晕 */
   flash: particleStyle({ sprite: SPRITE.glow, add: 0.55, color: 0xffffff, intensity: 1.05, intensity2: 0.65, alpha: 0.9, fadeIn: 0.02, fadeOut: 0.1 }),
-  /** 大而柔的色晕(铺色用，不带白核) */
-  haze: particleStyle({ sprite: SPRITE.soft, color: 0xffffff, intensity: 1, alpha: 0.6, alpha2: 0, fadeIn: 0.1, fadeOut: 0.2 }),
   /** 放射爆闪 */
   burst: particleStyle({ sprite: SPRITE.burst, add: 0.6, color: 0xffffff, intensity: 1.25, intensity2: 0.8, fadeIn: 0.02, fadeOut: 0.15, spin: 0.8 }),
   /** 尘土烟团(遮挡型) */
@@ -29,36 +27,36 @@ export const P = {
   /** 深色浓烟 */
   smoke: particleStyle({ sprite: SPRITE.smoke, sprite2: SPRITE.smoke2, add: 0, color: 0x5a5560, color2: 0x2a2830, alpha: 0.7, alpha2: 0.3, drag: 1.6, gravity: -1.1, spin: 0.7, fadeIn: 0.1, fadeOut: 0.35, vary: 0.25 }),
   /** 碎石片 */
-  debris: particleStyle({ sprite: SPRITE.shard, add: 0, color: 0xa39686, color2: 0x7d7166, gravity: 22, drag: 0.5, spin: 10, fadeIn: 0.01, fadeOut: 0.78, vary: 0.35 }),
+  debris: particleStyle({ scale: 1.2, sprite: SPRITE.shard, add: 0, color: 0xa39686, color2: 0x7d7166, gravity: 22, drag: 0.5, spin: 10, fadeIn: 0.01, fadeOut: 0.78, vary: 0.35 }),
   /** 发光晶屑 */
-  shard: particleStyle({ sprite: SPRITE.diamond, add: 0.35, color: 0xffffff, intensity: 1.8, intensity2: 1.0, gravity: 14, drag: 1.2, spin: 9, fadeIn: 0.01, fadeOut: 0.6, vary: 0.2 }),
+  shard: particleStyle({ scale: 1.3, sprite: SPRITE.diamond, add: 0.35, color: 0xffffff, intensity: 1.8, intensity2: 1.0, gravity: 14, drag: 1.2, spin: 9, fadeIn: 0.01, fadeOut: 0.6, vary: 0.2 }),
   /** 上飘的余烬 */
-  ember: particleStyle({ sprite: SPRITE.ember, color: 0xffc070, color2: 0xff4a18, intensity: 2.0, intensity2: 1, gravity: -2.4, drag: 1.4, fadeIn: 0.05, fadeOut: 0.4, vary: 0.3 }),
+  ember: particleStyle({ pull: 0.35, scale: 1.6, sprite: SPRITE.ember, add: 0.55, color: 0xffb040, color2: 0xff4010, intensity: 1.7, intensity2: 1, gravity: -2.4, drag: 1.4, fadeIn: 0.05, fadeOut: 0.4, vary: 0.3 }),
   /** 火舌(尖朝上) */
-  flame: particleStyle({ sprite: SPRITE.flame, add: 0.2, color: 0xffae30, color2: 0xe02c10, intensity: 1.3, intensity2: 0.9, gravity: -4.5, drag: 1.6, rot: 0, fadeIn: 0.1, fadeOut: 0.35, vary: 0.2 }),
+  flame: particleStyle({ pull: 0.45, scale: 1.15, sprite: SPRITE.flame, add: 0.2, color: 0xffae30, color2: 0xe02c10, intensity: 1.3, intensity2: 0.9, gravity: -4.5, drag: 1.6, rot: 0, fadeIn: 0.1, fadeOut: 0.5, vary: 0.2 }),
   /** 实心星 */
-  star: particleStyle({ sprite: SPRITE.star, add: 0.4, color: 0xffffff, intensity: 1.7, intensity2: 1.1, drag: 2.2, spin: 3, fadeIn: 0.08, fadeOut: 0.45 }),
-  feather: particleStyle({ sprite: SPRITE.feather, add: 0.22, color: 0xffffff, color2: 0xcfffe8, intensity: 1.15, gravity: 2.4, drag: 2.6, spin: 4, fadeIn: 0.05, fadeOut: 0.6 }),
-  leaf: particleStyle({ sprite: SPRITE.leaf, add: 0.2, color: 0xb8ffd8, color2: 0x5fe0a8, intensity: 1.4, gravity: 0.8, drag: 2.2, spin: 6, fadeIn: 0.06, fadeOut: 0.5 }),
+  star: particleStyle({ pull: 0.3, scale: 1.25, sprite: SPRITE.star, add: 0.4, color: 0xffffff, intensity: 1.7, intensity2: 1.1, drag: 2.2, spin: 3, fadeIn: 0.08, fadeOut: 0.45 }),
+  feather: particleStyle({ scale: 1.3, sprite: SPRITE.feather, add: 0.22, color: 0xffffff, color2: 0xcfffe8, intensity: 1.15, gravity: 2.4, drag: 2.6, spin: 4, fadeIn: 0.05, fadeOut: 0.6 }),
+  leaf: particleStyle({ scale: 1.35, sprite: SPRITE.leaf, add: 0.2, color: 0xb8ffd8, color2: 0x5fe0a8, intensity: 1.4, gravity: 0.8, drag: 2.2, spin: 6, fadeIn: 0.06, fadeOut: 0.5 }),
   /** 暗影烟缕 */
-  wisp: particleStyle({ sprite: SPRITE.wisp, sprite2: SPRITE.smoke, add: 0.12, color: 0x5a3aa8, color2: 0x1a1030, alpha: 0.8, alpha2: 0.3, gravity: -1.8, drag: 1.8, spin: 1.2, fadeIn: 0.1, fadeOut: 0.35, vary: 0.2 }),
-  coin: particleStyle({ sprite: SPRITE.coin, add: 0.2, color: 0xffd860, color2: 0xffc030, intensity: 1.5, gravity: 14, drag: 0, spin: 5, fadeIn: 0.02, fadeOut: 0.85 }),
+  wisp: particleStyle({ pull: 0.5, sprite: SPRITE.wisp, sprite2: SPRITE.smoke, add: 0.12, color: 0x5a3aa8, color2: 0x1a1030, alpha: 0.8, alpha2: 0.3, gravity: -1.8, drag: 1.8, spin: 1.2, fadeIn: 0.1, fadeOut: 0.35, vary: 0.2 }),
+  coin: particleStyle({ scale: 1.5, sprite: SPRITE.coin, add: 0.2, color: 0xffd860, color2: 0xffc030, intensity: 1.5, gravity: 14, drag: 0, spin: 5, fadeIn: 0.02, fadeOut: 0.85 }),
   /** 朝向相机的扩散环 */
   ringB: particleStyle({ sprite: SPRITE.ring, add: 0.5, color: 0xffffff, intensity: 2, intensity2: 1, fadeIn: 0.03, fadeOut: 0.25 }),
-  plus: particleStyle({ sprite: SPRITE.plus, add: 0.35, color: 0xa8ffc0, color2: 0x38e080, intensity: 2, intensity2: 1.2, gravity: -1.2, drag: 1.2, rot: 0, fadeIn: 0.12, fadeOut: 0.5 }),
-  hex: particleStyle({ sprite: SPRITE.hex, add: 0.4, color: 0xe8f6ff, color2: 0x8fc8ff, intensity: 2, intensity2: 1.2, gravity: 6, drag: 1.6, spin: 5, fadeIn: 0.02, fadeOut: 0.5 }),
-  rune: particleStyle({ sprite: SPRITE.rune1, sprite2: SPRITE.rune2, add: 0.45, color: 0xffffff, intensity: 2.1, intensity2: 1.2, gravity: -0.8, drag: 1.5, rot: 0, fadeIn: 0.15, fadeOut: 0.55 }),
+  plus: particleStyle({ pull: 0.4, scale: 1.5, sprite: SPRITE.plus, add: 0.35, color: 0xa8ffc0, color2: 0x38e080, intensity: 2, intensity2: 1.2, gravity: -1.2, drag: 1.2, rot: 0, fadeIn: 0.12, fadeOut: 0.5 }),
+  hex: particleStyle({ scale: 1.3, sprite: SPRITE.hex, add: 0.4, color: 0xe8f6ff, color2: 0x8fc8ff, intensity: 2, intensity2: 1.2, gravity: 6, drag: 1.6, spin: 5, fadeIn: 0.02, fadeOut: 0.5 }),
+  rune: particleStyle({ pull: 0.3, scale: 1.4, sprite: SPRITE.rune1, sprite2: SPRITE.rune2, add: 0.45, color: 0xffffff, intensity: 2.1, intensity2: 1.2, gravity: -0.8, drag: 1.5, rot: 0, fadeIn: 0.15, fadeOut: 0.55 }),
   /** 贴地扩散的小环(涟漪) */
   ripple: particleStyle({ sprite: SPRITE.ring, orient: ORIENT.flat, add: 0.5, color: 0xffffff, intensity: 1.6, intensity2: 0.8, fadeIn: 0.05, fadeOut: 0.3 }),
-  drop: particleStyle({ sprite: SPRITE.drop, add: 0.3, color: 0xc8f070, color2: 0x5faa2c, intensity: 1.4, gravity: 16, drag: 0.8, rot: 0, fadeIn: 0.02, fadeOut: 0.7 }),
-  frost: particleStyle({ sprite: SPRITE.frost, add: 0.45, color: 0xe8f8ff, color2: 0x7fd0ff, intensity: 2, intensity2: 1.1, gravity: 0.6, drag: 2, spin: 2, fadeIn: 0.12, fadeOut: 0.5 }),
-  chevron: particleStyle({ sprite: SPRITE.chevron, add: 0.5, color: 0xffffff, intensity: 1.8, drag: 1, fadeIn: 0.15, fadeOut: 0.5 }),
+  drop: particleStyle({ scale: 1.3, sprite: SPRITE.drop, add: 0.3, color: 0xc8f070, color2: 0x5faa2c, intensity: 1.4, gravity: 16, drag: 0.8, rot: 0, fadeIn: 0.02, fadeOut: 0.7 }),
+  frost: particleStyle({ pull: 0.3, scale: 1.4, sprite: SPRITE.frost, add: 0.45, color: 0xe8f8ff, color2: 0x7fd0ff, intensity: 2, intensity2: 1.1, gravity: 0.6, drag: 2, spin: 2, fadeIn: 0.12, fadeOut: 0.5 }),
   /** 月牙斩痕公告板 */
   crescent: particleStyle({ sprite: SPRITE.crescent, add: 0.4, color: 0xffffff, intensity: 1.6, intensity2: 0.9, fadeIn: 0.03, fadeOut: 0.2 }),
   /** 下落的箭 */
-  arrow: particleStyle({ sprite: SPRITE.arrow, orient: ORIENT.stretch, add: 0.35, color: 0xf4fff8, color2: 0x9dffd8, intensity: 1.9, stretch: 0.012, fadeIn: 0.04, fadeOut: 0.92 }),
+  arrow: particleStyle({ scale: 1.4, sprite: SPRITE.arrow, orient: ORIENT.stretch, add: 0.35, color: 0xf4fff8, color2: 0x9dffd8, intensity: 1.9, stretch: 0.012, fadeIn: 0.04, fadeOut: 0.92 }),
   bubble: particleStyle({ sprite: SPRITE.bubble, add: 0.5, color: 0xffffff, intensity: 1.5, gravity: -1.5, drag: 1.5, fadeIn: 0.15, fadeOut: 0.6 }),
-  bolt: particleStyle({ sprite: SPRITE.bolt, color: 0xfff6c0, intensity: 2.4, fadeIn: 0.02, fadeOut: 0.3, spin: 0 }),
+  /** 折线闪电(眩晕瞬间) */
+  bolt: particleStyle({ sprite: SPRITE.bolt, add: 0.3, pull: 0.5, color: 0xffd04a, intensity: 1.4, drag: 4, fadeIn: 0.02, fadeOut: 0.3 }),
 };
 
 export const R = {
@@ -69,9 +67,9 @@ export const R = {
   /** 细亮线 */
   thin: ribbonStyle({ width: 0.16, life: 0.22, color: 0xffffff, intensity: 1.9, intensity2: 1.0, add: 0.5, taper: 0, core: 0.6, step: 0.2 }),
   /** 火焰尾迹 */
-  fire: ribbonStyle({ width: 1.5, life: 0.5, color: 0xffa028, color2: 0xd82410, intensity: 1.45, intensity2: 0.9, add: 0.25, noise: 0.9, taper: 0.5, core: 0.5, step: 0.3 }),
+  fire: ribbonStyle({ width: 1.5, life: 0.5, color: 0xff7a16, color2: 0xc81c0c, intensity: 1.35, intensity2: 0.9, add: 0.2, noise: 0.9, taper: 0.5, core: 0.2, step: 0.3 }),
   /** 风痕 */
-  wind: ribbonStyle({ width: 0.7, life: 0.4, color: 0xc8ffe6, color2: 0x2ee096, intensity: 1.35, intensity2: 0.8, add: 0.3, noise: 0.6, taper: 0.2, core: 0.3, step: 0.25 }),
+  wind: ribbonStyle({ width: 0.6, life: 0.4, color: 0x7af2c2, color2: 0x1fc884, intensity: 1.2, intensity2: 0.8, add: 0.3, noise: 0.7, taper: 0.2, core: 0.2, alpha: 0.75, step: 0.25 }),
   /** 暗影残迹 */
   shadow: ribbonStyle({ width: 1.3, life: 0.45, color: 0x8a5cff, color2: 0x1a1030, intensity: 1.3, intensity2: 0.6, add: 0.35, noise: 0.8, taper: 0.6, core: 0.25, alpha: 0.9, step: 0.3 }),
   /** 烟迹(炮弹) */
@@ -94,7 +92,7 @@ const K_HOOP = 0.65;
 const K_SLASH = 0.6;
 
 /** 向四周迸射的拉伸火花。(dx, dz) 为偏向方向(单位向量)，bias 0..1 */
-export function sparks(k: FxKit, x: number, y: number, z: number, count: number, speed: number, c0: THREE.Color = C.warm, c1: THREE.Color = C.sparkDeep, dx = 0, dz = 0, bias = 0, life = 0.4, size = 0.14): void {
+export function sparks(k: FxKit, x: number, y: number, z: number, count: number, speed: number, c0: THREE.Color = C.spark, c1: THREE.Color = C.sparkDeep, dx = 0, dz = 0, bias = 0, life = 0.4, size = 0.14): void {
   const p = k.particles.use(P.spark).tint(c0, c1);
   const r = k.rnd;
   const n = k.n(count);
@@ -109,7 +107,8 @@ export function sparks(k: FxKit, x: number, y: number, z: number, count: number,
 
 /** 向四周飘散的闪烁星点(无重力) */
 export function glints(k: FxKit, x: number, y: number, z: number, count: number, speed: number, c0: THREE.Color, c1: THREE.Color = c0, life = 0.6, size = 0.34): void {
-  const p = k.particles.use(P.glint).tint(c0, c1);
+  // 纯白的星点在亮地面上几乎没有对比度：起始色是白色时改用目标色(着色器里的亮核仍会给出一点白芯)
+  const p = k.particles.use(P.glint).tint(c0 === C.white ? c1 : c0, c1);
   const r = k.rnd;
   const n = k.n(count);
   for (let i = 0; i < n; i++) {
@@ -123,8 +122,8 @@ export function glints(k: FxKit, x: number, y: number, z: number, count: number,
 
 /** 一团光晕闪一下 */
 export function flash(k: FxKit, x: number, y: number, z: number, size: number, c: THREE.Color, life = 0.22, burst = false): void {
-  k.particles.use(P.flash).tint(c).spawn(x, y, z, 0, 0, 0, life, size * 0.45, size * 0.85);
-  if (burst) k.particles.use(P.burst).tint(c).spawn(x, y, z, 0, 0, 0, life * 0.9, size * 0.6, size * 1.3);
+  k.particles.use(P.flash).tint(c).spawn(x, y, z, 0, 0, 0, life, size * 0.55, size);
+  if (burst) k.particles.use(P.burst).tint(c).spawn(x, y, z, 0, 0, 0, life * 0.9, size * 0.7, size * 1.5);
 }
 
 /** 贴地向外翻滚的尘环 */

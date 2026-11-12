@@ -17,6 +17,8 @@ import type { GameState } from '../core/types';
 import type { GameRenderer, RendererOptions } from './api';
 import type { RenderModuleFactory } from './engine/context';
 import { createRendererCore, type GameRendererCore } from './engine/core';
+import { createFxModule } from './fx';
+import { createOverlayModule } from './overlay';
 import { createTerrainModule } from './terrain';
 import { createUnitsModule } from './units';
 
@@ -28,12 +30,16 @@ export type { GameRendererCore } from './engine/core';
 export type { FrameInfo, RenderContext, RenderModule, RenderModuleFactory, TerrainQuery, UnitQuery } from './engine/context';
 export { createTerrainModule } from './terrain';
 export { createPlaceholderUnits } from './engine/placeholders';
+export { createFxModule } from './fx';
+export type { FxModule, FxStats, UnitAnchor, UnitAnchors } from './fx';
+export { createOverlayModule } from './overlay';
+export type { OverlayModule } from './overlay';
 
 /**
  * 正式对局使用的模块列表(顺序即 update 顺序)。
- * R2：用单位视图模块替换 createPlaceholderUnits；R3：追加特效与叠加层模块。
+ * 顺序有讲究：单位视图先接管 ctx.unitQuery，特效('fx')再读它；叠加层('overlay')共用特效层的贴花系统，必须排在 'fx' 之后。
  */
-export const DEFAULT_MODULES: RenderModuleFactory[] = [createTerrainModule, createUnitsModule];
+export const DEFAULT_MODULES: RenderModuleFactory[] = [createTerrainModule, createUnitsModule, createFxModule, createOverlayModule];
 
 export function createGameRenderer(container: HTMLElement, state: GameState, opts: RendererOptions): GameRenderer {
   const core: GameRendererCore = createRendererCore(container, state, opts, DEFAULT_MODULES);

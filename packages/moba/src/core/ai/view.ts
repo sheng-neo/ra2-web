@@ -3,7 +3,7 @@
  * 列表类查询在同一个模拟 tick 内只计算一次（缓存），Bot 一次 think 里反复调用没有额外开销。
  */
 import { HEROES } from '../data/heroes';
-import type { SimHero, SimUnit } from '../internal';
+import { MOVE_DIR, MOVE_PATH, type SimHero, type SimUnit } from '../internal';
 import { pathLength } from '../nav';
 import type { Rng } from '../rng';
 import { getSkill, isSummonerSlot, SUMMONER_CAST } from '../skills/registry';
@@ -240,6 +240,31 @@ export class SimBotView implements BotView {
     const impl = getSkill(h.heroId, slot);
     if (impl.movement && h.rt.rooted) return false;
     return !(impl.canCast && impl.canCast(this.sim, h) !== null);
+  }
+
+  orderState(): 0 | 1 | 2 | 3 {
+    const h = this.self;
+    if (h.h.atkOrder) return 3;
+    return h.rt.moveMode === MOVE_PATH ? 2 : h.rt.moveMode === MOVE_DIR ? 1 : 0;
+  }
+
+  orderTargetId(): number {
+    return this.self.h.atkOrder ? this.self.h.atkTargetId : -1;
+  }
+
+  attackWindup(): boolean {
+    return this.self.rt.windupLeft > 0;
+  }
+
+  attackCooldown(): number {
+    const rt = this.self.rt;
+    const disarm = rt.disarmUntil - this.sim.state.time;
+    return Math.max(0, rt.atkCd, disarm);
+  }
+
+  busy(): boolean {
+    const rt = this.self.rt;
+    return rt.stunned || rt.dash !== null || this.sim.state.time < rt.lockUntil;
   }
 
   command(cmd: PlayerCommand): void {

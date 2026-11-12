@@ -87,6 +87,18 @@ export interface BotView {
   /** 已学会、冷却完毕、法力足够、未被控制 */
   skillReady(slot: SkillSlot): boolean;
 
+  // ── 自己的指令/出手状态（玩家从自己英雄的动作上也能看到这些，不属于隐藏信息）──
+  /** 当前生效的指令：0 = 无，1 = 摇杆方向移动，2 = 寻路移动，3 = 普攻指令 */
+  orderState(): 0 | 1 | 2 | 3;
+  /** 普攻指令的目标 id；没有普攻指令为 -1 */
+  orderTargetId(): number;
+  /** 正处于普攻前摇（此时下移动/施法命令会取消这一下） */
+  attackWindup(): boolean;
+  /** 距下一次普攻可以出手的剩余时间（秒），可出手为 0 */
+  attackCooldown(): number;
+  /** 动作锁 / 位移途中 / 被眩晕击飞：此刻下的移动与普攻命令不会立即生效 */
+  busy(): boolean;
+
   /** 对自己的英雄下命令（与玩家同一入口） */
   command(cmd: PlayerCommand): void;
 }

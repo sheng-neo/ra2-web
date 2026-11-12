@@ -36,7 +36,6 @@ export class WorldMarks {
   private towers: TowerMark[] = [];
   private facing = 0;
   private stamp = 0;
-  private near: { u: Unit; d: number }[] = [];
   enabled = true;
 
   constructor(k: FxKit) {
@@ -92,20 +91,33 @@ export class WorldMarks {
     }
     if (!locked) this.drop('lock');
 
-    // ── 敌方防御塔/水晶：靠近时显示攻击范围，被锁定时拉红线 ──
-    const near = this.near;
-    near.length = 0;
+    // ── 敌方防御塔/水晶：靠近时显示攻击范围，被锁定时拉红线(只管最近的两座) ──
+    let n0: Unit | null = null;
+    let n1: Unit | null = null;
+    let d0 = Infinity;
+    let d1 = Infinity;
     for (const u of st.units) {
       if ((u.kind !== 'tower' && u.kind !== 'core') || !u.alive || u.team === player.team) continue;
       const dist = Math.hypot(u.pos.x - player.pos.x, u.pos.y - player.pos.y);
-      if (dist < u.stats.attackRange + SHOW_MARGIN) near.push({ u, d: dist });
+      if (dist >= u.stats.attackRange + SHOW_MARGIN) continue;
+      if (dist < d0) {
+        n1 = n0;
+        d1 = d0;
+        n0 = u;
+        d0 = dist;
+      } else if (dist < d1) {
+        n1 = u;
+        d1 = dist;
+      }
     }
-    near.sort((a, b) => a.d - b.d);
     let targeted = false;
-    for (let i = 0; i < near.length && i < MAX_TOWERS; i++) {
-      const { u, d: dist } = near[i];
+    for (let i = 0; i < MAX_TOWERS; i++) {
+      const u = i === 0 ? n0 : n1;
+      if (!u) break;
+      const dist = i === 0 ? d0 : d1;
       const range = u.stats.attackRange;
-      let mark = this.towers.find((t) => t.id === u.id);
+      let mark: TowerMark | null = null;
+      for (const t of this.towers) if (t.id === u.id) mark = t;
       if (!mark) {
         mark = { id: u.id, slot: d.hold(DECAL.range, 0.25), seen: stamp };
         this.towers.push(mark);
@@ -120,13 +132,21 @@ export class WorldMarks {
         .at(u.pos.x, u.pos.y)
         .y(0.08)
         .radius(range)
-        .params(aimsMe ? 0.012 : 0.007, aimsMe ? 0 : 48)
-        .color(c, aimsMe ? 2.2 : inside ? 1.8 : 1.4, fade * pulse * (inside ? 1 : 0.8))
+        .params(aimsMe ? 0.016 : inside ? 0.013 : 0.011, aimsMe ? 0 : 40)
+        .color(c, aimsMe ? 2.2 : inside ? 1.8 : 1.6, fade * pulse * (inside ? 1 : 0.9))
         .under(DANGER_UNDER, aimsMe ? 0.5 : 0.3);
       if (aimsMe && k.anchor(u.id)) {
         targeted = true;
-        // 从塔的核心到玩家胸口的红色警示线
-        k.ribbons.line(R.warn, k.a.x, k.a.y + k.a.height * 0.82, k.a.z, px, py + ph * 0.5, pz, RANGE_DANGER, 0.75 + 0.25 * Math.sin(k.now * 16));
+        // 从塔的能量核心到玩家胸口的红色警示线
+        let cx = k.a.x;
+        let cy = k.a.y + k.a.height * 0.82;
+        let cz = k.a.z;
+        if (k.anchors.attach?.(u.id, 'core', k.v)) {
+          cx = k.v.x;
+          cy = k.v.y;
+          cz = k.v.z;
+        }
+        k.ribbons.line(R.warn, cx, cy, cz, px, py + ph * 0.5, pz, RANGE_DANGER, 0.75 + 0.25 * Math.sin(k.now * 16));
       }
     }
     for (let i = this.towers.length - 1; i >= 0; i--) {

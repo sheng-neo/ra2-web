@@ -7,7 +7,7 @@ import { MONSTERS } from '../../core/data/units';
 import type { Buff, HeroUnit, Unit } from '../../core/types';
 import type { FrameInfo } from '../engine/context';
 import type { UnitAnchor, UnitAnchors } from '../fx/anchors';
-import { FONT_NUM, type IconCache, type IconId, type TextCache } from './sprites2d';
+import { FONT_NUM, type IconCache, type IconId, type Sprite2D, type TextCache } from './sprites2d';
 
 interface BarState {
   /** 残影当前显示到的血量 */
@@ -17,6 +17,11 @@ interface BarState {
   lastHp: number;
   flash: number;
   seen: number;
+  /** 名字/等级的文字精灵(按缩放与等级缓存，避免每帧拼缓存键) */
+  name: Sprite2D | null;
+  nameKey: number;
+  lv: Sprite2D | null;
+  lvKey: number;
 }
 
 export type Projector = (x: number, y: number, z: number, out: { x: number; y: number }) => boolean;
@@ -59,7 +64,7 @@ export class BarLayer {
   private stateOf(u: Unit): BarState {
     let st = this.states.get(u.id);
     if (!st) {
-      st = { trail: u.hp, hold: 0, lastHp: u.hp, flash: 0, seen: 0 };
+      st = { trail: u.hp, hold: 0, lastHp: u.hp, flash: 0, seen: 0, name: null, nameKey: -1, lv: null, lvKey: -1 };
       this.states.set(u.id, st);
     }
     return st;
@@ -220,10 +225,22 @@ export class BarLayer {
     g.lineWidth = Math.max(1, 1.4 * s);
     g.strokeStyle = self ? '#d8ff7a' : '#f0c860';
     g.stroke();
-    const lv = this.text.get(String(u.level), Math.round(10.5 * s * k), '#ffffff', 'rgba(8,12,24,0.9)', 800, FONT_NUM);
+    // 文字精灵：缩放/等级/敌我没变就复用上一帧的
+    const dprKey = this.text.dprKey;
+    const lvKey = u.level * 4096 + Math.round(s * k * 100) + dprKey;
+    if (!bs.lv || bs.lvKey !== lvKey) {
+      bs.lv = this.text.get(String(u.level), Math.round(10.5 * s * k), '#ffffff', 'rgba(8,12,24,0.9)', 800, FONT_NUM);
+      bs.lvKey = lvKey;
+    }
+    const lv = bs.lv;
     g.drawImage(lv.canvas, bx - lv.w / 2, by - lv.h / 2, lv.w, lv.h);
     // 名字
-    const name = this.text.get(u.name, Math.round(12 * s * k), pal.name, 'rgba(6,10,20,0.92)');
+    const nameKey = (self ? 1 : u.team === frame.playerTeam ? 2 : 3) * 4096 + Math.round(s * k * 100) + dprKey;
+    if (!bs.name || bs.nameKey !== nameKey) {
+      bs.name = this.text.get(u.name, Math.round(12 * s * k), pal.name, 'rgba(6,10,20,0.92)');
+      bs.nameKey = nameKey;
+    }
+    const name = bs.name;
     const ny = y0 - 3 * s - name.h;
     g.drawImage(name.canvas, cx - name.w / 2, ny, name.w, name.h);
     this.statusRow(g, u.buffs, cx, ny - 7 * s, s);

@@ -47,6 +47,8 @@ export interface FxModule extends RenderModule {
   playFx(e: FxEvent, state: GameState): void;
   /** 清空所有进行中的特效与视图 */
   reset(): void;
+  /** 玩家阵亡时把画面去色(走引擎调色，low 档无后期时无效)。默认开启；界面层自己做灰屏时可以关掉 */
+  setDeathGrade(enabled: boolean): void;
   getStats(): FxStats;
 }
 
@@ -63,6 +65,19 @@ export function createFxModule(ctx: RenderContext): FxModule {
   const stats: FxStats = { particlesSpawned: 0, particleCapacity: 0, decals: 0, projectiles: 0, areas: 0, statuses: 0, drawCalls: 0 };
   /** 每个近战英雄交替左右挥砍 */
   const swingCount = new Map<number, number>();
+  let deathGrade = true;
+  let gray = 0;
+
+  /** 玩家阵亡：画面缓缓去色，复活时恢复 */
+  const updateDeathGrade = (frame: FrameInfo): void => {
+    let dead = false;
+    for (const h of frame.state.heroes) if (h.id === frame.state.playerId) dead = !h.alive;
+    const target = deathGrade && dead ? 0.82 : 0;
+    if (gray === target) return;
+    const step = frame.dt * (target > gray ? 1.6 : 3);
+    gray = Math.abs(target - gray) <= step ? target : gray + Math.sign(target - gray) * step;
+    ctx.grade.desaturate = gray;
+  };
 
   const syncEnv = (state: GameState): void => {
     env.state = state;
@@ -156,6 +171,7 @@ export function createFxModule(ctx: RenderContext): FxModule {
       areas.update(frame);
       status.update(frame);
       aim.update(frame);
+      updateDeathGrade(frame);
       kit.flush(frame);
     },
     handleEvents(events: GameEvent[], state: GameState): void {
@@ -170,6 +186,9 @@ export function createFxModule(ctx: RenderContext): FxModule {
     },
     setAnchors(a: UnitAnchors): void {
       kit.anchors = a;
+    },
+    setDeathGrade(enabled: boolean): void {
+      deathGrade = enabled;
     },
     playFx(e: FxEvent, state: GameState): void {
       syncEnv(state);
@@ -194,6 +213,7 @@ export function createFxModule(ctx: RenderContext): FxModule {
       return stats;
     },
     dispose(): void {
+      if (gray > 0) ctx.grade.desaturate = 0;
       projectiles.reset();
       areas.reset();
       status.reset();

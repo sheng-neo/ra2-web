@@ -106,7 +106,7 @@ function rune(seed: number): PathFn {
   return (m) => {
     const rng = new Rng(seed);
     // 骨架：一根主干 + 若干折划/弧/点，像一个陌生的字符
-    glowStroke(m, 0.1, () => {
+    glowStroke(m, 0.15, () => {
       m.beginPath();
       m.moveTo(0, -0.62);
       m.lineTo(0, 0.62);
@@ -127,7 +127,7 @@ function rune(seed: number): PathFn {
     m.fillStyle = '#fff';
     for (let i = 0; i < 2; i++) {
       m.beginPath();
-      m.arc(rng.range(-0.5, 0.5), rng.range(-0.6, 0.6), 0.07, 0, TAU);
+      m.arc(rng.range(-0.5, 0.5), rng.range(-0.6, 0.6), 0.1, 0, TAU);
       m.fill();
     }
   };
@@ -156,13 +156,13 @@ const DEFS: Record<number, SpriteDef> = {
     pix: (x, y, o) => {
       const ax = Math.abs(x);
       const ay = Math.abs(y);
-      const fx = Math.exp(-y * y * 420) * Math.pow(sat(1 - ax), 2.2);
-      const fy = Math.exp(-x * x * 420) * Math.pow(sat(1 - ay), 2.2);
+      const fx = Math.exp(-y * y * 110) * Math.pow(sat(1 - ax), 1.8);
+      const fy = Math.exp(-x * x * 110) * Math.pow(sat(1 - ay), 1.8);
       // 对角的短芒
       const u = (x + y) * 0.7071;
       const v = (x - y) * 0.7071;
-      const fd = (Math.exp(-v * v * 600) * Math.pow(sat(1 - Math.abs(u) * 2.2), 2) + Math.exp(-u * u * 600) * Math.pow(sat(1 - Math.abs(v) * 2.2), 2)) * 0.6;
-      const g = Math.exp(-(x * x + y * y) * 26);
+      const fd = (Math.exp(-v * v * 200) * Math.pow(sat(1 - Math.abs(u) * 2.0), 2) + Math.exp(-u * u * 200) * Math.pow(sat(1 - Math.abs(v) * 2.0), 2)) * 0.7;
+      const g = Math.exp(-(x * x + y * y) * 11);
       o[0] = sat(Math.max(fx, fy) + fd + g * 0.9);
       o[1] = 1;
       o[2] = sat(g * 1.2 + Math.max(fx, fy) * 0.5);
@@ -189,7 +189,7 @@ const DEFS: Record<number, SpriteDef> = {
     pix: (x, y, o) => {
       // 头部(+x)粗亮，尾部细淡
       const k = (x + 1) * 0.5;
-      const w = 0.03 + 0.2 * k * k;
+      const w = 0.1 + 0.42 * k * k;
       const body = Math.exp(-(y * y) / (w * w)) * sstep(-1, -0.7, x) * sstep(1, 0.72, x);
       o[0] = sat(body * (0.25 + 0.75 * k));
       o[1] = 1;
@@ -242,7 +242,7 @@ const DEFS: Record<number, SpriteDef> = {
       m.closePath();
       m.fill();
       m.strokeStyle = '#fff';
-      m.lineWidth = 0.05;
+      m.lineWidth = 0.08;
       m.beginPath();
       m.moveTo(-0.92, 0);
       m.lineTo(0.8, 0);
@@ -278,10 +278,10 @@ const DEFS: Record<number, SpriteDef> = {
   [SPRITE.ring]: {
     pix: (x, y, o) => {
       const r = Math.hypot(x, y);
-      const d = Math.abs(r - 0.78);
-      o[0] = sat(sstep(0.075, 0.02, d) + Math.exp(-d * d * 60) * 0.3) * sstep(1, 0.93, r);
+      const d = Math.abs(r - 0.76);
+      o[0] = sat(sstep(0.12, 0.04, d) + Math.exp(-d * d * 40) * 0.3) * sstep(1, 0.93, r);
       o[1] = 1;
-      o[2] = sstep(0.03, 0.0, d) * 0.6;
+      o[2] = sstep(0.05, 0.0, d) * 0.6;
     },
   },
   [SPRITE.flame]: {
@@ -333,7 +333,7 @@ const DEFS: Record<number, SpriteDef> = {
       m.fillStyle = 'rgba(255,255,255,0.16)';
       star(m, 3, 0.86, 0.86, Math.PI / 2);
       m.fill();
-      glowStroke(m, 0.09, () => star(m, 3, 0.8, 0.8, Math.PI / 2));
+      glowStroke(m, 0.14, () => star(m, 3, 0.78, 0.78, Math.PI / 2));
     },
   },
   [SPRITE.diamond]: {
@@ -398,25 +398,25 @@ const DEFS: Record<number, SpriteDef> = {
       m.strokeStyle = '#fff';
       m.fillStyle = '#fff';
       m.lineCap = 'round';
-      m.lineWidth = 0.07;
+      m.lineWidth = 0.17;
       m.beginPath();
-      m.moveTo(-0.85, 0);
-      m.lineTo(0.55, 0);
+      m.moveTo(-0.8, 0);
+      m.lineTo(0.5, 0);
       m.stroke();
       m.beginPath();
-      m.moveTo(0.92, 0);
-      m.lineTo(0.46, 0.2);
-      m.lineTo(0.56, 0);
-      m.lineTo(0.46, -0.2);
+      m.moveTo(0.94, 0);
+      m.lineTo(0.3, 0.36);
+      m.lineTo(0.46, 0);
+      m.lineTo(0.3, -0.36);
       m.closePath();
       m.fill();
-      m.lineWidth = 0.06;
+      m.lineWidth = 0.13;
       m.beginPath();
-      for (const x of [-0.82, -0.66]) {
+      for (const x of [-0.72, -0.48]) {
         m.moveTo(x, 0);
-        m.lineTo(x - 0.12, 0.2);
+        m.lineTo(x - 0.16, 0.3);
         m.moveTo(x, 0);
-        m.lineTo(x - 0.12, -0.2);
+        m.lineTo(x - 0.16, -0.3);
       }
       m.stroke();
     },
@@ -424,7 +424,7 @@ const DEFS: Record<number, SpriteDef> = {
   [SPRITE.lock]: {
     core: 0.5,
     path: (m) => {
-      glowStroke(m, 0.09, () => {
+      glowStroke(m, 0.14, () => {
         m.beginPath();
         for (let i = 0; i < 4; i++) {
           const a = (i * Math.PI) / 2 + Math.PI / 4;
@@ -471,7 +471,7 @@ const DEFS: Record<number, SpriteDef> = {
   [SPRITE.bubble]: {
     pix: (x, y, o) => {
       const r = Math.hypot(x, y);
-      const rim = sstep(0.07, 0.01, Math.abs(r - 0.8));
+      const rim = sstep(0.11, 0.02, Math.abs(r - 0.78));
       const fill = sstep(0.82, 0.3, r) * 0.12;
       const hl = Math.exp(-((x + 0.38) * (x + 0.38) + (y - 0.42) * (y - 0.42)) * 28) * 0.9;
       o[0] = sat(rim * 0.85 + fill + hl) * sstep(1, 0.9, r);
@@ -482,7 +482,7 @@ const DEFS: Record<number, SpriteDef> = {
   [SPRITE.chevron]: {
     core: 0.5,
     path: (m) => {
-      glowStroke(m, 0.16, () => {
+      glowStroke(m, 0.22, () => {
         m.beginPath();
         m.moveTo(-0.4, 0.62);
         m.lineTo(0.42, 0);
@@ -503,7 +503,7 @@ const DEFS: Record<number, SpriteDef> = {
   [SPRITE.frost]: {
     core: 0.5,
     path: (m) => {
-      glowStroke(m, 0.07, () => {
+      glowStroke(m, 0.11, () => {
         m.beginPath();
         for (let i = 0; i < 6; i++) {
           const a = (i * Math.PI) / 3;
@@ -525,7 +525,7 @@ const DEFS: Record<number, SpriteDef> = {
   [SPRITE.bolt]: {
     core: 0.6,
     path: (m) => {
-      glowStroke(m, 0.1, () => {
+      glowStroke(m, 0.17, () => {
         m.beginPath();
         m.moveTo(0.3, 0.86);
         m.lineTo(-0.3, 0.12);

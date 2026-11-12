@@ -7,7 +7,7 @@
 import type * as THREE from 'three';
 import { VISION } from '../../core/data/units';
 import type { Unit } from '../../core/types';
-import type { FrameInfo, RenderContext } from '../engine/context';
+import type { FrameInfo, RenderContext, RenderModule } from '../engine/context';
 
 export interface UnitAnchor {
   /** 脚底的世界坐标(已插值)：x、离地高度、z */
@@ -32,6 +32,16 @@ export interface UnitAnchors {
   unit(id: number): Unit | undefined;
   /** 地面上一点是否在玩家队伍的视野内(敌方技能特效/弹道在迷雾里不画) */
   pointVisible(x: number, z: number): boolean;
+  /**
+   * 可选：模型挂点的世界坐标('muzzle' 弹道出口 / 'core' 塔与水晶的能量核心 / 'chest' 胸口…)。
+   * 没有实现或返回 false 时，调用方按单位高度估算。
+   */
+  attach?(id: number, name: string, out: THREE.Vector3): boolean;
+}
+
+/** 单位视图模块里与挂点有关的那一小部分(鸭子类型：不依赖其具体实现) */
+interface AttachProvider extends RenderModule {
+  getAttach?(id: number, name: string, out: THREE.Vector3): boolean;
 }
 
 export function createAnchor(): UnitAnchor {
@@ -107,6 +117,10 @@ export function createDefaultAnchors(ctx: RenderContext, pos: THREE.Vector3): Un
         if (dx * dx + dz * dz <= allies[i * 3 + 2]) return true;
       }
       return false;
+    },
+    attach(id, name, out) {
+      const units = ctx.getModule<AttachProvider>('units');
+      return units?.getAttach ? units.getAttach(id, name, out) : false;
     },
   };
 }

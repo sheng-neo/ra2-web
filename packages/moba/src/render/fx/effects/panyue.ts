@@ -151,7 +151,7 @@ const ultLand: FxHandler = (k, e, env) => {
   const z = e.pos.y;
   const R0 = e.radius ?? 4.5;
   const r = k.rnd;
-  flash(k, x, 0.9, z, R0 * 2, T.hot, 0.3, true);
+  flash(k, x, 0.9, z, R0 * 1.5, T.hot, 0.22, true);
   orb(k, x, 0.8, z, 0.5, R0 * 0.45, 0.26, T.hot, 2);
   shockShell(k, x, 0.4, z, 1, R0 * 1.12, 0.45, T.glow, 1.9);
   pillar(k, x, z, R0 * 0.45, 6.5, 0.5, T.glow, 1.7, 0.8);

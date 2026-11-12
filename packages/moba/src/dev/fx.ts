@@ -11,7 +11,9 @@
  *   hero=<HeroId>    玩家英雄(缺省按 play 的键名前缀自动选)
  *   quality=low|medium|high      (缺省 high)
  *   x=&y=&dir=       舞台中心(模拟坐标)与朝向(度，0 = 朝东)
- *   overlay=1        叠加层演示：直接用 createMockState 的整张假对局，并定时注入伤害/治疗/金币事件
+ *   sim=1            真实模拟：全 AI 对局(seed=、hero= 可选)，ff=<秒> 先快进，t=<秒> 再带特效跑一段后定格
+ *   overlay=1        叠加层演示：直接用 createMockState 的整张假对局，并定时注入伤害/治疗/金币事件(可配 t=<秒> 定格)
+ *   units=placeholder  用胶囊占位单位代替真实模型
  *   panel=0 / hud=0  隐藏按钮面板 / 统计
  *   loop=<秒>        每隔几秒重播
  *   speed=<倍率>     时间倍率(慢放看细节)
@@ -19,9 +21,10 @@
  */
 import { HEROES, HERO_IDS } from '../core/data/heroes';
 import { createMockState } from '../core/mock';
+import { createWorld } from '../core/world';
 import {
   TICK_DT, type AreaEffect, type AreaVisual, type Buff, type BuffId, type DamageType, type FxKey, type GameEvent, type GameState, type HeroId, type HeroUnit,
-  type Projectile, type ProjectileVisual, type TeamId, type Unit, type UnitAnim, type Vec2,
+  type Projectile, type ProjectileVisual, type TeamId, type Unit, type UnitAnim, type Vec2, type World,
 } from '../core/types';
 import type { AimIndicator, Quality } from '../render/api';
 import type { RenderModule, RenderModuleFactory } from '../render/engine/context';
@@ -34,6 +37,7 @@ import { particleStyle } from '../render/fx/particles';
 import { createOverlayModule, type OverlayModule } from '../render/overlay';
 import * as THREE from 'three';
 import { createTerrainModule } from '../render/terrain';
+import { createUnitsModule } from '../render/units';
 
 const params = new URLSearchParams(location.search);
 const num = (k: string): number | null => {
@@ -57,7 +61,12 @@ const heroId: HeroId = isHero(heroParam) ? heroParam : isHero(prefix) ? prefix :
 
 // ───────────────────────── 舞台 ─────────────────────────
 
-const state: GameState = createMockState(heroId);
+// ?sim=1：用真实模拟内核跑一局全 AI 对局，把真实事件流喂给特效/叠加层(集成冒烟测试)
+const simMode = params.get('sim') === '1';
+const world: World | null = simMode ? createWorld({ seed: num('seed') ?? 7, playerHero: heroId, difficulty: 'normal', autoPlay: true }) : null;
+const state: GameState = world ? world.state : createMockState(heroId);
+/** 不搭舞台：直接用整张对局状态 */
+const freeStage = overlayDemo || simMode;
 /** 舞台的「前方」(玩家 → 敌人的方向，缺省朝东)与「右方」 */
 const stageDir = ((num('dir') ?? 0) * Math.PI) / 180;
 const F: Vec2 = { x: Math.cos(stageDir), y: Math.sin(stageDir) };
@@ -78,7 +87,7 @@ interface Spot {
 }
 const spots: Spot[] = [];
 
-if (!overlayDemo) {
+if (!freeStage) {
   // 只留舞台上的单位 + 建筑/野怪；其余英雄送回泉水
   const minions = state.units.filter((u) => u.kind === 'minion');
   const foeMinions = minions.filter((u) => u.team === 1).slice(0, 3);
@@ -110,7 +119,7 @@ if (!overlayDemo) {
 }
 
 function resetStage(): void {
-  if (overlayDemo) return;
+  if (freeStage) return;
   for (const s of spots) {
     const u = s.u;
     u.pos = { ...s.pos };
@@ -127,6 +136,7 @@ function resetStage(): void {
     u.visible = [true, true];
     u.lastHitTime = -999;
   }
+  for (const u of state.units) if (u.kind === 'tower') u.targetId = -1;
   state.projectiles.length = 0;
   state.areas.length = 0;
   timers.length = 0;
@@ -696,6 +706,37 @@ const SEQ: Record<string, () => void> = {
       addBuff(player, 'tower_focus', 3, 0, Math.min(4, (player.buffs.find((b) => b.id === 'tower_focus')?.stacks ?? 0) + 1));
     });
   },
+  /** 走进敌方防御塔射程被锁定：范围圈由橙变红、警示连线、塔弹与锁定层数。配合 ?x=48.6&y=31&dir=-90 把舞台搬到红方下路一塔前 */
+  tower_aggro: () => {
+    let tower: Unit | null = null;
+    let best = Infinity;
+    for (const u of state.units) {
+      if (u.kind !== 'tower' || u.team === player.team) continue;
+      const d = dist(u.pos, player.pos);
+      if (d < best) {
+        best = d;
+        tower = u;
+      }
+    }
+    if (!tower) return;
+    const t = tower;
+    const dir = dirTo(player.pos, t.pos);
+    const stop = Math.max(0, best - (t.stats.attackRange - 1.8));
+    move(player, { x: player.pos.x + dir.x * stop, y: player.pos.y + dir.y * stop }, 5.5, 'move', () => {
+      t.targetId = player.id;
+      for (let i = 0; i < 3; i++) {
+        after(0.3 + i, () => {
+          const p = spawnProjectile('tower_bolt', t, cp(t.pos), dirTo(t.pos, player.pos), 26, { target: player });
+          p.team = t.team;
+          after(dist(t.pos, player.pos) / 26, () => {
+            fx('hit_tower', P0(), { team: t.team, targetId: player.id });
+            damage(player, 420 * (1 + 0.25 * i), 'physical', false, false, t);
+            addBuff(player, 'tower_focus', 3, 0, i + 1, t.id);
+          });
+        });
+      }
+    });
+  },
   hero_death: () => {
     foe.alive = false;
     foe.hp = 0;
@@ -813,7 +854,7 @@ for (const id of STATUS_BUFFS) {
     const spec = BUFF_SPEC[id] ?? { on: 'self' };
     const u = spec.on === 'foe' ? foe : player;
     addBuff(u, id, 6, spec.value ?? 0, spec.stacks ?? 1, u.id);
-    if (id === 'haste') move(player, ahead(9), 7, 'move');
+    if (id === 'haste') move(player, at(-3.5, 6.5), 7, 'move');
     if (id === 'airborne') setAnim(foe, 'airborne', 1);
   });
 }
@@ -912,14 +953,16 @@ PLAYS.set('dbg:sprites', () => {
 
 // ───────────────────────── 渲染器 ─────────────────────────
 
-const factories: RenderModuleFactory[] = [createTerrainModule, createPlaceholderUnits, createFxModule, createOverlayModule];
+// ?units=placeholder 用胶囊占位单位(不依赖单位模型)；缺省用真实的单位视图模块
+const unitsFactory: RenderModuleFactory = params.get('units') === 'placeholder' ? createPlaceholderUnits : createUnitsModule;
+const factories: RenderModuleFactory[] = [createTerrainModule, unitsFactory, createFxModule, createOverlayModule];
 const renderer = createRendererCore(app, state, { quality }, factories);
 const engine = renderer.engine;
 const ctx = renderer.context;
 const fxModule = ctx.getModule<FxModule>('fx') as FxModule;
 const overlayModule = ctx.getModule<OverlayModule>('overlay') as OverlayModule;
 const modules = ['terrain', 'units', 'fx', 'overlay'].map((n) => ctx.getModule(n)).filter((m): m is RenderModule => !!m);
-if (!overlayDemo) {
+if (!freeStage) {
   renderer.setCameraPeek({ x: center.x + F.x * 0.5, y: center.y + F.y * 0.5 - 1.5 });
   renderer.snapCamera();
 }
@@ -931,7 +974,10 @@ function advance(dt: number, draw: boolean): void {
   tickAcc += dt;
   while (tickAcc >= TICK_DT) {
     tickAcc -= TICK_DT;
-    tick();
+    if (world) {
+      world.step();
+      for (const e of world.drainEvents()) events.push(e);
+    } else tick();
   }
   const alpha = Math.min(1, tickAcc / TICK_DT);
   if (events.length > 0) {
@@ -1002,7 +1048,7 @@ section('区域', keysOf('area:'), strip);
 section('状态 buff', keysOf('buff:'), strip);
 section('瞄准指示器', keysOf('aim:'), strip);
 section('底层样例', keysOf('dbg:'), strip);
-if (params.get('panel') === '0' || overlayDemo) panel.style.display = 'none';
+if (params.get('panel') === '0' || freeStage) panel.style.display = 'none';
 if (params.get('hud') === '0') hud.style.display = 'none';
 
 // ───────────────────────── 叠加层演示：定时注入事件 ─────────────────────────
@@ -1095,6 +1141,8 @@ declare global {
   interface Window {
     __fx: {
       play: typeof play;
+      /** 推进 dt 秒(draw = false 只更新不绘制)：脚本做长时间压力测试用 */
+      advance: typeof advance;
       /** 定格后画面已经稳定(可以截图) */
       settled: boolean;
       names: string[];
@@ -1109,6 +1157,7 @@ declare global {
 }
 window.__fx = {
   play,
+  advance,
   settled: false,
   names: [...PLAYS.keys()],
   stats: () => ({ renderer: { ...renderer.getStats() }, fx: { ...fxModule.getStats() } }),
@@ -1121,5 +1170,25 @@ window.__fx = {
 if (playParam) {
   const t = num('t');
   if (!play(playParam, t ?? undefined)) console.warn('未知的 play 名字：' + playParam);
+} else if (world) {
+  // 快进 ff 秒(只跑模拟，不喂事件)，再带着特效跑 t 秒后定格；不给 t 就一直实时播放
+  const ff = Math.round((num('ff') ?? 0) / TICK_DT);
+  for (let i = 0; i < ff && !state.over; i++) world.step();
+  world.drainEvents();
+  renderer.snapCamera();
+  const t = num('t');
+  if (t !== null) {
+    const steps = Math.max(1, Math.round(t * 60));
+    for (let i = 0; i < steps; i++) advance(1 / 60, false);
+    frozen = true;
+  }
+} else if (overlayDemo && num('t') !== null) {
+  // 叠加层演示也支持定格：快进 t 秒(期间照常注入演示事件)后停住
+  const steps = Math.max(1, Math.round((num('t') ?? 0) * 60));
+  for (let i = 0; i < steps; i++) {
+    overlayEvents(1 / 60);
+    advance(1 / 60, false);
+  }
+  frozen = true;
 }
 requestAnimationFrame(frame);

@@ -36,6 +36,9 @@ pnpm --filter @ra2web/moba build          # 多文件构建 → dist/
 pnpm --filter @ra2web/moba build:single   # 单文件构建 → dist-single/index.html(JS / CSS 全部内联，可离线打开或嵌入其它页面)
 ```
 
+自动化的端到端测试请对着构建产物跑(`pnpm --filter @ra2web/moba exec vite preview --port <端口>`)：
+开发服务器带热更新，测试途中任何源文件改动都会让被测页面整页重载。
+
 各模块的画廊 / 自测页只在开发服务器下可访问：`/dev/terrain.html`、`/dev/models.html`、`/dev/fx.html`、`/dev/hud.html`、`/dev/menu.html`、`/dev/audio.html`。
 
 ## 目录与分层

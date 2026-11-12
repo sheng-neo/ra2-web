@@ -31,10 +31,10 @@ export interface MinionDef {
 }
 
 export const MINIONS: Record<MinionType, MinionDef> = {
-  melee: { name: '星卫', hp: 1100, hpPerMin: 75, ad: 58, adPerMin: 4, armor: 40, mr: 40, attackSpeed: 0.8, attackRange: 1.9, moveSpeed: 4.0, radius: 0.5, projectileSpeed: 0, gold: 42, xp: 60, towerMult: 0.6 },
-  ranged: { name: '星术兵', hp: 720, hpPerMin: 45, ad: 84, adPerMin: 6, armor: 20, mr: 20, attackSpeed: 0.75, attackRange: 6.5, moveSpeed: 4.0, radius: 0.45, projectileSpeed: 18, gold: 34, xp: 45, towerMult: 0.6 },
-  siege: { name: '攻城兽', hp: 2000, hpPerMin: 140, ad: 150, adPerMin: 10, armor: 80, mr: 80, attackSpeed: 0.5, attackRange: 8.0, moveSpeed: 3.8, radius: 0.8, projectileSpeed: 14, gold: 75, xp: 100, towerMult: 1.6 },
-  super: { name: '星陨巨卫', hp: 4500, hpPerMin: 300, ad: 220, adPerMin: 14, armor: 120, mr: 120, attackSpeed: 0.85, attackRange: 2.3, moveSpeed: 4.0, radius: 0.9, projectileSpeed: 0, gold: 90, xp: 120, towerMult: 1.2 },
+  melee: { name: '星卫', hp: 1100, hpPerMin: 75, ad: 58, adPerMin: 4, armor: 40, mr: 40, attackSpeed: 0.8, attackRange: 1.9, moveSpeed: 4.0, radius: 0.5, projectileSpeed: 0, gold: 48, xp: 78, towerMult: 0.6 },
+  ranged: { name: '星术兵', hp: 720, hpPerMin: 45, ad: 84, adPerMin: 6, armor: 20, mr: 20, attackSpeed: 0.75, attackRange: 6.5, moveSpeed: 4.0, radius: 0.45, projectileSpeed: 18, gold: 38, xp: 58, towerMult: 0.6 },
+  siege: { name: '攻城兽', hp: 2000, hpPerMin: 140, ad: 150, adPerMin: 10, armor: 80, mr: 80, attackSpeed: 0.5, attackRange: 8.0, moveSpeed: 3.8, radius: 0.8, projectileSpeed: 14, gold: 88, xp: 130, towerMult: 1.6 },
+  super: { name: '星陨巨卫', hp: 4500, hpPerMin: 300, ad: 220, adPerMin: 14, armor: 120, mr: 120, attackSpeed: 0.85, attackRange: 2.3, moveSpeed: 4.0, radius: 0.9, projectileSpeed: 0, gold: 100, xp: 150, towerMult: 1.2 },
 };
 
 export const WAVES = {
@@ -65,9 +65,9 @@ export interface TowerDef {
 }
 
 export const TOWERS: Record<1 | 2 | 3, TowerDef> = {
-  1: { hp: 6000, ad: 420, armor: 80, mr: 80, attackSpeed: 1.0, attackRange: 8.5, radius: 1.6, projectileSpeed: 26, teamGold: 120, lastHitGold: 100 },
-  2: { hp: 7000, ad: 480, armor: 110, mr: 110, attackSpeed: 1.0, attackRange: 8.5, radius: 1.6, projectileSpeed: 26, teamGold: 140, lastHitGold: 100 },
-  3: { hp: 7500, ad: 540, armor: 140, mr: 140, attackSpeed: 1.0, attackRange: 8.5, radius: 1.6, projectileSpeed: 26, teamGold: 160, lastHitGold: 100 },
+  1: { hp: 7200, ad: 420, armor: 80, mr: 80, attackSpeed: 1.0, attackRange: 8.5, radius: 1.6, projectileSpeed: 26, teamGold: 120, lastHitGold: 100 },
+  2: { hp: 9500, ad: 480, armor: 110, mr: 110, attackSpeed: 1.0, attackRange: 8.5, radius: 1.6, projectileSpeed: 26, teamGold: 140, lastHitGold: 100 },
+  3: { hp: 11500, ad: 540, armor: 140, mr: 140, attackSpeed: 1.0, attackRange: 8.5, radius: 1.6, projectileSpeed: 26, teamGold: 160, lastHitGold: 100 },
 };
 
 export const TOWER_RULES = {
@@ -84,7 +84,7 @@ export const TOWER_RULES = {
 };
 
 export const CORE = {
-  hp: 11000,
+  hp: 17000,
   ad: 500,
   armor: 150,
   mr: 150,
@@ -124,10 +124,10 @@ export interface MonsterDef {
 }
 
 export const MONSTERS: Record<MonsterType, MonsterDef> = {
-  mossback: { name: '苔背兽', hp: 2200, hpPerMin: 150, ad: 70, adPerMin: 5, armor: 60, mr: 40, attackSpeed: 0.7, attackRange: 2.0, moveSpeed: 4.6, radius: 0.9, projectileSpeed: 0, gold: 70, xp: 95, epic: false },
-  glimwing: { name: '荧翼蜥', hp: 1250, hpPerMin: 85, ad: 55, adPerMin: 4, armor: 30, mr: 30, attackSpeed: 0.9, attackRange: 5.0, moveSpeed: 4.8, radius: 0.6, projectileSpeed: 16, gold: 40, xp: 55, epic: false },
-  frost_golem: { name: '霜晶魔像', hp: 4200, hpPerMin: 280, ad: 110, adPerMin: 7, armor: 90, mr: 60, attackSpeed: 0.65, attackRange: 2.4, moveSpeed: 4.4, radius: 1.3, projectileSpeed: 0, gold: 110, xp: 150, epic: false },
-  ember_golem: { name: '炽焰魔像', hp: 4200, hpPerMin: 280, ad: 110, adPerMin: 7, armor: 90, mr: 60, attackSpeed: 0.65, attackRange: 2.4, moveSpeed: 4.4, radius: 1.3, projectileSpeed: 0, gold: 110, xp: 150, epic: false },
+  mossback: { name: '苔背兽', hp: 2200, hpPerMin: 150, ad: 70, adPerMin: 5, armor: 60, mr: 40, attackSpeed: 0.7, attackRange: 2.0, moveSpeed: 4.6, radius: 0.9, projectileSpeed: 0, gold: 46, xp: 64, epic: false },
+  glimwing: { name: '荧翼蜥', hp: 1250, hpPerMin: 85, ad: 55, adPerMin: 4, armor: 30, mr: 30, attackSpeed: 0.9, attackRange: 5.0, moveSpeed: 4.8, radius: 0.6, projectileSpeed: 16, gold: 26, xp: 37, epic: false },
+  frost_golem: { name: '霜晶魔像', hp: 4200, hpPerMin: 280, ad: 110, adPerMin: 7, armor: 90, mr: 60, attackSpeed: 0.65, attackRange: 2.4, moveSpeed: 4.4, radius: 1.3, projectileSpeed: 0, gold: 82, xp: 115, epic: false },
+  ember_golem: { name: '炽焰魔像', hp: 4200, hpPerMin: 280, ad: 110, adPerMin: 7, armor: 90, mr: 60, attackSpeed: 0.65, attackRange: 2.4, moveSpeed: 4.4, radius: 1.3, projectileSpeed: 0, gold: 82, xp: 115, epic: false },
   abyss_drake: { name: '深渊鳞兽', hp: 9000, hpPerMin: 600, ad: 190, adPerMin: 12, armor: 120, mr: 100, attackSpeed: 0.6, attackRange: 3.2, moveSpeed: 4.0, radius: 2.0, projectileSpeed: 0, gold: 80, xp: 120, epic: true },
   star_colossus: { name: '星陨巨灵', hp: 16000, hpPerMin: 900, ad: 260, adPerMin: 16, armor: 160, mr: 140, attackSpeed: 0.55, attackRange: 3.6, moveSpeed: 3.8, radius: 2.4, projectileSpeed: 0, gold: 120, xp: 180, epic: true },
 };
@@ -158,13 +158,13 @@ export const MONSTER_RULES = {
 export const ECONOMY = {
   startGold: 300,
   /** 每秒自然金币（开局 10 秒后开始） */
-  passiveGold: 2.6,
+  passiveGold: 3.0,
   /** 没补到刀但在 12 米内时获得的小兵金币比例 */
   proximityGoldRatio: 0.35,
   /** 经验/助攻判定半径 */
   shareRadius: 12,
-  /** 多人分享经验时的总量放大（2 人各得 65%，3 人各 48%…） */
-  xpShare: [1, 0.65, 0.48, 0.4, 0.35],
+  /** 多人分享经验时的总量放大（2 人各得 70%，3 人各 52%…） */
+  xpShare: [1, 0.7, 0.52, 0.42, 0.36],
   /** 英雄击杀赏金：基础 + 被杀者连杀加成，死亡多的目标递减 */
   killGold: 220,
   killGoldPerStreak: 60,
@@ -172,7 +172,7 @@ export const ECONOMY = {
   killGoldMin: 110,
   firstBloodBonus: 100,
   /** 助攻总金币(由助攻者均分)占击杀金币比例 */
-  assistRatio: 0.5,
+  assistRatio: 0.8,
   /** 助攻判定：击杀前多少秒内对目标造成过伤害 */
   assistWindow: 10,
   /** 英雄击杀经验 = base + perLevel × 被杀者等级 */

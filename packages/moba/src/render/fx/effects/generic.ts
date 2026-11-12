@@ -25,9 +25,10 @@ const hitPhysical: FxHandler = (k, e, env) => {
     dx /= l;
     dz /= l;
   }
-  flash(k, x, y, z, big ? 1.1 : 0.8, C.warm, 0.14);
-  if (big) k.particles.use(P.crescent).tint(C.warm, C.spark).spawn(x, y, z, 0, 0, 0, 0.17, 0.9, 1.7);
-  sparks(k, x, y, z, big ? 6 : 3, 7.5, C.warm, C.sparkDeep, dx, dz, 0.55, 0.32, 0.12);
+  flash(k, x, y, z, big ? 1.5 : 1.0, C.warm, 0.14, big);
+  k.particles.use(P.ringB).tint(C.spark, C.sparkDeep).spawn(x, y, z, 0, 0, 0, 0.2, 0.3, big ? 1.5 : 1.0);
+  if (big) k.particles.use(P.crescent).tint(C.warm, C.sparkDeep).spawn(x, y, z, 0, 0, 0, 0.2, 1.0, 2.0);
+  sparks(k, x, y, z, big ? 7 : 3, 8, C.spark, C.sparkDeep, dx, dz, 0.55, 0.36, 0.14);
   if (e.targetId === env.playerId) k.shake(0.05, x, z);
 };
 
@@ -36,9 +37,15 @@ const hitMagic: FxHandler = (k, e, env) => {
   const z = e.pos.y;
   const y = unitY(k, e.targetId, 0.5, 1);
   const big = k.a.unit !== null && (k.a.unit.kind === 'hero' || k.a.unit.kind === 'monster');
-  flash(k, x, y, z, big ? 1.1 : 0.8, C.magic, 0.16);
-  k.particles.use(P.ringB).tint(C.magic, C.magicDeep).spawn(x, y, z, 0, 0, 0, 0.24, 0.3, big ? 1.6 : 1.1);
-  glints(k, x, y, z, big ? 5 : 3, 3.2, C.white, C.magic, 0.45, 0.3);
+  flash(k, x, y, z, big ? 1.5 : 1.0, C.magic, 0.16, big);
+  k.particles.use(P.ringB).tint(C.magic, C.magicDeep).spawn(x, y, z, 0, 0, 0, 0.26, 0.3, big ? 1.9 : 1.2);
+  const p = k.particles.use(P.star).tint(C.magic, C.magicDeep);
+  const r = k.rnd;
+  for (let i = 0; i < k.n(big ? 4 : 2); i++) {
+    const a = r.next() * TAU;
+    p.spawn(x, y, z, Math.cos(a) * 3.5, r.range(0.5, 3), Math.sin(a) * 3.5, 0.4, 0.3, 0.12);
+  }
+  glints(k, x, y, z, big ? 5 : 3, 3.4, C.magic, C.magicDeep, 0.45, 0.32);
   if (e.targetId === env.playerId) k.shake(0.05, x, z);
 };
 
@@ -55,14 +62,15 @@ const hitCrit: FxHandler = (k, e, env) => {
     dx /= l;
     dz /= l;
   }
-  flash(k, x, y, z, 2.1, C.crit, 0.2, true);
+  flash(k, x, y, z, 2.6, C.crit, 0.2, true);
   // 交叉的两道斩痕
-  const p = k.particles.use(P.crescent).tint(C.white, C.crit);
-  p.spawn(x, y, z, 0, 0, 0, 0.22, 1.3, 2.7);
-  p.spawn(x, y, z, 0, 0, 0, 0.26, 1.0, 2.2, 0.04);
-  sparks(k, x, y, z, 14, 11, C.white, C.critDeep, dx, dz, 0.5, 0.42, 0.16);
-  glints(k, x, y, z, 5, 4, C.white, C.crit, 0.5, 0.42);
-  ring(k, x, z, 1.5, 0.3, C.crit, 1.5, 0.2, 0.25);
+  const p = k.particles.use(P.crescent).tint(C.crit, C.critDeep);
+  p.spawn(x, y, z, 0, 0, 0, 0.24, 1.5, 3.2);
+  p.spawn(x, y, z, 0, 0, 0, 0.28, 1.2, 2.6, 0.04);
+  k.particles.use(P.ringB).tint(C.crit, C.critDeep).spawn(x, y, z, 0, 0, 0, 0.26, 0.5, 2.6);
+  sparks(k, x, y, z, 14, 12, C.crit, C.critDeep, dx, dz, 0.5, 0.45, 0.18);
+  glints(k, x, y, z, 5, 4.5, C.crit, C.critDeep, 0.5, 0.42);
+  ring(k, x, z, 1.7, 0.32, C.critDeep, 1.6, 0.2, 0.4);
   if (involvesPlayer(e, env)) {
     k.shake(0.14, x, z);
     k.light(x, z, y, C.crit, 4, 5, 0.25);
@@ -91,19 +99,27 @@ const heal: FxHandler = (k, e) => {
   const x = has ? k.a.x : e.pos.x;
   const z = has ? k.a.z : e.pos.y;
   const y0 = has ? k.a.y : 0;
-  const pen = k.decals.add(DECAL.glow, x, z, 1.5, 0.9).params(1.4).color(C.heal, 0.9).under(C.black, 0);
-  if (has) pen.follow(id);
-  const h = hoop(k, has ? 0 : x, (has ? 0 : y0) + 0.3, has ? 0 : z, 0.9, 0.75, 2.0, 0.7, C.heal, 1.7, 0.8);
-  if (has) h.follow(id);
+  const pen = k.decals.add(DECAL.glow, x, z, 2.0, 1.0).params(1.3).color(C.heal, 1.4).under(C.black, 0);
+  const rp = k.decals.add(DECAL.ring, x, z, 1.9, 0.5).params(0.2, 1).color(C.healDeep, 1.5).under(C.shadow, 0.25);
+  const pl = pillar(k, has ? 0 : x, has ? 0 : z, 0.75, 3.2, 0.7, C.heal, 1.3, 0.7);
+  if (has) {
+    pen.follow(id);
+    rp.follow(id);
+    pl.follow(id);
+  }
+  for (let i = 0; i < 2; i++) {
+    const h = hoop(k, has ? 0 : x, (has ? 0 : y0) + 0.3, has ? 0 : z, 1.0, 0.8, 2.2, 0.7, C.heal, 1.7, 0.9).delay(i * 0.16);
+    if (has) h.follow(id);
+  }
   const p = k.particles.use(P.plus);
   const r = k.rnd;
-  const n = k.n(6);
+  const n = k.n(8);
   for (let i = 0; i < n; i++) {
     const a = r.next() * TAU;
-    const d = r.range(0.3, 0.9);
-    p.spawn(x + Math.cos(a) * d, y0 + r.range(0.3, 1.2), z + Math.sin(a) * d, 0, r.range(1.2, 2.2), 0, r.range(0.6, 0.9), 0.24, 0.4, r.range(0, 0.25));
+    const d = r.range(0.5, 1.1);
+    p.spawn(x + Math.cos(a) * d, y0 + r.range(0.3, 1.2), z + Math.sin(a) * d, 0, r.range(1.2, 2.2), 0, r.range(0.6, 0.9), 0.3, 0.46, r.range(0, 0.25));
   }
-  glints(k, x, y0 + 1, z, 5, 1.6, C.white, C.heal, 0.7, 0.26);
+  glints(k, x, y0 + 1, z, 6, 1.8, C.heal, C.healDeep, 0.7, 0.3);
 };
 
 const shieldBreak: FxHandler = (k, e) => {

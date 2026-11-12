@@ -124,10 +124,10 @@ const DEFS: Record<ProjectileVisual, ProjDef> = {
   fengling_basic: def({
     shape: SHAPE.arrow,
     mode: MODE.solid,
-    scale: [0.85, 0.85, 0.85],
+    scale: [1.15, 1.15, 1.15],
     colors: () => THEME.fengling,
-    intensity: 1.5,
-    add: 0.25,
+    intensity: 1.3,
+    add: 0.2,
     ribbon: R.thin,
     ribbonWidth: 0.9,
     halo: 0.5,
@@ -141,10 +141,10 @@ const DEFS: Record<ProjectileVisual, ProjDef> = {
   fengling_s1: def({
     shape: SHAPE.arrow,
     mode: MODE.solid,
-    scale: [1.7, 1.7, 1.7],
+    scale: [1.9, 1.9, 1.9],
     colors: () => THEME.fengling,
-    intensity: 1.9,
-    add: 0.35,
+    intensity: 1.4,
+    add: 0.25,
     roll: 14,
     ribbon: R.wind,
     ribbonWidth: 1.6,
@@ -296,6 +296,8 @@ const DEFS: Record<ProjectileVisual, ProjDef> = {
       ring(k, x, z, 1.1, 0.3, c.glow, 1.2, 0.2, 0.3);
       const p = k.particles.use(P.drop);
       for (let i = 0; i < k.n(5); i++) p.spawn(x, y, z, k.rnd.signed() * 3.5, k.rnd.range(1, 4), k.rnd.signed() * 3.5, 0.5, 0.2, 0.12);
+      const b = k.particles.use(P.bubble).tint(c.glow, c.deep);
+      for (let i = 0; i < k.n(3); i++) b.spawn(x + k.rnd.signed() * 0.4, y, z + k.rnd.signed() * 0.4, 0, k.rnd.range(0.5, 1.5), 0, 0.6, 0.25, 0.45);
     },
   }),
 };
@@ -326,6 +328,8 @@ export const PROJECTILE_VISUALS = Object.keys(DEFS) as ProjectileVisual[];
 
 export class ProjectileViews {
   private views = new Map<number, ProjView>();
+  /** 与 views 同步的列表：逐帧清扫用它遍历(遍历 Map 会分配迭代器) */
+  private list: ProjView[] = [];
   private k: FxKit;
   private stamp = 0;
 
@@ -337,16 +341,19 @@ export class ProjectileViews {
     const k = this.k;
     const d = DEFS[p.visual];
     const colors = d.colors(p.team);
-    // 出手点：按已飞行距离沿方向倒推；出手高度取出手者身上的出手口
+    // 出手点：按已飞行距离沿方向倒推；出手高度取出手者模型的弹道出口(塔/水晶取能量核心)，没有挂点信息时按身高估算
     const sx = p.pos.x - p.dir.x * p.traveled;
     const sz = p.pos.y - p.dir.y * p.traveled;
     let h0 = 1.3;
     if (k.anchor(p.ownerId)) {
       const u = k.a.unit;
-      h0 = u && (u.kind === 'tower' || u.kind === 'core') ? k.a.height * 0.82 : Math.min(k.a.height * 0.6, 2.2);
+      const structure = u !== null && (u.kind === 'tower' || u.kind === 'core');
+      h0 = structure ? k.a.height * 0.82 : Math.min(k.a.height * 0.6, 2.2);
+      if (k.anchors.attach?.(p.ownerId, structure ? 'core' : 'muzzle', k.v)) h0 = k.v.y;
     }
     const mesh = k.glow.hold(d.shape, d.mode);
-    mesh.color(colors.glow, d.intensity, 0);
+    // 实体类(箭/飞刃)用亮色：木色箭杆 + 发光箭镞；能量弹用主色
+    mesh.color(d.mode === MODE.solid ? colors.hot : colors.glow, d.intensity, 0);
     mesh.add = d.add;
     mesh.k = d.k;
     return { id: p.id, def: d, colors, team: p.team, seen: 0, mesh, ribbon: -1, decal: -1, sx, sz, h0, x: sx, y: h0, z: sz, acc: 0, age: 0, shown: false };
@@ -369,6 +376,7 @@ export class ProjectileViews {
       if (!v) {
         v = this.create(p);
         this.views.set(p.id, v);
+        this.list.push(v);
       }
       v.seen = stamp;
       v.age += dt;
@@ -418,11 +426,11 @@ export class ProjectileViews {
       if (shown) {
         if (d.ribbon) {
           if (v.ribbon < 0) {
-            v.ribbon = k.ribbons.start(d.ribbon, x, y, z, v.colors.hot, v.colors.glow);
+            v.ribbon = k.ribbons.start(d.ribbon, x, y, z, v.colors.glow, v.colors.deep);
             k.ribbons.setWidth(v.ribbon, d.ribbonWidth);
           } else k.ribbons.move(v.ribbon, x, y, z);
         }
-        if (d.halo > 0) k.sprites.draw(SPRITE.glow, x, y, z, d.halo * (0.9 + 0.1 * Math.sin(v.age * 40)), 0, v.colors.glow, 1.5, 0.85, 1);
+        if (d.halo > 0) k.sprites.draw(SPRITE.glow, x, y, z, d.halo * (0.9 + 0.1 * Math.sin(v.age * 40)), 0, v.colors.glow, 1.25, 0.8, 0.5);
         if (d.ground > 0) {
           if (v.decal < 0) v.decal = k.decals.hold(DECAL.glow, 0.08);
           k.decals.at(v.decal).at(x, z).radius(d.ground).params(1.5).color(v.colors.glow, 0.9, 0.8).under(C.black, 0);
@@ -443,11 +451,14 @@ export class ProjectileViews {
       v.z = z;
       v.shown = shown;
     }
-    for (const [id, v] of this.views) {
-      if (v.seen !== stamp) {
-        this.release(v);
-        this.views.delete(id);
-      }
+    const list = this.list;
+    for (let i = list.length - 1; i >= 0; i--) {
+      const v = list[i];
+      if (v.seen === stamp) continue;
+      this.release(v);
+      this.views.delete(v.id);
+      list[i] = list[list.length - 1];
+      list.pop();
     }
   }
 
@@ -476,7 +487,8 @@ export class ProjectileViews {
   }
 
   reset(): void {
-    for (const v of this.views.values()) this.release(v);
+    for (const v of this.list) this.release(v);
+    this.list.length = 0;
     this.views.clear();
   }
 }

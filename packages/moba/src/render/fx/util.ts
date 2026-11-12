@@ -6,9 +6,7 @@ import type { HeroId, TeamId } from '../../core/types';
 import { PALETTE } from '../materials';
 
 export const TAU = Math.PI * 2;
-export const clamp = (v: number, a: number, b: number): number => (v < a ? a : v > b ? b : v);
 export const sat = (v: number): number => (v < 0 ? 0 : v > 1 ? 1 : v);
-export const lerp = (a: number, b: number, t: number): number => a + (b - a) * t;
 export const smooth = (a: number, b: number, x: number): number => {
   const t = sat((x - a) / (b - a));
   return t * t * (3 - 2 * t);
@@ -18,8 +16,6 @@ export const backOut = (t: number, s = 1.70158): number => {
   const u = t - 1;
   return 1 + u * u * ((s + 1) * u + s);
 };
-export const easeOut = (t: number): number => 1 - (1 - t) * (1 - t);
-export const easeOut3 = (t: number): number => 1 - (1 - t) * (1 - t) * (1 - t);
 
 /** xorshift32：比 Math.random 快，且同一序列可复现 */
 export class Rand {
@@ -75,31 +71,31 @@ export interface Theme {
 
 export const THEME: Record<HeroId, Theme> = {
   // 磐岳：岩石 / 琥珀金
-  panyue: { glow: col(0xff9218), hot: col(0xffd27a), deep: col(0xd9580a), accent: col(0xf2b75a), dark: col(0x2e2218) },
+  panyue: { glow: col(0xff9218), hot: col(0xffc44e), deep: col(0xd9580a), accent: col(0xf2b75a), dark: col(0x2e2218) },
   // 赤烬：烈焰 / 橙红
-  chijin: { glow: col(0xff4c14), hot: col(0xffbe50), deep: col(0xcc1e12), accent: col(0xff9428), dark: col(0x26100e) },
+  chijin: { glow: col(0xff4c14), hot: col(0xffae38), deep: col(0xcc1e12), accent: col(0xff9428), dark: col(0x26100e) },
   // 星璃：星辉 / 青蓝
-  xingli: { glow: col(0x3aa8ff), hot: col(0xb8e6ff), deep: col(0x3c50dc), accent: col(0xffd98a), dark: col(0x101a48) },
+  xingli: { glow: col(0x3aa8ff), hot: col(0x8ad6ff), deep: col(0x3c50dc), accent: col(0xffd98a), dark: col(0x101a48) },
   // 风翎：疾风 / 翠绿
-  fengling: { glow: col(0x2ee096), hot: col(0xbcffde), deep: col(0x1f9670), accent: col(0xe9c46a), dark: col(0x0e3428) },
+  fengling: { glow: col(0x2ee096), hot: col(0x7ef6be), deep: col(0x1f9670), accent: col(0xe9c46a), dark: col(0x0e3428) },
   // 夜阙：暗影 / 紫
-  yeque: { glow: col(0x9050ff), hot: col(0xd2aeff), deep: col(0x5626c8), accent: col(0xd08cff), dark: col(0x140a28) },
+  yeque: { glow: col(0x9050ff), hot: col(0xbe8eff), deep: col(0x5626c8), accent: col(0xd08cff), dark: col(0x140a28) },
 };
 
 export const C = {
   white: col(0xffffff),
-  warm: col(0xfff0d0),
-  spark: col(0xffc878),
-  sparkDeep: col(0xff8a30),
-  magic: col(0x8fd8ff),
-  magicDeep: col(0x5a7cff),
-  crit: col(0xffe070),
-  critDeep: col(0xff7a20),
+  warm: col(0xffcf70),
+  spark: col(0xffb432),
+  sparkDeep: col(0xff5210),
+  magic: col(0x5cc4ff),
+  magicDeep: col(0x3a5cff),
+  crit: col(0xffd23a),
+  critDeep: col(0xff4a10),
   heal: col(0x7dffa0),
   healDeep: col(0x2fd070),
   gold: col(0xffd04a),
   goldDeep: col(0xf09a20),
-  goldHot: col(0xfff2b0),
+  goldHot: col(0xffe27a),
   dust: col(0xb8a688),
   dustDark: col(0x7a6a56),
   rock: col(0x8a8076),
@@ -126,9 +122,9 @@ export interface TeamTheme {
 }
 
 const TEAM_THEMES: TeamTheme[] = [
-  { glow: col(PALETTE.blue.glow), hot: col(0xd8ecff), deep: col(PALETTE.blue.dark) },
-  { glow: col(PALETTE.red.glow), hot: col(0xffe0c8), deep: col(PALETTE.red.dark) },
-  { glow: col(PALETTE.neutral.glow), hot: col(0xfff4c8), deep: col(PALETTE.neutral.dark) },
+  { glow: col(PALETTE.blue.glow), hot: col(0x8cc8ff), deep: col(PALETTE.blue.dark) },
+  { glow: col(PALETTE.red.glow), hot: col(0xffa070), deep: col(PALETTE.red.dark) },
+  { glow: col(PALETTE.neutral.glow), hot: col(0xffe08a), deep: col(PALETTE.neutral.dark) },
 ];
 
 export function teamTheme(team: TeamId): TeamTheme {

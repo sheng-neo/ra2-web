@@ -29,6 +29,8 @@ interface AreaView {
   t: number;
   duration: number;
   slots: number[];
+  /** 敌方区域的红色警示边(贴花槽位，-1 = 无) */
+  edge: number;
   meshes: FxMesh[];
   acc: number;
   phase: number;
@@ -58,7 +60,8 @@ function hold(k: FxKit, v: AreaView, type: number, fadeIn = 0.12): number {
 function hostileEdge(k: FxKit, v: AreaView): void {
   if (!v.hostile) return;
   const s = hold(k, v, DECAL.range);
-  k.decals.at(s).params(0.012, 0).color(EDGE_ENEMY, 1.7, 0.9).under(C.shadow, 0.3);
+  v.edge = s;
+  k.decals.at(s).params(0.014, 0).color(EDGE_ENEMY, 1.8, 0.95).under(C.shadow, 0.4);
 }
 
 /** 把所有贴花槽位的位置对齐到区域中心(跟随型区域每帧都在动) */
@@ -66,13 +69,12 @@ function place(k: FxKit, v: AreaView, scaleOf?: (i: number) => number): void {
   for (let i = 0; i < v.slots.length; i++) k.decals.at(v.slots[i]).at(v.x, v.z).radius(v.radius * (scaleOf ? scaleOf(i) : 1));
 }
 
-/** 按每秒 rate 个的速率调用 fn(受画质倍率影响) */
-function emit(k: FxKit, v: AreaView, dt: number, rate: number, fn: () => void): void {
+/** 按每秒 rate 个的速率，本帧该发射几个(受画质倍率影响)。用返回值驱动循环，不为每帧每个区域分配闭包 */
+function due(k: FxKit, v: AreaView, dt: number, rate: number): number {
   v.acc += dt * rate * k.density;
-  while (v.acc >= 1) {
-    v.acc -= 1;
-    fn();
-  }
+  const n = Math.floor(v.acc);
+  v.acc -= n;
+  return n;
 }
 
 const TP = THEME.panyue;
@@ -121,12 +123,12 @@ const DEFS: Record<AreaVisual, AreaDef> = {
         m.scale(s);
         m.rot(v.age * 1.3 + i, v.age * 0.9 + i * 2, v.age * 0.7);
       }
-      emit(k, v, dt, 9, () => {
+      for (let n = due(k, v, dt, 9); n > 0; n--) {
         const a = k.rnd.next() * TAU;
         const d = v.radius * k.rnd.range(0.55, 1);
         // 尘屑被吸向中心：表达「减速」
         k.particles.use(P.dust).spawn(v.x + Math.cos(a) * d, 0.15, v.z + Math.sin(a) * d, -Math.cos(a) * 1.4, 0.4, -Math.sin(a) * 1.4, 0.7, 0.5, 0.9);
-      });
+      }
     },
     end(k, v) {
       ring(k, v.x, v.z, v.radius * 0.5, 0.35, TP.glow, 1.2, 0.5, 0.2);
@@ -144,14 +146,14 @@ const DEFS: Record<AreaVisual, AreaDef> = {
     update(k, v, dt) {
       place(k, v);
       // 裂缝里持续冒出的热尘与琥珀余烬
-      emit(k, v, dt, 20, () => {
+      for (let n = due(k, v, dt, 20); n > 0; n--) {
         const a = k.rnd.next() * TAU;
         const d = v.radius * Math.sqrt(k.rnd.next()) * 0.95;
         const x = v.x + Math.cos(a) * d;
         const z = v.z + Math.sin(a) * d;
         if (k.rnd.chance(0.35)) k.particles.use(P.dust).spawn(x, 0.1, z, 0, k.rnd.range(0.5, 1.2), 0, 0.9, 0.5, 1.2);
         else k.particles.use(P.ember).tint(TP.hot, TP.deep).spawn(x, 0.1, z, k.rnd.signed() * 0.3, k.rnd.range(0.8, 2), k.rnd.signed() * 0.3, k.rnd.range(0.6, 1), 0.15, 0.04);
-      });
+      }
     },
   },
 
@@ -178,7 +180,7 @@ const DEFS: Record<AreaVisual, AreaDef> = {
       const w = v.radius * 0.5 * grow;
       m.at(v.x, 0.05, v.z).scale3(w, 3.3 * grow, w).rot(0, -v.age * 9, 0);
       m.a = 0.85 * Math.max(0, fade);
-      emit(k, v, dt, 46, () => {
+      for (let n = due(k, v, dt, 46); n > 0; n--) {
         const r = k.rnd;
         const a = r.next() * TAU;
         if (r.chance(0.6)) k.particles.use(P.ember).tint(TC.hot, TC.glow).orbit(v.x, r.range(0.2, 1.2), v.z, v.radius * r.range(0.3, 0.6), v.radius * r.range(0.85, 1), a, 7, r.range(0.8, 2.6), r.range(0.4, 0.6), 0.2, 0.05);
@@ -186,7 +188,7 @@ const DEFS: Record<AreaVisual, AreaDef> = {
           const d = v.radius * r.range(0.35, 0.95);
           k.particles.use(P.flame).spawn(v.x + Math.cos(a) * d, 0.1, v.z + Math.sin(a) * d, -Math.sin(a) * 3, r.range(1.5, 3), Math.cos(a) * 3, r.range(0.3, 0.5), 0.9, 0.45);
         }
-      });
+      }
     },
     end(k, v) {
       ring(k, v.x, v.z, v.radius, 0.45, TC.glow, 1.5, 0.4, 0.3);
@@ -219,10 +221,10 @@ const DEFS: Record<AreaVisual, AreaDef> = {
         const a = v.phase + v.age * (4 + v.t * 6) + (i * TAU) / 5;
         k.sprites.draw(SPRITE.spark, v.x + Math.cos(a) * v.radius * shrink, 0.75 + v.t * 0.6, v.z + Math.sin(a) * v.radius * shrink, 0.75, a, TX.hot, 2.2, 1, 1);
       }
-      emit(k, v, dt, 40, () => {
+      for (let n = due(k, v, dt, 40); n > 0; n--) {
         const r = k.rnd;
         k.particles.use(P.glint).tint(C.white, TX.glow).orbit(v.x, r.range(0.1, 0.9), v.z, v.radius * r.range(0.7, 1.05), v.radius * 0.15, r.next() * TAU, 5, 0.6, 0.3, 0.3, 0.1);
-      });
+      }
     },
   },
 
@@ -237,7 +239,7 @@ const DEFS: Record<AreaVisual, AreaDef> = {
     },
     update(k, v, dt) {
       place(k, v, (i) => (i === 1 ? 0.93 : 1));
-      emit(k, v, dt, 16, () => {
+      for (let n = due(k, v, dt, 16); n > 0; n--) {
         const r = k.rnd;
         const a = r.next() * TAU;
         const d = v.radius * Math.sqrt(r.next()) * 0.95;
@@ -249,7 +251,7 @@ const DEFS: Record<AreaVisual, AreaDef> = {
           k.particles.use(P.streak).tint(TX.hot, TX.glow).spawn(x + 2.4, 9.5, z - 1.8, -2.4 / tf, -9.5 / tf, 1.8 / tf, tf, 0.2, 0.1);
           k.particles.use(P.ripple).tint(TX.hot, TX.glow).spawn(x, 0.08, z, 0, 0, 0, 0.3, 0.2, 0.9, tf);
         } else k.particles.use(P.glint).tint(C.white, TX.glow).spawn(x, r.range(0.2, 2.5), z, 0, r.range(0.3, 1.2), 0, r.range(0.5, 0.9), 0.34, 0.08);
-      });
+      }
     },
     end(k, v) {
       ring(k, v.x, v.z, v.radius, 0.5, TX.glow, 1.2, 0.85, 0.2);
@@ -267,7 +269,7 @@ const DEFS: Record<AreaVisual, AreaDef> = {
     },
     update(k, v, dt) {
       place(k, v);
-      emit(k, v, dt, 18, () => {
+      for (let n = due(k, v, dt, 18); n > 0; n--) {
         const r = k.rnd;
         const a = r.next() * TAU;
         const d = v.radius * Math.sqrt(r.next()) * 0.95;
@@ -279,7 +281,7 @@ const DEFS: Record<AreaVisual, AreaDef> = {
           k.particles.use(P.arrow).spawn(x + 1.4, 10, z + 0.9, -1.4 / tf, -10 / tf, -0.9 / tf, tf, 0.5, 0.45);
           k.particles.use(P.ripple).tint(TF.hot, TF.glow).spawn(x, 0.08, z, 0, 0, 0, 0.26, 0.2, 0.8, tf);
         } else k.particles.use(P.leaf).orbit(v.x, 0.3, v.z, d, d * 1.1, a, 2.5, r.range(0.5, 1.5), 0.7, 0.3, 0.16);
-      });
+      }
     },
     end(k, v) {
       ring(k, v.x, v.z, v.radius, 0.5, TF.glow, 1.1, 0.85, 0.2);
@@ -297,6 +299,7 @@ export const AREA_VISUALS = Object.keys(DEFS) as AreaVisual[];
 
 export class AreaViews {
   private views = new Map<number, AreaView>();
+  private list: AreaView[] = [];
   private k: FxKit;
   private stamp = 0;
   private phaseN = 0;
@@ -322,18 +325,24 @@ export class AreaViews {
       if (!v) {
         v = this.make(a, frame);
         this.views.set(a.id, v);
+        this.list.push(v);
         v.def.create(k, v);
       }
       v.seen = stamp;
       this.sync(v, a, frame);
       v.def.update(k, v, frame.dt);
+      // 红边套在区域自身的亮边外面一点，两条线不重合
+      if (v.edge >= 0) k.decals.at(v.edge).at(v.x, v.z).radius(v.radius * 1.045);
     }
-    for (const [id, v] of this.views) {
-      if (v.seen !== stamp) {
-        // 从状态里消失 = 到期或被提前移除：到期的才播放收尾
-        this.release(v, v.age >= v.duration - 0.12);
-        this.views.delete(id);
-      }
+    const list = this.list;
+    for (let i = list.length - 1; i >= 0; i--) {
+      const v = list[i];
+      if (v.seen === stamp) continue;
+      // 从状态里消失 = 到期或被提前移除：到期的才播放收尾
+      this.release(v, v.age >= v.duration - 0.12);
+      this.views.delete(v.id);
+      list[i] = list[list.length - 1];
+      list.pop();
     }
   }
 
@@ -354,6 +363,7 @@ export class AreaViews {
       t: 0,
       duration: a.duration,
       slots: [],
+      edge: -1,
       meshes: [],
       acc: 0,
       phase: this.phaseN,
@@ -381,7 +391,8 @@ export class AreaViews {
   }
 
   reset(): void {
-    for (const v of this.views.values()) this.release(v, false);
+    for (const v of this.list) this.release(v, false);
+    this.list.length = 0;
     this.views.clear();
   }
 }

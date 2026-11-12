@@ -57,6 +57,9 @@ declare global {
   }
 }
 
+/** window.__moba.errors 最多保留的条数 */
+const MAX_ERRORS = 50;
+
 /** 浏览器自己冒出来、与游戏逻辑无关的报错，不打扰玩家 */
 const BENIGN_ERROR = /ResizeObserver loop/i;
 
@@ -86,10 +89,21 @@ export function startApp(): void {
   let generation = 0;
   let errorLayer: Layer | null = null;
   let matches = 0;
+  /** 设置 / 音频等基础设施是否已就绪(之后才谈得上软重启) */
+  let ready = false;
 
   // ───────────── 错误提示(界面内) ─────────────
 
   const restart = (): void => {
+    if (!ready) {
+      // 基础设施还没起来就出错了：没有可回的标题页，只能整页重载
+      try {
+        location.reload();
+      } catch {
+        // 宿主禁止重载时无能为力
+      }
+      return;
+    }
     generation++;
     token.cancelled = true;
     errorLayer?.close();
@@ -113,6 +127,8 @@ export function startApp(): void {
   const reportError = (err: unknown, fatal: boolean): void => {
     const text = describeError(err);
     if (BENIGN_ERROR.test(text)) return;
+    // 只留最近的若干条，免得错误风暴把内存吃光
+    if (errors.length >= MAX_ERRORS) errors.shift();
     errors.push(text);
     hideBootSplash();
     if (errorLayer) {
@@ -121,10 +137,10 @@ export function startApp(): void {
     }
     session?.setPause('error', true);
     const buttons = [{ label: '重新开始', primary: true, onClick: restart }];
-    // 主循环还活着的话，允许玩家关掉提示继续玩(多数界面回调里的错误不影响对局)
-    if (!fatal && session?.loop.running) {
+    // 主循环还活着(或压根不在对局里)的话，允许玩家关掉提示继续：多数界面回调里的错误并不致命
+    if (!fatal && (!session || session.loop.running)) {
       buttons.push({
-        label: '继续游戏',
+        label: session ? '继续游戏' : '继续',
         primary: false,
         onClick() {
           errorLayer = null;
@@ -150,13 +166,43 @@ export function startApp(): void {
 
   // ───────────── 设置与音频 ─────────────
 
-  ensureTheme();
-  const settings: Settings = loadSettings({ quality: detectQuality() });
-  // 调试参数只影响本次会话
-  if (params.quality) settings.quality = params.quality;
-  if (params.showFps) settings.showFps = true;
-
-  const audio = createAudio();
+  let settings: Settings;
+  let audio: AudioEngine;
+  try {
+    ensureTheme();
+    settings = loadSettings({ quality: detectQuality() });
+    // 调试参数只影响本次会话
+    if (params.quality) settings.quality = params.quality;
+    if (params.showFps) settings.showFps = true;
+    audio = createAudio();
+  } catch (err) {
+    // 连基础设施都起不来：软重启无从谈起，只能请玩家重新载入
+    console.error(err);
+    errors.push(describeError(err));
+    hideBootSplash();
+    showLayer(root, {
+      title: '启动失败',
+      tone: 'error',
+      page: true,
+      lines: ['游戏初始化时出错，无法继续。请重新载入页面；若问题依旧，换用新版浏览器再试。'],
+      detail: describeError(err),
+      buttons: [
+        {
+          label: '重新载入',
+          primary: true,
+          onClick() {
+            try {
+              location.reload();
+            } catch {
+              // 宿主禁止重载时无能为力
+            }
+          },
+        },
+      ],
+    });
+    return;
+  }
+  ready = true;
   const applyVolumes = (): void => audio.setVolumes({ master: settings.masterVolume, sfx: settings.sfxVolume, music: settings.musicVolume });
   applyVolumes();
 
@@ -333,6 +379,12 @@ export function startApp(): void {
     runGuarded(params.skipMenu ? 'direct' : 'title');
     // 第一个界面已经同步挂上，启动占位可以退场了
     hideBootSplash();
+    // 头像要离屏渲染五位英雄(一次性的重活)：趁标题页空闲先做掉，免得卡在「进入选英雄页」那一下
+    if (!params.skipMenu) {
+      const warm = (): void => void portrait('chijin');
+      if (typeof window.requestIdleCallback === 'function') window.requestIdleCallback(warm, { timeout: 3000 });
+      else window.setTimeout(warm, 1200);
+    }
   };
   boot();
 }

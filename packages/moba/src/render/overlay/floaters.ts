@@ -41,7 +41,7 @@ interface Floater {
 }
 
 /** 多段伤害的错位槽(CSS 像素，乘以界面缩放) */
-const SLOTS: [number, number][] = [[0, 0], [22, -13], [-22, -15], [36, 5], [-36, 3], [10, -30], [-12, -32], [46, -14]];
+const SLOTS: [number, number][] = [[0, 0], [40, -8], [-40, -11], [18, -30], [-22, -33], [60, -24], [-62, -26], [0, -54]];
 const POOL = 72;
 
 const backOut = (t: number): number => {
@@ -187,7 +187,12 @@ export class FloaterLayer {
         const u = anchors.unit(id);
         if (h.sum >= 15 && u && (id === state.playerId || u.kind === 'hero')) {
           const f = this.spawn(id, anchors, u.pos.x, u.pos.y, STYLE.heal, `+${Math.round(h.sum)}`, id === state.playerId ? 1 : 0.8, 1, false);
-          if (f) f.oy -= 12;
+          // 治疗数字偏左上，和偏右的伤害数字错开
+          if (f) {
+            f.ox -= 34;
+            f.oy -= 12;
+            f.dir = -1;
+          }
         }
       }
     }

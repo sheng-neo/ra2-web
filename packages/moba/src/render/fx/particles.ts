@@ -46,6 +46,10 @@ export interface ParticleStyleInput {
   rot?: number;
   /** 亮度随机抖动 0..1 */
   vary?: number;
+  /** 尺寸倍率(统一调某一类粒子的大小) */
+  scale?: number;
+  /** 额外朝相机拉近的距离(米)：贴在单位身上的火苗/光点不被模型挡住。拉伸模式无效 */
+  pull?: number;
 }
 
 export interface ParticleStyle {
@@ -67,6 +71,8 @@ export interface ParticleStyle {
   spin: number;
   rot: number;
   vary: number;
+  scale: number;
+  pull: number;
 }
 
 /** 预先定义粒子样式(模块级常量)，运行时不再分配 */
@@ -91,6 +97,8 @@ export function particleStyle(o: ParticleStyleInput): ParticleStyle {
     spin: o.spin ?? 0,
     rot: o.rot ?? NaN,
     vary: o.vary ?? 0,
+    scale: o.scale ?? 1,
+    pull: o.pull ?? 0,
   };
 }
 
@@ -161,8 +169,8 @@ void main() {
     float sr = sin(rot);
     mv = viewMatrix * vec4(pos, 1.0);
     mv.xy += vec2(corner.x * cr - corner.y * sr, corner.x * sr + corner.y * cr) * size;
-    // 朝相机拉近半个身位：贴近地面的公告板下半截不会被地面裁掉
-    mv.z += size * 0.5;
+    // 朝相机拉近半个身位(+ 样式指定的额外量)：贴近地面的公告板下半截不会被地面裁掉
+    mv.z += size * 0.5 + aS.z;
   } else if (orient < 1.5) {
     mv = viewMatrix * vec4(pos, 1.0);
     vec3 vv = (viewMatrix * vec4(vel, 0.0)).xyz;
@@ -223,6 +231,8 @@ export class ParticleSystem {
   private rangeA = { start: 0, count: 0 };
   private rangeB = { start: 0, count: 0 };
   private rnd = new Rand(0x51f15e);
+  /** 最后一个粒子的死亡时刻：过了这个时间整个网格不提交绘制 */
+  private aliveUntil = 0;
 
   // 当前样式(use() 设置，spawn() 读取)
   private st: ParticleStyle = particleStyle({ sprite: 0 });
@@ -307,13 +317,15 @@ export class ParticleSystem {
     const k = st.vary > 0 ? 1 - st.vary * this.rnd.next() : 1;
     d[o + 3] = this.now + delay;
     d[o + 7] = life;
+    if (this.now + delay + life > this.aliveUntil) this.aliveUntil = this.now + delay + life;
     d[o + 8] = st.gravity;
     d[o + 9] = st.drag;
     d[o + 10] = rot;
     d[o + 11] = spin;
-    d[o + 12] = s0;
-    d[o + 13] = s1;
-    d[o + 14] = st.stretch;
+    d[o + 12] = s0 * st.scale;
+    d[o + 13] = s1 * st.scale;
+    // 第 15 个分量：拉伸模式存拉伸系数，其余模式存额外的相机拉近量
+    d[o + 14] = st.orient === ORIENT.stretch ? st.stretch : st.pull;
     d[o + 15] = flags;
     d[o + 16] = this.r0 * k;
     d[o + 17] = this.g0 * k;
@@ -364,6 +376,7 @@ export class ParticleSystem {
   /** 每帧一次：同步时钟，并把上次上传以来新出生的粒子标记为待上传 */
   flush(): void {
     this.mat.uniforms.uNow.value = this.now;
+    this.mesh.visible = this.now < this.aliveUntil;
     const n = this.dirtyCount;
     if (n === 0) return;
     const buf = this.buffer;
@@ -392,6 +405,7 @@ export class ParticleSystem {
     this.cursor = 0;
     this.dirtyStart = 0;
     this.dirtyCount = this.cap;
+    this.aliveUntil = 0;
   }
 
   dispose(): void {

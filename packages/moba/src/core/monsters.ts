@@ -16,6 +16,8 @@ const RETURN_REGEN = 0.25;
 const IDLE_REGEN = 0.05;
 /** 目标离营地超过 leash + 此值就放弃追击 */
 const TARGET_SLACK = 3;
+/** 仇恨目标丢失时，多久之内打过我的单位可以接过仇恨 */
+const RETARGET_WINDOW = 2.5;
 
 export function initCamps(sim: Sim): void {
   for (const def of sim.map.camps) sim.camps.push({ def, members: [], respawnAt: def.firstSpawn });
@@ -82,7 +84,20 @@ export function updateMonster(sim: Sim, mo: SimMonster, dt: number): void {
       engage(sim, mo, target, dt, true);
       return;
     }
-    // 目标跑远/死亡：脱战回营
+    // 目标跑远/死亡：还有别人在打我就转火，否则脱战回营
+    // (多人围攻时不该因为第一个仇恨目标撤走就整只回满血)
+    if (hx * hx + hy * hy <= leash * leash) {
+      const other = sim.byId.get(rt.lastAttackerId);
+      if (other && other !== target && other.team !== 2 && canTarget(mo, other) && sim.state.time - mo.lastHitTime < RETARGET_WINDOW) {
+        const ox = other.pos.x - camp.pos.x;
+        const oy = other.pos.y - camp.pos.y;
+        if (ox * ox + oy * oy <= leash * leash) {
+          cancelWindup(mo);
+          mo.targetId = other.id;
+          return;
+        }
+      }
+    }
     cancelWindup(mo);
     mon.state = MON_RETURN;
     mo.targetId = -1;

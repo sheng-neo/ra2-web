@@ -7,7 +7,10 @@ import * as THREE from 'three';
 import { SPRITE_FRAGMENT } from './particles';
 import { ATLAS_COLS, ATLAS_ROWS, applyFxBlending } from './textures';
 
-const CAP = 384;
+const CAP = 512;
+/** 图集里「极柔大光斑」的下标(与 textures.ts 的 SPRITE.soft 一致) */
+const SOFT = 31;
+const BACKING = new THREE.Color(0x0c0a18);
 const STRIDE = 12;
 
 const VERTEX = /* glsl */ `
@@ -90,6 +93,14 @@ export class SpriteBatch {
     d[o + 9] = rot;
     d[o + 10] = add;
     d[o + 11] = pull;
+  }
+
+  /**
+   * 图标：先垫一团深色柔影再画图形。亮地面上的小图标(金星、印记、层数菱形)靠这圈暗影才看得清。
+   */
+  icon(sprite: number, x: number, y: number, z: number, size: number, rot: number, c: THREE.Color, intensity: number, alpha: number, add: number, pull = 0): void {
+    this.draw(SOFT, x, y, z, size * 1.9, 0, BACKING, 1, 0.6 * alpha, 0, pull - 0.02);
+    this.draw(sprite, x, y, z, size, rot, c, intensity, alpha, add, pull);
   }
 
   flush(): void {

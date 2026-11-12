@@ -145,6 +145,7 @@ export async function startMatch(env: MatchEnv, choice: MatchChoice, opts: Match
   matchEl.appendChild(stage);
 
   let renderer: GameRenderer | null = null;
+  let builtHud: HudHandle | null = null;
   let hudDisposed = false;
   let disposed = false;
 
@@ -152,6 +153,7 @@ export async function startMatch(env: MatchEnv, choice: MatchChoice, opts: Match
   let cleanup = (): void => {
     disposed = true;
     try {
+      builtHud?.dispose();
       renderer?.dispose();
     } catch (err) {
       console.error(err);
@@ -274,6 +276,7 @@ export async function startMatch(env: MatchEnv, choice: MatchChoice, opts: Match
         playerDead = dead;
       },
     });
+    builtHud = hud;
 
     // ───────────── 主循环 ─────────────
     let renderEvMs = 0;
@@ -385,6 +388,8 @@ export async function startMatch(env: MatchEnv, choice: MatchChoice, opts: Match
       extrasOf(renderer).setCameraShake?.(env.getSettings().cameraShake);
       renderer.resize();
       renderer.render(state, 1, 0);
+      // 新渲染器的调色参数是初始值：让阵亡去色在下一帧重新写入
+      hadGrade = false;
     };
     const onContextLost = (ev: Event): void => {
       if (disposed || !renderer || contextLayer) return;
