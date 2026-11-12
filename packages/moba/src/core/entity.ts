@@ -2,7 +2,7 @@
  * 单位的创建与基础判定。所有单位对象都在这里构造，保证契约字段与运行时字段齐全。
  */
 import { HEROES, heroStatsAt, skillLevelsAt, SUMMONER } from './data/heroes';
-import { CORE, ECONOMY, MINIONS, MONSTERS, TOWERS, VISION, xpToNext } from './data/units';
+import { CORE, ECONOMY, ENDGAME, MINIONS, MONSTERS, TOWERS, VISION, xpToNext } from './data/units';
 import {
   DEFAULT_WINDUP, hideFields, MON_IDLE, MOVE_NONE,
   type AttackProfile, type CampRt, type SimCore, type SimHero, type SimMinion, type SimMonster, type SimTower, type SimUnit, type UnitRt,
@@ -86,8 +86,10 @@ export function createHero(sim: Sim, index: number, team: PlayerTeam, heroId: He
 export function createMinion(sim: Sim, team: PlayerTeam, lane: LaneId, type: MinionType, pos: Vec2): SimMinion {
   const d = MINIONS[type];
   const minutes = sim.state.time / 60;
+  // 终局加速：拖得越久，新出生的小兵越强
+  const late = 1 + (Math.max(0, sim.state.time - ENDGAME.start) / 60) * ENDGAME.minionBoostPerMin;
   const stats = makeStats({
-    maxHp: d.hp + d.hpPerMin * minutes, ad: d.ad + d.adPerMin * minutes, armor: d.armor, mr: d.mr,
+    maxHp: (d.hp + d.hpPerMin * minutes) * late, ad: (d.ad + d.adPerMin * minutes) * late, armor: d.armor, mr: d.mr,
     attackSpeed: d.attackSpeed, attackRange: d.attackRange, moveSpeed: d.moveSpeed,
   });
   const ranged = d.projectileSpeed > 0;

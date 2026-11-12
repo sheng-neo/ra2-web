@@ -163,12 +163,14 @@ export class RenderEngine {
     this.rig.update(dt);
   }
 
-  render(dt: number): void {
+  /** draw = false：只推进时钟与灯光，不提交绘制(快进/无头长跑用) */
+  render(dt: number, draw = true): void {
     if (this.disposed) return;
     this.time += dt;
     this.frame++;
     tickShared(dt);
     this.lights.update(dt);
+    if (!draw) return;
     this.lights.fitShadow(this.rig.camera);
     // 调试俯瞰/自由视角距离很远：把雾推开，否则全图一片白
     const fog = this.scene.fog as THREE.Fog;

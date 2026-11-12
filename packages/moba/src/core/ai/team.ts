@@ -46,8 +46,12 @@ export interface LaneState {
   threatHeroes: number;
   threatMinions: number;
   threat: number;
-  /** 这条路上可见的敌方英雄数 */
+  /** 这条路上可见的敌方英雄数，以及其中最靠近我方基地的那个的进度 */
   foeHeroes: number;
+  foeHeroP: number;
+  /** 回防保持：最近有敌方英雄逼近这条路的建筑，在此时间之前都按 threatSeen 个敌人来布防 */
+  threatUntil: number;
+  threatSeen: number;
   /** 己方小兵已经进入敌方建筑射程(可以点塔) */
   atFoeStruct: boolean;
 }
@@ -83,6 +87,14 @@ export class TeamBrain {
   epicCamp = -1;
   /** 集火目标 */
   focusId = -1;
+  /** 敌方大部队(3 人以上聚在一条路)最近一次出现的路、时间、最靠前者的进度 */
+  massLane: LaneId | null = null;
+  massAt = -99;
+  massP = 0;
+  /** 中期游走小队(打野 + 中单)当前要去帮的边路；null = 各自发育 */
+  squadLane: LaneId | null = null;
+  private squadUntil = 0;
+  private nextSquadAt = 0;
   private focusUntil = 0;
   private epicSince = 0;
   private epicRetryAt = 0;
@@ -102,7 +114,8 @@ export class TeamBrain {
     const foeCore = view.enemyStructures().find((s) => s.kind === 'core') as CoreUnit;
     const mk = (lane: LaneId): LaneState => ({
       lane, allyFront: -1, enemyFront: -1, allyMinions: 0, enemyMinions: 0, ownStruct: core, ownP: 0, foeStruct: foeCore, foeP: 0,
-      foeTowers: 3, ownTowers: 3, threatHeroes: 0, threatMinions: 0, threat: 0, foeHeroes: 0, atFoeStruct: false,
+      foeTowers: 3, ownTowers: 3, threatHeroes: 0, threatMinions: 0, threat: 0, foeHeroes: 0, foeHeroP: 0, threatUntil: -1, threatSeen: 0,
+      atFoeStruct: false,
     });
     this.lanes = { top: mk('top'), mid: mk('mid'), bot: mk('bot') };
   }
@@ -149,6 +162,7 @@ export class TeamBrain {
     this.refreshPhase(v);
     this.choosePushLane(v);
     this.refreshEpic(v);
+    this.refreshSquad(v);
     this.assign(v);
     if (v.time >= this.focusUntil) this.focusId = -1;
   }
@@ -176,6 +190,7 @@ export class TeamBrain {
       ls.threatHeroes = 0;
       ls.threatMinions = 0;
       ls.foeHeroes = 0;
+      ls.foeHeroP = 1e9;
       ls.atFoeStruct = false;
       ls.ownTowers = 0;
       ls.foeTowers = 0;
@@ -234,7 +249,12 @@ export class TeamBrain {
         if (dist(u.pos, ls.ownStruct.pos) <= THREAT_MINION_RANGE) ls.threatMinions++;
       } else if (u.kind === 'hero') {
         const lane = geo.nearestLane(u.pos.x, u.pos.y);
-        if (geo.lateral < 10) this.lanes[lane].foeHeroes++;
+        if (geo.lateral < 10) {
+          const ls = this.lanes[lane];
+          ls.foeHeroes++;
+          const p = geo.prog(team, lane, u.pos.x, u.pos.y);
+          if (p < ls.foeHeroP) ls.foeHeroP = p;
+        }
         for (const l of LANES) {
           const ls = this.lanes[l];
           if (dist(u.pos, ls.ownStruct.pos) <= THREAT_HERO_RANGE) ls.threatHeroes++;
@@ -243,8 +263,25 @@ export class TeamBrain {
     }
     for (const lane of LANES) {
       const ls = this.lanes[lane];
+      // 回防保持：对面一群人退到视野外等兵线，不等于他们走了。没在别处看到他们之前，防线不撤
+      if (ls.threatHeroes >= 2) {
+        ls.threatUntil = v.time + TUNE.threatHold;
+        ls.threatSeen = ls.threatHeroes;
+      } else if (v.time < ls.threatUntil && ls.threatHeroes < ls.threatSeen) {
+        ls.threatHeroes = ls.threatSeen;
+      }
       const hit = v.time - ls.ownStruct.lastHitTime < 3 ? 1 : 0;
       ls.threat = ls.threatHeroes * 2 + Math.min(ls.threatMinions, 6) * 0.35 + hit;
+      // 敌方大部队(3 人以上)出现在哪条路
+      if (ls.foeHeroes >= 3) {
+        this.massLane = lane;
+        this.massAt = v.time;
+        this.massP = ls.foeHeroP;
+      }
+    }
+    // 他们在别的路露面了：原来那条路的防线可以撤
+    if (this.massLane) {
+      for (const lane of LANES) if (lane !== this.massLane && this.massAt === v.time) this.lanes[lane].threatUntil = -1;
     }
   }
 
@@ -265,7 +302,7 @@ export class TeamBrain {
     else if (a >= e) this.turtle = false;
     const down = st.teams[0].towersDestroyed + st.teams[1].towersDestroyed;
     if (this.phase === 'lane' && (v.time >= TUNE.laneEnd || (down >= 1 && v.time >= TUNE.laneEnd * 0.7))) this.phase = 'mid';
-    if (this.phase !== 'late' && (v.time >= TUNE.lateStart || down >= 4)) this.phase = 'late';
+    if (this.phase !== 'late' && (v.time >= TUNE.lateStart || (down >= 5 && v.time >= TUNE.lateStart * 0.8))) this.phase = 'late';
   }
 
   /** 主推路：进度最好(敌塔最少/血量最低)、兵线占优的那一路；带滞回避免来回换线 */
@@ -282,12 +319,13 @@ export class TeamBrain {
       if (lane === this.pushLane) score += 1.2;
       // 己方这条路的高地已破：对面会出超级兵，得优先处理
       if (ls.ownTowers === 0) score -= 0.5;
+      // 对面大部队在哪条路，我们就去哪条路接团：各推各的只会变成互相偷家
+      if (lane === this.massLane && v.time - this.massAt < TUNE.massMemory) score += 3;
       if (score > bestScore) {
         bestScore = score;
         best = lane;
       }
     }
-    void v;
     this.pushLane = best;
   }
 
@@ -353,6 +391,51 @@ export class TeamBrain {
     }
   }
 
+  // ───────────────────────── 中期游走 ─────────────────────────
+
+  /**
+   * 对线期结束到抱团期之间：打野和中单每隔一阵结伴去一条外塔还在的边路，以多打少逼团/推塔，
+   * 打完一波(或时间到)再回去发育。对面的回防逻辑会派人来接，中期的小规模团战就是这么来的。
+   */
+  private refreshSquad(v: BotView): void {
+    const time = v.time;
+    if (this.phase !== 'mid' || this.turtle || this.epicCamp >= 0) {
+      this.squadLane = null;
+      if (this.phase === 'lane') this.nextSquadAt = time + 5;
+      return;
+    }
+    if (this.squadLane) {
+      const ls = this.lanes[this.squadLane];
+      // 时间到 / 那条路的外塔已经拿下 / 自家中路吃紧 → 收队
+      if (time >= this.squadUntil || ls.foeTowers < 3 || this.lanes.mid.threat >= 3) {
+        this.squadLane = null;
+        this.nextSquadAt = time + TUNE.squadRest * (1.3 - 0.5 * this.profile.teamwork);
+      }
+      return;
+    }
+    if (time < this.nextSquadAt) return;
+    let best: LaneId | null = null;
+    let bestScore = -Infinity;
+    for (const lane of ['top', 'bot'] as const) {
+      const ls = this.lanes[lane];
+      if (ls.foeTowers < 3) continue;
+      const hp = ls.foeStruct.hp / ls.foeStruct.stats.maxHp;
+      let score = (1 - hp) * 2 + v.rng.range(0, 1);
+      if (ls.allyFront >= 0) score += (ls.allyFront - this.geo.total(lane) * 0.5) / 25;
+      score += ls.foeHeroes * 0.3;
+      if (score > bestScore) {
+        bestScore = score;
+        best = lane;
+      }
+    }
+    if (!best) {
+      this.nextSquadAt = time + 10;
+      return;
+    }
+    this.squadLane = best;
+    this.squadUntil = time + TUNE.squadTime;
+  }
+
   // ───────────────────────── 派任务 ─────────────────────────
 
   private assign(v: BotView): void {
@@ -369,6 +452,8 @@ export class TeamBrain {
       const home: LaneId = h.lane === 'jungle' ? 'mid' : h.lane;
       if (this.phase === 'late' || powerPlay) {
         task = { kind: 'push', lane: this.pushLane, campId: -1 };
+      } else if (this.squadLane && (h.lane === 'jungle' || h.lane === 'mid')) {
+        task = { kind: 'push', lane: this.squadLane, campId: -1 };
       } else if (h.lane === 'jungle') {
         task = { kind: 'jungle', lane: home, campId: -1 };
       } else if (this.phase === 'mid' && this.lanes[home].foeTowers < 3) {

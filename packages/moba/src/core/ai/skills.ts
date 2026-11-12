@@ -213,8 +213,9 @@ export function fightSkills(b: HeroBot, t: HeroUnit): boolean {
           }
         }
       }
-      // 冲撞击飞：目标已经被控住很久就先留着
-      if (can(b, 's1') && d <= 9.6 && d > 2.2 && pinned(t) < 0.35) {
+      // 冲撞击飞：目标还被控着就先留着，等控制快结束再接上
+      // 贴身时也放：冲撞本身有伤害，还能接上一段击飞
+      if (can(b, 's1') && d <= 9.6 && pinned(t) < 0.35) {
         lead(b, t, 0, val(b, 's1', 'dashSpeed'), P);
         castToward(b, 's1', P);
         return true;

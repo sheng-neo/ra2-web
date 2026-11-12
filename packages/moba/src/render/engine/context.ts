@@ -124,6 +124,8 @@ export interface RenderModule {
   setAim?(aim: AimIndicator | null): void;
   /** 精确拾取(单位视图模块实现)。未实现时用内置的屏幕距离拾取 */
   pickUnit?(clientX: number, clientY: number, state: GameState): number;
+  /** 换了一局/时间轴跳变(不重建渲染器)：丢掉所有跟对局状态绑定的视图与进行中的效果 */
+  reset?(): void;
   dispose(): void;
 }
 

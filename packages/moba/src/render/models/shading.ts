@@ -104,7 +104,11 @@ void main() {
   vec3 sun = kitSunColor();
   float ao = vFx.w;
 
-  vec3 irradiance = kitAmbient(N) * ao + sun * lit * mix(1.0, ao, 0.4) + kitPointLights(N, -vViewPosition);
+  // 技能闪光的点光是按「离地一两米、照亮地面」调的强度；单位就站在光源边上，按平方衰减会比地面亮十倍，
+  // 整个人被打成一团白。所以单位只吃一部分点光，并做软上限：只留下染色与提亮的感觉
+  vec3 pl = kitPointLights(N, -vViewPosition) * 0.5;
+  pl /= 1.0 + max(pl.r, max(pl.g, pl.b)) * 0.8;
+  vec3 irradiance = kitAmbient(N) * ao + sun * lit * mix(1.0, ao, 0.4) + pl;
   vec3 col = base * RECIPROCAL_PI * irradiance;
   col *= mix(uShadeTint, vec3(1.0), lit);
 
@@ -120,7 +124,8 @@ void main() {
   col += base * vFx.x * 0.22 * saturate(N.y * 0.5 + 0.5) * kitAmbient(vec3(0.0, 1.0, 0.0)) * RECIPROCAL_PI;
 
   col += base * (vFx.y * uGlowBoost * vInstA.z);
-  col = mix(col, vec3(1.8), vInstA.y);
+  // 受击闪白：整体提亮并叠一层暖白，但保留自身的明暗与配色(直接换成纯白的话，被集火的单位会连成一团白色剪影)
+  col = mix(col, col * 1.45 + vec3(0.6, 0.58, 0.54), vInstA.y);
 
   gl_FragColor = vec4(col, 1.0);
   ${GLSL_OUTPUT_FRAGMENT}

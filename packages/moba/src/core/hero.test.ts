@@ -3,7 +3,7 @@ import { addBuff, hasBuff } from './buffs';
 import { dealDamage, killUnit } from './combat';
 import { HEROES, SUMMONER, skillLevelsAt } from './data/heroes';
 import { ITEMS } from './data/items';
-import { ECONOMY, respawnTime, xpToNext } from './data/units';
+import { ECONOMY, MINIONS, respawnTime, xpToNext } from './data/units';
 import { isWalkableTerrain } from './map';
 import { grantXp } from './rewards';
 import { getSkill, registerSkill, type CastContext } from './skills/registry';
@@ -523,17 +523,19 @@ describe('成长与经济', () => {
     const ga = a.gold;
     const gb = b.gold;
     dealDamage(sim, a, m, 9999, 'true');
-    expect(a.gold).toBe(ga + 42);
-    expect(b.gold).toBe(gb + Math.round(42 * ECONOMY.proximityGoldRatio));
+    // 数值取自 data/units.ts(平衡会调整它们)，这里只验证规则
+    const def = MINIONS.melee;
+    expect(a.gold).toBe(ga + def.gold);
+    expect(b.gold).toBe(gb + Math.round(def.gold * ECONOMY.proximityGoldRatio));
     expect(a.cs).toBe(1);
     expect(b.cs).toBe(0);
-    // 两人分享：各得 65%
-    expect(a.xp).toBeCloseTo(60 * 0.65, 6);
-    expect(b.xp).toBeCloseTo(60 * 0.65, 6);
+    // 两人分享：各得 xpShare[1]
+    expect(a.xp).toBeCloseTo(def.xp * ECONOMY.xpShare[1], 6);
+    expect(b.xp).toBeCloseTo(def.xp * ECONOMY.xpShare[1], 6);
     const ev = sim.drainEvents();
     const gold = eventsOf(ev, 'gold');
-    expect(gold.find((g) => g.unitId === a.id)).toMatchObject({ amount: 42, reason: 'lasthit' });
-    expect(eventsOf(ev, 'fx').some((e) => e.key === 'gold_gain' && e.value === 42)).toBe(true);
+    expect(gold.find((g) => g.unitId === a.id)).toMatchObject({ amount: def.gold, reason: 'lasthit' });
+    expect(eventsOf(ev, 'fx').some((e) => e.key === 'gold_gain' && e.value === def.gold)).toBe(true);
   });
 
   it('击杀结算：首杀/赏金/助攻/连杀窗口/终结/团灭播报', () => {

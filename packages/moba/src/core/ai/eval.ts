@@ -83,10 +83,6 @@ export function structureOutput(s: Unit): number {
   return s.stats.ad * s.stats.attackSpeed * 1.4 * TUNE.fightHorizon;
 }
 
-export function sideStrength(ehp: number, out: number): number {
-  return ehp * out;
-}
-
 export function advantageOf(allyEhp: number, allyOut: number, foeEhp: number, foeOut: number): number {
   const a = allyEhp * allyOut;
   const e = foeEhp * foeOut;

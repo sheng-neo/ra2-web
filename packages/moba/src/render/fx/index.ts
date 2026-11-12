@@ -47,7 +47,10 @@ export interface FxModule extends RenderModule {
   playFx(e: FxEvent, state: GameState): void;
   /** 清空所有进行中的特效与视图 */
   reset(): void;
-  /** 玩家阵亡时把画面去色(走引擎调色，low 档无后期时无效)。默认开启；界面层自己做灰屏时可以关掉 */
+  /**
+   * 玩家阵亡时把画面去色(走引擎调色，low 档无后期时无效)。默认关闭：正式对局里这件事由应用层(app/match.ts)统一负责，
+   * 它还管 low 档的 CSS 兜底；两边同时写同一个调色参数会互相覆盖。只有不经应用层直接用渲染器的场合(演示/画廊)才需要打开。
+   */
   setDeathGrade(enabled: boolean): void;
   getStats(): FxStats;
 }
@@ -65,11 +68,13 @@ export function createFxModule(ctx: RenderContext): FxModule {
   const stats: FxStats = { particlesSpawned: 0, particleCapacity: 0, decals: 0, projectiles: 0, areas: 0, statuses: 0, drawCalls: 0 };
   /** 每个近战英雄交替左右挥砍 */
   const swingCount = new Map<number, number>();
-  let deathGrade = true;
+  let deathGrade = false;
   let gray = 0;
 
   /** 玩家阵亡：画面缓缓去色，复活时恢复 */
   const updateDeathGrade = (frame: FrameInfo): void => {
+    // 没开启、也没有待恢复的去色：完全不碰调色参数
+    if (!deathGrade && gray === 0) return;
     let dead = false;
     for (const h of frame.state.heroes) if (h.id === frame.state.playerId) dead = !h.alive;
     const target = deathGrade && dead ? 0.82 : 0;

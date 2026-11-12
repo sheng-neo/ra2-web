@@ -4,7 +4,7 @@
  */
 import { HEROES } from '../data/heroes';
 import { MOVE_DIR, MOVE_PATH, type SimHero, type SimUnit } from '../internal';
-import { pathLength } from '../nav';
+import { pathLength, segmentHitsZones, type AvoidZone } from '../nav';
 import type { Rng } from '../rng';
 import { getSkill, isSummonerSlot, SUMMONER_CAST } from '../skills/registry';
 import type {
@@ -38,6 +38,7 @@ export class SimBotView implements BotView {
   private cAlliedStructures: (TowerUnit | CoreUnit)[] = [];
   private cMonsters: MonsterUnit[] = [];
   private readonly nearBuf: SimUnit[] = [];
+  private readonly zones: AvoidZone[] = [];
 
   constructor(sim: Sim, hero: SimHero, difficulty: Difficulty, rng: Rng) {
     this.sim = sim;
@@ -180,6 +181,24 @@ export class SimBotView implements BotView {
     // 只找到部分路径(终点不连通)也算不可达
     if (Math.hypot(last.x - to.x, last.y - to.y) > 2) return Infinity;
     return pathLength(p, path);
+  }
+
+  safePath(to: Vec2, margin = 1): Vec2[] | null {
+    this.refresh();
+    const p = this.self.pos;
+    const nav = this.sim.nav;
+    const r = this.self.rt.navR;
+    const zones = this.zones;
+    zones.length = 0;
+    for (const s of this.cEnemyStructures) {
+      // 起点/终点在射程圈里时把圈缩到刚好不包含它们：既有路可走，又不会往圈里更深处钻
+      let zr = s.stats.attackRange + margin;
+      zr = Math.min(zr, Math.hypot(p.x - s.pos.x, p.y - s.pos.y) - 0.4, Math.hypot(to.x - s.pos.x, to.y - s.pos.y) - 0.4);
+      if (zr > s.radius + 1) zones.push({ x: s.pos.x, y: s.pos.y, r: zr });
+    }
+    if (nav.segmentFree(p.x, p.y, to.x, to.y, r) && !segmentHitsZones(zones, p.x, p.y, to.x, to.y)) return [{ x: to.x, y: to.y }];
+    const path = nav.findPath(p.x, p.y, to.x, to.y, r, zones);
+    return path && path.length > 0 ? path : null;
   }
 
   bushAt(pos: Vec2): number {

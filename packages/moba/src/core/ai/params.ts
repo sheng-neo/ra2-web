@@ -57,7 +57,7 @@ export const PROFILES: Record<Difficulty, Profile> = {
   normal: {
     think: 0.16, reaction: 0.28, aimError: 0.09, aimLead: 0.8, dodge: 0.6, lastHitError: 0.1, lastHitSkip: 0.1,
     aggression: 1, harass: 0.55, dive: true, comboGap: 0.22, orbwalk: true, flashKill: 0.45, escapeSense: 1,
-    focus: 0.6, awareness: 0.4, teamwork: 0.7, idleRate: 0, idleMin: 0, idleMax: 0, gankCooldown: 40,
+    focus: 0.6, awareness: 0.4, teamwork: 0.7, idleRate: 0, idleMin: 0, idleMax: 0, gankCooldown: 34,
   },
   hard: {
     think: 0.1, reaction: 0.12, aimError: 0.025, aimLead: 1, dodge: 0.95, lastHitError: 0.03, lastHitSkip: 0,
@@ -72,11 +72,9 @@ export interface Style {
   fleeHp: number;
   /** 脱战后血量比例低于此值就回城补给 */
   recallHp: number;
-  /** 团战站位：相对兵线/队伍中心的前后偏移（米，正 = 靠前） */
-  frontline: number;
   /** 开战门槛修正：<1 更愿意先手（坦克/战士），>1 更谨慎（法师/射手） */
   engage: number;
-  /** 是否由它来开团(先手位移进场) */
+  /** 是否由它来开团：抱团对峙时，非开团位会等队友先动手(开战门槛更高) */
   initiator: boolean;
   /** 选目标时对后排(法师/射手)的偏好 */
   diveBackline: number;
@@ -85,11 +83,11 @@ export interface Style {
 }
 
 export const STYLES: Record<HeroId, Style> = {
-  panyue: { fleeHp: 0.22, recallHp: 0.33, frontline: 2.5, engage: 0.9, initiator: true, diveBackline: 0.2, support: true },
-  chijin: { fleeHp: 0.26, recallHp: 0.36, frontline: 1.5, engage: 0.95, initiator: true, diveBackline: 0.5, support: false },
-  xingli: { fleeHp: 0.3, recallHp: 0.38, frontline: -4, engage: 1.05, initiator: false, diveBackline: 0, support: false },
-  fengling: { fleeHp: 0.3, recallHp: 0.38, frontline: -4.5, engage: 1.05, initiator: false, diveBackline: 0, support: false },
-  yeque: { fleeHp: 0.28, recallHp: 0.38, frontline: 0, engage: 1, initiator: false, diveBackline: 1.2, support: false },
+  panyue: { fleeHp: 0.22, recallHp: 0.33, engage: 0.9, initiator: true, diveBackline: 0.2, support: true },
+  chijin: { fleeHp: 0.23, recallHp: 0.34, engage: 0.87, initiator: true, diveBackline: 0.5, support: false },
+  xingli: { fleeHp: 0.3, recallHp: 0.38, engage: 1.05, initiator: false, diveBackline: 0, support: false },
+  fengling: { fleeHp: 0.3, recallHp: 0.38, engage: 1.05, initiator: false, diveBackline: 0, support: false },
+  yeque: { fleeHp: 0.28, recallHp: 0.38, engage: 1, initiator: false, diveBackline: 1.2, support: false },
 };
 
 /** 全局阈值 */
@@ -104,21 +102,33 @@ export const TUNE = {
   /** 战力评估的时间窗（秒）：伤害输出 = 普攻 DPS × 窗口 + 可用技能爆发 */
   fightHorizon: 5,
   /** 优势比(adv)门槛：≥ allIn 全力开打；≥ poke 可以消耗；< flee 撤退 */
-  advAllIn: 1.22,
+  advAllIn: 1.18,
   advPoke: 0.85,
   advFlee: 0.62,
   /** 够得着我的敌人一套能打掉我这么大比例的血(接近致命)：退到他们够不着的地方 */
   respectLethal: 0.8,
   /** 优势比低于此值(明显打不过，比如被多打少)：同样敬而远之 */
   advOutgunned: 0.7,
+  /** 压制门槛：优势比不低于此值时，对站在自己攻击范围里的敌人直接出手 */
+  advPress: 1.08,
   /** 被人打了、且对方在手边时的还手门槛 */
   advFightBack: 0.95,
   /** 还手换血每持续 1 秒，继续换下去所需的优势比增加多少 */
   tradeFatigue: 0.05,
   /** 正被追着打时，优势比低于此值就撤 */
   advPressed: 0.85,
+  /** 敌方泉水周围这么远以内算「对面家门口」：活着但看不见的敌人每人按 baseGhost 个英雄计入敌方战力 */
+  baseGhostRange: 42,
+  baseGhost: 0.75,
+  /** 队友已经集火某个目标时，跟进开战的门槛倍率 */
+  followUp: 0.85,
+  /** 抱团时还没人动手，非开团位(法师/射手/刺客)自己先上的门槛倍率 */
+  waitForEngage: 1.12,
   /** 击杀窗口的宽限（秒）：估计的击杀时间可以比目标逃回塔下的时间长这么多 */
-  killSlack: 1.5,
+  killSlack: 2.2,
+  /** 撤退之后这么久内，重新开战/压制的门槛乘以 shakenFactor */
+  shakenTime: 4,
+  shakenFactor: 1.25,
   /** 撤退状态至少保持多久（防止进退抖动） */
   fleeHold: 1.4,
   /** 开战状态的最短承诺时间 */
@@ -133,7 +143,10 @@ export const TUNE = {
   /** 小兵仇恨半径（与引擎 MINION_AGGRO 一致）：打英雄时这个范围内的敌方小兵会转火 */
   minionAggro: 8,
   /** 对线期结束时间（秒）：之后队伍开始按目标转线/抱团 */
-  laneEnd: 300,
+  laneEnd: 270,
+  /** 中期游走小队：每次帮边路的时长 / 两次之间的休整时间（秒） */
+  squadTime: 50,
+  squadRest: 35,
   /** 进入后期抱团推进的时间（秒） */
   lateStart: 570,
   /** 抱团推进时，至少聚齐多少人才越过河道/进塔 */
@@ -146,6 +159,12 @@ export const TUNE = {
   /** 打野 gank：同一个目标 / 同一条路 的最短间隔（秒） */
   gankSameTarget: 80,
   gankSameLane: 45,
+  /** 回防时守军没到齐，先退到建筑后方这么远集合（米） */
+  regroupBack: 11,
+  /** 回防保持时间（秒）：敌方多人逼近过的建筑，在他们消失后还要守多久 */
+  threatHold: 18,
+  /** 敌方大部队位置的记忆时间（秒）：这段时间内主推路跟着他们走 */
+  massMemory: 25,
   /** 团队决策刷新间隔（秒） */
   teamTick: 0.8,
   /** 清线放技能要求的最低法力比例 */

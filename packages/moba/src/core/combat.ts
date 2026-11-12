@@ -6,7 +6,7 @@
  */
 import { setAction } from './anim';
 import { absorbShield, addBuff, clearBuffs, findBuff, hasBuff, removeBuff } from './buffs';
-import { ARMOR_K, MONSTER_RULES, TOWER_RULES, VISION } from './data/units';
+import { ARMOR_K, ENDGAME, MONSTER_RULES, TOWER_RULES, VISION } from './data/units';
 import { canTarget, isStructure } from './entity';
 import {
   MAX_ATTACK_ANIM,
@@ -63,8 +63,10 @@ export function dealDamage(
       const hk = hooks[i];
       if (hk.modifyDamageTaken) hk.modifyDamageTaken(sim, target, source, info);
     }
-  } else if (isStructure(target) && target.rt.backdoor) {
-    info.amount *= 1 - TOWER_RULES.backdoorReduction;
+  } else if (isStructure(target)) {
+    if (target.rt.backdoor) info.amount *= 1 - TOWER_RULES.backdoorReduction;
+    // 终局加速：拖得越久建筑越脆
+    if (time > ENDGAME.start) info.amount *= 1 + ((time - ENDGAME.start) / 60) * ENDGAME.structureVulnPerMin;
   }
   let taken = 1;
   const tb = target.buffs;

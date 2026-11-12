@@ -189,8 +189,8 @@ export class FloaterLayer {
           const f = this.spawn(id, anchors, u.pos.x, u.pos.y, STYLE.heal, `+${Math.round(h.sum)}`, id === state.playerId ? 1 : 0.8, 1, false);
           // 治疗数字偏左上，和偏右的伤害数字错开
           if (f) {
-            f.ox -= 34;
-            f.oy -= 12;
+            f.ox -= 58;
+            f.oy -= 14;
             f.dir = -1;
           }
         }

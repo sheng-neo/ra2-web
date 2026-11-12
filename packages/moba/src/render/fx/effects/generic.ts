@@ -151,8 +151,9 @@ const levelUp: FxHandler = (k, e, env) => {
   const fx = has ? 0 : x;
   const fz = has ? 0 : z;
   // 预备：脚下金环收拢 → 主体：双层光柱 + 上升环 → 余波：星屑飘落
-  const outer = pillar(k, fx, fz, 1.15, 6.5, 1.0, C.gold, 1.5, 0.75);
-  const inner = pillar(k, fx, fz, 0.5, 8, 0.8, C.goldHot, 2.2, 0.9);
+  // 光柱套在英雄身上：外层要淡、内层要细，否则升级的那一秒整个人被金光糊住(对线时每隔几十秒就升一级)
+  const outer = pillar(k, fx, fz, 1.3, 6.5, 1.0, C.gold, 1.05, 0.34);
+  const inner = pillar(k, fx, fz, 0.3, 8, 0.8, C.goldHot, 1.7, 0.5);
   const rune = k.decals.add(DECAL.rune, x, z, 2.1, 1.2).params(5, 1.2).color(C.gold, 1.7).under(C.shadow, 0.3);
   if (has) {
     outer.follow(id);

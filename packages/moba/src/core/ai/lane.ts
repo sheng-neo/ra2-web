@@ -101,9 +101,10 @@ function pickMinion(b: HeroBot, carry: HeroUnit | null, alone: boolean): MinionP
 }
 
 /** 对线消耗：技能蹭 + 远程普攻点人。返回 true = 下了普攻命令 */
-function harass(b: HeroBot, waiting: boolean): boolean {
+function harass(b: HeroBot, waiting: boolean, grouped: boolean): boolean {
   if (b.foes.length === 0 || b.adv < TUNE.advPoke || b.inFoeRange) return false;
-  if (!b.inMood(MOOD_POKE, b.prof.harass)) return false;
+  // 抱团对峙时更愿意出手消耗
+  if (!b.inMood(MOOD_POKE, grouped ? Math.min(1, b.prof.harass + 0.3) : b.prof.harass)) return false;
   const me = b.me;
   const v = b.v;
   let t: HeroUnit | null = null;
@@ -176,6 +177,10 @@ export function laneWork(b: HeroBot, lane: LaneId, kind: LaneKind): void {
     anchorP = ls.ownP - 1.5;
     // 敌方兵线快到塔下了：迎上去，在塔的掩护里清兵
     if (fe >= 0 && fe < ls.ownP + 9) anchorP = Math.min(fe - back, ls.ownP + 3);
+    // 对面来了一群人、而我方守军还没到齐：先在后面集合，别一个个走进去被先手
+    if (ls.threatHeroes >= 3 && b.friendsNear + 1 < Math.min(ls.threatHeroes - 1, b.brain.aliveAllies)) {
+      anchorP = Math.min(anchorP, Math.max(0, ls.ownP - TUNE.regroupBack));
+    }
   } else if (fa >= 0) {
     const clash = fe >= 0 && Math.abs(fe - fa) < 12 ? (fa + fe) * 0.5 : fa + 0.5;
     anchorP = clash - back;
@@ -190,12 +195,15 @@ export function laneWork(b: HeroBot, lane: LaneId, kind: LaneKind): void {
   // 身边没有己方小兵时不单挑一整波兵(小兵会全部转火英雄)：退到小兵仇恨范围外，等它们去打塔或者己方兵线上来
   const alone = b.myMinions.length === 0 && b.foeMinions.length >= 3;
   if (alone && fe >= 0) anchorP = Math.min(anchorP, fe > ls.ownP + 7 ? fe - TUNE.minionAggro - 1.5 : ls.ownP - 3);
-  // 与敌方英雄保持距离：不占优时不站在对方普攻射程里白挨打；被压制(respect)时退到对方突进也够不着的地方
-  if (b.adv < 1.15) {
+  // 与敌方英雄保持距离：不占优时不站在对方普攻射程里白挨打；被压制(respect)时退到对方突进也够不着的地方；
+  // 正在被人点(走到这里说明没打算还手)：退到他的射程外再多两步，他追过来就一路退回塔下
+  if (b.adv < 1.15 || b.poker) {
     for (const e of b.foes) {
       const eP = geo.prog(team, lane, e.pos.x, e.pos.y);
       if (geo.lateral > 9 || eP < myP - 2) continue;
-      const keep = b.respect ? b.threatReach(e) + 1 : e.stats.attackRange + e.radius + me.radius + 0.8;
+      let keep = b.respect ? b.threatReach(e) + 1 : e.stats.attackRange + e.radius + me.radius + 0.8;
+      if (e === b.poker) keep = Math.max(keep, e.stats.attackRange + e.radius + me.radius + 2.5);
+      else if (b.adv >= 1.15) continue;
       if (anchorP > eP - keep) anchorP = eP - keep;
     }
   }
@@ -207,6 +215,10 @@ export function laneWork(b: HeroBot, lane: LaneId, kind: LaneKind): void {
   const tankOk = b.foeStruct === T ? b.tankers > 0 && b.tankHp > 450 && !b.towerOnMe : ls.atFoeStruct;
   if (!tankOk) anchorP = Math.min(anchorP, ls.foeP - (tr + TUNE.towerMargin + 0.8));
   anchorP = Math.max(anchorP, ls.ownP - 4);
+  // 锚点平滑：小幅变化(兵线推移、间距规则来回触发)慢慢跟，免得原地来回挪步；大变化(换线、兵线重置)直接跳过去
+  if (b.anchorLane === lane && Math.abs(anchorP - b.anchorP) < 6) anchorP = b.anchorP + (anchorP - b.anchorP) * 0.35;
+  b.anchorLane = lane;
+  b.anchorP = anchorP;
   geo.point(team, lane, anchorP, A, b.side);
   const dA = dist(me.pos, A);
 
@@ -233,7 +245,7 @@ export function laneWork(b: HeroBot, lane: LaneId, kind: LaneKind): void {
     return;
   }
   const waiting = pick.wait !== null && !hardPush;
-  if (harass(b, waiting)) return;
+  if (harass(b, waiting, kind !== 'lane')) return;
   if (siege(b, ls)) return;
   if (hardPush && !support && !b.v.busy() && b.foeMinions.length >= 3) waveSkills(b, b.foeMinions, false);
   if (pick.push && !support && !threatened && !waiting) {

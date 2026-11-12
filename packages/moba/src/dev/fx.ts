@@ -961,6 +961,8 @@ const engine = renderer.engine;
 const ctx = renderer.context;
 const fxModule = ctx.getModule<FxModule>('fx') as FxModule;
 const overlayModule = ctx.getModule<OverlayModule>('overlay') as OverlayModule;
+// 画廊不经应用层：阵亡去色由特效模块自己来
+fxModule.setDeathGrade(true);
 const modules = ['terrain', 'units', 'fx', 'overlay'].map((n) => ctx.getModule(n)).filter((m): m is RenderModule => !!m);
 if (!freeStage) {
   renderer.setCameraPeek({ x: center.x + F.x * 0.5, y: center.y + F.y * 0.5 - 1.5 });

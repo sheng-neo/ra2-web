@@ -103,10 +103,14 @@ export class HeroBot implements BotController {
   dmgRate = 0;
   /** 我所在位置的局部优势比 */
   adv = 9;
+  /** 最近在攻击我的敌方英雄（没有为 null） */
+  poker: HeroUnit | null = null;
+  private pokedUntil = 0;
   /** 够得着我的敌人一套爆发 / 我的当前生命 */
   danger = 0;
   /** 需要「敬而远之」：站位退到敌人的威胁距离之外 */
   respect = false;
+  private respectUntil = 0;
   /** 当前交战目标处的优势比（技能层用） */
   fightAdv = 1;
   /** 最近一次 advantageAt 估出的己方总输出（killWindow 用） */
@@ -135,10 +139,21 @@ export class HeroBot implements BotController {
   private safeAt = -99;
   private readonly safe: Vec2 = { x: 0, y: 0 };
 
+  /** 兵线站位锚点的平滑值（lane.ts 读写） */
+  anchorLane: LaneId | null = null;
+  anchorP = 0;
   /** 站位的横向偏移（米）：同路的几个人别叠在一个点上 */
   readonly side: number;
   private tripX = 1e9;
   private tripY = 1e9;
+  private route: Vec2[] | null = null;
+  private routeIdx = 0;
+  private routeAt = -99;
+  /** 刚撤退过：这段时间内重新开战的门槛更高(防止进退抖动) */
+  private shakenUntil = 0;
+  private assistId = -1;
+  private assistUntil = 0;
+  private assistBanUntil = 0;
 
   // ── 打野 / gank（jungle.ts 读写）──
   campId = -1;
@@ -207,6 +222,7 @@ export class HeroBot implements BotController {
     this.fightUntil = 0;
     this.fightTargetId = -1;
     this.forceFightId = -1;
+    this.poker = null;
     this.diving = false;
     this.baseStay = false;
     this.gankId = -1;
@@ -217,17 +233,33 @@ export class HeroBot implements BotController {
   }
 
   /**
-   * 长途赶路。目的地只挪了一小段时沿用原来的路径：每次重下 moveTo 都可能触发一次全图寻路，
-   * 而兵线锚点这类目标每时每刻都在动。
+   * 长途赶路：自己规划一条绕开敌方防御塔射程的路线，再逐个路点交给引擎走。
+   * (引擎的寻路只管墙不管塔；直接 moveTo 会一头扎进塔里，再被「出塔」逻辑拽回来，来回折返。)
+   * 目的地只挪了一小段(quantum 以内)时沿用原路线 —— 兵线锚点这类目标每时每刻都在动，不能每次都重新寻路。
    */
-  travel(x: number, y: number, quantum = 5): void {
+  travel(x: number, y: number, quantum = 5, urgent = false): void {
     const me = this.me;
+    const time = this.time;
     const moved = Math.hypot(x - this.tripX, y - this.tripY);
-    if (moved > quantum || Math.hypot(me.pos.x - this.tripX, me.pos.y - this.tripY) < 3) {
+    const arrived = Math.hypot(me.pos.x - this.tripX, me.pos.y - this.tripY) < 3;
+    if (moved > quantum || arrived || this.route === null || time - this.routeAt > 4) {
       this.tripX = x;
       this.tripY = y;
+      this.routeAt = time;
+      this.routeIdx = 0;
+      TMP.x = x;
+      TMP.y = y;
+      this.route = this.diving ? null : this.v.safePath(TMP);
     }
-    this.act.moveTo(this.tripX, this.tripY);
+    const route = this.route;
+    if (!route) {
+      // 无路可绕(或正在越塔)：直接走
+      this.act.moveTo(this.tripX, this.tripY, urgent);
+      return;
+    }
+    while (this.routeIdx < route.length - 1 && Math.hypot(route[this.routeIdx].x - me.pos.x, route[this.routeIdx].y - me.pos.y) < 1.8) this.routeIdx++;
+    const wp = route[this.routeIdx];
+    this.act.moveTo(wp.x, wp.y, urgent);
   }
 
   private doTask(): void {
@@ -259,6 +291,7 @@ export class HeroBot implements BotController {
     this.minionsOnMe = 0;
     this.aggroMinions = 0;
     this.friendsNear = 0;
+    if (time >= this.pokedUntil || (this.poker && (!this.poker.alive || !v.canSee(this.poker)))) this.poker = null;
     for (const e of v.enemies()) {
       const d = dist(me.pos, e.pos);
       if (e.kind === 'hero') {
@@ -274,7 +307,12 @@ export class HeroBot implements BotController {
           this.nearFoeD = d;
           this.nearFoe = e;
         }
-        if (e.targetId === me.id) this.heroesOnMe++;
+        if (e.targetId === me.id) {
+          this.heroesOnMe++;
+          // 记住是谁在点我(保留一小段时间)：不还手的话就得退到他够不着的地方
+          this.poker = e;
+          this.pokedUntil = time + 1.5;
+        }
       } else if (e.kind === 'minion') {
         if (d > 13) continue;
         this.foeMinions.push(e);
@@ -345,7 +383,9 @@ export class HeroBot implements BotController {
     }
     this.danger = burst / Math.max(1, me.hp + me.shield);
     // 对面一套打不死我、双方又差不多，就该正常补刀换血；只有「一套接近致命」或「明显打不过」才敬而远之
-    this.respect = this.foes.length > 0 && ((this.danger >= TUNE.respectLethal && this.adv < 1.2) || this.adv < TUNE.advOutgunned);
+    // (带保持时间：退开之后敌人权重变小、优势比回升，没有滞回就会在「退」和「上」之间来回挪步)
+    if (this.foes.length > 0 && ((this.danger >= TUNE.respectLethal && this.adv < 1.2) || this.adv < TUNE.advOutgunned)) this.respectUntil = time + 1.6;
+    this.respect = time < this.respectUntil && this.foes.length > 0;
   }
 
   /** 敌方英雄 e 的威胁距离：普攻射程 + (近战)突进技能能送出的距离 */
@@ -359,13 +399,19 @@ export class HeroBot implements BotController {
   /** 看不见、但按最后出现的位置推算可能就在附近的敌人数（按地图意识折算） */
   private ghosts(x: number, y: number): number {
     const aw = this.prof.awareness;
-    if (aw <= 0) return 0;
     const v = this.v;
     const board = v.scoreboard();
+    // 敌方高地/基地一带：活着却看不见的敌人多半就在家里(刚复活、刚回城)，不能当他们不存在
+    const nearBase = Math.hypot(x - this.foeHome.x, y - this.foeHome.y) < TUNE.baseGhostRange;
     let g = 0;
+    let home = 0;
     for (let i = 0; i < board.length; i++) {
       const e = board[i];
       if (e.team === this.team || !e.alive || v.canSee(e)) continue;
+      if (nearBase) {
+        home++;
+        continue;
+      }
       const ls = v.lastSeen(e.id);
       if (!ls || ls.time < 0) continue;
       const el = this.time - ls.time;
@@ -373,7 +419,7 @@ export class HeroBot implements BotController {
       if (Math.hypot(ls.x - x, ls.y - y) - 6.5 * el > 12) continue;
       g += el < 3 ? 0.8 : el < 10 ? 0.5 : 0.25;
     }
-    return g * aw;
+    return g * aw + home * TUNE.baseGhost * (0.5 + 0.5 * aw);
   }
 
   /**
@@ -648,7 +694,6 @@ export class HeroBot implements BotController {
   // ───────────────────────── 保命 ─────────────────────────
 
   private survive(): boolean {
-    const me = this.me;
     const time = this.time;
     this.forceFightId = -1;
     if (time >= this.fightUntil) this.diving = false;
@@ -748,6 +793,7 @@ export class HeroBot implements BotController {
     const me = this.me;
     this.label = 'flee';
     this.gankId = -1;
+    this.shakenUntil = this.time + TUNE.shakenTime;
     const spot = this.safeSpot();
     let dx = spot.x - me.pos.x;
     let dy = spot.y - me.pos.y;
@@ -782,7 +828,7 @@ export class HeroBot implements BotController {
         return;
       }
     }
-    this.act.moveTo(this.safe.x, this.safe.y, true);
+    this.travel(this.safe.x, this.safe.y, 3, true);
   }
 
   // ───────────────────────── 补给 ─────────────────────────
@@ -940,7 +986,13 @@ export class HeroBot implements BotController {
     const sp = this.standPoint(t, STAND);
     const adv = this.advantageAt(sp.x, sp.y);
     this.fightAdv = adv;
-    const thr = (TUNE.advAllIn * this.style.engage) / this.prof.aggression;
+    let thr = (TUNE.advAllIn * this.style.engage) / this.prof.aggression;
+    // 队友已经对这个目标开团了：跟上；抱团时还没人动手：后排和刺客等前排先开
+    if (t.id === this.brain.focusId) thr *= TUNE.followUp;
+    else if (!this.style.initiator && this.friendsNear >= 2 && this.brain.focusId < 0) thr *= TUNE.waitForEngage;
+    // 刚撤下来：别一转头又冲回去
+    const shaken = time < this.shakenUntil;
+    if (shaken) thr *= TUNE.shakenFactor;
     const committed = time < this.fightUntil && this.fightTargetId === t.id;
     const reachNow = d <= me.stats.attackRange + t.radius + 1;
     const attacked = this.heroesOnMe > 0 || (me.inCombat && time - me.lastHitTime < 1.2);
@@ -953,7 +1005,11 @@ export class HeroBot implements BotController {
     else if (adv >= thr && feasible) go = true;
     else if (committed && !this.trading && adv >= Math.max(1, thr * 0.85) && feasible) go = true;
     else if (canKill && adv >= 0.75 && d <= eDist && feasible) go = true;
-    else if (attacked && reachNow) {
+    else if (reachNow && adv >= TUNE.advPress * (shaken ? TUNE.shakenFactor : 1) && !this.respect) {
+      // 压制：我更强，而他就站在我够得着的地方 —— 白打为什么不打(只用普攻和小技能；他走了也不追)
+      go = true;
+      trade = true;
+    } else if (attacked && reachNow) {
       // 还手换血：势均力敌时只换几下 —— 换得越久，继续换下去要求的优势越大，避免两个人原地对砍到残血
       const since = time - this.tradeEnd < 3 ? this.tradeStart : time;
       if (adv >= TUNE.advFightBack + (time - since) * TUNE.tradeFatigue) {
@@ -1074,7 +1130,15 @@ export class HeroBot implements BotController {
     for (const h of v.alliedHeroes()) {
       if (h === me || !h.inCombat) continue;
       const d = dist(me.pos, h.pos);
-      if (d < 7 || d > maxD || d >= bd) continue;
+      if (d < 7) {
+        // 已经赶到他身边：打不打由交战判断说了算。没打起来就歇一会儿再响应，免得在「过去」和「回去干活」之间折返
+        if (h.id === this.assistId) {
+          this.assistId = -1;
+          this.assistBanUntil = this.time + 6;
+        }
+        continue;
+      }
+      if (d > maxD || d >= bd) continue;
       // 他附近得真有看得见的敌人
       let foe = false;
       for (const e of this.foesAll) if (dist(e.pos, h.pos) < 11) foe = true;
@@ -1083,10 +1147,24 @@ export class HeroBot implements BotController {
       ally = h;
     }
     if (!ally) return false;
-    if (!laning && !this.inMood(MOOD_ASSIST, this.prof.teamwork)) return false;
-    if (this.advantageAt(ally.pos.x, ally.pos.y) < 1) return false;
-    if (v.enemyStructureCovering(ally.pos, 1)) return false;
-    this.act.moveTo(ally.pos.x, ally.pos.y);
+    const time = this.time;
+    // 决定去支援就走一段，决定不去也别马上反悔 —— 逐次思考重新判断会在两个任务之间来回折返
+    const committed = ally.id === this.assistId && time < this.assistUntil;
+    if (!committed) {
+      if (time < this.assistBanUntil) return false;
+      if (!laning && !this.inMood(MOOD_ASSIST, this.prof.teamwork)) return false;
+      if (this.advantageAt(ally.pos.x, ally.pos.y) < 1.05 || v.enemyStructureCovering(ally.pos, 1)) {
+        this.assistBanUntil = time + 3;
+        return false;
+      }
+      this.assistId = ally.id;
+      this.assistUntil = time + 2.5;
+    } else if (this.advantageAt(ally.pos.x, ally.pos.y) < 0.8) {
+      this.assistUntil = 0;
+      this.assistBanUntil = time + 3;
+      return false;
+    }
+    this.travel(ally.pos.x, ally.pos.y, 2.5);
     this.label = 'assist';
     return true;
   }

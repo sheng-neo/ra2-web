@@ -83,6 +83,8 @@ interface View {
   /** 离场后的演出时间；在场为 -1 */
   dying: number;
   deathDur: number;
+  /** 显示缩放(见 VIEW_SCALE) */
+  scale: number;
   culled: boolean;
   fresh: boolean;
   /** 刚创建：不透明度直接取目标值(不从 0 淡入) */
@@ -107,6 +109,13 @@ interface Ruin {
 }
 
 const STATIC_KINDS: Record<UnitKind, boolean> = { hero: false, minion: false, monster: false, tower: true, core: true };
+
+/**
+ * 显示缩放：对局镜头为了装下技能射程拉得比较远(可视纵深约 28 米)，按真实尺寸画的话英雄在 720p 下只有五六十像素高。
+ * 所以会动的单位按种类放大显示(品类惯例：模型比碰撞体大一圈)，剪影、动作、队伍色才看得清；建筑本来就高，不放大。
+ * 只影响画面：碰撞、射程、拾取以外的判定仍然用模拟层的半径。
+ */
+const VIEW_SCALE: Record<UnitKind, number> = { hero: 1.26, minion: 1.22, monster: 1.12, tower: 1, core: 1 };
 
 function modelKeyOf(u: Unit): string {
   switch (u.kind) {
@@ -188,6 +197,8 @@ export function createUnitsModule(ctx: RenderContext): UnitsModule {
   let instanceCount = 0;
   let lastStateTime = -1;
   let booted = false;
+  /** 视图被清空后，下一帧要按新状态重新摆废墟 */
+  let needRuins = false;
   // 可见地面范围(裁剪用)
   let cMinX = -Infinity;
   let cMaxX = Infinity;
@@ -224,6 +235,7 @@ export function createUnitsModule(ctx: RenderContext): UnitsModule {
     const seed = (u.id * 0.618034) % 1;
     const look = createInstanceLook();
     look.team.copy(teamColor(u.team));
+    const scale = VIEW_SCALE[u.kind];
     const v: View = {
       id: u.id,
       kind: u.kind,
@@ -253,12 +265,13 @@ export function createUnitsModule(ctx: RenderContext): UnitsModule {
       lastAnim: u.anim,
       dying: -1,
       deathDur: 0,
+      scale,
       culled: false,
       fresh: true,
       // 开局已在场的单位直接出现；对局中新刷出来的(小兵/野怪)淡入
       pop: !booted,
-      radius: Math.max(u.radius, def.radius * def.scale),
-      height: def.height * def.scale,
+      radius: Math.max(u.radius, def.radius * def.scale * scale),
+      height: def.height * def.scale * scale,
       hp: 1,
       ring: u.kind === 'hero' ? (u.id === st.playerId ? RING_PLAYER : RING_HERO) : u.kind === 'minion' ? RING_MINION : -1,
       tintAmount: 0,
@@ -279,9 +292,8 @@ export function createUnitsModule(ctx: RenderContext): UnitsModule {
     ruins.push({ puppet, batch: batchFor(def), look, x, z, age });
   };
 
-  // 开局时就已经不在场的塔(读档/演示状态)：直接摆废墟
-  {
-    const st = ctx.frame.state;
+  /** 状态里已经不在场的塔(读档/演示/时间轴跳变)：直接摆废墟 */
+  const seedRuins = (st: GameState): void => {
     for (const spot of st.map.towers) {
       let found = false;
       for (const u of st.units) {
@@ -292,7 +304,17 @@ export function createUnitsModule(ctx: RenderContext): UnitsModule {
       }
       if (!found) addRuin(spot.pos.x, spot.pos.y, spot.team, 10);
     }
-  }
+  };
+  seedRuins(ctx.frame.state);
+
+  /** 丢掉全部视图(下一帧按当时的状态重建，直接出现、不播淡入/死亡演出) */
+  const clearViews = (): void => {
+    views.clear();
+    list.length = 0;
+    ruins.length = 0;
+    booted = false;
+    needRuins = true;
+  };
 
   const updateCullRect = (): void => {
     const cam = ctx.camera;
@@ -442,7 +464,7 @@ export function createUnitsModule(ctx: RenderContext): UnitsModule {
     v.sx = v.x;
     v.sz = v.z;
     if (moved < 3 && dt > 0) {
-      v.stride = (v.stride + moved / v.def.stride) % 1;
+      v.stride = (v.stride + moved / (v.def.stride * v.scale)) % 1;
       v.speed += (moved / dt - v.speed) * Math.min(1, dt * 12);
     }
 
@@ -465,7 +487,7 @@ export function createUnitsModule(ctx: RenderContext): UnitsModule {
     if (v.culled || v.fresh) v.puppet.snap();
     v.culled = false;
     v.fresh = false;
-    v.puppet.update(v.lastStart, dt, v.x, v.y + v.lift, v.z, v.yaw, 1);
+    v.puppet.update(v.lastStart, dt, v.x, v.y + v.lift, v.z, v.yaw, v.scale);
 
     const look = v.look;
     look.opacity = v.opacity;
@@ -503,13 +525,12 @@ export function createUnitsModule(ctx: RenderContext): UnitsModule {
       const st = frame.state;
       time += frame.dt;
       // 换了一局(模拟时间倒退)：清掉旧视图
-      if (st.time < lastStateTime - 0.5) {
-        views.clear();
-        list.length = 0;
-        ruins.length = 0;
-        booted = false;
-      }
+      if (st.time < lastStateTime - 0.5) clearViews();
       lastStateTime = st.time;
+      if (needRuins) {
+        needRuins = false;
+        seedRuins(st);
+      }
       updateCullRect();
 
       for (let i = 0; i < list.length; i++) list[i].seen = false;
@@ -636,6 +657,10 @@ export function createUnitsModule(ctx: RenderContext): UnitsModule {
       if (!v) return;
       v.look.tint.set(color);
       v.tintAmount = amount;
+    },
+    reset() {
+      clearViews();
+      lastStateTime = -1;
     },
     dispose() {
       ctx.layers.units.remove(root);

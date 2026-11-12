@@ -71,6 +71,12 @@ export interface BotView {
   nearestWalkable(pos: Vec2): Vec2;
   /** 从自己走到 to 的寻路距离（会真的跑一次 A*，别每次 think 都大量调用）。不可达返回 Infinity */
   pathDistance(to: Vec2): number;
+  /**
+   * 规划一条从自己到 to、绕开敌方建筑射程(外加 margin 米)的路线，返回拉直后的路点(不含起点)。
+   * 自己或目的地所在的射程圈不算禁区(否则无路可走)。直线可达且不穿塔区时返回 [to]；不可达返回 null。
+   * 会真的跑一次 A*，目的地没怎么变就别重复调用。
+   */
+  safePath(to: Vec2, margin?: number): Vec2[] | null;
   /** pos 所在草丛下标，-1 = 不在草丛 */
   bushAt(pos: Vec2): number;
   /** pos 是否在某个存活敌方塔/水晶的攻击范围内(可加余量)，返回那个建筑 */

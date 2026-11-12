@@ -150,7 +150,8 @@ void main() {
   bed = mix(bed, bed * vec3(0.66, 0.74, 0.82), pebble * 0.55);
   // 渡口：水下仍能看到石板
   float ford = stoneMask * 0.8 + plazaMask;
-  albedo = mix(albedo, mix(bed, albedo * vec3(0.72, 0.9, 0.98), ford), bedMask * (1.0 - plazaMask));
+  // (压暗并偏青：渡口是兵线必经之处，太亮的话浅色单位站上去会糊成一片)
+  albedo = mix(albedo, mix(bed, albedo * vec3(0.5, 0.71, 0.84), ford), bedMask * (1.0 - plazaMask));
   // 岸边湿土 + 紧贴水线的一道深色水渍
   float wet = (1.0 - smoothstep(0.1, 1.1, dr)) * (1.0 - under);
   albedo *= 1.0 - 0.34 * wet;
@@ -283,7 +284,8 @@ export function createGround(field: MapField, splat: SplatTextures, noise: THREE
       cSand: { value: col(E.sand) },
       cBedDeep: { value: col(0x3d8fb0) },
       cStar: { value: col(0x9ff0ff) },
-      cBaseStone: { value: [col(PALETTE.blue.stone), col(PALETTE.red.stone)] },
+      // 蓝方地台用偏冷的中明度青灰石，而不是和建筑一样的白石：白色的水晶/塔/英雄和青白色特效站在上面才分得出来
+      cBaseStone: { value: [col(0x8fa2c6), col(PALETTE.red.stone)] },
       cBaseTrim: { value: [col(PALETTE.blue.trim), col(PALETTE.red.trim)] },
       cBaseGlow: { value: [col(PALETTE.blue.glow), col(PALETTE.red.glow)] },
     }),

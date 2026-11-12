@@ -436,10 +436,12 @@ export class NavGrid {
    * 为半径 r 的单位规划 (sx,sy)→(gx,gy) 的路径。返回拉直后的路点(不含起点)。
    * 终点不可走时走到离它最近的可走点；完全不连通时返回尽量靠近终点的部分路径；起点无处可走返回 null。
    */
-  findPath(sx: number, sy: number, gx: number, gy: number, r: number): Vec2[] | null {
+  findPath(sx: number, sy: number, gx: number, gy: number, r: number, avoid?: readonly AvoidZone[]): Vec2[] | null {
     const n = this.n;
     const f = this.clear;
     const rp = r + PATH_MARGIN;
+    // 额外的禁行圆(如敌方防御塔的射程)：只影响这一次搜索，不改净空图
+    const zones = avoid && avoid.length > 0 ? avoid : null;
     const start = this.nearestNode(sx, sy, rp, 8);
     const goal = this.nearestNode(gx, gy, rp, 40);
     if (start < 0 || goal < 0) return null;
@@ -485,6 +487,7 @@ export class NavGrid {
           if (nx < 0 || nx >= n) continue;
           const ni = ny * n + nx;
           if (closed[ni] === gen || f[ni] < rp) continue;
+          if (zones && inZones(zones, -EXTENT + nx * NAV_CELL, -EXTENT + ny * NAV_CELL)) continue;
           const diag = dx !== 0 && dy !== 0;
           // 防穿角：斜走要求两个正交邻格都可走
           if (diag && (f[cy * n + nx] < rp || f[ny * n + cx] < rp)) continue;
@@ -533,6 +536,7 @@ export class NavGrid {
       let j = i;
       for (let k = i + 1; k < m; k++) {
         if (!this.trace(f, ax, ay, pts[k].x, pts[k].y, rp)) break;
+        if (zones && segmentHitsZones(zones, ax, ay, pts[k].x, pts[k].y)) break;
         j = k;
       }
       out.push(pts[j]);
@@ -542,6 +546,39 @@ export class NavGrid {
     }
     return out;
   }
+}
+
+/** findPath 的额外禁行圆 */
+export interface AvoidZone {
+  x: number;
+  y: number;
+  r: number;
+}
+
+function inZones(zones: readonly AvoidZone[], x: number, y: number): boolean {
+  for (let i = 0; i < zones.length; i++) {
+    const z = zones[i];
+    const dx = x - z.x;
+    const dy = y - z.y;
+    if (dx * dx + dy * dy < z.r * z.r) return true;
+  }
+  return false;
+}
+
+/** 线段 a→b 是否穿过任何一个禁行圆 */
+export function segmentHitsZones(zones: readonly AvoidZone[], ax: number, ay: number, bx: number, by: number): boolean {
+  const dx = bx - ax;
+  const dy = by - ay;
+  const len2 = dx * dx + dy * dy;
+  for (let i = 0; i < zones.length; i++) {
+    const z = zones[i];
+    let t = len2 > 1e-9 ? ((z.x - ax) * dx + (z.y - ay) * dy) / len2 : 0;
+    t = t < 0 ? 0 : t > 1 ? 1 : t;
+    const cx = ax + dx * t - z.x;
+    const cy = ay + dy * t - z.y;
+    if (cx * cx + cy * cy < z.r * z.r) return true;
+  }
+  return false;
 }
 
 /** 路径总长（含从 from 到第一个路点） */

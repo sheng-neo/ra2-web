@@ -46,7 +46,7 @@ void main() {
   float fres = pow(1.0 - max(dot(N, V), 0.0), 3.0);
 
   float ford = 1.0 - smoothstep(-1.2, 0.8, dLane);
-  float depthF = smoothstep(0.1, 2.8, shore) * (1.0 - 0.5 * ford);
+  float depthF = smoothstep(0.1, 2.8, shore) * (1.0 - 0.32 * ford);
   vec3 tint = mix(cShallow, cDeep, depthF);
   float alpha = mix(0.2, 0.74, depthF);
 

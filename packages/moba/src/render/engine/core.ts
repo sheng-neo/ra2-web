@@ -16,6 +16,13 @@ export interface GameRendererCore extends GameRenderer {
   setCameraShake(enabled: boolean): void;
   /** 立即把镜头对准玩家(开局、复活) */
   snapCamera(): void;
+  /** 与 render 相同的一帧推进(相机/模块/时钟)，但不提交绘制：快进、无头长跑、定格前的预滚 */
+  advance(state: GameState, alpha: number, dtReal: number): void;
+  /**
+   * 换了一局或时间轴跳变而不重建渲染器时调用：清空单位视图、进行中的特效、飘字与血条残影，镜头直接对准玩家。
+   * 之后照常 render(newState, …) 即可。
+   */
+  reset(): void;
 }
 
 const FLAT_TERRAIN: TerrainQuery = { heightAt: () => 0, waterLevel: 0, inWater: () => false };
@@ -159,22 +166,33 @@ export function createRendererCore(container: HTMLElement, state: GameState, opt
   };
 
   let disposed = false;
+  const step = (s: GameState, alpha: number, dtReal: number, draw: boolean): void => {
+    if (disposed) return;
+    const dt = Math.min(Math.max(dtReal, 0), 0.1);
+    frame.state = s;
+    frame.alpha = alpha;
+    frame.dt = dt;
+    frame.time = engine.time + dt;
+    frame.frame = engine.frame + 1;
+    frame.playerTeam = playerTeamOf(s);
+    followPlayer(s, alpha);
+    engine.updateCamera(dt);
+    for (const m of modules) m.update(frame);
+    engine.render(dt, draw);
+  };
   const api: GameRendererCore = {
     engine,
     context: ctx,
     render(s: GameState, alpha: number, dtReal: number): void {
+      step(s, alpha, dtReal, true);
+    },
+    advance(s: GameState, alpha: number, dtReal: number): void {
+      step(s, alpha, dtReal, false);
+    },
+    reset(): void {
       if (disposed) return;
-      const dt = Math.min(Math.max(dtReal, 0), 0.1);
-      frame.state = s;
-      frame.alpha = alpha;
-      frame.dt = dt;
-      frame.time = engine.time + dt;
-      frame.frame = engine.frame + 1;
-      frame.playerTeam = playerTeamOf(s);
-      followPlayer(s, alpha);
-      engine.updateCamera(dt);
-      for (const m of modules) m.update(frame);
-      engine.render(dt);
+      for (const m of modules) m.reset?.();
+      engine.rig.snap();
     },
     handleEvents(events: GameEvent[], s: GameState): void {
       if (disposed || events.length === 0) return;
