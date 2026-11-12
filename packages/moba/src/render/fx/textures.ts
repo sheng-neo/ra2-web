@@ -1,5 +1,6 @@
 /**
- * 特效贴图：全部程序化生成的粒子图集(一张 DataTexture，8×4 格)。
+ * 特效贴图：全部程序化生成的粒子图集(一张 DataTexture，8×5 格)。
+ * 第 5 行(下标 32~39)：32~34 留给英雄特效包(雁 / 音波弧 / 墨溅)，35~39 是通用特效(鳞片 / 吐息雾团 / 阔叶 / 水花环 / 八芒星)。
  * 通道约定(线性数据，不用 alpha 通道存数据)：R = 形状/透明度蒙版，G = 明暗细节(乘到颜色上)，B = 亮核(把颜色推向白热)。
  * 图形一律画在格子中央 ~86% 的范围内，四周留黑边，mipmap 不会串格。
  */
@@ -7,7 +8,7 @@ import * as THREE from 'three';
 import { Rng, fbm2 } from '../materials';
 
 export const ATLAS_COLS = 8;
-export const ATLAS_ROWS = 4;
+export const ATLAS_ROWS = 5;
 const CELL = 128;
 
 /** 图集里各图形的下标 */
@@ -44,6 +45,12 @@ export const SPRITE = {
   bolt: 29, // 眩晕用的折线闪电
   drop: 30, // 水滴/黏液
   soft: 31, // 极柔的大光斑
+  // 32~34：英雄特效包专用(雁形 V 剪影 / 一段音波弧 / 墨溅)，在本文件 DEFS 里补图形即可
+  scale: 35, // 一片龙鳞(圆头菱形，带脊线；尖朝 +x)
+  puff: 36, // 吐息雾团(边缘被噪声侵蚀的卷云团，带内部涡纹)
+  broadleaf: 37, // 阔叶(带主脉与侧脉，尖朝 +x)
+  splash: 38, // 水花环(俯视的一圈溅起水珠，中心空)
+  star8: 39, // 八芒星(长短芒相间)
 } as const;
 
 type PixFn = (x: number, y: number, o: Float32Array) => void;
@@ -553,6 +560,93 @@ const DEFS: Record<number, SpriteDef> = {
       o[2] = 0;
     },
   },
+  [SPRITE.scale]: {
+    pix: (x, y, o) => {
+      // 圆头菱形鳞片：后端圆、前端收尖；中脊亮、两侧压暗，片缘一圈细亮边
+      const u = (x + 1) * 0.5;
+      const w = 0.62 * Math.pow(Math.sin(Math.PI * Math.min(1, u * 1.08)), 0.75) * (1 - 0.3 * u) + 0.001;
+      const d = Math.abs(y) / w;
+      const m = sstep(1.0, 0.86, d) * sstep(-0.98, -0.9, x) * sstep(0.99, 0.9, x);
+      o[0] = m;
+      o[1] = sat(0.55 + 0.45 * (1 - d) - 0.12 * u + 0.25 * sstep(0.8, 0.95, d));
+      o[2] = sat(Math.exp(-d * d * 30) * sstep(-0.6, 0.2, x) * 0.55 + sstep(0.82, 0.95, d) * m * 0.3);
+    },
+  },
+  [SPRITE.puff]: {
+    pix: (x, y, o) => {
+      // 卷云团：外缘被两层噪声侵蚀，内部有一道绕心的涡纹(明暗)
+      const r = Math.hypot(x, y);
+      const n = fbm2(x * 2.1 + 3.1, y * 2.1 + 7.7, 3, 91) - 0.5;
+      const n2 = fbm2(x * 5.3 + 1.9, y * 5.3 + 4.4, 2, 23) - 0.5;
+      const d = r + n * 0.8 + n2 * 0.3;
+      const a = Math.atan2(y, x);
+      const curl = 0.5 + 0.5 * Math.sin(a * 2 + r * 9 + n * 6);
+      o[0] = sstep(0.95, 0.25, d) * sstep(1.0, 0.85, r);
+      o[1] = sat(0.62 + y * 0.12 + curl * 0.3 + n2 * 0.3);
+      o[2] = sat(Math.exp(-r * r * 9) * 0.35);
+    },
+  },
+  [SPRITE.broadleaf]: {
+    pix: (x, y, o) => {
+      // 阔叶：叶身宽在中前部，主脉 + 斜向侧脉压暗；叶柄从 -x 端伸出
+      const u = (x + 0.82) / 1.74;
+      const w = 0.46 * Math.pow(sat(Math.sin(Math.PI * sat(u))), 0.85) * (1 + 0.15 * (0.5 - Math.abs(u - 0.55))) + 0.001;
+      const body = sstep(1.0, 0.9, Math.abs(y) / w) * sstep(-0.86, -0.8, x) * sstep(0.95, 0.9, x);
+      const stem = Math.exp(-y * y * 900) * sstep(-0.98, -0.92, x) * sstep(-0.74, -0.8, x);
+      const vein = Math.exp(-y * y * 600);
+      const side = Math.abs(((x * 2.6 - Math.abs(y) * 2.2) % 1 + 1) % 1 - 0.5);
+      const sideVein = sstep(0.06, 0.0, side) * sstep(0.95, 0.4, Math.abs(y) / w);
+      o[0] = sat(Math.max(body, stem));
+      o[1] = sat(0.82 + 0.18 * (y > 0 ? 1 : 0.6) - vein * 0.35 - sideVein * 0.22 - (1 - Math.abs(y) / w) * 0.05);
+      o[2] = 0;
+    },
+  },
+  [SPRITE.splash]: {
+    pix: (x, y, o) => {
+      // 俯视的一圈水花：断续的细水环 + 外圈一串大小不一的水珠，中心空
+      const r = Math.hypot(x, y);
+      const a = Math.atan2(y, x);
+      const gap = 0.5 + 0.5 * Math.sin(a * 7 + 1.3) * Math.sin(a * 3 - 0.4);
+      const ring = Math.exp(-((r - 0.62) * (r - 0.62)) * 600) * sstep(0.2, 0.55, gap);
+      let drop = 0;
+      let core = 0;
+      for (let i = 0; i < 15; i++) {
+        const ai = (i / 15) * TAU + Math.sin(i * 7.31) * 0.18;
+        const ri = 0.76 + 0.12 * Math.sin(i * 3.7 + 0.5);
+        const si = 0.055 + 0.04 * (0.5 + 0.5 * Math.sin(i * 5.13));
+        const dx = x - Math.cos(ai) * ri;
+        const dy = y - Math.sin(ai) * ri;
+        const dd = Math.hypot(dx, dy) / si;
+        drop = Math.max(drop, sstep(1, 0.75, dd));
+        core = Math.max(core, Math.exp(-(dx + si * 0.3) * (dx + si * 0.3) / (si * si * 0.08) - (dy - si * 0.3) * (dy - si * 0.3) / (si * si * 0.08)));
+      }
+      o[0] = sat(Math.max(ring * 0.75, drop));
+      o[1] = sat(0.8 + 0.2 * (y > 0 ? 1 : 0.7));
+      o[2] = sat(core * 0.8 + ring * 0.2);
+    },
+  },
+  [SPRITE.star8]: {
+    pix: (x, y, o) => {
+      // 八芒星：四长四短的芒相间，中心一团亮核
+      const r = Math.hypot(x, y);
+      let ray = 0;
+      for (let i = 0; i < 8; i++) {
+        const ang = (i * Math.PI) / 4 + Math.PI / 2;
+        const len = i % 2 === 0 ? 0.96 : 0.56;
+        const c = Math.cos(ang);
+        const sn = Math.sin(ang);
+        const along = x * c + y * sn;
+        if (along <= 0) continue;
+        const perp = Math.abs(-x * sn + y * c);
+        const w = 0.16 * sat(1 - along / len) + 0.004;
+        ray = Math.max(ray, sstep(w, w * 0.35, perp) * sstep(len, len * 0.9, along));
+      }
+      const g = Math.exp(-r * r * 26);
+      o[0] = sat(ray + g * 0.85);
+      o[1] = 1;
+      o[2] = sat(g * 1.1 + ray * 0.35 * sstep(0.5, 0.0, r));
+    },
+  },
 };
 
 /** 生成粒子图集。调用方负责 dispose */
@@ -667,6 +761,10 @@ export const GLSL_FX_OUT = /* glsl */ `
   #include <colorspace_fragment>
   gl_FragColor = vec4(fxOver + gl_FragColor.rgb, fxA * (1.0 - fxAdd));
   #else
+  // HDR 路径的软上限(§7.1)：亮度 2.0 以下原样，以上平滑压向 3.2——只有小核心能明显越过 bloom 阈值 1.35，
+  // 几层亮光叠在同一处也不会冲成一大团白
+  float fxM = max(fxC.r, max(fxC.g, fxC.b));
+  if (fxM > 2.0) fxC *= (2.0 + (fxM - 2.0) / (1.0 + (fxM - 2.0) / 1.2)) / fxM;
   gl_FragColor = vec4(fxC * fxA, fxA * (1.0 - fxAdd));
   #endif
 `;

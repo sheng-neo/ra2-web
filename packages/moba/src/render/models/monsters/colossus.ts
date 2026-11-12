@@ -323,7 +323,7 @@ export function createStarColossus(): ModelDef {
         }
         pose.scale(core, 1 + 0.4 * back);
         spin = 1 + 3 * back;
-        glow += 0.5 * back + 1.0 * bump(p, 0.36, 0.14);
+        glow += 0.25 * back + 0.6 * bump(p, 0.36, 0.14);
         break;
       }
       case 'stunned': {

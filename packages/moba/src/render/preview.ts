@@ -26,87 +26,124 @@ const PLAY: Record<HeroId, Partial<Record<PlayAnim, [UnitAnim, number]>>> = {
   yeque: { cast_s1: ['dash', 0.45], cast_s2: ['cast_s2', 0.8], cast_ult: ['cast_ult', 1.0] },
 };
 
-/** 取景：模型含武器的大致高度/宽度(已含缩放) */
-const FRAME: Record<HeroId, { h: number; w: number }> = {
-  panyue: { h: 3.5, w: 3.4 },
-  // 双刀向两侧张开：转到四分之三侧面时刀尖比身体宽出不少，宽度按刀尖算
-  chijin: { h: 2.6, w: 3.1 },
-  xingli: { h: 2.85, w: 2.4 },
-  fengling: { h: 2.6, w: 2.2 },
-  yeque: { h: 2.55, w: 2.3 },
+/**
+ * 立绘取景的边距：画布四边各留出的比例。底边多留一些：选人页的名牌与底栏压在画布下沿。
+ * 取景框本身不再手填，而是按模型实际的包围盒(含武器，见 measureFrame)算出来。
+ */
+const MARGIN = { side: 0.07, top: 0.06, bottom: 0.12 };
+
+/** 头像取景：注视点相对头心的下移(米，世界尺度)、镜头距离、英雄偏转角(度)、横向偏移；anim/p/variant 为拍照时摆的姿势(默认待机) */
+const BUST: Record<HeroId, { drop: number; dist: number; yaw: number; x: number; anim?: UnitAnim; p?: number; variant?: number }> = {
+  // 樊哙：3/4 侧脸，怒目与炸开的须发占上半，盾沿从左下切入(拍照时放下盾)
+  panyue: { drop: 0.3, dist: 3.8, yaw: -14, x: 0.06, anim: 'channel' },
+  // 程咬金：正面略仰，斧面从右上角入画
+  chijin: { drop: 0.26, dist: 3.0, yaw: -12, x: -0.08 },
+  // 王昭君：3/4 侧脸，白毛帽箍与毛领框住脸，琵琶琴头从一侧斜入
+  xingli: { drop: 0.26, dist: 2.75, yaw: -18, x: 0.04 },
+  // 李广：侧身回望，鹖冠双羽与短须，弓臂竖在脸侧
+  fengling: { drop: 0.24, dist: 2.75, yaw: 26, x: 0.06 },
+  // 荆轲：冷峻侧脸，反握的匕首举在脸前，白巾绕颈
+  yeque: { drop: 0.24, dist: 2.7, yaw: -22, x: 0.0, anim: 'attack', p: 0.17, variant: 0 },
 };
 
-/** 头像取景：注视高度(占身高比例)、镜头距离、英雄偏转角(度)、横向偏移；anim 为拍照时摆的姿势(默认待机) */
-const BUST: Record<HeroId, { y: number; dist: number; yaw: number; x: number; anim?: UnitAnim }> = {
-  // 磐岳待机时塔盾挡在胸前、头又埋在双肩之间：拍头像时让他放下盾
-  panyue: { y: 0.84, dist: 4.9, yaw: -10, x: 0.0, anim: 'channel' },
-  chijin: { y: 0.84, dist: 3.5, yaw: -16, x: 0.02 },
-  xingli: { y: 0.83, dist: 3.5, yaw: -14, x: -0.04 },
-  fengling: { y: 0.84, dist: 3.4, yaw: 14, x: 0.04 },
-  yeque: { y: 0.84, dist: 3.4, yaw: -16, x: 0.0 },
-};
-
-interface Stage {
-  scene: THREE.Scene;
-  camera: THREE.PerspectiveCamera;
-  key: THREE.DirectionalLight;
-  rim: THREE.PointLight;
+/** 包围盒(世界坐标，英雄站在原点、缩放已含) */
+interface Box {
+  minX: number;
+  maxX: number;
+  minY: number;
+  maxY: number;
+  maxZ: number;
 }
 
-function createStage(shadows: boolean): Stage {
-  const scene = new THREE.Scene();
-  const camera = new THREE.PerspectiveCamera(28, 1, 0.3, 80);
-  // 主光：左前上方的暖光；环境：偏冷的天光；背光：英雄辉光色，勾出轮廓
-  const key = new THREE.DirectionalLight(PALETTE.env.sun, 2.9);
-  key.position.set(-3.2, 6.5, 5.5);
-  if (shadows) {
-    key.castShadow = true;
-    key.shadow.mapSize.set(1024, 1024);
-    const c = key.shadow.camera;
-    c.left = c.bottom = -4.5;
-    c.right = c.top = 4.5;
-    c.near = 1;
-    c.far = 24;
-    key.shadow.bias = -0.0006;
-    key.shadow.normalBias = 0.04;
+const frameCache = new Map<HeroId, Box>();
+const _bones = new Float32Array(8 * 64);
+
+/** 用 CPU 蒙皮(隔几个顶点取一个)把当前骨架下的模型并入包围盒 */
+function addSkinned(def: ModelDef, puppet: Puppet, box: Box): void {
+  const n = def.rig.count;
+  const bones = n * 8 <= _bones.length ? _bones : new Float32Array(n * 8);
+  puppet.skeleton.pack(bones, 0);
+  const pos = def.geometry.attributes.position;
+  const skin = def.geometry.attributes.aSkin;
+  const P = pos.array as ArrayLike<number>;
+  const S = skin.array as ArrayLike<number>;
+  const v = [0, 0, 0];
+  const out = [0, 0, 0];
+  const xf = (b: number, x: number, y: number, z: number, o: number[]): void => {
+    const k = b * 8;
+    const qx = bones[k + 4];
+    const qy = bones[k + 5];
+    const qz = bones[k + 6];
+    const qw = bones[k + 7];
+    // v + 2 q × (q × v + w v)
+    const cx = qy * z - qz * y + qw * x;
+    const cy = qz * x - qx * z + qw * y;
+    const cz = qx * y - qy * x + qw * z;
+    const s = bones[k + 3];
+    o[0] = bones[k] + s * (x + 2 * (qy * cz - qz * cy));
+    o[1] = bones[k + 1] + s * (y + 2 * (qz * cx - qx * cz));
+    o[2] = bones[k + 2] + s * (z + 2 * (qx * cy - qy * cx));
+  };
+  for (let i = 0; i < pos.count; i += 3) {
+    const x = P[i * 3];
+    const y = P[i * 3 + 1];
+    const z = P[i * 3 + 2];
+    xf(S[i * 3], x, y, z, out);
+    const w = S[i * 3 + 2];
+    if (w < 0.999) {
+      xf(S[i * 3 + 1], x, y, z, v);
+      out[0] = v[0] + (out[0] - v[0]) * w;
+      out[1] = v[1] + (out[1] - v[1]) * w;
+      out[2] = v[2] + (out[2] - v[2]) * w;
+    }
+    if (out[0] < box.minX) box.minX = out[0];
+    if (out[0] > box.maxX) box.maxX = out[0];
+    if (out[1] < box.minY) box.minY = out[1];
+    if (out[1] > box.maxY) box.maxY = out[1];
+    if (out[2] > box.maxZ) box.maxZ = out[2];
   }
-  scene.add(key, key.target);
-  scene.add(new THREE.HemisphereLight(0xdfe8ff, 0x6d6880, 1.9));
-  const rim = new THREE.PointLight(0xffffff, 26, 14, 1.4);
-  rim.position.set(2.6, 3.4, -3.4);
-  scene.add(rim);
-  return { scene, camera, key, rim };
 }
 
-function setupRenderer(renderer: THREE.WebGLRenderer): void {
-  renderer.outputColorSpace = THREE.SRGBColorSpace;
-  renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.2;
-  renderer.setClearColor(0x000000, 0);
-}
+/** 立绘的摆动范围(弧度)：yaw = YAW0 + sin(t)·YAW_AMP */
+const YAW0 = 0.25;
+const YAW_AMP = 0.8;
 
-/** 展台：深海军蓝石台 + 金边 + 英雄辉光色的光槽与星纹 */
-function buildPedestal(glow: THREE.Color, radius: number): THREE.BufferGeometry {
-  const b = new ModelBuilder();
-  b.crease = 30;
-  b.paint(0x141c3a, { c2: 0x2c3a70 });
-  b.lathe([[-0.36, radius * 0.84], [-0.16, radius * 1.0], [-0.08, radius * 1.0], [-0.06, radius * 0.95], [0, radius * 0.93]], { seg: 24 });
-  b.paint(0xd8a848, { gloss: 1 });
-  b.lathe([[-0.125, radius * 1.015], [-0.085, radius * 1.015], [-0.08, radius * 0.97]], { seg: 24, cap0: false, cap1: false });
-  b.g(X(0, 0.002, 0), () => b.torus(radius * 0.66, 0.018, 0.01, 32, 4, { crease: 30 }));
-  const g: [number, number, number] = [glow.r, glow.g, glow.b];
-  b.paint(g, { glow: 0.5 });
-  b.g(X(0, 0.004, 0), () => b.torus(radius * 0.8, 0.03, 0.01, 40, 4, { crease: 30 }));
-  // 台面的八角星纹
-  const star: number[][] = [];
-  for (let i = 0; i < 16; i++) {
-    const a = (i / 16) * Math.PI * 2;
-    const r = (i % 2 === 0 ? 0.56 : 0.3) * radius;
-    star.push([Math.cos(a) * r, Math.sin(a) * r]);
-  }
-  b.paint([g[0] * 0.5, g[1] * 0.5, g[2] * 0.5], { glow: 0.12 });
-  b.g(X(0, 0.004, 0, -90, 0, 0), () => b.extrude(star, 0.006, 0));
-  return b.build();
+/**
+ * 量出立绘需要装下的范围：待机在整个左右摆动范围内的包围盒(必须完整入画)，
+ * 再并上普攻两式出手前后几帧里武器挥得最开的部分——但最多比待机框外扩 25%，免得一次横扫就把人缩得很小(出招时允许稍微出画)。
+ * 每位英雄只量一次(几毫秒)，结果缓存。
+ */
+function measureFrame(id: HeroId, def: ModelDef): Box {
+  const cached = frameCache.get(id);
+  if (cached) return cached;
+  const idle: Box = { minX: Infinity, maxX: -Infinity, minY: 0, maxY: -Infinity, maxZ: -Infinity };
+  const act: Box = { minX: Infinity, maxX: -Infinity, minY: 0, maxY: -Infinity, maxZ: -Infinity };
+  const puppet = new Puppet(def, 0.37);
+  const a = puppet.input;
+  a.windup = 0.35;
+  const pose = (anim: UnitAnim, p: number, variant: number, yaw: number, box: Box): void => {
+    a.anim = anim;
+    a.p = p;
+    a.t = anim === 'idle' ? 1.3 : p * 0.8;
+    a.time = 1.3;
+    a.variant = variant;
+    puppet.snap();
+    puppet.update(0, 0, 0, 0, 0, yaw, 1);
+    puppet.settle();
+    addSkinned(def, puppet, box);
+  };
+  for (let i = 0; i <= 8; i++) pose('idle', 0, 0, YAW0 + YAW_AMP * Math.sin(((i / 8) * 2 - 1) * Math.PI * 0.5), idle);
+  for (const variant of [0, 1]) for (const p of [0.2, 0.35, 0.5]) for (const yaw of [YAW0 - YAW_AMP, YAW0, YAW0 + YAW_AMP]) pose('attack', p, variant, yaw, act);
+  const grow = (idle.maxX - idle.minX) * 0.25;
+  const box: Box = {
+    minX: Math.min(idle.minX, Math.max(act.minX, idle.minX - grow)),
+    maxX: Math.max(idle.maxX, Math.min(act.maxX, idle.maxX + grow)),
+    minY: 0,
+    maxY: Math.max(idle.maxY, Math.min(act.maxY, idle.maxY * 1.12)),
+    maxZ: idle.maxZ,
+  };
+  frameCache.set(id, box);
+  return box;
 }
 
 // ───────────── 2D 占位(WebGL 不可用时) ─────────────
@@ -221,15 +258,26 @@ export function createHeroPreview(canvas: HTMLCanvasElement, heroId: HeroId): He
 
   const frame = (): void => {
     const aspect = renderer.domElement.width / Math.max(1, renderer.domElement.height);
-    const f = FRAME[current];
+    const box = measureFrame(current, def);
     const cam = stage.camera;
     const tanH = Math.tan((cam.fov * Math.PI) / 360);
-    // 既要装下全身(含展台)，窄画布时也要装下武器的横向展开
-    const dist = Math.max((f.h * 0.5 + 0.32) / tanH, (f.w * 0.5 + 0.1) / (tanH * aspect));
-    const lookY = f.h * 0.5 - 0.2;
+    const tanW = tanH * aspect;
+    // 横向：以包围盒中线为准，左右各留边距；纵向：从展台底到头顶(含冠缨、斧头、弓梢)，下沿给名牌与底栏让位
+    const cx = (box.minX + box.maxX) / 2;
+    const halfW = (box.maxX - box.minX) / 2;
+    const bottom = -0.36;
+    const top = box.maxY;
+    const spanH = top - bottom;
+    // 靠近镜头的部分(前伸的武器)在透视下更大：把前伸量计入距离
+    const near = Math.max(0, box.maxZ);
+    const distW = halfW / (tanW * (1 - 2 * MARGIN.side)) + near * 0.6;
+    const distH = spanH / (2 * tanH * (1 - MARGIN.top - MARGIN.bottom)) + near * 0.5;
+    const dist = Math.max(distW, distH);
+    // 注视点：让 [bottom, top] 落在扣掉上下边距后的画框中间
+    const lookY = (top + bottom) / 2 - (MARGIN.bottom - MARGIN.top) * tanH * dist;
     cam.aspect = aspect;
-    cam.position.set(0, lookY + dist * 0.12, dist);
-    cam.lookAt(0, lookY, 0);
+    cam.position.set(cx, lookY + dist * 0.12, dist);
+    cam.lookAt(cx, lookY, 0);
     cam.updateProjectionMatrix();
   };
 
@@ -251,7 +299,7 @@ export function createHeroPreview(canvas: HTMLCanvasElement, heroId: HeroId): He
     if (!canvas.isConnected || document.hidden || !batch) return;
     time += dt;
     // 缓慢地左右转动：始终以正面与两个四分之三侧面示人
-    yaw = 0.25 + Math.sin(time * 0.5) * 0.8;
+    yaw = YAW0 + Math.sin(time * 0.5) * YAW_AMP;
     const a = puppet.input;
     if (anim !== 'idle') {
       animT += dt;
@@ -405,6 +453,10 @@ function renderPortrait(id: HeroId): string {
         const a = puppet.input;
         a.anim = bust.anim ?? 'idle';
         a.time = 1.3;
+        a.p = bust.p ?? 0;
+        a.t = a.anim === 'idle' || a.anim === 'channel' ? 1.3 : a.p * 0.8;
+        a.windup = 0.35;
+        a.variant = bust.variant ?? 0;
         puppet.update(0, 0, 0, 0, 0, (bust.yaw * Math.PI) / 180, 1);
         puppet.settle();
         const look = createInstanceLook();
@@ -413,12 +465,15 @@ function renderPortrait(id: HeroId): string {
         batch.begin();
         batch.push(puppet.skeleton, look);
         batch.end();
+        // 以头心为准取景：脸在画面上方偏中，肩与武器/标志物在下半与一角
+        const hp = { x: 0, y: 0, z: 0 };
+        if (!puppet.attach('head', hp)) hp.y = def.height * def.scale * 0.86;
         const cam = stage.camera;
-        const y = def.height * def.scale * bust.y;
+        const y = hp.y - bust.drop;
         cam.aspect = 1;
         cam.fov = 24;
-        cam.position.set(bust.x, y + 0.12, bust.dist);
-        cam.lookAt(bust.x, y, 0);
+        cam.position.set(hp.x + bust.x, y + 0.1, hp.z + bust.dist);
+        cam.lookAt(hp.x + bust.x, y, hp.z);
         cam.updateProjectionMatrix();
         renderer.clear();
         renderer.render(stage.scene, cam);

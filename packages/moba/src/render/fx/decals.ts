@@ -48,7 +48,20 @@ export const DECAL = {
   pointer: 13,
   /** 持续区域边界：亮边 + 内向渐隐 + 转动的虚线，p0 虚线段数，p1 脉冲相位 */
   zone: 14,
+  /**
+   * 纹章细环(增益脚环 / 获得瞬间的展开环)：只画外圈一条细带，中心留空。
+   * p0 = 纹样：0 六角霜纹，1 三焰纹，2 八芒星轨(带向外的细脉冲)，3 龙鳞纹；p1 = 一次性时的展开起始比例(0..1)。转角用 rot。
+   */
+  sigil: 15,
+  /**
+   * 扇形预警(野怪吐息等)：p0 半角(弧度)，p1 倒计时进度 0..1(由顶点向外推进)。
+   * A 色只画边线与刻度(实线，琥珀)，B 色(under 的颜色)是随进度推进的填充(普通混合，0.18~0.28)。朝向 = rot。
+   */
+  coneWarn: 16,
 } as const;
+
+/** 各画质的贴花填充倍率：low 档没有 bloom 衬托边线，大面积色块更容易糊住单位，统一压到六成 */
+export const DECAL_FILL: Record<string, number> = { low: 0.6, medium: 0.9, high: 1 };
 
 const VERTEX = /* glsl */ `
 uniform float uNow;
@@ -90,6 +103,8 @@ void main() {
 const FRAGMENT = /* glsl */ `
 uniform float uNow;
 uniform float uAlpha;
+uniform float uFill;
+uniform float uXray;
 varying vec2 vP;
 varying vec4 vT;
 varying vec4 vC0;
@@ -193,15 +208,15 @@ void main() {
     float rim = band(d + 0.014, 0.014, aa);
     float halo = band(d + 0.014, 0.07, 0.035);
     float fade = 1.0 - smoothstep(0.3, 1.0, t);
-    fil = body * 0.7 * fade;
-    e = rim * 1.5 * fade;
+    fil = body * 0.55 * fade;
+    e = rim * 1.4 * fade;
     hot = rim * 0.4 * fade;
     cov = halo * 0.85 * fade;
   } else if (type < 1.5) {
     // ── 柔光斑 ──
     float g = pow(max(0.0, 1.0 - r), max(p0, 0.5));
     float f = persist > 0.5 ? 1.0 : smoothstep(0.0, 0.08, t) * (1.0 - t) * (1.0 - t);
-    fil = g * f * 0.75;
+    fil = g * f * 0.5;
     cov = g * f;
   } else if (type < 2.5) {
     // ── 扇形 ──
@@ -217,7 +232,7 @@ void main() {
       float fill = (0.3 + 0.7 * r * r) * swept * burn;
       float edge = max(band(da + 0.012, 0.014, aa), band(r - 0.975, 0.02, aa)) * swept;
       float fade = 1.0 - smoothstep(0.6, 1.0, t);
-      fil = fill * 0.85 * inside * fade;
+      fil = fill * 0.5 * inside * fade;
       e = (lead * 1.4 + edge * 1.3 * (0.35 + 0.65 * burn) + fill * 0.25) * inside * fade;
       hot = (lead * 0.6 + edge * 0.25 * burn) * inside * fade;
       cov = (edge * 0.7 + swept * 0.35) * inside * fade;
@@ -257,7 +272,7 @@ void main() {
     float flicker = 0.85 + 0.15 * sin(now * 7.0 + n1 * 30.0);
     e = crack * mask * heat * gone * flicker;
     hot = crack * mask * (1.0 - smoothstep(0.0, 0.2, t)) * 0.9;
-    cov = (max(wideA, wideB) * 0.85 + (1.0 - r) * 0.3) * mask * gone;
+    cov = (max(wideA, wideB) * 0.6 + (1.0 - r) * 0.15) * mask * gone;
   } else if (type < 4.5) {
     // ── 符文阵 ──
     float n = max(3.0, p0);
@@ -274,10 +289,10 @@ void main() {
     ln += (1.0 - smoothstep(0.008, 0.008 + aa * 1.5, abs(st))) * 0.95;
     ln += (1.0 - smoothstep(0.006, 0.006 + aa * 1.5, abs(st2))) * 0.6;
     float inside = 1.0 - smoothstep(0.975, 1.0, rs);
-    fil = ((1.0 - rs) * 0.3 + (1.0 - smoothstep(-0.02, 0.0, st)) * 0.22 + 0.1) * appear * inside;
+    fil = ((1.0 - rs) * 0.06 + (1.0 - smoothstep(-0.02, 0.0, st)) * 0.07 + 0.02) * appear * inside;
     e = ln * appear * inside;
     hot = ln * 0.2 * appear * inside;
-    cov = (min(ln, 1.0) * 0.8 + 0.25) * appear * inside;
+    cov = (min(ln, 1.0) * 0.75 + 0.06) * appear * inside;
   } else if (type < 5.5) {
     // ── 预警圈：亮边 + 由内向外的倒计时填充 ──
     float prog = clamp(p0, 0.0, 1.0);
@@ -287,10 +302,11 @@ void main() {
     float inner = 1.0 - smoothstep(prog - aa, prog + aa, r);
     float lead = band(r - prog + 0.012, 0.016, aa) * step(0.03, prog) * (1.0 - step(0.985, prog));
     float ticks = band(fract(ang / TAU * 16.0) - 0.5, 0.07, 0.03) * band(r - 0.9, 0.035, aa);
-    fil = (0.16 + inner * (0.3 + 0.12 * r + 0.14 * urgent * pulse)) * disc;
-    e = (edge * (1.15 + 0.6 * pulse * urgent) + lead * 0.9 + ticks * 0.55) * disc;
-    hot = (edge * 0.2 + lead * 0.3) * disc;
-    cov = (0.2 + edge * 0.6) * disc;
+    // §7.1：边线实(0.9)、填充淡(0.18~0.28)，倒计时由内向外推进，快到点时边线加速闪
+    fil = (0.07 + inner * (0.12 + 0.05 * r + 0.06 * urgent * pulse)) * disc;
+    e = (edge * (1.1 + 0.45 * pulse * urgent) + lead * 0.85 + ticks * 0.5) * disc;
+    hot = (edge * 0.18 + lead * 0.25) * disc;
+    cov = (0.1 + edge * 0.6) * disc;
   } else if (type < 6.5) {
     // ── 方向条：箭身 + 箭头 + 向前流动的尖纹 ──
     float L = vW.z;
@@ -345,18 +361,29 @@ void main() {
     float nz = fbm(vec2(ang * 2.0 + now * dirS, r * 5.0 - now * 1.3) + seed * 5.0);
     float arm = s * s * (1.0 - smoothstep(0.9, 1.0, s));
     float env = smoothstep(0.06, 0.35, r) * (1.0 - smoothstep(0.72, 1.0, r));
-    fil = arm * env * (0.5 + 0.6 * nz) * appear;
-    e = arm * arm * arm * env * 0.7 * appear;
-    hot = arm * arm * arm * arm * env * 0.3 * appear;
-    cov = arm * env * 0.5 * appear;
+    fil = arm * env * (0.14 + 0.18 * nz) * appear;
+    e = arm * arm * arm * env * 0.75 * appear;
+    hot = arm * arm * arm * arm * env * 0.25 * appear;
+    cov = arm * env * 0.22 * appear;
   } else if (type < 10.5) {
     // ── 焦痕 ──
     float n = fbm(wp * 1.7 + seed * 9.0);
     float blob = 1.0 - smoothstep(0.42, 0.95, r + (n - 0.5) * 0.6);
     float f = smoothstep(0.0, 0.04, t) * (1.0 - smoothstep(0.5, 1.0, t));
-    cov = blob * 0.78 * f;
-    float vein = 1.0 - smoothstep(0.0, 0.07, abs(vnoise(wp * 3.1 + seed * 5.0) - vnoise(wp * 3.1 + seed * 5.0 + 3.7)));
-    e = vein * blob * (1.0 - smoothstep(0.0, 0.65, t)) * (0.6 + 0.4 * sin(now * 5.0 + n * 20.0));
+    cov = blob * 0.5 * f;
+    if (p0 > 0.5) {
+      // 湿痕上的细碎光点：哈希格子里的小亮点，各自明灭
+      vec2 gq = wp * 5.0 + seed * 11.0;
+      vec2 gi = floor(gq);
+      vec2 gf = fract(gq) - 0.5 - (hash22(gi) - 0.5) * 0.6;
+      float hs = hash12(gi + 7.0);
+      float spk = (1.0 - smoothstep(0.03, 0.09, length(gf))) * step(0.55, hs);
+      e = spk * blob * (1.0 - smoothstep(0.2, 1.0, t)) * (0.5 + 0.5 * sin(now * 6.0 + hs * 40.0)) * 1.6;
+      hot = e * 0.3;
+    } else {
+      float vein = 1.0 - smoothstep(0.0, 0.07, abs(vnoise(wp * 3.1 + seed * 5.0) - vnoise(wp * 3.1 + seed * 5.0 + 3.7)));
+      e = vein * blob * (1.0 - smoothstep(0.0, 0.65, t)) * (0.6 + 0.4 * sin(now * 5.0 + n * 20.0));
+    }
   } else if (type < 11.5) {
     // ── 星印 ──
     float n = max(3.0, p0);
@@ -393,26 +420,104 @@ void main() {
     e = (ring * 0.9 + tri * 0.5) * breath;
     hot = tri * 0.2;
     cov = (band(r - 0.6, 0.05, aa) + tri) * 0.45;
-  } else {
+  } else if (type < 14.5) {
     // ── 持续区域边界 ──
     float edge = band(r - 0.972, 0.022, aa);
     float falloff = exp(-(1.0 - r) * 6.0) * disc;
     float dashes = p0 > 0.5 ? band(r - 0.885, 0.012, aa) * (1.0 - smoothstep(0.3, 0.34, abs(fract(ang / TAU * p0 + now * 0.06) - 0.5))) * 0.7 : 0.0;
-    float pulse = 1.0 + 0.25 * sin(now * 4.0 + p1);
-    fil = (falloff * 0.5 + 0.13) * disc;
-    e = edge * 1.3 * pulse + dashes;
-    hot = edge * 0.18;
-    cov = band(r - 0.972, 0.06, 0.03) * 0.8 + 0.1 * disc;
+    float pulse = 1.0 + 0.2 * sin(now * 4.0 + p1);
+    // 沿边流动的亮段：静止的环读成「贴图」，流动的环才读成「正在生效」
+    float flow = 0.75 + 0.25 * band(fract(ang / TAU * 3.0 - now * 0.35) - 0.5, 0.18, 0.12);
+    fil = (falloff * 0.17 + 0.05) * disc;
+    e = edge * 1.15 * pulse * flow + dashes;
+    hot = edge * 0.15 * flow;
+    cov = band(r - 0.972, 0.06, 0.03) * 0.7 + 0.05 * disc;
+  } else if (type < 15.5) {
+    // ── 纹章细环：外圈一条细带上的纹样，中心留空 ──
+    float pat = floor(p0 + 0.5);
+    float unfold = persist > 0.5 ? 1.0 : 1.0 - pow(1.0 - min(1.0, t * 3.0), 3.0);
+    float sc = mix(clamp(p1, 0.05, 1.0), 1.0, unfold);
+    vec2 ps = p / sc;
+    float rs = r / sc;
+    float fade = persist > 0.5 ? 1.0 : 1.0 - smoothstep(0.55, 1.0, t);
+    float inside = 1.0 - smoothstep(0.985, 1.0, rs);
+    float ln = band(rs - 0.955, 0.016, aa) + band(rs - 0.8, 0.009, aa) * 0.75;
+    float motif = 0.0;
+    if (pat < 0.5) {
+      // 六角霜纹：六边形外框 + 每角一枚小冰晶(三道短划)
+      float a6 = mod(ang + PI / 6.0, PI / 3.0) - PI / 6.0;
+      float hexR = 0.88 * cos(PI / 6.0) / cos(a6);
+      motif = band(rs - hexR, 0.012, aa);
+      vec2 q = vec2(rs * cos(a6), rs * sin(a6)) - vec2(0.88, 0.0);
+      float cr = length(q);
+      float spokes = band(abs(sin(atan(q.y, q.x) * 3.0)), 0.18, 0.08) * (1.0 - smoothstep(0.05, 0.075, cr));
+      motif = max(motif, spokes);
+    } else if (pat < 1.5) {
+      // 三焰纹：三枚向外的火舌，火舌之间是短弧
+      float a3 = mod(ang + PI / 3.0, 2.0 * PI / 3.0) - PI / 3.0;
+      float x = rs - 0.8;
+      float flame = band(a3 * (0.9 + x * 1.6), 0.07 * (1.0 - smoothstep(0.0, 0.19, x)) + 0.004, 0.02) * step(-0.04, x) * (1.0 - smoothstep(0.17, 0.2, x));
+      motif = max(flame, band(rs - 0.88, 0.01, aa) * smoothstep(0.35, 0.55, abs(a3)));
+    } else if (pat < 2.5) {
+      // 八芒星轨：八枚尖角站在轨道上，长短相间；每 2 秒一道向外的细脉冲
+      float a8 = mod(ang + PI / 8.0, PI / 4.0) - PI / 8.0;
+      float k8 = mod(floor((ang + PI / 8.0) / (PI / 4.0)), 2.0);
+      float len = k8 > 0.5 ? 0.09 : 0.15;
+      float x = rs - 0.88;
+      motif = band(a8 * 6.0, 0.06 * (1.0 - smoothstep(0.0, len, abs(x))) + 0.003, 0.03) * (1.0 - smoothstep(len - 0.01, len, abs(x)));
+      float pr = fract(now * 0.5 + seed);
+      float pulseR = mix(0.82, 1.0, pr);
+      ln += band(rs - pulseR, 0.008, aa) * (1.0 - pr) * 0.9;
+    } else {
+      // 龙鳞纹：两排错开的圆头鳞片
+      float row = rs > 0.88 ? 1.0 : 0.0;
+      float n = 22.0;
+      float u = ang / TAU * n + row * 0.5;
+      float fu = fract(u) - 0.5;
+      float y = (rs - mix(0.83, 0.92, row)) / 0.06;
+      float sd = length(vec2(fu * 1.3, y + fu * fu * 1.4)) - 0.48;
+      motif = band(sd, 0.05, 0.05) * step(abs(y), 1.3);
+    }
+    ln += motif;
+    fil = (motif * 0.12 + band(rs - 0.88, 0.07, 0.04) * 0.06) * fade * inside;
+    e = ln * fade * inside;
+    hot = ln * 0.18 * fade * inside;
+    cov = (min(ln, 1.0) * 0.55) * fade * inside;
+  } else {
+    // ── 扇形预警：A 色画实线边与刻度，B 色是由顶点向外推进的淡填充 ──
+    float da = (abs(ang) - p0) * max(r, 0.05);
+    float inside = (1.0 - smoothstep(-aa, aa, da)) * disc;
+    // p1 < 0：一次性贴花按自身寿命推进(预警时长 = 贴花寿命)
+    float prog = p1 < 0.0 ? t : clamp(p1, 0.0, 1.0);
+    float urgent = smoothstep(0.7, 1.0, prog);
+    float pulse = 0.75 + 0.25 * sin(now * 16.0);
+    float edge = max(band(da + 0.014, 0.014, aa), band(r - 0.975, 0.018, aa));
+    float lead = band(r - prog + 0.012, 0.014, aa) * step(0.03, prog) * (1.0 - step(0.985, prog));
+    float ticks = band(fract(r * 6.0) - 0.5, 0.03, 0.03) * band(abs(ang) - p0 + 0.05, 0.03, 0.02);
+    float inner = 1.0 - smoothstep(prog - aa, prog + aa, r);
+    float apex = smoothstep(0.02, 0.12, r);
+    e = (edge * (1.05 + 0.5 * pulse * urgent) + lead * 0.8 + ticks * 0.5) * inside * apex;
+    hot = (edge * 0.15 + lead * 0.2) * inside * apex;
+    cov = (0.05 + inner * (0.18 + 0.08 * urgent * pulse)) * inside * apex;
   }
 
   float alpha = vC0.a * uAlpha;
   float m = max(vC0.r, max(vC0.g, vC0.b));
   vec3 hue = vC0.rgb / max(m, 1e-3);
-  // 发光线条(叠加)
+  // 被挡住的部分(透视通道)只补画线条：站在预警圈里的单位身上不再蒙一层色块
+  if (uXray > 0.5) {
+    fil = 0.0;
+    cov *= 0.0;
+  }
+  fil *= uFill;
+  cov *= mix(1.0, uFill, 0.6);
+  // 发光线条(叠加)。§7.1：线条与边缘 ≤1.6，超过的部分平滑压回
   vec3 em = (vC0.rgb * (e + hot * 0.6) + vec3(hot * m * 0.25)) * alpha;
-  // 色块：亮度取 A 色亮度的一部分(上限略高于 1)，保持色相饱和
+  float emM = max(em.r, max(em.g, em.b));
+  if (emM > 1.2) em *= (1.2 + (emM - 1.2) / (1.0 + (emM - 1.2) / 0.45)) / emM;
+  // 色块：亮度取 A 色亮度的一部分(大面积 ≤0.9)，保持色相饱和
   float cf = clamp(fil, 0.0, 0.92) * min(alpha, 1.0) * step(1e-3, m);
-  vec3 fillCol = hue * min(m * 0.62, 1.15);
+  vec3 fillCol = hue * min(m * 0.55, 0.9);
   // 底衬：参数 0 = 不要底衬；其余按 0.25 + 1.3k 放大。带一点 A 色色相，深色不发灰
   float cd = vC1.a > 0.0 ? clamp(cov * (0.25 + vC1.a * 1.3), 0.0, 0.95) * min(alpha, 1.0) : 0.0;
   vec3 dark = vC1.rgb + hue * 0.12 * step(1e-3, m);
@@ -552,6 +657,8 @@ export class DecalSystem {
   private xrayMat: THREE.ShaderMaterial;
   private tmp = new THREE.Vector3();
   private xrayCount = 0;
+  /** 两个材质共用的填充倍率(随画质) */
+  private fill = { value: 1 };
 
   constructor() {
     this.pen = new DecalPen(this);
@@ -567,7 +674,7 @@ export class DecalSystem {
     const uNow = { value: 0 };
     const mk = (xray: boolean): THREE.ShaderMaterial => {
       const m = new THREE.ShaderMaterial({
-        uniforms: { uNow, uXray: { value: xray ? 1 : 0 }, uAlpha: { value: xray ? 0.42 : 1 } },
+        uniforms: { uNow, uXray: { value: xray ? 1 : 0 }, uAlpha: { value: xray ? 0.5 : 1 }, uFill: this.fill },
         vertexShader: VERTEX,
         fragmentShader: FRAGMENT,
         polygonOffset: true,
@@ -725,6 +832,11 @@ export class DecalSystem {
       this.buffer.needsUpdate = true;
       this.dirty = false;
     }
+  }
+
+  /** 画质切换：大面积填充按 DECAL_FILL 缩放 */
+  setFill(k: number): void {
+    this.fill.value = k;
   }
 
   get activeCount(): number {

@@ -62,22 +62,45 @@ function holdDecal(k: FxKit, v: StatusView, type: number, fadeIn = 0.15): number
   return s;
 }
 
-/** 脚下的符文环(霜 / 焰 / 星辉 共用) */
-function runeRing(color: THREE.Color, hot: THREE.Color, sides: number, spin: number, scale: number, sprite: number): StatusDef {
+/**
+ * 增益脚环(§5.7)：按半径分层，可以同时显示——队伍环 1.3 倍单位半径(单位视图画) → 蓝buff 1.6 → 红buff 1.85 → 巨灵 2.1。
+ * 纹章细环只画外圈一条带，中心留空，不压英雄脚下；剩 5 秒时闪烁提醒。
+ */
+const RING_SCALE = { frost: 1.6, ember: 1.85, star: 2.1 } as const;
+/** 环的最小半径(米)：英雄半径只有 0.6 左右，按倍数算出来的环会被模型挡住 */
+function ringRadius(a: UnitAnchor, mult: number): number {
+  return Math.max(a.radius * mult, 0.62 + (mult - 1.3) * 0.75) + 0.12;
+}
+function expiring(v: StatusView, b: Buff): number {
+  return b.timeLeft < 5 && Number.isFinite(b.timeLeft) ? 0.55 + 0.45 * Math.cos(v.age * 9) : 1;
+}
+
+function sigilRing(pattern: number, color: THREE.Color, hot: THREE.Color, mult: number, spin: number, sprite: number): StatusDef {
   return {
     create(k, v) {
-      const s = holdDecal(k, v, DECAL.rune, 0.3);
-      k.decals.at(s).params(sides, spin).color(color, 1.5, 0.85).under(C.shadow, 0.25);
+      const s = holdDecal(k, v, DECAL.sigil, 0.3);
+      k.decals.at(s).y(0.065).params(pattern, 1).color(color, 1.5, 0.6).under(C.shadow, 0.25);
     },
-    update(k, v, a, _b, dt) {
-      k.decals.at(v.slots[0]).at(a.x, a.z).radius((a.radius + 0.75) * scale);
-      // 一枚绕身的小图标，远看也能认出是哪种增益
-      const ang = v.phase + v.age * 2.2 * Math.sign(spin);
-      const r = a.radius + 0.55;
-      k.sprites.icon(sprite, a.x + Math.cos(ang) * r, a.y + a.height * 0.45 + Math.sin(v.age * 3) * 0.12, a.z + Math.sin(ang) * r, 0.58, 0, hot, 1.3, 0.95, 0.25, 0.2);
-      for (let n = due(k, v, dt, 2.5); n > 0; n--) {
-        const t = k.rnd.next() * TAU;
-        k.particles.use(P.glint).tint(hot, color).spawn(a.x + Math.cos(t) * r, a.y + 0.1, a.z + Math.sin(t) * r, 0, k.rnd.range(0.8, 1.6), 0, 0.8, 0.26, 0.06);
+    update(k, v, a, b, dt) {
+      const blink = expiring(v, b);
+      const rr = ringRadius(a, mult);
+      k.decals.at(v.slots[0]).at(a.x, a.z).radius(rr).rot(v.age * spin).alpha(0.6 * blink + 0.25);
+      // 一枚绕身的小图标：远看、被模型挡住脚环时也能认出是哪种增益
+      const ang = v.phase + v.age * 2 * Math.sign(spin);
+      const r = a.radius + 0.5;
+      k.sprites.icon(sprite, a.x + Math.cos(ang) * r, a.y + a.height * 0.42 + Math.sin(v.age * 3) * 0.1, a.z + Math.sin(ang) * r, 0.46, 0, hot, 1.2, 0.85 * blink, 0.25, 0.2);
+      if (pattern === 0) {
+        // 贴地冷雾
+        for (let n = due(k, v, dt, 1.6); n > 0; n--) {
+          const t = k.rnd.next() * TAU;
+          k.particles.use(P.puff).tint(C.frostHot, C.frost).spawn(a.x + Math.cos(t) * rr * 0.8, a.y + 0.15, a.z + Math.sin(t) * rr * 0.8, Math.cos(t) * 0.3, 0.05, Math.sin(t) * 0.3, 1.2, 0.6, 1.4);
+        }
+      } else {
+        // 零星上飘的余烬
+        for (let n = due(k, v, dt, 3); n > 0; n--) {
+          const t = k.rnd.next() * TAU;
+          k.particles.use(P.ember).tint(hot, color).spawn(a.x + Math.cos(t) * rr * 0.85, a.y + 0.15, a.z + Math.sin(t) * rr * 0.85, 0, k.rnd.range(0.8, 1.6), 0, 0.8, 0.12, 0.04);
+        }
       }
     },
   };
@@ -344,26 +367,26 @@ const DEFS: Partial<Record<BuffId, StatusDef>> = {
       }
     },
   },
-  // 霜晶之智：蓝色符文环
-  frost_insight: runeRing(FROST_DEEP, FROST, 6, 0.8, 1.0, SPRITE.frost),
-  // 炽焰之力：红色符文环
-  ember_might: runeRing(EMBER, EMBER_HOT, 3, -0.8, 1.16, SPRITE.flame),
-  // 星陨祝福：金色星辉
+  // 霜晶之智(蓝buff)：缓慢旋转的六角霜纹细环 + 贴地冷雾
+  frost_insight: sigilRing(0, FROST_DEEP, FROST, RING_SCALE.frost, 0.35, SPRITE.frost),
+  // 炽焰之力(红buff)：三焰纹细环 + 零星余烬(普攻命中的火星由命中特效补)
+  ember_might: sigilRing(1, EMBER, EMBER_HOT, RING_SCALE.ember, -0.45, SPRITE.flame),
+  // 星陨祝福：金色八芒星轨环(每 2 秒向外一道细脉冲，着色器里做) + 3 颗小星沿倾斜轨道绕身(low 档 1 颗)
   star_blessing: {
     create(k, v) {
-      const s = holdDecal(k, v, DECAL.star, 0.3);
-      k.decals.at(s).params(5, 2.6).color(GOLD, 1.4, 0.8).under(C.shadow, 0.2);
+      const s = holdDecal(k, v, DECAL.sigil, 0.3);
+      k.decals.at(s).y(0.068).params(2, 1).color(GOLD, 1.5, 0.75).under(C.shadow, 0.25);
     },
-    update(k, v, a, _b, dt) {
-      k.decals.at(v.slots[0]).at(a.x, a.z).radius(a.radius + 0.95).rot(v.age * 0.7);
-      // 一颗小金星绕身(不放头顶：那里是血条和名字)
-      const ang = v.phase + v.age * 1.8;
-      const rr = a.radius + 0.6;
-      k.sprites.icon(SPRITE.star, a.x + Math.cos(ang) * rr, a.y + a.height * 0.5 + Math.sin(v.age * 2.4) * 0.1, a.z + Math.sin(ang) * rr, 0.52, v.age * 1.2, STUN, 1.25, 0.95, 0.15, 0.2);
-      for (let n = due(k, v, dt, 4); n > 0; n--) {
-        const t = k.rnd.next() * TAU;
-        const d = k.rnd.range(0.2, a.radius + 0.5);
-        k.particles.use(P.glint).tint(GOLD_HOT, GOLD).spawn(a.x + Math.cos(t) * d, a.y + k.rnd.range(0.2, 1), a.z + Math.sin(t) * d, 0, k.rnd.range(0.8, 1.8), 0, 0.9, 0.28, 0.06);
+    update(k, v, a, b) {
+      const blink = expiring(v, b);
+      k.decals.at(v.slots[0]).at(a.x, a.z).radius(ringRadius(a, RING_SCALE.star)).rot(v.age * 0.25).alpha(0.75 * blink);
+      const n = k.lowQ ? 1 : 3;
+      const rr = a.radius + 0.55;
+      for (let i = 0; i < n; i++) {
+        const ang = v.phase + v.age * 1.7 + (i * TAU) / 3;
+        // 倾斜的轨道：转到前半圈时低、后半圈时高
+        const y = a.y + a.height * (0.45 + 0.18 * Math.sin(ang + 0.6));
+        k.sprites.icon(SPRITE.star8, a.x + Math.cos(ang) * rr, y, a.z + Math.sin(ang) * rr, 0.42, v.age * 0.8, STUN, 1.3, 0.95 * blink, 0.15, 0.2);
       }
     },
   },
@@ -541,6 +564,7 @@ export class StatusViews {
         v.def.update(k, v, k.a, best, dt);
       }
     }
+    this.blessedMinions(frame);
     const list = this.list;
     for (let i = list.length - 1; i >= 0; i--) {
       const v = list[i];
@@ -549,6 +573,22 @@ export class StatusViews {
       this.views.delete(v.key);
       list[i] = list[list.length - 1];
       list.pop();
+    }
+  }
+
+  /** 星陨祝福期间，该队小兵头顶各一颗小金星(小兵身上没有 buff，按队伍剩余时间判断；敌方视角同样看得到) */
+  private blessedMinions(frame: FrameInfo): void {
+    const k = this.k;
+    const teams = frame.state.teams;
+    if (!(teams[0].blessingLeft > 0) && !(teams[1].blessingLeft > 0)) return;
+    const pt = frame.playerTeam;
+    for (const u of frame.state.units) {
+      if (u.kind !== 'minion' || !u.alive || (u.team !== 0 && u.team !== 1)) continue;
+      const left = teams[u.team].blessingLeft;
+      if (!(left > 0) || (u.team !== pt && !u.visible[pt])) continue;
+      if (k.focusDist(u.pos.x, u.pos.y) > 30 || !k.anchors.get(u.id, k.a)) continue;
+      const blink = left < 5 ? 0.55 + 0.45 * Math.cos(k.now * 9) : 1;
+      k.sprites.icon(SPRITE.star8, k.a.x, k.a.y + k.a.height + 0.35 + Math.sin(k.now * 3 + u.id) * 0.06, k.a.z, 0.36, k.now * 0.8, STUN, 1.25, 0.9 * blink, 0.15, 0.1);
     }
   }
 

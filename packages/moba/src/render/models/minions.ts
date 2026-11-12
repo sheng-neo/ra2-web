@@ -12,9 +12,9 @@ import { type Pose, Rig, bump, easeIO, easeOut, seg, strikeWarp } from './rig';
 import type { AnimInput, AnimOutput, ModelDef } from './types';
 
 const C = {
-  stone: 0x8698ba,
-  stoneLight: 0xa8b6d2,
-  stoneDark: 0x5a6684,
+  stone: 0x7a8cb0,
+  stoneLight: 0x98a8c8,
+  stoneDark: 0x505c7a,
   iron: 0x454d62,
   brass: 0xc9a45a,
   cloth: 0x0c1830,

@@ -122,6 +122,7 @@ export function buildBorder(field: MapField, info: BorderInfo, root: THREE.Objec
     let color: RGB;
     let ao = 1;
     const tone = 0.9 + hash2(i, 31, 9) * 0.2;
+    const bareRim = hash2(Math.floor(i / 3), 41, 17) < 0.3;
     if (k <= 5) {
       // 高崖剖面 / 矮石沿剖面，按 sw 混合
       const hi: [number, number][] = inBase
@@ -153,12 +154,15 @@ export function buildBorder(field: MapField, info: BorderInfo, root: THREE.Objec
       ];
       t = lerp(hi[k][0], lo[k][0], sw);
       y = lerp(hi[k][1], lo[k][1], sw);
-      const rockCols: RGB[] = [mixRgb(ROCK_DARK, ROCK, 0.2), mixRgb(ROCK_DARK, ROCK, 0.65 - crack * 0.3), mixRgb(ROCK_LIGHT, MOSS, hash2(i, 5, 51) * 0.4), ROCK, mixRgb(ROCK, ROCK_LIGHT, 0.55), mixRgb(ROCK_LIGHT, ROCK_WARM, 0.6)];
+      // 崖沿不做一圈亮边：每 3 列编一组，约三成的组露出暖石沿，其余由苔与林地草盖过来(同 cliffs.ts 的做法)
+      const rimTop = bareRim ? mixRgb(ROCK_LIGHT, ROCK_WARM, 0.55) : mixRgb(MOSS, FOREST_FLOOR_LIGHT, 0.5);
+      const rockCols: RGB[] = [mixRgb(ROCK_DARK, ROCK, 0.2), mixRgb(ROCK_DARK, ROCK, 0.65 - crack * 0.3), mixRgb(ROCK_LIGHT, MOSS, hash2(i, 5, 51) * 0.4), ROCK, bareRim ? mixRgb(ROCK, ROCK_LIGHT, 0.45) : mixRgb(ROCK, MOSS, 0.55), rimTop];
       const stoneCols: RGB[] = [scaleRgb(stoneDark, 0.75), mixRgb(stoneDark, stone, 0.5), stone, mixRgb(stoneDark, stone, 0.7), stone, scaleRgb(stone, 1.05)];
       // 南侧矮石沿：沿顶是长苔的暖石，外立面往下迅速压暗(当画框用，不抢对局区)
       const mossN = fbm2(p.s * 0.31, 5.7, 2, 19);
       const lowCols: RGB[] = [scaleRgb(ROCK, 0.8), mixRgb(ROCK_LIGHT, MOSS, mossN * 0.5), mixRgb(mixRgb(ROCK_LIGHT, ROCK_WARM, 0.6), MOSS, smoothstep(0.45, 0.7, mossN) * 0.7), mixRgb(ROCK, MOSS, mossN * 0.4), scaleRgb(ROCK_DARK, 0.9), scaleRgb(ROCK_DARK, 0.62)];
-      const hiCol = inBase ? stoneCols[k] : rockCols[k];
+      // 界外高崖是画框：岩面整体压一档(暗面 L* 落到 40 上下)，不和场内受光的岩石抢
+      const hiCol = inBase ? stoneCols[k] : k >= 1 && k <= 4 ? scaleRgb(rockCols[k], 0.82) : rockCols[k];
       const loCol = inBase ? stoneCols[Math.min(5, k + 1)] : lowCols[k];
       color = mixRgb(hiCol, loCol, sw);
       if (k === 0) ao = 0.72;
@@ -185,7 +189,7 @@ export function buildBorder(field: MapField, info: BorderInfo, root: THREE.Objec
         c = scaleRgb(c, lerp(1, 0.6, sw));
         // 空气透视：离边界越远越向雾色靠
         c = mixRgb(c, FOG, smoothstep(4, 40, t) * 0.55);
-        if (k === 6) c = mixRgb(mixRgb(ROCK_LIGHT, MOSS, 0.6 + sw * 0.3), c, 0.4);
+        if (k === 6) c = bareRim ? mixRgb(mixRgb(ROCK_LIGHT, MOSS, 0.6 + sw * 0.3), c, 0.5) : mixRgb(MOSS, c, 0.6);
         if (k === 13) c = mixRgb(ROCK_LIGHT, ROCK_WARM, 0.5);
         if (inBase && k === 6) c = mixRgb(stone, c, 0.3);
         color = c;
@@ -297,11 +301,11 @@ export function scatterBorder(batch: SceneryBatcher, lib: PropLibrary, field: Ma
   }
   // 南侧矮石沿：沿顶一排向外(朝镜头)垂下的草帘，间或一丛蕨，把那条石带打碎
   const r3 = new Rng(16180);
-  for (let x = -bound + 0.6; x < bound - 0.6; x += r3.range(0.45, 0.9)) {
+  for (let x = -bound + 0.6; x < bound - 0.6; x += r3.range(0.4, 1.3)) {
     const z = bound + 0.34;
     if (field.riverDist(x, z) < 1.2 || field.baseDist(x, bound - 0.6) < 0.3) continue;
     const kind = r3.next();
-    if (kind < 0.7) batch.add(r3.pick(lib.drapes), trs(x, 0.4, z + 0.14, -Math.PI / 2 + r3.range(-0.3, 0.3), r3.range(1.0, 1.5)), { shadow: false, tint: scaleRgb([1, 1, 0.94], r3.range(0.82, 1.02)) });
+    if (kind < 0.7) batch.add(r3.pick(lib.drapes), trs(x, 0.4, z + 0.14, -Math.PI / 2 + r3.range(-0.3, 0.3), r3.range(1.0, 1.5)), { shadow: false, tint: scaleRgb([0.86, 0.92, 0.8], r3.range(0.62, 0.9)) });
     else if (kind < 0.85) batch.add(r3.pick(lib.ferns), trs(x, 0.4, z - 0.04, r3.range(0, 6.28), r3.range(0.7, 1.0)), { shadow: false });
     else if (kind < 0.93) batch.add(r3.pick(lib.vines), trs(x, 0.36, z + 0.3, -Math.PI / 2, r3.range(0.9, 1.2), r3.range(0.8, 1.5)), { shadow: false });
   }

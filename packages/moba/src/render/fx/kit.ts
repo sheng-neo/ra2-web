@@ -6,7 +6,7 @@ import * as THREE from 'three';
 import type { FrameInfo, RenderContext } from '../engine/context';
 import type { QualitySettings } from '../engine/quality';
 import { type UnitAnchor, type UnitAnchors, createAnchor, createDefaultAnchors } from './anchors';
-import { DecalSystem } from './decals';
+import { DECAL_FILL, DecalSystem } from './decals';
 import { GlowSystem } from './glow';
 import { ParticleSystem } from './particles';
 import { type RibbonStyle, RibbonSystem } from './ribbons';
@@ -70,9 +70,11 @@ export class FxKit {
     this.particles = new ParticleSystem(this.atlas, d.cap);
     this.ribbons = new RibbonSystem();
     this.decals = new DecalSystem();
+    this.decals.setFill(DECAL_FILL[ctx.settings.name] ?? 1);
     this.glow = new GlowSystem();
     this.sprites = new SpriteBatch(this.atlas);
     this.anchors = createDefaultAnchors(ctx, new THREE.Vector3());
+    this.lowQ = ctx.settings.name === 'low';
     const resolve = (id: number, out: THREE.Vector3): boolean => {
       if (!this.anchors.get(id, this.a)) return false;
       out.set(this.a.x, this.a.y, this.a.z);
@@ -87,7 +89,12 @@ export class FxKit {
     const d = DENSITY[s.name] ?? DENSITY.high;
     this.density = d.scale;
     this.particles.setCapacity(d.cap);
+    this.decals.setFill(DECAL_FILL[s.name] ?? 1);
+    this.lowQ = s.name === 'low';
   }
+
+  /** 当前是否 low 档(无后期、无 bloom)：少数效果按它换成「描边为主」的画法 */
+  lowQ = false;
 
   /** 按画质缩放的粒子数(至少 1) */
   n(count: number): number {

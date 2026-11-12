@@ -146,7 +146,9 @@ export class WorldMarks {
           cy = k.v.y;
           cz = k.v.z;
         }
-        k.ribbons.line(R.warn, cx, cy, cz, px, py + ph * 0.5, pz, RANGE_DANGER, 0.75 + 0.25 * Math.sin(k.now * 16));
+        // 细线每 0.3 秒一闪(亮起后迅速衰减)：靠节奏而不是粗度引起注意，不挡战场
+        const beat = (k.now % 0.3) / 0.3;
+        k.ribbons.line(R.warn, cx, cy, cz, px, py + ph * 0.5, pz, RANGE_DANGER, 0.3 + 0.7 * (1 - beat) * (1 - beat));
       }
     }
     for (let i = this.towers.length - 1; i >= 0; i--) {

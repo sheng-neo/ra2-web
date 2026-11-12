@@ -14,7 +14,8 @@ import type { FrameInfo, RenderContext, RenderModule } from '../engine/context';
 import { AimIndicators } from './aim';
 import type { UnitAnchors } from './anchors';
 import { AreaViews } from './areas';
-import { FX_HANDLERS, type FxEnv, type FxEvent, epicSlainFx, heroDeathFx, meleeSwingFx, minionDeathFx, monsterSpawnFx } from './effects';
+import { AmbientFx } from './ambient';
+import { FX_HANDLERS, type FxEnv, type FxEvent, drakeBreathHit, epicSlainFx, heroDeathFx, meleeSwingFx, minionDeathFx, monsterSpawnFx } from './effects';
 import { FxKit } from './kit';
 import { ProjectileViews } from './projectiles';
 import { StatusViews } from './status';
@@ -37,6 +38,8 @@ export interface FxStats {
   statuses: number;
   /** 本帧特效层的可见网格数(≈ 新增 draw call，不含受光岩刺的阴影通道) */
   drawCalls: number;
+  /** 此刻存活的粒子数(逐个扫描，统计用) */
+  particlesLive: number;
 }
 
 export interface FxModule extends RenderModule {
@@ -65,7 +68,8 @@ export function createFxModule(ctx: RenderContext): FxModule {
   const status = new StatusViews(kit);
   const aim = new AimIndicators(kit);
   const env: FxEnv = { state: ctx.frame.state, playerId: ctx.frame.state.playerId, playerTeam: ctx.frame.playerTeam };
-  const stats: FxStats = { particlesSpawned: 0, particleCapacity: 0, decals: 0, projectiles: 0, areas: 0, statuses: 0, drawCalls: 0 };
+  const ambient = new AmbientFx(kit);
+  const stats: FxStats = { particlesSpawned: 0, particleCapacity: 0, decals: 0, projectiles: 0, areas: 0, statuses: 0, drawCalls: 0, particlesLive: 0 };
   /** 每个近战英雄交替左右挥砍 */
   const swingCount = new Map<number, number>();
   let deathGrade = false;
@@ -149,17 +153,24 @@ export function createFxModule(ctx: RenderContext): FxModule {
         break;
       }
       case 'monsterSpawn':
-        if (kit.focusDist(e.pos.x, e.pos.y) > CULL_DIST) return;
-        monsterSpawnFx(kit, e.pos.x, e.pos.y, MONSTERS[e.monsterType].epic);
+        // 开局预置的野怪不演出(C 包的出生动作同样只在对局进行中播)
+        if (state.time < 1 || kit.focusDist(e.pos.x, e.pos.y) > CULL_DIST) return;
+        monsterSpawnFx(kit, e.pos.x, e.pos.y, e.monsterType);
         break;
       case 'epicSlain':
-        if (kit.focusDist(e.pos.x, e.pos.y) > CULL_DIST) return;
-        epicSlainFx(kit, e.pos.x, e.pos.y, e.team);
+        if (kit.focusDist(e.pos.x, e.pos.y) > CULL_DIST + (MONSTERS[e.monsterType].epic ? 20 : 0)) return;
+        epicSlainFx(kit, e.pos.x, e.pos.y, e.team, e.monsterType, state);
+        break;
+      case 'damage':
+        // 被河道巨龙的吐息喷中：紫色水雾
+        if (e.dtype === 'magic' && kit.focusDist(e.pos.x, e.pos.y) <= CULL_DIST) {
+          const s = kit.anchors.unit(e.sourceId);
+          if (s && s.kind === 'monster' && s.monsterType === 'abyss_drake') drakeBreathHit(kit, e.sourceId, e.targetId);
+        }
         break;
       default:
         break;
     }
-    void state;
   };
 
   const countDraws = (): number => {
@@ -180,6 +191,7 @@ export function createFxModule(ctx: RenderContext): FxModule {
       projectiles.update(frame);
       areas.update(frame);
       status.update(frame);
+      ambient.update(frame);
       aim.update(frame);
       updateDeathGrade(frame);
       kit.flush(frame);
@@ -208,6 +220,7 @@ export function createFxModule(ctx: RenderContext): FxModule {
       projectiles.reset();
       areas.reset();
       status.reset();
+      ambient.reset();
       aim.reset();
       swingCount.clear();
       kit.clear();
@@ -220,6 +233,7 @@ export function createFxModule(ctx: RenderContext): FxModule {
       stats.areas = areas.count;
       stats.statuses = status.count;
       stats.drawCalls = countDraws();
+      stats.particlesLive = kit.particles.liveCount();
       return stats;
     },
     dispose(): void {

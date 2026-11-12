@@ -398,6 +398,18 @@ export class ParticleSystem {
     buf.needsUpdate = true;
   }
 
+  /** 此刻存活(已出生且未死亡)的粒子数：逐个扫描，只给统计/测试用，不要每帧调 */
+  liveCount(): number {
+    const d = this.data;
+    let n = 0;
+    for (let i = 0; i < this.cap; i++) {
+      const o = i * STRIDE;
+      const age = this.now - d[o + 3];
+      if (age >= 0 && age < d[o + 7]) n++;
+    }
+    return n;
+  }
+
   /** 立刻清空所有粒子(画廊页切换效果时用) */
   clear(): void {
     const d = this.data;

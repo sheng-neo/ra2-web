@@ -250,7 +250,9 @@ export function buildCliff(b: MeshBuilder, poly: Polygon, seed: number, opts: Cl
     return H + c.rimDy + wave - m.groove * 0.14;
   };
 
-  const RINGS = 7 + TOP_D.length;
+  // 顶面的环数按体量取：窄墙体里靠内的几环全塌在中轴线上，是白画的零面积三角
+  const topD = TOP_D.filter((d, i) => i < 3 || d < inradius - 0.25 || i === TOP_D.length - 1);
+  const RINGS = 7 + topD.length;
   const rimInfo: CliffRimPoint[] = [];
   extrudeRings(b, outline, true, RINGS, (p, i, k) => {
     const r = reach[i];
@@ -320,7 +322,7 @@ export function buildCliff(b: MeshBuilder, poly: Polygon, seed: number, opts: Cl
         break;
       default: {
         const ti = k - 7;
-        d = ti === 0 ? rimD : Math.max(TOP_D[ti], rimD + ti * 0.12);
+        d = ti === 0 ? rimD : Math.max(topD[ti], rimD + ti * 0.12);
         const de = Math.min(d, r.maxD);
         const px = p.x + p.nx * de * r.k;
         const pz = p.z + p.nz * de * r.k;

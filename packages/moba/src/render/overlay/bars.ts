@@ -1,7 +1,10 @@
 /**
- * 血条层：英雄(队伍色、护盾白段、每 1000 血刻度、法力条、等级徽标、名字、头顶状态图标与控制剩余时间)，
+ * 血条层：英雄(队伍色、护盾白段、每 1000 血一格、法力条、等级徽标、名字、头顶状态图标与控制剩余时间)，
  * 小兵/野怪细条(满血隐藏)，塔/水晶宽条。受伤时有延迟追赶的掉血残影与一瞬的闪白。
  * 画在铺满容器的 2D canvas 上(按设备像素比)，在渲染模块 update 里绘制，与本帧镜头严格同步。
+ *
+ * 团战避让：英雄的血条块(名字 + 血条)在屏幕上互相重叠时，靠上的那个向上让开(最多让一个块高)，
+ * 玩家自己的血条不动、最后画；头顶名字只显示名字，不带职业。
  */
 import { MONSTERS } from '../../core/data/units';
 import type { Buff, HeroUnit, Unit } from '../../core/types';
@@ -47,6 +50,22 @@ const INVULN = '#8a8f9c';
 
 const HARD_CC = ['stun', 'airborne', 'root', 'silence'] as const;
 
+/** 本帧要画的英雄血条(先收集、再避让、再统一画) */
+interface HeroSlot {
+  u: HeroUnit;
+  bs: BarState;
+  x: number;
+  y: number;
+  fade: number;
+  self: boolean;
+}
+
+/** 头顶只显示名字：界面别处是「名字 · 职业」，这里去掉职业 */
+function shortName(name: string): string {
+  const i = name.indexOf(' · ');
+  return i > 0 ? name.slice(0, i) : name;
+}
+
 export class BarLayer {
   private states = new Map<number, BarState>();
   private stamp = 0;
@@ -56,6 +75,8 @@ export class BarLayer {
   private p = { x: 0, y: 0 };
   private foot = { x: 0, y: 0 };
   private order: Unit[] = [];
+  private heroSlots: HeroSlot[] = [];
+  private slotPool: HeroSlot[] = [];
 
   constructor(text: TextCache, icons: IconCache) {
     this.text = text;
@@ -101,6 +122,8 @@ export class BarLayer {
 
     const a = this.a;
     const p = this.p;
+    const slots = this.heroSlots;
+    slots.length = 0;
     for (const u of order) {
       if (!u.alive) continue;
       const bs = this.stateOf(u);
@@ -121,9 +144,17 @@ export class BarLayer {
       if (fade <= 0.02) continue;
       g.globalAlpha = fade;
       switch (u.kind) {
-        case 'hero':
-          this.hero(g, u, bs, x, y, s, frame);
+        case 'hero': {
+          const hs = this.slotPool[slots.length] ?? (this.slotPool[slots.length] = { u, bs, x: 0, y: 0, fade: 1, self: false });
+          hs.u = u;
+          hs.bs = bs;
+          hs.x = x;
+          hs.y = y;
+          hs.fade = fade;
+          hs.self = u.id === st.playerId;
+          slots.push(hs);
           break;
+        }
         case 'minion':
           if (u.hp < u.stats.maxHp - 0.5) this.simple(g, u, bs, x, y, 34 * s, 4 * s, u.team === frame.playerTeam ? PAL.ally.fill : PAL.enemy.fill, false);
           break;
@@ -149,11 +180,47 @@ export class BarLayer {
         }
       }
     }
+    // 英雄血条：避让后再画(其余英雄在前，玩家自己最后)
+    this.declutter(slots, s);
+    for (const hs of slots) {
+      g.globalAlpha = hs.fade;
+      this.hero(g, hs.u, hs.bs, hs.x, hs.y, s, frame);
+    }
     g.globalAlpha = 1;
     // 清理已经不在场的单位
     if ((stamp & 63) === 0) {
       for (const [id, bs] of this.states) if (bs.seen < stamp - 60) this.states.delete(id);
     }
+  }
+
+  /**
+   * 英雄血条块的避让：块 = 名字 + 血条(宽约 100、高约 30 CSS 像素)。按屏幕 y 从下往上放，
+   * 与已放好的块重叠就把它抬到那个块的上方；抬升超过一个块高就不再抬(宁可轻微重叠，也不让血条离开头顶太远)。
+   * 玩家自己的块最先放、位置不动。
+   */
+  private declutter(slots: HeroSlot[], s: number): void {
+    if (slots.length < 2) return;
+    const W = 104 * s;
+    const H = 31 * s;
+    slots.sort((a, b) => (a.self ? -1 : b.self ? 1 : b.y - a.y));
+    for (let i = 1; i < slots.length; i++) {
+      const c = slots[i];
+      const y0 = c.y;
+      for (let pass = 0; pass < 3; pass++) {
+        let moved = false;
+        for (let j = 0; j < i; j++) {
+          const o = slots[j];
+          if (Math.abs(o.x - c.x) >= W || Math.abs(o.y - c.y) >= H) continue;
+          const ny = o.y - H;
+          if (y0 - ny > H * 1.05) continue;
+          c.y = ny;
+          moved = true;
+        }
+        if (!moved) break;
+      }
+    }
+    // 画的顺序：其余英雄在前，玩家自己最后(压在最上面)
+    slots.sort((a, b) => (a.self ? 1 : b.self ? -1 : 0));
   }
 
   /** 细条/宽条：底框 + 血量 + 残影(+ 刻度) */
@@ -212,9 +279,12 @@ export class BarLayer {
     }
     g.fillStyle = 'rgba(255,255,255,0.26)';
     g.fillRect(x0, y0, hw + sw, h * 0.42);
-    // 每 1000 血一格刻度(每 5000 一根通高的)
+    // 每 1000 血一格：通高的细分隔线(每 5000 一根加粗)，一眼数得出「还剩几格」
     g.fillStyle = TICK;
-    for (let v = 1000; v < total; v += 1000) g.fillRect(x0 + Math.round((w * v) / total), y0, 1, v % 5000 === 0 ? h : h * 0.55);
+    for (let v = 1000; v < total; v += 1000) {
+      const big = v % 5000 === 0;
+      g.fillRect(x0 + Math.round((w * v) / total) - (big ? 1 : 0), y0, big ? 2 : 1, big ? h : h * 0.8);
+    }
     if (bs.flash > 0) {
       g.fillStyle = `rgba(255,255,255,${Math.min(0.8, bs.flash * 6)})`;
       g.fillRect(x0, y0, hw, h);
@@ -244,15 +314,18 @@ export class BarLayer {
     }
     const lv = bs.lv;
     g.drawImage(lv.canvas, bx - lv.w / 2, by - lv.h / 2, lv.w, lv.h);
-    // 名字
+    // 名字(只显示名字)：自己的略大略亮，其余的小一号、半透明，层级落在血条之下
     const nameKey = (self ? 1 : u.team === frame.playerTeam ? 2 : 3) * 4096 + Math.round(s * k * 100) + dprKey;
     if (!bs.name || bs.nameKey !== nameKey) {
-      bs.name = this.text.get(u.name, Math.round(12 * s * k), pal.name, 'rgba(6,10,20,0.92)');
+      bs.name = this.text.get(shortName(u.name), Math.round((self ? 12 : 11) * s * k), pal.name, 'rgba(6,10,20,0.92)', self ? 800 : 600);
       bs.nameKey = nameKey;
     }
     const name = bs.name;
     const ny = y0 - 3 * s - name.h;
+    const ga = g.globalAlpha;
+    g.globalAlpha = ga * (self ? 1 : 0.85);
     g.drawImage(name.canvas, cx - name.w / 2, ny, name.w, name.h);
+    g.globalAlpha = ga;
     this.statusRow(g, u.buffs, cx, ny - 7 * s, s);
   }
 

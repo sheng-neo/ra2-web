@@ -1,6 +1,6 @@
 /**
  * 画质档定义与默认档检测。
- * high = 阴影 2048(PCF 半径 2.5) + bloom + 调色 + 4×MSAA，DPR≤2；medium = 阴影 1024(PCFSoft) + 轻 bloom + 2×MSAA，DPR≤1.5；
+ * high = 阴影 2048(PCF 半径 2) + bloom + 调色 + 4×MSAA，DPR≤2；medium = 阴影 1024(PCFSoft) + 轻 bloom + 2×MSAA，DPR≤1.5；
  * low = 无阴影贴图(静态烘焙影 + 单位圆斑)、无后期，DPR 1。三档共用同一套主光方向、三阶明暗、环境染色、冷暖边缘光与 Neutral 色调映射。
  */
 import type { Quality } from '../api';
@@ -33,7 +33,7 @@ export interface QualitySettings {
    * 半影宽度由 shadowRadius 决定，无噪点)。整个渲染器只能有一种类型，切档时由引擎切换。
    */
   shadowType: 'pcf' | 'pcfsoft';
-  /** 'pcf' 时的半影半径(texel)；'pcfsoft' 下不生效 */
+  /** 'pcf' 时的半影半径(texel，取整数，见 high 档注释)；'pcfsoft' 下不生效 */
   shadowRadius: number;
   /** 远景薄霾强度(屏幕上沿向冷亮色混合的最大比例)。0 = 关 */
   haze: number;
@@ -111,7 +111,9 @@ export const QUALITY: Record<Quality, QualitySettings> = {
     groundDetail: 2,
     motes: 1,
     shadowType: 'pcf',
-    shadowRadius: 2.5,
+    // 取整数：three 的 PCF 是 17 个最近邻比较点，落在 ±r 与 ±r/2 texel 上；r = 2.5 时采样点落在半 texel 处，
+    // 阴影边缘与树冠自影出现点状网纹(ra-sr 对比)。r = 2 时各点同步跨 texel，边缘干净，半影约 4 texel ≈ 9 厘米
+    shadowRadius: 2,
     haze: 0.06,
     bloomThreshold: 1.35,
     atmos: 2,

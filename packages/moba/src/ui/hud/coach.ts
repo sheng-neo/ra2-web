@@ -86,7 +86,8 @@ export function createCoach(ctx: HudCtx, deps: CoachDeps): Coach {
   const { host } = ctx;
   const demo = ctx.state.config.autoPlay === true;
 
-  const arrow = createSceneArrow(ctx);
+  // 贴边箭头躲开顶部指引位(slot 在下面才建，用取值函数延后读)
+  const arrow = createSceneArrow(ctx, () => slot);
   const glow = createControlGlow(ctx);
   const row = createObjectiveRow();
   const card = createGuideCard(() => {
@@ -120,6 +121,8 @@ export function createCoach(ctx: HudCtx, deps: CoachDeps): Coach {
 
   let yielding = false;
   let hasCoach = false;
+  /** 此刻小地图上实际在指的点(调试用) */
+  let shownOnMinimap: Vec2 | null = null;
 
   function startGuide(): void {
     script = new GuideScript(ctx.state, ctx.me);
@@ -151,7 +154,7 @@ export function createCoach(ctx: HudCtx, deps: CoachDeps): Coach {
         card: card.visible() ? { id: el.dataset.step ?? '', kind: el.dataset.kind ?? '', done: el.dataset.done === '1', title: el.querySelector('.sf-hud__gcard-title')?.textContent ?? '', text: el.getAttribute('aria-label') ?? '' } : null,
         highlight: glow.current(),
         arrow: lastArrow ? { x: lastArrow.pos.x, y: lastArrow.pos.y, label: lastArrow.label, mode: arrow.mode() } : null,
-        minimap: guideMinimap ? { x: guideMinimap.x, y: guideMinimap.y } : pulsePos && ctx.now < pulseUntil ? { x: pulsePos.x, y: pulsePos.y } : null,
+        minimap: shownOnMinimap ? { x: shownOnMinimap.x, y: shownOnMinimap.y } : null,
         objective: tracker.current,
         objectiveVisible: row.visible() && !yielding,
         yielding,
@@ -232,9 +235,10 @@ export function createCoach(ctx: HudCtx, deps: CoachDeps): Coach {
       // ── 小地图：引导的目标优先；否则是目标行切入后的 3 秒脉冲 ──
       // 目标行正被横幅挡着时先不闪：等它露出来再从头闪 3 秒，玩家才能把文字和小地图上的圈对上
       if (pulsePos && yielding) pulseUntil = c.now + OBJECTIVE_PULSE;
-      if (guideMinimap && me.alive && !st.over) deps.minimap.setGuide(guideMinimap);
-      else if (pulsePos && showRow && !yielding && c.now < pulseUntil) deps.minimap.setGuide(pulsePos);
-      else deps.minimap.setGuide(null);
+      if (guideMinimap && me.alive && !st.over) shownOnMinimap = guideMinimap;
+      else if (pulsePos && showRow && !yielding && c.now < pulseUntil) shownOnMinimap = pulsePos;
+      else shownOnMinimap = null;
+      deps.minimap.setGuide(shownOnMinimap);
       // 指引位里有东西时给根节点打个标记：竖屏下帧率读数、击杀流据此让一让
       const has = cardShown || row.visible();
       if (has !== hasCoach) {

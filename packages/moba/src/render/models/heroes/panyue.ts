@@ -40,7 +40,8 @@ const DIMS: HumanDims = {
   clavX: 0.16, shoulderX: 0.47, shoulderY: 1.43, elbowY: 1.06, wristY: 0.73, handY: 0.61,
 };
 
-const SCALE = 1.36;
+/** 整体缩放。比设计稿的 1.42 小：换成真人头身后头顶高了约 0.11，缩到 1.33 让对局里的站立身高(不含发束)仍落在 105~125 像素 */
+const SCALE = 1.33;
 const DEG = Math.PI / 180;
 
 /** 盾的尺寸：全高 / 半宽 / 握带(前臂)到盾中心的距离(盾心在握带下方，举起时盾顶不挡脸) / 弧面深度 */
@@ -189,7 +190,7 @@ function build(): { h: Human; b: ModelBuilder; extra: Extra } {
     b.bind(chainBind(joints, pts, J.hips)).paint(0xffffff, { team: 1, mat: MAT.cloth });
     const edge = pts.map((p) => [p[0], p[1], p[2] - Math.sign(bow) * 0.006]);
     strip(b, edge, { width: (v) => mix(w0, w1, v) + 0.026, bow: [0, 0, bow], nu: 2, nv: 5, tail: 'swallow', tailLen: tail + 0.03 });
-    b.paint(C.skirt, { c2: C.skirtDark, mat: MAT.cloth, pattern: PATTERN.weave, patternScale: 14, patternAmt: 0.2 });
+    b.paint(C.skirt, { c2: C.skirtDark, mat: MAT.cloth });
     strip(b, pts, { width: (v) => mix(w0, w1, v), bow: [0, 0, bow], nu: 4, nv: 5, tail: 'swallow', tailLen: tail });
   };
   skirtPiece(front, frontPts, 0.15, 0.125, 0.03, 0.1);
@@ -230,7 +231,7 @@ function build(): { h: Human; b: ModelBuilder; extra: Extra } {
     // 肩头：一块盖住肩关节的弧形甲
     b.bone(clav);
     ironPaint();
-    b.g(X(cx - 0.03, 1.565, 0, 0, 0, -10), () => b.ball(0, 0, 0, 0.2, 0.085, 0.215, 1, 40));
+    b.g(X(cx - 0.03, 1.545, 0, 0, 0, -10), () => b.lathe([[0, 0.2, 0.215], [0.065, 0.15, 0.16], [0.1, 0.03, 0.03]], { seg: 8, cap0: false, crease: 60 }));
     plates(b, { cx, yTop: 1.59, yBot: 1.455, top: [0.15, 0.2], bot: [0.255, 0.27], a0: -112, a1: 112, n: 3, lip: 0.018, double: true });
     b.bone(arm);
     ironPaint();
@@ -261,7 +262,7 @@ function build(): { h: Human; b: ModelBuilder; extra: Extra } {
     gloss: 0,
     line: (phi) => (phi < 0.9 ? 0.168 - 0.02 * Math.cos((phi / 0.9) * Math.PI * 0.5) : phi < 1.45 ? mix(0.168, -0.06, (phi - 0.9) / 0.55) : -0.3),
   });
-  beard(b, h, hd, { c: C.hair, c2: C.hairHi, spread: 1.5, thick: 0.07, drop: 0.1, tufts: 7, len: 0.2, tuftR: 0.078, puff: 0.75, mustache: 0.15, mustacheR: 0.028, curl: 0.06, gloss: 0 });
+  beard(b, h, hd, { c: C.hair, c2: C.hairHi, spread: 1.5, thick: 0.07, drop: 0.1, tufts: 7, len: 0.2, tuftR: 0.078, puff: 0.75, mustache: 0.15, mustacheR: 0.028, curl: 0.06, gloss: 0, tuftSeg: 4 });
   // 赭红额带(脑后打结，两条短带尾)
   {
     const yb = hd.cy + 0.135 * hs;
@@ -287,10 +288,10 @@ function build(): { h: Human; b: ModelBuilder; extra: Extra } {
   for (const [ang, lean, len, r] of locks) {
     const sx = Math.sin(ang * DEG);
     const sy = Math.cos(ang * DEG);
-    lock(b, [crown[0] + sx * 0.1, crown[1] - Math.abs(sx) * 0.05, crown[2] - lean * 0.03], [sx, sy, -lean], len, r, { curl: [sx * 0.16, -0.06, -0.34], n: 4, seg: 6, flat: 0.62, up: [1, 0, 0], tip: 0.14 });
+    lock(b, [crown[0] + sx * 0.1, crown[1] - Math.abs(sx) * 0.05, crown[2] - lean * 0.03], [sx, sy, -lean], len, r, { curl: [sx * 0.16, -0.06, -0.34], n: 3, seg: 5, flat: 0.62, up: [1, 0, 0], tip: 0.14 });
   }
   b.bone(J.head).paint(C.hair, { c2: C.hairHi, mat: MAT.fur });
-  b.ball(crown[0], crown[1] - 0.01, crown[2] - 0.02, 0.15, 0.09, 0.14, 1);
+  b.lathe([[crown[1] - 0.06, 0.15, 0.14, 0, crown[2] - 0.02], [crown[1] + 0.03, 0.12, 0.11, 0, crown[2] - 0.02], [crown[1] + 0.08, 0.03, 0.03, 0, crown[2] - 0.02]], { seg: 8, cap0: false, crease: 180 });
 
   // ── 汉剑(右手)：沿 +Z，刃宽方向为上下。铜剑首与菱形剑格，亮钢直刃 ──
   b.bone(J.propR);
@@ -374,12 +375,6 @@ function build(): { h: Human; b: ModelBuilder; extra: Extra } {
     b.ball(0, -SH.grip, 0.035, 0.115, 0.115, 0.075, 1);
     b.paint(C.bronzeDark, { c2: C.bronze, gloss: 1, mat: MAT.metal });
     b.g(X(0, -SH.grip, 0.035, 90, 0, 0), () => b.torus(0.15, 0.024, 0.02, 10, 3, { crease: 30 }));
-    // 四角铜泡钉
-    b.paint(C.bronze, { gloss: 1, mat: MAT.metal });
-    for (const [px, py] of [[0.62, y1 - 0.1], [-0.62, y1 - 0.1], [0.62, y0 + 0.16], [-0.62, y0 + 0.16]]) {
-      const p = onFace(px, py, 0.03);
-      b.ball(p[0], p[1], p[2], 0.03, 0.03, 0.018, 0);
-    }
   });
 
   b.bakeGrounding(2.1);

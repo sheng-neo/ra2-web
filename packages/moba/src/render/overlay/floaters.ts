@@ -1,6 +1,11 @@
 /**
  * 飘字：伤害(物理橙白 / 法术青蓝 / 真实白 / 暴击更大并弹跳带感叹号)、治疗(绿 +N)、金币(金色 +N 带金币)、升级。
- * 同一目标短时间内的多段伤害按「错位槽」散开不重叠；只显示屏幕内、且与英雄有关的(小兵互殴的数字是噪音)。
+ *
+ * 十人团战的可读性规则：
+ *   - 分级：与玩家自己相关的(自己打出 / 自己挨打)是一级，全尺寸；其余英雄之间的伤害是二级，缩小、半透明、同屏有上限；
+ *     不涉及玩家的小兵 / 野怪 / 建筑挨打不出字(小兵互殴、队友打野的数字都是噪音)。
+ *   - 合并：同一来源打同一目标、同一种字样，0.3 秒内的多段伤害并进还在弹出期的那个数字(数值累加、重新弹一下)，不再一段一个。
+ *   - 错位：同一目标还没淡出的数字按错位槽散开，并整体向上错开，不叠在一起。
  * 数字用预渲染的字形条逐个贴图，任何数值都不产生新的文字精灵。
  */
 import type { DamageType, GameEvent, GameState, Unit } from '../../core/types';
@@ -38,11 +43,21 @@ interface Floater {
   alpha: number;
   crit: boolean;
   coin: boolean;
+  /** 合并用：来源、目标、数值与优先级(2 = 与玩家相关，1 = 其余英雄之间) */
+  src: number;
+  dst: number;
+  amount: number;
+  prio: number;
 }
 
 /** 多段伤害的错位槽(CSS 像素，乘以界面缩放) */
-const SLOTS: [number, number][] = [[0, 0], [40, -8], [-40, -11], [18, -30], [-22, -33], [60, -24], [-62, -26], [0, -54]];
+const SLOTS: [number, number][] = [[0, 0], [26, -24], [-30, -28], [6, -50], [-20, -56], [48, -42], [-52, -46], [0, -76]];
 const POOL = 72;
+/** 多段伤害合并的时间窗(秒)：只并进还在这段时间内的数字 */
+const MERGE_WINDOW = 0.3;
+/** 二级(与玩家无关的英雄间伤害)飘字的同屏上限与单个目标上限 */
+const MAX_MINOR = 8;
+const MAX_MINOR_PER_TARGET = 2;
 
 const backOut = (t: number): number => {
   const u = t - 1;
@@ -67,7 +82,7 @@ export class FloaterLayer {
     this.text = text;
     this.icons = icons;
     for (let i = 0; i < POOL; i++) {
-      this.pool.push({ live: false, style: 0, text: '', sprite: null, wx: 0, wy: 0, wz: 0, ox: 0, oy: 0, dir: 1, t: 0, life: 1, scale: 1, alpha: 1, crit: false, coin: false });
+      this.pool.push({ live: false, style: 0, text: '', sprite: null, wx: 0, wy: 0, wz: 0, ox: 0, oy: 0, dir: 1, t: 0, life: 1, scale: 1, alpha: 1, crit: false, coin: false, src: -1, dst: -1, amount: 0, prio: 2 });
     }
     this.setDpr(dpr);
   }
@@ -95,7 +110,8 @@ export class FloaterLayer {
     if (anchors.get(targetId, a)) {
       wx = a.x;
       wz = a.z;
-      wy = a.y + Math.min(a.height * 0.82, 4.2);
+      // 从胸口偏上出字(不是头顶)：上飘的过程中经过血条右侧，不一出生就压在血条上
+      wy = a.y + Math.min(a.height * 0.62, 3.4);
     }
     // 同一目标在上一个数字还没淡出前(0.8 秒内)出的后续数字，换下一个错位槽
     let st = this.stagger.get(targetId);
@@ -114,7 +130,8 @@ export class FloaterLayer {
     f.wx = wx;
     f.wy = wy;
     f.wz = wz;
-    f.ox = slot[0];
+    // 整体偏到单位右侧：血条居中，数字靠右，两者不抢同一块地方
+    f.ox = slot[0] + 30;
     f.oy = slot[1];
     f.dir = st.n % 2 === 0 ? 1 : -1;
     f.t = 0;
@@ -123,7 +140,31 @@ export class FloaterLayer {
     f.alpha = alpha;
     f.crit = crit;
     f.coin = false;
+    f.src = -1;
+    f.dst = targetId;
+    f.amount = 0;
+    f.prio = 2;
     return f;
+  }
+
+  /** 找一个还能并进去的同源同目标同字样数字 */
+  private mergeable(src: number, dst: number, style: number): Floater | null {
+    for (const f of this.pool) {
+      if (f.live && f.src === src && f.dst === dst && f.style === style && f.t < MERGE_WINDOW) return f;
+    }
+    return null;
+  }
+
+  /** 二级飘字是否已经太多(全屏 / 同一目标) */
+  private minorFull(dst: number): boolean {
+    let all = 0;
+    let mine = 0;
+    for (const f of this.pool) {
+      if (!f.live || f.prio !== 1) continue;
+      all++;
+      if (f.dst === dst) mine++;
+    }
+    return all >= MAX_MINOR || mine >= MAX_MINOR_PER_TARGET;
   }
 
   /** 玩家看不见的敌方单位(草丛里/视野外)：身上不出任何飘字，否则数字会把位置漏出来。玩家自己和中立单位不受限 */
@@ -142,16 +183,29 @@ export class FloaterLayer {
           const t = anchors.unit(e.targetId);
           // 技能蒙中了藏在草里/视野外的敌人：模拟层照样发 damage，但不能出字(哪怕是玩家自己打的)
           if (this.hidden(t, pid)) break;
-          let related = mine;
-          if (!related) {
-            // 与玩家无关的：至少一方是英雄才显示
-            const s = anchors.unit(e.sourceId);
-            related = (t !== undefined && t.kind === 'hero') || (s !== undefined && s.kind === 'hero');
-          }
-          if (!related) break;
+          // 与玩家无关的：只显示英雄挨打(小兵 / 野怪 / 建筑挨别人的打不出字)
+          if (!mine && (t === undefined || t.kind !== 'hero')) break;
           const style = e.crit ? STYLE.crit : styleOf(e.dtype);
+          const m = this.mergeable(e.sourceId, e.targetId, style);
+          if (m) {
+            m.amount += e.amount;
+            const n = Math.round(m.amount);
+            m.text = e.crit ? `${n}!` : String(n);
+            break;
+          }
+          if (!mine && this.minorFull(e.targetId)) break;
           const n = Math.round(e.amount);
-          this.spawn(e.targetId, anchors, e.pos.x, e.pos.y, style, e.crit ? `${n}!` : String(n), mine ? 1 : 0.78, mine ? 1 : 0.85, e.crit);
+          const f = this.spawn(e.targetId, anchors, e.pos.x, e.pos.y, style, e.crit ? `${n}!` : String(n), mine ? 1 : 0.7, mine ? 1 : 0.72, e.crit);
+          if (f) {
+            f.src = e.sourceId;
+            f.amount = e.amount;
+            f.prio = mine ? 2 : 1;
+            // 玩家自己挨打的数字放在身体左侧，和自己打出去的(右侧)分开
+            if (e.targetId === pid && e.sourceId !== pid) {
+              f.ox -= 60;
+              f.dir = -1;
+            }
+          }
           break;
         }
         case 'heal': {
@@ -211,11 +265,17 @@ export class FloaterLayer {
     for (const f of this.pool) {
       if (!f.live) continue;
       f.t += dt;
+      if (f.t >= f.life) f.live = false;
+    }
+    // 两遍：先画二级(其余英雄之间)，再画一级(与玩家相关)，玩家自己的数字永远压在最上面
+    for (let pass = 1; pass <= 2; pass++) this.drawPass(g, pass, project, W, H, s, p);
+    g.globalAlpha = 1;
+  }
+
+  private drawPass(g: CanvasRenderingContext2D, pass: number, project: Projector, W: number, H: number, s: number, p: { x: number; y: number }): void {
+    for (const f of this.pool) {
+      if (!f.live || (pass === 1) !== (f.prio === 1)) continue;
       const t = f.t / f.life;
-      if (t >= 1) {
-        f.live = false;
-        continue;
-      }
       if (!project(f.wx, f.wy, f.wz, p)) continue;
       if (p.x < -80 || p.x > W + 80 || p.y < -80 || p.y > H + 80) continue;
       // 上飘(先快后慢) + 轻微横漂；暴击先放大再回弹
@@ -239,7 +299,6 @@ export class FloaterLayer {
         strip.draw(g, f.text, x, y, sc);
       }
     }
-    g.globalAlpha = 1;
   }
 
   reset(): void {

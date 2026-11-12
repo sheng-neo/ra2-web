@@ -55,6 +55,7 @@ uniform float uWaterLevel;
 uniform vec2 uFlow;
 uniform vec3 uShadeTintGround;
 uniform float uLaneGain;
+uniform float uLaneHalf;
 uniform vec3 cGrass;
 uniform vec3 cGrassWarm;
 uniform vec3 cGrassCool;
@@ -301,9 +302,9 @@ void main() {
   // 门槛线：兵线进入基地处横一条队伍色发光嵌线，线外是指向外面的人字刻纹
   float inLane = 1.0 - smoothstep(-0.9, -0.4, dLane);
   float sill = (1.0 - smoothstep(0.05, 0.09, abs(dBase + 0.28))) * inLane;
-  float lat = dLane + ${f1(R.lane)};
-  float chevP = (dBase + 0.45 * max(0.0, 5.0 - abs(dLane + 5.0))) ;
-  float chev = (1.0 - smoothstep(0.05, 0.1, abs(fract(chevP / 0.85) - 0.5))) * smoothstep(0.25, 0.5, dBase) * (1.0 - smoothstep(2.2, 2.8, chevP)) * inLane * step(lat, 5.4);
+  // (dLane + 半路宽 = 到兵线中心线的距离：人字的尖在路中央、朝外)
+  float chevP = dBase + 0.45 * max(0.0, uLaneHalf - abs(dLane + uLaneHalf));
+  float chev = (1.0 - smoothstep(0.05, 0.1, abs(fract(chevP / 0.85) - 0.5))) * smoothstep(0.25, 0.5, dBase) * (1.0 - smoothstep(2.2, 2.8, chevP)) * inLane;
   emissive += bGlow * sill * 0.75;
 
   albedo = mix(albedo, pave, stoneMask * (1.0 - plazaMask));
@@ -658,6 +659,7 @@ export function createGround(field: MapField, splat: SplatTextures, noise: THREE
       uFlow: { value: riverFlow(field) },
       // 石板反照率的整体增益(对色用：受光兵线的目标明度 L* 66~72)
       uLaneGain: { value: 1.22 },
+      uLaneHalf: { value: map.laneWidth / 2 },
       cGrass: { value: col(E.grass) },
       cGrassWarm: { value: col(E.grassWarm) },
       cGrassCool: { value: col(E.grassCool) },

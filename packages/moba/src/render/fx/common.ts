@@ -57,15 +57,35 @@ export const P = {
   bubble: particleStyle({ sprite: SPRITE.bubble, add: 0.5, color: 0xffffff, intensity: 1.5, gravity: -1.5, drag: 1.5, fadeIn: 0.15, fadeOut: 0.6 }),
   /** 折线闪电(眩晕瞬间) */
   bolt: particleStyle({ sprite: SPRITE.bolt, add: 0.3, pull: 0.5, color: 0xffd04a, intensity: 1.4, drag: 4, fadeIn: 0.02, fadeOut: 0.3 }),
+  /** 命中白闪：一帧亮核(寿命按 §7.1 的命中闪光时长给) */
+  hitFlash: particleStyle({ sprite: SPRITE.glow, add: 0.7, pull: 0.6, color: 0xffffff, intensity: 2.2, intensity2: 1.2, fadeIn: 0.0, fadeOut: 0.25 }),
+  /** 命中后的方向碎屑(短、硬、带重力) */
+  chip: particleStyle({ scale: 1.6, sprite: SPRITE.streak, orient: ORIENT.stretch, add: 0.6, color: 0xffe8b0, color2: 0xff7a20, intensity: 2.0, intensity2: 1.0, gravity: 9, drag: 5, stretch: 0.03, fadeIn: 0.0, fadeOut: 0.3 }),
+  /** 龙鳞片(翻飞的发光鳞，河道巨龙相关) */
+  scale: particleStyle({ scale: 1.2, sprite: SPRITE.scale, add: 0.4, color: 0xc8a8ff, color2: 0x6a4ad8, intensity: 1.5, intensity2: 0.9, gravity: 1.5, drag: 2.2, spin: 6, fadeIn: 0.05, fadeOut: 0.55 }),
+  /** 吐息雾团(半遮挡，带少量自发光) */
+  puff: particleStyle({ sprite: SPRITE.puff, sprite2: SPRITE.smoke2, add: 0.3, color: 0xb8a0ff, color2: 0x3a2a7a, intensity: 1.2, intensity2: 0.7, alpha: 0.75, alpha2: 0.25, drag: 2.6, gravity: -0.6, spin: 1.4, fadeIn: 0.06, fadeOut: 0.35, vary: 0.2 }),
+  /** 阔叶(进出草丛被拨起的叶片，遮挡型) */
+  broadleaf: particleStyle({ scale: 1.1, sprite: SPRITE.broadleaf, add: 0, color: 0x8fb45a, color2: 0x5f8a3a, gravity: 2.2, drag: 3, spin: 7, fadeIn: 0.03, fadeOut: 0.6, vary: 0.25 }),
+  /** 贴水面的水花环 */
+  splash: particleStyle({ sprite: SPRITE.splash, orient: ORIENT.flat, add: 0.35, color: 0xf2fffb, color2: 0xbfeff0, intensity: 1.05, intensity2: 0.7, alpha: 0.9, alpha2: 0.4, fadeIn: 0.04, fadeOut: 0.35 }),
+  /** 溅起的水珠 */
+  droplet: particleStyle({ scale: 1.1, sprite: SPRITE.drop, add: 0.3, color: 0xeafffb, color2: 0x9fe0e8, intensity: 1.15, gravity: 14, drag: 0.6, rot: 0, fadeIn: 0.02, fadeOut: 0.6 }),
+  /** 八芒星(星陨祝福、巨灵相关) */
+  star8: particleStyle({ pull: 0.3, scale: 1.3, sprite: SPRITE.star8, add: 0.5, color: 0xfff0b8, color2: 0xffcf60, intensity: 1.8, intensity2: 1.1, drag: 1.8, spin: 1.5, fadeIn: 0.08, fadeOut: 0.5 }),
 };
 
 export const R = {
   /** 冲刺的尘迹 */
   dust: ribbonStyle({ width: 1.3, life: 0.5, color: 0xc4b294, color2: 0x9a8a70, add: 0, noise: 0.85, taper: 1.5, core: 0, alpha: 0.55, step: 0.35 }),
-  /** 通用能量拖尾(着色由 tint 给) */
-  energy: ribbonStyle({ width: 0.5, life: 0.32, color: 0xffffff, intensity: 1.5, intensity2: 0.9, add: 0.3, taper: 0.1, core: 0.4, step: 0.2 }),
-  /** 细亮线 */
-  thin: ribbonStyle({ width: 0.16, life: 0.22, color: 0xffffff, intensity: 1.9, intensity2: 1.0, add: 0.5, taper: 0, core: 0.6, step: 0.2 }),
+  /** 通用能量拖尾(着色由 tint 给)。§7.1：技能弹道拖尾 ≤0.25 秒 */
+  energy: ribbonStyle({ width: 0.5, life: 0.25, color: 0xffffff, intensity: 1.5, intensity2: 0.9, add: 0.3, taper: 0.1, core: 0.4, step: 0.2 }),
+  /** 细亮线(普攻弹道：≤0.12 秒) */
+  thin: ribbonStyle({ width: 0.16, life: 0.12, color: 0xffffff, intensity: 1.9, intensity2: 1.0, add: 0.5, taper: 0, core: 0.6, step: 0.2 }),
+  /** 塔弹：粗而短的实芯尾(读成「有分量的一发」) */
+  bolt: ribbonStyle({ width: 0.62, life: 0.13, color: 0xffffff, intensity: 1.7, intensity2: 1.0, add: 0.35, taper: 0.2, core: 0.75, step: 0.15 }),
+  /** 野怪磷粉弹的短尾 */
+  dusty: ribbonStyle({ width: 0.42, life: 0.16, color: 0xc8fff0, color2: 0x2fa8a0, intensity: 1.3, intensity2: 0.7, add: 0.3, noise: 0.6, taper: 0.4, core: 0.3, step: 0.18 }),
   /** 火焰尾迹 */
   fire: ribbonStyle({ width: 1.5, life: 0.5, color: 0xff7a16, color2: 0xc81c0c, intensity: 1.35, intensity2: 0.9, add: 0.2, noise: 0.9, taper: 0.5, core: 0.2, step: 0.3 }),
   /** 风痕 */
@@ -74,8 +94,8 @@ export const R = {
   shadow: ribbonStyle({ width: 1.3, life: 0.45, color: 0x8a5cff, color2: 0x1a1030, intensity: 1.3, intensity2: 0.6, add: 0.35, noise: 0.8, taper: 0.6, core: 0.25, alpha: 0.9, step: 0.3 }),
   /** 烟迹(炮弹) */
   smoke: ribbonStyle({ width: 0.6, life: 0.6, color: 0x8a8690, color2: 0x4a4650, add: 0, noise: 0.9, taper: 1.6, core: 0, alpha: 0.5, step: 0.3 }),
-  /** 警示连线(本帧直线) */
-  warn: ribbonStyle({ width: 0.22, life: 1, color: 0xff3a28, intensity: 1.8, add: 0.4, noise: 0.35, core: 0.6 }),
+  /** 警示连线(本帧直线)：细芯，靠脉冲闪烁而不是粗度引起注意 */
+  warn: ribbonStyle({ width: 0.13, life: 1, color: 0xff3a28, intensity: 1.6, add: 0.45, noise: 0.25, core: 0.7 }),
   /** 锁定连线 */
   link: ribbonStyle({ width: 0.14, life: 1, color: 0xffffff, intensity: 1.5, add: 0.45, noise: 0.2, core: 0.5 }),
 };
@@ -189,6 +209,61 @@ export function embers(k: FxKit, x: number, y: number, z: number, count: number,
     const a = r.next() * TAU;
     const d = Math.sqrt(r.next()) * spread;
     p.spawn(x + Math.cos(a) * d, y + r.range(0, 0.5), z + Math.sin(a) * d, Math.cos(a) * speed * r.range(0.2, 1), speed * r.range(0.4, 1.4), Math.sin(a) * speed * r.range(0.2, 1), life * r.range(0.5, 1.2), size * r.range(0.6, 1.4), size * 0.3, r.range(0, 0.15));
+  }
+}
+
+/**
+ * §7.1 的特效调性常量(英雄特效包照此取值)。
+ * 命中闪光时长：普攻 / 技能 / 暴击·大招；震屏强度上限；地面贴花透明度；点光上限。
+ */
+export const FX_RULES = {
+  flashBasic: 0.09,
+  flashSkill: 0.14,
+  flashBig: 0.2,
+  /** 白闪之后的方向碎屑寿命与张角(全角) */
+  chipLife: 0.25,
+  chipCone: Math.PI / 3,
+  shakeSkill: 0.12,
+  shakeUlt: 0.4,
+  shakeEpic: 0.4,
+  /** 预警填充 / 边线；持续区域填充上限 / 边线；一次性冲击环峰值；残留上限 */
+  warnFill: 0.24,
+  warnEdge: 0.9,
+  zoneFill: 0.22,
+  zoneEdge: 0.7,
+  ringPeak: 0.8,
+  residue: 0.5,
+  /** 普通技能 / 大招残留时长上限(秒) */
+  residueSkill: 2.5,
+  residueUlt: 4,
+  /** 点光强度 3~8，时长 ≤0.35 秒 */
+  lightMax: 8,
+  lightDur: 0.35,
+} as const;
+
+/** 预警四色：敌红 / 友蓝 / 己绿 / 野怪琥珀(边线色与底衬色) */
+export const WARN = {
+  enemy: { edge: C.red, under: C.redDeep },
+  ally: { edge: C.blue, under: C.blueDeep },
+  mine: { edge: C.green, under: C.greenDeep },
+  monster: { edge: C.amber, under: C.violetDeep },
+} as const;
+
+/**
+ * 命中反馈：一帧白闪 + 沿攻击方向 60° 锥的碎屑。(dx, dz) 为攻击方向(单位向量，全 0 = 四散)。
+ * life 用 FX_RULES 的 flashBasic / flashSkill / flashBig。
+ */
+export function hitBurst(k: FxKit, x: number, y: number, z: number, size: number, c: THREE.Color, c2: THREE.Color, dx: number, dz: number, count: number, life: number = FX_RULES.flashBasic, speed = 9): void {
+  k.particles.use(P.hitFlash).tint(C.white, c).spawn(x, y, z, 0, 0, 0, life, size * 0.7, size);
+  const p = k.particles.use(P.chip).tint(c, c2);
+  const r = k.rnd;
+  const n = k.n(count);
+  const base = dx === 0 && dz === 0 ? r.next() * TAU : Math.atan2(dz, dx);
+  const spread = dx === 0 && dz === 0 ? Math.PI : FX_RULES.chipCone * 0.5;
+  for (let i = 0; i < n; i++) {
+    const a = base + r.signed() * spread;
+    const s = speed * r.range(0.55, 1.1);
+    p.spawn(x, y, z, Math.cos(a) * s, r.range(-0.2, 0.9) * s * 0.45, Math.sin(a) * s, FX_RULES.chipLife * r.range(0.6, 1.15), 0.13 * r.range(0.7, 1.2), 0.04, life * 0.4);
   }
 }
 

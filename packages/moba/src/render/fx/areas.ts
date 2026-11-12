@@ -1,11 +1,12 @@
 /**
  * 区域效果视图：按 state.areas 同步(出现 → 持续 → 结束)。半径一律取模拟层的精确值；跟随单位的区域用单位的插值位置。
- * 预警圈：敌方红、友方蓝、自己金，圈内由中心向外填充表示倒计时。
+ * 预警圈(§7.2 第 7 项的统一规范)：边线实、填充淡、倒计时由内向外推进；四色 = 敌红 / 友蓝 / 己绿 / 野怪琥珀。
+ * 持续区域的填充与亮度上限由贴花着色器统一压住(≤0.22，low 档再乘 DECAL_FILL)，各条目只管意象。
  * 敌方的持续区域额外套一圈红色细边，方便判断「这块地方别站」。
  */
 import { TICK_DT, type AreaEffect, type AreaVisual, type TeamId } from '../../core/types';
 import type { FrameInfo } from '../engine/context';
-import { P, dustRing, embers, ring } from './common';
+import { P, WARN, dustRing, embers, ring } from './common';
 import { DECAL } from './decals';
 import { MODE, SHAPE, type FxMesh } from './glow';
 import type { FxKit } from './kit';
@@ -42,12 +43,6 @@ interface AreaDef {
   end?(k: FxKit, v: AreaView): void;
 }
 
-const WARN_ENEMY = col(0xff4632);
-const WARN_ENEMY_UNDER = col(0x3a0a08);
-const WARN_ALLY = col(0x58b4ff);
-const WARN_ALLY_UNDER = col(0x0a1c3a);
-const WARN_MINE = col(0xffd04a);
-const WARN_MINE_UNDER = col(0x3a2a08);
 const EDGE_ENEMY = col(0xff3a28);
 
 function hold(k: FxKit, v: AreaView, type: number, fadeIn = 0.12): number {
@@ -86,10 +81,11 @@ const DEFS: Record<AreaVisual, AreaDef> = {
   // ── 通用预警圈 ──
   telegraph: {
     create(k, v) {
-      const c = v.hostile ? WARN_ENEMY : v.mine ? WARN_MINE : WARN_ALLY;
-      const u = v.hostile ? WARN_ENEMY_UNDER : v.mine ? WARN_MINE_UNDER : WARN_ALLY_UNDER;
+      const w = v.team === 2 ? WARN.monster : v.hostile ? WARN.enemy : v.mine ? WARN.mine : WARN.ally;
       const s = hold(k, v, DECAL.telegraph, 0.06);
-      k.decals.at(s).y(0.09).color(c, v.hostile ? 2 : 1.6, v.hostile ? 1 : 0.8).under(u, 0.75).xray();
+      // 敌方与野怪的预警最要紧：边线更亮、不透明度满；自己和友方的淡一档
+      const loud = v.hostile || v.team === 2;
+      k.decals.at(s).y(0.09).color(w.edge, loud ? 1.7 : 1.4, loud ? 0.95 : 0.8).under(w.under, 0.6).xray();
     },
     update(k, v) {
       k.decals.at(v.slots[0]).at(v.x, v.z).radius(v.radius).params(v.t);

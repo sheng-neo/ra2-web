@@ -480,7 +480,7 @@ export function scatterGround(batch: SceneryBatcher, lib: PropLibrary, field: Ma
       const nz = -(p1.x - p0.x) / l;
       const mid = { x: (p0.x + p1.x) / 2 + nx * 0.2, y: (p0.y + p1.y) / 2 + nz * 0.2 };
       const inward = pointInPolygon(mid, poly) ? 1 : -1;
-      for (let s = r5.range(0.2, 0.7); s < l; s += r5.range(0.45, 0.9)) {
+      for (let s = r5.range(0.2, 0.9); s < l; s += r5.range(0.8, 1.5)) {
         const px = p0.x + ((p1.x - p0.x) * s) / l + nx * inward * 0.14;
         const pz = p0.y + ((p1.y - p0.y) * s) / l + nz * inward * 0.14;
         if (field.riverDist(px, pz) > 1.0 || field.laneDist(px, pz) < 1.2) continue;

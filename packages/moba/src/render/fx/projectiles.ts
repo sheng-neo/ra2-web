@@ -6,13 +6,13 @@
 import type * as THREE from 'three';
 import type { GameEvent, Projectile, ProjectileVisual, TeamId } from '../../core/types';
 import type { FrameInfo } from '../engine/context';
-import { P, R, dustPuff, flash, glints, ring, shards, sparks } from './common';
+import { FX_RULES, P, R, debris, dustPuff, flash, glints, hitBurst, ring, shards, sparks } from './common';
 import { DECAL } from './decals';
 import { MODE, SHAPE, type FxMesh } from './glow';
 import type { FxKit } from './kit';
 import type { RibbonStyle } from './ribbons';
 import { SPRITE } from './textures';
-import { C, TAU, THEME, teamTheme } from './util';
+import { C, TAU, THEME, col, teamTheme } from './util';
 
 interface ProjColors {
   glow: THREE.Color;
@@ -48,7 +48,8 @@ interface ProjDef {
 }
 
 const none = (): void => {};
-const POISON: ProjColors = { glow: C.poison, hot: C.white, deep: C.poisonDeep };
+/** 荧翅蛾的磷粉：青绿主色 + 琥珀芯(眼斑色) */
+const PHOSPHOR: ProjColors = { glow: C.moth, hot: col(0xfff0c0), deep: col(0x1f7a72) };
 
 function def(o: Partial<ProjDef> & Pick<ProjDef, 'shape' | 'scale' | 'colors'>): ProjDef {
   return {
@@ -206,17 +207,17 @@ const DEFS: Record<ProjectileVisual, ProjDef> = {
       for (let i = 0; i < k.n(3); i++) p.spawn(x, y, z, k.rnd.signed(), k.rnd.range(0.5, 1.5), k.rnd.signed(), 0.5, 0.5, 1);
     },
   }),
-  // 远程兵的能量弹
+  // 远程兵(提灯傀儡)的灯火弹：小而清楚，不和英雄技能抢眼
   minion_ranged: def({
     shape: SHAPE.sphere,
-    scale: [0.2, 0.2, 0.2],
+    scale: [0.17, 0.17, 0.17],
     colors: teamTheme,
+    intensity: 1.6,
     ribbon: R.thin,
-    ribbonWidth: 0.9,
-    halo: 0.75,
+    ribbonWidth: 0.75,
+    halo: 0.6,
     hit(k, c, x, y, z) {
-      flash(k, x, y, z, 0.7, c.hot, 0.12);
-      glints(k, x, y, z, 2, 2, c.hot, c.glow, 0.3, 0.2);
+      hitBurst(k, x, y, z, 0.6, c.hot, c.glow, 0, 0, 2, FX_RULES.flashBasic, 4);
     },
   }),
   // 攻城兵的炮弹(抛物线)
@@ -241,35 +242,39 @@ const DEFS: Record<ProjectileVisual, ProjDef> = {
       dustPuff(k, x, 0.3, z, 3, 0.4, 1.2, C.dust, C.dustDark, 0.6);
     },
   }),
-  // 防御塔光弹(追踪)
+  // 防御塔光弹(追踪)：更粗的实芯 + 短而实的尾，读成「有分量的一发」；落点的冲击由 hit_tower 画
   tower_bolt: def({
     shape: SHAPE.diamond,
-    scale: [0.95, 0.6, 0.6],
+    scale: [1.1, 0.72, 0.72],
     colors: teamTheme,
-    intensity: 2.6,
+    intensity: 2.4,
+    add: 0.45,
+    k: 1.4,
     roll: 10,
-    ribbon: R.energy,
-    ribbonWidth: 1.5,
-    halo: 2,
-    rate: 30,
+    ribbon: R.bolt,
+    ribbonWidth: 1.3,
+    halo: 1.7,
+    rate: 22,
     emit(k, c, x, y, z) {
-      k.particles.use(P.glint).tint(c.hot, c.glow).spawn(x, y, z, k.rnd.signed() * 1.5, k.rnd.signed() * 1.5, k.rnd.signed() * 1.5, 0.3, 0.3, 0.06);
+      k.particles.use(P.glint).tint(c.hot, c.glow).spawn(x, y, z, k.rnd.signed() * 1.2, k.rnd.signed() * 1.2, k.rnd.signed() * 1.2, 0.22, 0.26, 0.05);
     },
     hit(k, c, x, y, z) {
-      flash(k, x, y, z, 1.4, c.hot, 0.14);
+      flash(k, x, y, z, 1.1, c.hot, FX_RULES.flashBasic);
     },
   }),
   // 水晶光弹
   core_bolt: def({
     shape: SHAPE.diamond,
-    scale: [1.3, 0.85, 0.85],
+    scale: [1.35, 0.9, 0.9],
     colors: teamTheme,
-    intensity: 2.8,
+    intensity: 2.6,
+    add: 0.45,
+    k: 1.4,
     roll: 10,
-    ribbon: R.energy,
-    ribbonWidth: 2.1,
-    halo: 2.8,
-    rate: 40,
+    ribbon: R.bolt,
+    ribbonWidth: 1.8,
+    halo: 2.3,
+    rate: 30,
     emit(k, c, x, y, z) {
       k.particles.use(P.glint).tint(c.hot, c.glow).spawn(x, y, z, k.rnd.signed() * 2, k.rnd.signed() * 2, k.rnd.signed() * 2, 0.35, 0.36, 0.06);
     },
@@ -277,27 +282,29 @@ const DEFS: Record<ProjectileVisual, ProjDef> = {
       flash(k, x, y, z, 1.9, c.hot, 0.16, true);
     },
   }),
-  // 野怪吐息弹
+  // 荧翅蛾的磷粉弹(§5.4)：一团青色磷粉，琥珀小芯 + 短拖尾，沿途掉落细粉
   monster_spit: def({
     shape: SHAPE.sphere,
-    scale: [0.3, 0.26, 0.26],
-    colors: () => POISON,
-    intensity: 1.8,
-    add: 0.6,
-    ribbon: R.energy,
-    ribbonWidth: 0.9,
+    scale: [0.24, 0.22, 0.22],
+    colors: () => PHOSPHOR,
+    mode: MODE.core,
+    intensity: 1.7,
+    add: 0.5,
+    k: 1.2,
+    ribbon: R.dusty,
+    ribbonWidth: 1,
     halo: 0.9,
-    rate: 16,
-    emit(k, _c, x, y, z) {
-      k.particles.use(P.drop).spawn(x, y, z, k.rnd.signed() * 0.6, 0.5, k.rnd.signed() * 0.6, 0.45, 0.16, 0.1);
+    rate: 26,
+    emit(k, c, x, y, z) {
+      const r = k.rnd;
+      if (r.chance(0.6)) k.particles.use(P.puff).tint(c.glow, c.deep).spawn(x, y, z, r.signed() * 0.5, r.range(-0.2, 0.3), r.signed() * 0.5, 0.35, 0.3, 0.6);
+      else k.particles.use(P.glint).tint(c.hot, c.glow).spawn(x, y, z, r.signed() * 0.8, r.range(-0.6, 0.2), r.signed() * 0.8, 0.45, 0.2, 0.05);
     },
     hit(k, c, x, y, z) {
-      flash(k, x, y, z, 1, c.glow, 0.16);
-      ring(k, x, z, 1.1, 0.3, c.glow, 1.2, 0.2, 0.3);
-      const p = k.particles.use(P.drop);
-      for (let i = 0; i < k.n(5); i++) p.spawn(x, y, z, k.rnd.signed() * 3.5, k.rnd.range(1, 4), k.rnd.signed() * 3.5, 0.5, 0.2, 0.12);
-      const b = k.particles.use(P.bubble).tint(c.glow, c.deep);
-      for (let i = 0; i < k.n(3); i++) b.spawn(x + k.rnd.signed() * 0.4, y, z + k.rnd.signed() * 0.4, 0, k.rnd.range(0.5, 1.5), 0, 0.6, 0.25, 0.45);
+      hitBurst(k, x, y, z, 1.0, c.hot, c.glow, 0, 0, 3, FX_RULES.flashBasic, 4);
+      const p = k.particles.use(P.puff).tint(c.glow, c.deep);
+      for (let i = 0; i < k.n(4); i++) p.spawn(x, y, z, k.rnd.signed() * 1.6, k.rnd.range(0.2, 1), k.rnd.signed() * 1.6, 0.5, 0.4, 1.1);
+      glints(k, x, y, z, 4, 2.2, c.hot, c.glow, 0.5, 0.22);
     },
   }),
 };

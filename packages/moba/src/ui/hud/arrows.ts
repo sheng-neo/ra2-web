@@ -62,7 +62,16 @@ const HOVER_HEIGHT = 8.5;
 /** 标签的半宽 / 半高(像素，估值)：摆位时让它不压到箭头 */
 const LABEL_HALF = { w: 66, h: 14 } as const;
 
-export function createSceneArrow(ctx: HudCtx): SceneArrow {
+/** 贴边箭头要躲开的顶部指引位：多少帧重读一次它的位置(卡片高度会随文案变) */
+const AVOID_EVERY = 12;
+/** 内缩矩形的上边最多被指引位往下推到视口高度的这个比例 */
+const AVOID_MAX_TOP = 0.45;
+
+/**
+ * @param avoid 顶部中央的指引位(引导卡 / 目标行)。贴边箭头朝上指时会落在内缩矩形的上边，
+ *              竖屏和手机横屏下那里正好被引导卡盖住，所以上边至少要退到它的下沿之下。
+ */
+export function createSceneArrow(ctx: HudCtx, avoid?: () => HTMLElement | null): SceneArrow {
   injectStyle('sf-hud-garrow', CSS);
   const ring = h('i', 'sf-hud__garrow-ring');
   const tip = h('i', 'sf-hud__garrow-tip');
@@ -89,6 +98,9 @@ export function createSceneArrow(ctx: HudCtx): SceneArrow {
   let lastLx = NaN;
   let lastLy = NaN;
   const probe: Vec2 = { x: 0, y: 0 };
+  /** 指引位下沿(相对 HUD 根节点，像素)；0 = 不用躲 */
+  let avoidBottom = 0;
+  let avoidAge = AVOID_EVERY;
 
   function place(c: HudCtx): void {
     if (!target) return;
@@ -96,7 +108,21 @@ export function createSceneArrow(ctx: HudCtx): SceneArrow {
       const r = ctx.root.getBoundingClientRect();
       rect = { left: r.left, top: r.top, w: r.width, h: r.height };
       rectDirty = false;
+      avoidAge = AVOID_EVERY;
       if (rect.w === 0) return;
+    }
+    if (++avoidAge >= AVOID_EVERY) {
+      avoidAge = 0;
+      // 量里面实际显示的卡片 / 目标行的布局位置(offset*，不受淡入时 translateY 的影响，免得量到滑入途中偏上的位置)
+      const a = avoid?.();
+      let bottom = 0;
+      if (a) {
+        const top = a.getBoundingClientRect().top;
+        for (const child of Array.from(a.children)) {
+          if (child instanceof HTMLElement && child.offsetHeight > 0) bottom = Math.max(bottom, top + child.offsetTop + child.offsetHeight);
+        }
+      }
+      avoidBottom = bottom > 0 ? bottom - rect.top : 0;
     }
     const { host } = c;
     const W = rect.w;
@@ -119,8 +145,9 @@ export function createSceneArrow(ctx: HudCtx): SceneArrow {
       ring.style.transform = `translate3d(${fx.toFixed(1)}px, ${fy.toFixed(1)}px, 0)`;
       const top = host.worldToScreen(target.pos, HOVER_HEIGHT);
       x = top.x - rect.left;
-      // 塔很高、镜头又近时头顶可能出了屏幕：箭头至少留在屏内
-      y = Math.max(H * 0.16, top.y - rect.top);
+      // 塔很高、镜头又近时头顶可能出了屏幕：箭头至少留在屏内；
+      // 头顶上方的标签也别钻到指引位下面(最多压到脚下光圈处为止)
+      y = Math.max(H * 0.16, top.y - rect.top, Math.min(avoidBottom + size + 8 + 2 * LABEL_HALF.h + 4, fy - 4));
       deg = 90;
       lx = 0;
       ly = -(size + 8 + LABEL_HALF.h);
@@ -153,7 +180,8 @@ export function createSceneArrow(ctx: HudCtx): SceneArrow {
       // 从内缩矩形的中心沿这个方向射到矩形的边
       const x0 = W * INSET.left;
       const x1 = W * (1 - INSET.right);
-      const y0 = H * INSET.top;
+      // 上边让出指引位(下沿再留 8 像素)：朝上指的箭头整支落在上边之下
+      const y0 = Math.min(H * AVOID_MAX_TOP, Math.max(H * INSET.top, avoidBottom + 8));
       const y1 = H * (1 - INSET.bottom);
       const cx = (x0 + x1) / 2;
       const cy = (y0 + y1) / 2;

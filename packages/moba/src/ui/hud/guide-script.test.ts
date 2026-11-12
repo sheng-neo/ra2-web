@@ -1,11 +1,14 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { HEROES } from '../../core/data/heroes';
 import type { SimHero } from '../../core/internal';
 import { freezeUnit, place, quietWorld, spawnMinionAt } from '../../core/testkit';
 import type { BuffId, GameEvent, GameState, HeroUnit, TowerUnit, Vec2 } from '../../core/types';
 import { TICK_DT } from '../../core/types';
-import type { Sim } from '../../core/world';
+import { createWorld, type Sim } from '../../core/world';
 import { GUIDE_TUNE, GuideScript, parseGuideText, plainGuideText, type GuideInput, type GuideView } from './guide-script';
+
+// 这些用例要推进真实模拟层，机器负载高时默认 5 秒不够
+vi.setConfig({ testTimeout: 60_000 });
 
 const player = (sim: Sim): SimHero => sim.heroes.find((h) => h.isPlayer) as SimHero;
 /** 直接给单位挂一个状态(只填界面读的那几个字段；测试里不再推进模拟层时用) */
@@ -662,3 +665,36 @@ describe('GuideScript：情境小贴士', () => {
     expect(v.card?.text).toMatch(/^\*\*蓝buff\*\*：打掉它，\d+ 秒内技能冷却更短、回蓝更快。$/);
   });
 });
+
+describe('GuideScript：跟着一局真实对局跑', () => {
+  it('玩家由 Bot 代打 4 分半钟：不抛错，前三课都按实际操作完成，文案没有占位符', { timeout: 120_000 }, () => {
+    for (const hero of ['chijin', 'yeque'] as const) {
+      const sim = createWorld({ seed: 17, playerHero: hero, difficulty: 'easy', autoPlay: true });
+      const me = player(sim);
+      const script = new GuideScript(sim.state, me);
+      const inp: GuideInput = { state: sim.state, me, mode: 'touch', shopOpen: false, objectiveHints: true };
+      const shown: string[] = [];
+      let last = '';
+      for (let tick = 0; tick < 270 * 30 && !sim.state.over && !script.finished; tick++) {
+        sim.step();
+        for (const ev of sim.drainEvents()) script.onEvent(ev, sim.state);
+        // 界面按渲染帧更新：每 2 tick 一次
+        if (tick % 2 !== 0) continue;
+        const v = script.update(inp);
+        const id = v.card ? `${v.card.id}${v.card.done ? '✓' : ''}` : '';
+        if (id && id !== last) shown.push(id);
+        last = id;
+        if (v.card) {
+          expect(v.card.text.length).toBeGreaterThan(4);
+          expect(v.card.text).not.toMatch(/undefined|NaN|\{|\}/);
+        }
+        if (v.arrow) expect(Number.isFinite(v.arrow.pos.x) && v.arrow.label.length > 0).toBe(true);
+      }
+      const done = script.debug().done;
+      // Bot 会走路、普攻、补刀、放技能：前三课一定做得完
+      expect(done, `${hero}: ${shown.join(' ')}`).toEqual(expect.arrayContaining(['move', 'go', 'attack', 'lasthit', 'skill']));
+      expect(shown[0].startsWith('move') || shown[0].startsWith('go')).toBe(true);
+    }
+  });
+});
+

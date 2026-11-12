@@ -162,6 +162,16 @@ export function createBanner(): Banner {
   let lastEpic: MonsterType | null = null;
   let lastEpicPos: Vec2 | null = null;
   let lastTower: TowerEvent | null = null;
+  /**
+   * 播报事件入批时那一刻的「最近一只史诗野怪 / 最近一座塔」：同一批里可能先后有两只史诗野怪、两座塔的事件
+   * (比如巨龙被打死的同一 tick 巨灵刷新)，到 flush 时再读 lastEpic 会张冠李戴，所以入批时就记下来。
+   */
+  interface AnnounceCtx { epic: MonsterType | null; epicPos: Vec2 | null; tower: TowerEvent | null }
+  const ctxOf = new Map<AnnounceEvent, AnnounceCtx>();
+  const pushBatch = (ev: KillEvent | AnnounceEvent): void => {
+    if (ev.type === 'announce') ctxOf.set(ev, { epic: lastEpic, epicPos: lastEpicPos, tower: lastTower });
+    batch.push(ev);
+  };
   /** 已经播过「刷新」横幅的史诗野怪：第一次多说一句它在小地图的哪儿 */
   const epicSeen = new Set<MonsterType>();
 
@@ -235,6 +245,10 @@ export function createBanner(): Banner {
     const tier = ANNOUNCE_TIER[a.key];
     const actor = a.unitId !== undefined ? c.hero(a.unitId) : undefined;
     const base = { tier, tone, left: null, right: null, slain: false } as const;
+    const snap = ctxOf.get(a);
+    const epic = snap ? snap.epic : lastEpic;
+    const epicPos = snap ? snap.epicPos : lastEpicPos;
+    const tower = snap ? snap.tower : lastTower;
     switch (a.key) {
       case 'match_start':
         return { ...base, title: '对战开始', sub: ['摧毁敌方水晶就赢'], hold: HOLD_INFO };
@@ -243,21 +257,21 @@ export function createBanner(): Banner {
       case 'super_minions':
         return { ...base, title: mine ? '我方超级兵出击' : '敌方超级兵出击', sub: [mine ? '敌方高地塔已破，这一路的兵更强了' : '我方高地塔被破，注意回防'], hold: HOLD_INFO };
       case 'epic_spawn': {
-        const name = lastEpic ? MONSTERS[lastEpic].name : '史诗野怪';
+        const name = epic ? MONSTERS[epic].name : '史诗野怪';
         // 一句话说明击杀奖励(数值取自 MONSTER_RULES)；每种第一次刷新时再说一句它在小地图的哪儿
-        const sub: Child[] = [(lastEpic && MONSTERS[lastEpic].reward) || '打掉它，全队都有奖励'];
-        if (lastEpic && lastEpicPos && !epicSeen.has(lastEpic)) sub.push(h('span', 'is-dim', `(小地图${riverSide(lastEpicPos)})`));
-        if (lastEpic) epicSeen.add(lastEpic);
+        const sub: Child[] = [(epic && MONSTERS[epic].reward) || '打掉它，全队都有奖励'];
+        if (epic && epicPos && !epicSeen.has(epic)) sub.push(h('span', 'is-dim', `(小地图${riverSide(epicPos)})`));
+        if (epic) epicSeen.add(epic);
         return { ...base, title: `${name}已刷新`, sub, left: glyphFace(uiIcon('monster')), hold: HOLD_EPIC };
       }
       case 'epic_slain': {
-        const name = lastEpic ? MONSTERS[lastEpic].name : '史诗野怪';
-        const reward = lastEpic ? epicSlainText(lastEpic, mine) : mine ? '全队获得奖励' : '敌方获得奖励';
+        const name = epic ? MONSTERS[epic].name : '史诗野怪';
+        const reward = epic ? epicSlainText(epic, mine) : mine ? '全队获得奖励' : '敌方获得奖励';
         const sub: Child[] = mine && actor ? [who(actor, c), '拿下', '·', reward] : [reward];
         return { ...base, title: mine ? `我方击败${name}` : `敌方夺得${name}`, sub, left: actor ? heroFace(c.host, actor, c.team) : null, right: glyphFace(uiIcon('monster'), 'is-dead'), slain: true, hold: HOLD_EPIC };
       }
       case 'tower_destroyed': {
-        const where = lastTower ? towerName(lastTower.lane, lastTower.tier) : '防御塔';
+        const where = tower ? towerName(tower.lane, tower.tier) : '防御塔';
         const sub: Child[] = mine ? (actor ? [who(actor, c), `拆除了敌方${where}`] : [`我方兵线拆除了敌方${where}`]) : [`我方${where}失守`];
         return { ...base, title: mine ? '摧毁敌方防御塔' : '我方防御塔被摧毁', sub, left: actor ? heroFace(c.host, actor, c.team) : null, right: glyphFace(uiIcon('tower'), `${teamCls(mine ? (c.team === 0 ? 1 : 0) : c.team, c.team)} is-dead`), slain: true };
       }
@@ -300,12 +314,13 @@ export function createBanner(): Banner {
       }
     }
     batch.length = 0;
+    ctxOf.clear();
   }
 
   return {
     el: wrap,
     handleEvent(ev) {
-      if (ev.type === 'heroKill' || ev.type === 'announce') batch.push(ev);
+      if (ev.type === 'heroKill' || ev.type === 'announce') pushBatch(ev);
       else if (ev.type === 'monsterSpawn') {
         if (MONSTERS[ev.monsterType].epic) {
           lastEpic = ev.monsterType;
@@ -318,7 +333,7 @@ export function createBanner(): Banner {
       flush(c);
     },
     demo(ev, c) {
-      batch.push(ev);
+      pushBatch(ev);
       flush(c);
     },
     isShowing: () => cur !== null || queue.length > 0,
@@ -341,6 +356,7 @@ export function createBanner(): Banner {
     dispose() {
       queue.length = 0;
       batch.length = 0;
+      ctxOf.clear();
     },
   };
 }

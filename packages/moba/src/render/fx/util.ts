@@ -113,6 +113,19 @@ export const C = {
   poison: col(0xb8f060),
   poisonDeep: col(0x4f9a2c),
   black: col(0x000000),
+  greenDeep: col(0x1f6a2c),
+  /** 野怪预警边(琥珀)与吐息 / 渊蚀的紫青色系(§5.5) */
+  amber: col(0xffc24a),
+  violet: col(0xa070ff),
+  violetHot: col(0xe0c8ff),
+  violetDeep: col(0x2a1658),
+  abyssCyan: col(0x7ff0e0),
+  /** 霜晶(蓝buff)与余烬(红buff)的增益色 */
+  frostHot: col(0xd8f4ff),
+  emberHot: col(0xffd27a),
+  /** 苔孢、蛾鳞粉 */
+  spore: col(0xd8e8a0),
+  moth: col(0x8ff0e0),
 };
 
 export interface TeamTheme {

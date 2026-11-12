@@ -496,10 +496,11 @@ export interface BeardOpts {
   thick?: number;
   /** 下巴处底须垂到下颌以下多少(米) */
   drop?: number;
-  /** 须束数(沿下颌线均布)、长度、根部粗细 */
+  /** 须束数(沿下颌线均布)、长度、根部粗细、截面分段(默认 5) */
   tufts?: number;
   len?: number;
   tuftR?: number;
+  tuftSeg?: number;
   /** 外翻程度 0..1：须束向外张开并在末端上卷 */
   puff?: number;
   /** 八字胡：单边长度(0 = 没有)、粗细、末端上翘高度(负值 = 下垂) */
@@ -558,7 +559,7 @@ export function beard(b: ModelBuilder, h: Human, hd: HeadShape, o: BeardOpts): v
     const ox = Math.sin(phi);
     const oz = Math.cos(phi);
     const dir = [ox * (0.35 + puff * 0.8), -1, oz * (0.3 + puff * 0.55) * (0.5 + 0.5 * mid)];
-    lock(b, root, dir, len * (0.78 + 0.22 * mid), tr * (0.85 + 0.25 * mid), { curl: [ox * puff * 0.5, puff * 0.55, oz * puff * 0.4], n: 3, seg: 5, up: [oz, 0, -ox], flat: 0.8, tip: 0.16 });
+    lock(b, root, dir, len * (0.78 + 0.22 * mid), tr * (0.85 + 0.25 * mid), { curl: [ox * puff * 0.5, puff * 0.55, oz * puff * 0.4], n: 3, seg: o.tuftSeg ?? 5, up: [oz, 0, -ox], flat: 0.8, tip: 0.16 });
   }
   const ml = (o.mustache ?? 0) * s;
   if (ml > 0) {

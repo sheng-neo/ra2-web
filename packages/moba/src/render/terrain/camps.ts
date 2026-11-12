@@ -220,17 +220,18 @@ function makeStarArc(seed: number): THREE.BufferGeometry {
 function makeMeteorChunk(seed: number): THREE.BufferGeometry {
   const rng = new Rng(seed);
   const b = new MeshBuilder();
-  const iron = rgb(0x3a3f66);
-  const ironL = rgb(0x6a72a8);
+  // 深色、棱角分明(detail 0)，避免读成一团圆润的紫色气球
+  const iron = rgb(0x2a2c40);
+  const ironL = rgb(0x575b7e);
   const s = rng.range(0.55, 0.85);
-  addBlob(b, 0, s * 0.35, 0, s, s * 0.8, s * 0.9, { detail: 1, bump: 0.2, seed, bottom: scaleRgb(iron, 0.7), top: ironL, flat: true });
-  addBlob(b, s * 0.8, s * 0.12, s * 0.3, s * 0.4, s * 0.3, s * 0.36, { detail: 0, bump: 0.25, seed: seed + 3, bottom: iron, top: ironL, flat: true });
-  // 熔蚀边：几枚金色的小晶刺从裂缝里长出来
-  const n = 4 + rng.int(3);
+  addBlob(b, 0, s * 0.3, 0, s, s * 0.72, s * 0.9, { detail: 0, bump: 0.32, seed, bottom: scaleRgb(iron, 0.7), top: ironL, flat: true });
+  addBlob(b, s * 0.85, s * 0.08, s * 0.3, s * 0.42, s * 0.32, s * 0.36, { detail: 0, bump: 0.3, seed: seed + 3, bottom: iron, top: ironL, flat: true });
+  // 熔蚀边：一圈金色晶刺从裂缝里斜着长出来(够长才能在俯视镜头里看到)
+  const n = 5 + rng.int(3);
   for (let i = 0; i < n; i++) {
-    const a = rng.range(0, TAU);
-    const r = s * rng.range(0.55, 0.9);
-    addCrystal(b, Math.cos(a) * r, s * rng.range(0.15, 0.5), Math.sin(a) * r, s * rng.range(0.3, 0.5), s * 0.07, Math.sin(a) * 0.7, -Math.cos(a) * 0.7, [1, 0.72, 0.3], [1, 0.9, 0.6], 0.8, seed + i);
+    const a = (i / n) * TAU + rng.range(-0.3, 0.3);
+    const r = s * rng.range(0.7, 0.95);
+    addCrystal(b, Math.cos(a) * r, s * rng.range(0.25, 0.55), Math.sin(a) * r, s * rng.range(0.5, 0.8), s * 0.09, Math.sin(a) * 0.9, -Math.cos(a) * 0.9, [1, 0.72, 0.3], [1, 0.9, 0.6], 0.9, seed + i);
   }
   return b.build();
 }
@@ -468,7 +469,7 @@ export function decorateCamps(
         // 坠星潭：邻近崖台上半埋的陨铁碎块
         for (const s of pickSpaced(spots, 4, 3.6, rng)) {
           const [x, y, z] = onTop(s, rng.range(0.6, 1.2));
-          batch.add(rng.pick(protos.meteor), trs(x, y - 0.1, z, rng.range(0, TAU), rng.range(0.9, 1.3), undefined, rng.range(-0.2, 0.2), rng.range(-0.2, 0.2)), { glow: 1 });
+          batch.add(rng.pick(protos.meteor), trs(x, y - 0.22, z, rng.range(0, TAU), rng.range(0.9, 1.3), undefined, rng.range(-0.2, 0.2), rng.range(-0.2, 0.2)), { glow: 1 });
           glow.reserve(x, z);
           out.glows.push({ x, z, y: y + 0.05, r: 1.5, color: col });
           out.aoBlobs.push({ x, y: y + 0.06, z, r: 1.1, strength: 0.34 });

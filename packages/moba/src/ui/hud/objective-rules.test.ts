@@ -1,9 +1,12 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { SimHero } from '../../core/internal';
 import { heroOf, place, quietWorld, spawnMinionAt, stepFor } from '../../core/testkit';
 import type { BuffId, CoreUnit, GameState, HeroUnit, TowerUnit } from '../../core/types';
 import { createWorld, type Sim } from '../../core/world';
 import { LANE_PHASE_END, LATE_PHASE_START, OBJECTIVE_DEBOUNCE, ObjectiveTracker, createObjectiveMemory, pickObjective, type Objective } from './objective-rules';
+
+// 这些用例要推进真实模拟层，机器负载高时默认 5 秒不够
+vi.setConfig({ testTimeout: 60_000 });
 
 const player = (sim: Sim): SimHero => sim.heroes.find((h) => h.isPlayer) as SimHero;
 /** 直接给单位挂一个状态(只填界面读的那几个字段；测试里不再推进模拟层时用) */

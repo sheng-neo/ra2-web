@@ -137,6 +137,7 @@ function resetStage(): void {
     u.lastHitTime = -999;
   }
   for (const u of state.units) if (u.kind === 'tower') u.targetId = -1;
+  homeMonsters();
   state.projectiles.length = 0;
   state.areas.length = 0;
   timers.length = 0;
@@ -397,8 +398,18 @@ const SINGLE: Record<FxKey, () => void> = {
     fx('buff_gain', P0(), { unitId: player.id });
   },
   // 河道巨龙吐息(C1 占位：只发事件，舞台上没有巨龙单位；待 D 特效包换成带巨龙与 cast_s1 动作的完整演示)
-  drake_breath_warn: () => fx('drake_breath_warn', P0(), { team: 2, unitId: player.id, dir: dirTo(player.pos, foe.pos), radius: 7.5, angle: Math.PI / 3, value: 0.9 }),
-  drake_breath: () => fx('drake_breath', P0(), { team: 2, unitId: player.id, dir: dirTo(player.pos, foe.pos), radius: 7.5, angle: Math.PI / 3, value: 0.8 }),
+  drake_breath_warn: () => {
+    const d = stageDrake();
+    setAnim(d, 'cast_s1', 1.7);
+    fx('drake_breath_warn', cp(d.pos), { team: 2, unitId: d.id, targetId: player.id, dir: dirTo(d.pos, player.pos), radius: 7.5, angle: Math.PI / 3, value: 0.9 });
+  },
+  drake_breath: () => {
+    const d = stageDrake();
+    setAnim(d, 'cast_s1', 1.7);
+    d.animStart = state.time - 0.9;
+    fx('drake_breath', cp(d.pos), { team: 2, unitId: d.id, dir: dirTo(d.pos, player.pos), radius: 7.5, angle: Math.PI / 3, value: 0.8 });
+    for (let i = 0; i < 4; i++) after(i * 0.2, () => [player, ally].forEach((u) => damage(u, 90, 'magic', false, true, d)));
+  },
   panyue_passive_hit: () => fx('panyue_passive_hit', T0(), { unitId: player.id, targetId: foe.id }),
   panyue_s1_dash: () => {
     const dir = dirTo(player.pos, foe.pos);
@@ -799,6 +810,124 @@ const SEQ: Record<string, () => void> = {
 };
 for (const [k, fn] of Object.entries(SEQ)) PLAYS.set('seq:' + k, fn);
 
+// ───────────────────────── 野怪 / 史诗 / 增益(把营地里的野怪临时搬上舞台) ─────────────────────────
+
+const monsterHome = new Map<number, Vec2>();
+/** 把某种野怪搬到舞台右前方(面朝玩家)；resetStage 时送回营地 */
+function stageMonster(type: string, f = 4.8, r = 0.6): Unit {
+  const m = state.units.find((u) => u.kind === 'monster' && u.monsterType === type) as Unit;
+  if (!monsterHome.has(m.id)) monsterHome.set(m.id, cp(m.pos));
+  const p = at(f, r);
+  m.pos = cp(p);
+  m.prevPos = cp(p);
+  m.alive = true;
+  m.hp = m.stats.maxHp * 0.6;
+  m.anim = 'idle';
+  m.animStart = state.time;
+  m.animDur = 0;
+  m.visible = [true, true];
+  m.facing = Math.atan2(player.pos.y - p.y, player.pos.x - p.x);
+  return m;
+}
+const stageDrake = (): Unit => stageMonster('abyss_drake', 5.5, 0.4);
+function homeMonsters(): void {
+  for (const [id, p] of monsterHome) {
+    const m = state.units.find((u) => u.id === id);
+    if (!m) continue;
+    m.pos = cp(p);
+    m.prevPos = cp(p);
+    m.alive = true;
+    m.anim = 'idle';
+  }
+  monsterHome.clear();
+  state.teams[0].blessingLeft = 0;
+  state.teams[1].blessingLeft = 0;
+}
+
+const MONSTER_TYPES = ['frost_golem', 'ember_golem', 'mossback', 'glimwing', 'abyss_drake', 'star_colossus'] as const;
+const SEQ2: Record<string, () => void> = {
+  /** 河道巨龙吐息全程：0.9 秒预警 → 0.8 秒喷吐(喷中玩家与队友) */
+  drake_breath: () => {
+    const d = stageDrake();
+    setAnim(d, 'cast_s1', 1.7);
+    fx('drake_breath_warn', cp(d.pos), { team: 2, unitId: d.id, targetId: player.id, dir: dirTo(d.pos, player.pos), radius: 7.5, angle: Math.PI / 3, value: 0.9 });
+    after(0.9, () => {
+      fx('drake_breath', cp(d.pos), { team: 2, unitId: d.id, dir: dirTo(d.pos, player.pos), radius: 7.5, angle: Math.PI / 3, value: 0.8 });
+      for (let i = 0; i < 4; i++) after(i * 0.2, () => [player, ally].forEach((u) => damage(u, 90, 'magic', false, true, d)));
+    });
+  },
+  /** 河道巨龙被击杀：倒地演出 + 全队奖励(光带飞向本方英雄) */
+  drake_slain: () => {
+    const d = stageDrake();
+    d.alive = false;
+    d.anim = 'dead';
+    d.animStart = state.time;
+    fx('monster_slain', cp(d.pos), { team: 2, unitId: d.id });
+    events.push({ type: 'epicSlain', monsterType: 'abyss_drake', team: 0, pos: cp(d.pos) });
+  },
+  /** 远古巨灵被击杀：星雨 + 八芒星印，之后全队挂星陨祝福(英雄脚环 + 小兵头顶金星) */
+  colossus_slain: () => {
+    const c = stageMonster('star_colossus', 7, 0);
+    c.alive = false;
+    c.anim = 'dead';
+    c.animStart = state.time;
+    fx('monster_slain', cp(c.pos), { team: 2, unitId: c.id });
+    events.push({ type: 'epicSlain', monsterType: 'star_colossus', team: 0, pos: cp(c.pos) });
+    after(1.0, () => {
+      state.teams[0].blessingLeft = 80;
+      for (const u of [player, ally]) addBuff(u, 'star_blessing', 80, 0, 1, u.id);
+    });
+  },
+  /** 蓝buff 被击杀：霜纹晶化成光球飞向击杀者 */
+  frost_gain: () => {
+    const m = stageMonster('frost_golem', 3.5, -2.2);
+    m.alive = false;
+    m.anim = 'dead';
+    m.animStart = state.time;
+    fx('monster_slain', cp(m.pos), { team: 2, unitId: m.id });
+    addBuff(player, 'frost_insight', 90, 0, 1, player.id);
+    fx('buff_gain', P0(), { unitId: player.id });
+  },
+  /** 红buff 被击杀：熔核化成光球飞来 */
+  ember_gain: () => {
+    const m = stageMonster('ember_golem', 3.5, -2.2);
+    m.alive = false;
+    m.anim = 'dead';
+    m.animStart = state.time;
+    fx('monster_slain', cp(m.pos), { team: 2, unitId: m.id });
+    addBuff(player, 'ember_might', 90, 0, 1, player.id);
+    fx('buff_gain', P0(), { unitId: player.id });
+  },
+  /** 三种增益同时在身上：脚环分层(蓝 1.6 / 红 1.85 / 巨灵 2.1 倍半径)；队友只有巨灵；小兵头顶金星 */
+  buff_rings: () => {
+    addBuff(player, 'frost_insight', 90, 0, 1, player.id);
+    addBuff(player, 'ember_might', 90, 0, 1, player.id);
+    addBuff(player, 'star_blessing', 80, 0, 1, player.id);
+    addBuff(ally, 'star_blessing', 80, 0, 1, ally.id);
+    addBuff(foe, 'ember_might', 4, 0, 1, foe.id);
+    state.teams[0].blessingLeft = 80;
+  },
+  /** 野怪营地的远程小野怪：磷粉弹 */
+  moth_spit: () => {
+    const m = stageMonster('glimwing', 4.5, -2);
+    for (let i = 0; i < 3; i++) after(i * 0.45, () => spawnProjectile('monster_spit', m, cp(m.pos), dirTo(m.pos, player.pos), 16, { target: player }));
+  },
+};
+for (const t of MONSTER_TYPES) {
+  SEQ2['spawn_' + t] = () => {
+    const m = stageMonster(t, 4.5, 0);
+    events.push({ type: 'monsterSpawn', campId: 0, monsterType: t, pos: cp(m.pos) });
+  };
+  SEQ2['slain_' + t] = () => {
+    const m = stageMonster(t, 4.5, 0);
+    m.alive = false;
+    m.anim = 'dead';
+    m.animStart = state.time;
+    fx('monster_slain', cp(m.pos), { team: 2, unitId: m.id });
+  };
+}
+for (const [k, fn] of Object.entries(SEQ2)) PLAYS.set('seq:' + k, fn);
+
 /** 投射物预览 */
 const PROJ_SPEED: Record<ProjectileVisual, number> = {
   xingli_basic: 24, xingli_s1: 26, fengling_basic: 30, fengling_s1: 32, yeque_s2: 26, minion_ranged: 18, minion_siege: 14, tower_bolt: 26, core_bolt: 26, monster_spit: 16,
@@ -942,13 +1071,15 @@ PLAYS.set('dbg:decals', () => {
     else if (type === DECAL.zone) pen.params(16, 0);
     else if (type === DECAL.ring) pen.params(0.2, 1);
     else if (type === DECAL.glow) pen.params(1.5);
+    else if (type === DECAL.sigil) pen.params(i % 4, 1);
+    else if (type === DECAL.coneWarn) pen.rot(0).params(0.52, 0.6).under(new THREE.Color(0xa070ff), 0.55);
   });
 });
 PLAYS.set('dbg:sprites', () => {
   // 图集里的每个图形各发一个长寿命粒子
   const kit = fxModule.kit;
-  for (let i = 0; i < 32; i++) {
-    const p = at(-7 + (i % 8) * 2, -2.4 + Math.floor(i / 8) * 1.8);
+  for (let i = 0; i < 40; i++) {
+    const p = at(-7 + (i % 8) * 2, -3.2 + Math.floor(i / 8) * 1.7);
     const st = particleStyle({ sprite: i, add: i % 2 ? 1 : 0.3, color: DBG_COLORS[i % DBG_COLORS.length], intensity: 1.4, fadeIn: 0.01, fadeOut: 0.98, rot: 0 });
     kit.particles.use(st).spawn(p.x, 1, p.y, 0, 0, 0, 60, 1.5, 1.5);
   }

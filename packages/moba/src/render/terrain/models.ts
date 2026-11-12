@@ -1127,7 +1127,7 @@ export function createPropLibrary(): PropLibrary {
   const amberA = rgb(E.amber);
   const lib = {
     trees: many(4, (sd) => makeTree(sd), 11),
-    accentTrees: [makeTree(211, { dark: 0xb86a84, mid: 0xe8a9b8, light: 0xffe3ea }), makeTree(223, { dark: 0xa8742a, mid: 0xd9a640, light: 0xf6dc8a })],
+    accentTrees: [makeTree(211, { dark: 0xb86a84, mid: 0xe8a9b8, light: 0xffe3ea }), makeTree(223, { dark: 0x8a6a34, mid: 0xc49a4a, light: 0xe8d08e })],
     willows: many(2, makeWillow, 307),
     farTrees: many(3, makeFarTree, 17),
     pines: many(3, makePine, 23),

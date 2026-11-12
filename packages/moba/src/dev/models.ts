@@ -103,7 +103,7 @@ function addSlot(key: string, x: number, z: number, p: number | null, a: UnitAni
   const look = createInstanceLook();
   look.team.copy(t === 0 ? new THREE.Color(PALETTE.blue.main) : t === 1 ? new THREE.Color(PALETTE.red.main) : new THREE.Color(PALETTE.neutral.main));
   // 与单位视图一致：红方小兵的石铁本体压成玄铁
-  if (t === 1 && key.startsWith('minion:')) look.body.setRGB(0.42, 0.25, 0.24);
+  if (t === 1 && key.startsWith('minion:')) look.body.setRGB(0.4, 0.2, 0.15);
   slots.push({ key, def, puppet, look, x, z, yaw: ((num('face') ?? 0) * Math.PI) / 180, anim: a, p, team: t });
 }
 

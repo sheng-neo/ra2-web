@@ -169,7 +169,7 @@ function build(): { h: Human; b: ModelBuilder; extra: Extra } {
     b.bind(chainBind(joints, pts, J.hips)).paint(0xffffff, { team: 1, mat: MAT.cloth });
     const edge = pts.map((p) => [p[0], p[1], p[2] - Math.sign(bow) * 0.006]);
     strip(b, edge, { width: (v) => mix(w0, w1, v) + 0.024, bow: [0, 0, bow], nu: 2, nv: 5, tail: 'swallow', tailLen: tail + 0.03 });
-    b.paint(C.red, { c2: C.redDark, mat: MAT.cloth, pattern: PATTERN.weave, patternScale: 14, patternAmt: 0.2 });
+    b.paint(C.red, { c2: C.redDark, mat: MAT.cloth });
     strip(b, pts, { width: (v) => mix(w0, w1, v), bow: [0, 0, bow], nu: 4, nv: 5, tail: 'swallow', tailLen: tail });
   };
   skirtPiece(front, frontPts, 0.14, 0.115, 0.035, 0.1);
@@ -226,7 +226,7 @@ function build(): { h: Human; b: ModelBuilder; extra: Extra } {
   b.g(X(0, 1.47, 0.012, 12, 0, 0, 1, 1, 0.92), () => b.torus(0.142, 0.052, 0.046, 10, 4));
   b.ball(0, 1.425, 0.16, 0.048, 0.04, 0.036, 0, 180);
   b.sym(() => b.tube([[0.02, 1.42, 0.165, 0.03, 0.012], [0.07, 1.34, 0.19, 0.034, 0.012], [0.08, 1.27, 0.2, 0.012, 0.008]], { seg: 4, up: [1, 0, 0] }));
-  b.bind(chainBind(cape, capePts, J.chest)).paint(C.red, { c2: C.redDark, mat: MAT.cloth, pattern: PATTERN.weave, patternScale: 12, patternAmt: 0.18 });
+  b.bind(chainBind(cape, capePts, J.chest)).paint(C.red, { c2: C.redDark, mat: MAT.cloth });
   const capeW = (v: number): number => mix(0.25, 0.37, Math.sin(v * Math.PI * 0.5));
   const capeMain = [0, 0.25, 0.5, 0.75, 0.9].map((v) => polyAt(capePts, v));
   strip(b, capeMain, { width: (v) => capeW(v * 0.9), bow: [0, 0, -0.07], wave: 0.22, nu: 6, nv: 8, tail: 'flat' });

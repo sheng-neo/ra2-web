@@ -9,7 +9,7 @@
  * 每帧先摆好躯干与琴，再用 IK 把左手放到琴颈、右手放到弦上，所以琴怎么动，手都在琴上。
  */
 import { type CKP, type CommonAnims, E, type Human, type HumanDims, type RunStyle, RUN_DEFAULT, STANDARD_DIMS, type TrackKey, animateCommon, applyCKP, breathe, bump, emptyCKP, humanRig, kp, makeCommon, mix, mixQ, reachHand, runCycle, sampleTrack, sat, strikeWarp, track } from '../humanoid';
-import { MAT, ModelBuilder, PATTERN, type SoftBind, X, lerp } from '../kit';
+import { MAT, ModelBuilder, type SoftBind, X, lerp } from '../kit';
 import { chainBind, face, furRing, furTube, hairCap, hand, head, polyAt, strip, torsoBind } from '../parts';
 import type { Pose } from '../rig';
 import type { AnimInput, AnimOutput, ModelDef } from '../types';
@@ -119,11 +119,11 @@ function build(): { h: Human; b: ModelBuilder; extra: Extra } {
     [1.0, 0.16, 0.125],
   ];
   const pleat = (a: number, k: number): number => 1 + (k < 4 ? 0.04 * (1 - k / 4) * Math.sin(a * 8) : 0);
-  b.bind(skirtBind).paint(C.hem, { c2: C.robe, ao: 0.9, ao2: 1, mat: MAT.cloth, by: (_x, y) => (y - 0.08) / 0.34, pattern: PATTERN.weave, patternScale: 16, patternAmt: 0.12 });
+  b.bind(skirtBind).paint(C.hem, { c2: C.robe, ao: 0.9, ao2: 1, mat: MAT.cloth, by: (_x, y) => (y - 0.08) / 0.34 });
   b.lathe(skirtProf, { seg: 16, cap0: false, cap1: false, shape: pleat });
   // 裙底：一片浅色衬裙(倒地时会朝向镜头；带一点自发光，不被「朝下的面压暗」的烘焙涂黑)
   b.paint(C.robeShade, { c2: C.hem, glow: 0.06, mat: MAT.cloth, line: 0 });
-  b.lathe([[0.07, 0.02, 0.02], [0.078, 0.45, 0.45]], { seg: 16, cap1: false });
+  b.lathe([[0.05, 0.02, 0.02], [0.058, 0.452, 0.452]], { seg: 16, cap1: false });
   b.paint(C.hem, { c2: C.robe, ao: 0.9, ao2: 1, mat: MAT.cloth });
   const skirtR = (y: number): number => {
     for (let i = 1; i < skirtProf.length; i++) {
@@ -132,7 +132,8 @@ function build(): { h: Human; b: ModelBuilder; extra: Extra } {
     return 0.16;
   };
   b.paint(C.trimDark, { c2: C.trim, mat: MAT.cloth });
-  b.lathe([[0.04, 0.465, 0.465], [0.05, 0.48, 0.48], [0.105, 0.455, 0.455], [0.11, 0.435, 0.435]], { seg: 16, shape: (a) => 1 + 0.04 * Math.sin(a * 8) });
+  // 镶边是开口的环(不封底)：倒地时从裙底看进去是浅色衬裙，而不是一块深色的底盖
+  b.lathe([[0.04, 0.465, 0.465], [0.05, 0.48, 0.48], [0.105, 0.455, 0.455], [0.11, 0.435, 0.435]], { seg: 16, cap0: false, cap1: false, shape: (a) => 1 + 0.04 * Math.sin(a * 8) });
   // 曲裾的绕襟：一道石青衣缘自右腰斜绕到左下摆
   b.paint(C.trim, { c2: C.trimDark, mat: MAT.cloth, line: 0 });
   b.sheet(8, 1, (u, v) => {
@@ -178,7 +179,7 @@ function build(): { h: Human; b: ModelBuilder; extra: Extra } {
   b.sym((s) => {
     const x = d.shoulderX;
     // 上臂罩在斗篷里(绛红)，肘上一圈白毛滚边；小臂是深衣的喇叭袖
-    b.bone(s > 0 ? J.armL : J.armR).paint(C.cloakLight, { c2: C.cloak, mat: MAT.cloth, pattern: PATTERN.weave, patternScale: 10, patternAmt: 0.16 });
+    b.bone(s > 0 ? J.armL : J.armR).paint(C.cloakLight, { c2: C.cloak, mat: MAT.cloth });
     b.limb([x, d.shoulderY + 0.03, 0], [x, d.elbowY + 0.03, 0], 0.096, 0.1, { seg: 8 });
     b.g(X(x, 0, 0), () => furRing(b, 0.1, 0.1, 0.028, 0.026, { c: C.fur, c2: C.furShade, tufts: 6, seg: 5, y: d.elbowY + 0.03 }));
     b.bone(s > 0 ? J.foreL : J.foreR).paint(C.robeShade, { c2: C.robe, mat: MAT.cloth, gloss: 0.1 });
@@ -194,7 +195,7 @@ function build(): { h: Human; b: ModelBuilder; extra: Extra } {
   hand(b, h, -1, 0.05, true);
 
   // ── 绛红斗篷：披肩(前面敞开) + 垂到小腿的后摆(下缘白毛滚边，其上一道队伍色) ──
-  b.bone(J.chest).paint(C.cloakLight, { c2: C.cloakDark, ao: 0.9, mat: MAT.cloth, pattern: PATTERN.weave, patternScale: 10, patternAmt: 0.16 });
+  b.bone(J.chest).paint(C.cloakLight, { c2: C.cloakDark, ao: 0.9, mat: MAT.cloth });
   {
     const rows = [[1.475, 0.1, 0.1], [1.41, 0.29, 0.2], [1.31, 0.385, 0.27], [1.17, 0.415, 0.3]];
     b.sheet(12, 3, (u, v) => {
@@ -205,7 +206,7 @@ function build(): { h: Human; b: ModelBuilder; extra: Extra } {
       return [Math.cos(a) * r[1], r[0] - edge * 0.07 * v, Math.sin(a) * r[2] - 0.015];
     });
   }
-  b.bind(chainBind(cloak, cloakPts, J.chest)).paint(C.cloak, { c2: C.cloakDark, mat: MAT.cloth, pattern: PATTERN.weave, patternScale: 10, patternAmt: 0.16 });
+  b.bind(chainBind(cloak, cloakPts, J.chest)).paint(C.cloak, { c2: C.cloakDark, mat: MAT.cloth });
   const cloakW = (v: number): number => mix(0.3, 0.44, Math.sin(v * Math.PI * 0.5));
   const upper = [0, 0.22, 0.44, 0.66, 0.84].map((v) => polyAt(cloakPts, v));
   strip(b, upper, { width: (v) => cloakW(v * 0.84), bow: [0, 0, -0.19], wave: 0.16, nu: 6, nv: 8, tail: 'flat' });

@@ -66,6 +66,13 @@ const CSS = sfCss(`
 @media (prefers-reduced-motion: reduce) { .sf-hud__gglow::before, .sf-hud__gglow::after { animation: none; opacity: 0; } }
 /* 竖屏 / 小屏：卡片内边距收一点 */
 @media (max-width: 480px) { .sf-hud__gcard { padding: 5px 6px 6px 9px; } .sf-hud__gcard-head { gap: 6px; } }
+/* 手机横屏(屏高不足 460px)：卡片正下方就是玩家英雄头顶的血条，压矮一点 */
+@media (orientation: landscape) and (max-height: 460px) {
+  .sf-hud__gcard { padding: 4px 6px 5px 9px; }
+  .sf-hud__gcard-head { min-height: 20px; }
+  .sf-hud__gcard-skip { height: 20px; }
+  .sf-hud__gcard-body { margin-top: 1px; line-height: 1.42; }
+}
 `);
 
 export interface GuideCardEl {

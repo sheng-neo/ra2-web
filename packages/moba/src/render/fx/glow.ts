@@ -31,7 +31,12 @@ export const SHAPE = {
   spike: 8,
   /** 受光碎岩(半径约 1) */
   rock: 9,
+  /** 开口锥(吐息)：口在原点、沿 +x 张开，长 1、末端半径 1；uv.x = 沿长度 0..1，uv.y = 绕轴 0..1 */
+  breath: 10,
 } as const;
+
+/** 受光(走 Toon 材质、投影)的形状；其余形状都是自发光着色器 */
+const LIT_SHAPES: ReadonlySet<number> = new Set<number>([SHAPE.spike, SHAPE.rock]);
 
 export const MODE = {
   plain: 0,
@@ -51,10 +56,11 @@ export const MODE = {
   solid: 7,
   /** 环箍 */
   hoop: 8,
+  /** 吐息气流：沿长度流动的噪声，根部白热、向外转为本色，边缘被噪声侵蚀；k = 流速，progress = 收尾溶解 */
+  breath: 9,
 } as const;
 
-const CAP: Record<number, number> = { 0: 48, 1: 96, 2: 64, 3: 96, 4: 48, 5: 24, 6: 32, 7: 64, 8: 96, 9: 64 };
-const LIT_FROM = SHAPE.spike;
+const CAP: Record<number, number> = { 0: 48, 1: 96, 2: 64, 3: 96, 4: 48, 5: 24, 6: 32, 7: 64, 8: 96, 9: 64, 10: 4 };
 const POOL = 420;
 
 const VERTEX = /* glsl */ `
@@ -163,14 +169,39 @@ void main() {
   } else if (mode < 7.5) {
     float l = 0.55 + 0.45 * max(0.0, dot(N, normalize(vec3(-0.3, 0.8, 0.5))));
     c = c * l + vTint.rgb * pow(1.0 - ndv, 2.5) * 0.45;
-  } else {
+  } else if (mode < 8.5) {
     float prof = sin(vUv.y * PI);
     a *= min(1.0, prof * prof * 2.0);
     hot = pow(prof, 6.0) * 0.5;
+  } else {
+    // 吐息：两层反向滚动的噪声沿锥体流出；越往外越稀、边缘被侵蚀，收尾时整体由根部向外溶解
+    float u = vUv.x;
+    float w = vUv.y;
+    float t1 = uNow * k;
+    float n1 = fbm(vec2(u * 3.2 - t1, w * 7.0 + seed * 13.0));
+    float n2 = fbm(vec2(u * 6.5 - t1 * 1.6 + 3.1, w * 13.0 - t1 * 0.4 + seed * 5.0));
+    float n = n1 * 0.65 + n2 * 0.5;
+    float th = mix(0.3, 0.85, u) + pr * 0.9 * (1.0 - u * 0.3);
+    float body = smoothstep(th - 0.1, th + 0.14, n + (1.0 - u) * 0.3);
+    // 丝缕：沿流动方向拉长的细纹，让气流有方向感
+    float wisp = 0.65 + 0.35 * smoothstep(0.35, 0.75, fbm(vec2(u * 1.5 - t1 * 1.3, w * 22.0 + seed * 3.0)));
+    float ends = smoothstep(0.0, 0.06, u) * (1.0 - smoothstep(0.75, 1.0, u + (n2 - 0.5) * 0.3));
+    a *= min(1.0, body * wisp * ends * (0.25 + 0.75 * ndv) * 1.25);
+    // 根部青白，向外过渡到本色
+    float root = 1.0 - smoothstep(0.0, 0.45, u);
+    float m0 = max(c.r, max(c.g, c.b));
+    c = mix(c, vec3(0.82, 1.0, 1.0) * m0 * 1.25, root * 0.85);
+    hot = root * root * body * 0.6;
   }
   float fxA = min(1.0, a);
   if (fxA < 0.004) discard;
   vec3 fxC = c * (1.0 + hot * 0.7) + vec3(hot * 0.3 * max(c.r, max(c.g, c.b)));
+  // §7.1 亮度上限：大面积的壳 / 柱 / 罩 / 漩涡 / 吐息主体 ≤0.9(白热部分放宽到 1.6)，线状的斩弧 / 环箍 ≤1.6，
+  // 小弹体与实体交给输出段的全局上限(3.2)
+  float capL = (mode > 0.5 && mode < 1.5) || (mode > 2.5 && mode < 3.5) || (mode > 4.5 && mode < 6.5) || mode > 8.5 ? 0.9 + 0.7 * min(1.0, hot * 2.0) : (mode > 3.5 && mode < 4.5) || (mode > 7.5 && mode < 8.5) ? 1.6 : 8.0;
+  float capM = max(fxC.r, max(fxC.g, fxC.b));
+  float capK = capL * 0.7;
+  if (capM > capK) fxC *= (capK + (capM - capK) / (1.0 + (capM - capK) / (capL - capK))) / capM;
   ${GLSL_FX_OUT}
 }
 `;
@@ -421,6 +452,41 @@ function buildBlade(): THREE.BufferGeometry {
   return g;
 }
 
+function buildBreath(): THREE.BufferGeometry {
+  // 沿 +x 张开的开口锥：口部半径 0.07，末端半径 1；截面略扁(高 0.8)，更像贴着地面喷出去的一股气
+  const L = 10;
+  const A = 20;
+  const pos: number[] = [];
+  const uv: number[] = [];
+  const nor: number[] = [];
+  const idx: number[] = [];
+  for (let i = 0; i <= L; i++) {
+    const u = i / L;
+    const x = u;
+    const r = 0.07 + 0.93 * Math.pow(u, 0.8);
+    for (let j = 0; j <= A; j++) {
+      const w = j / A;
+      const a = w * Math.PI * 2;
+      const cy = Math.cos(a);
+      const sz = Math.sin(a);
+      pos.push(x, cy * r * 0.8, sz * r);
+      const n = new THREE.Vector3(-0.6, cy, sz).normalize();
+      nor.push(n.x, n.y, n.z);
+      uv.push(u, w);
+      if (i < L && j < A) {
+        const b = i * (A + 1) + j;
+        idx.push(b, b + A + 1, b + 1, b + 1, b + A + 1, b + A + 2);
+      }
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+  g.setIndex(idx);
+  return white(g);
+}
+
 function withFx(geo: THREE.BufferGeometry, glow: (x: number, y: number, z: number) => number): void {
   const pos = geo.getAttribute('position');
   const fx = new Uint8Array(pos.count * 4);
@@ -545,10 +611,11 @@ export class GlowSystem {
       buildHoop(),
       buildSpike(),
       buildRock(),
+      buildBreath(),
     ];
     geos.forEach((geo, shape) => {
       const cap = CAP[shape];
-      const lit = shape >= LIT_FROM;
+      const lit = LIT_SHAPES.has(shape);
       const mesh = new THREE.InstancedMesh(geo, lit ? this.litMat : this.mat, cap);
       mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
       mesh.frustumCulled = false;
@@ -677,7 +744,7 @@ export class GlowSystem {
       _m.compose(_p, _q, _s);
       const mesh = this.meshes[shape];
       mesh.setMatrixAt(n, _m);
-      if (shape >= LIT_FROM) {
+      if (LIT_SHAPES.has(shape)) {
         mesh.setColorAt(n, _c.setRGB(m.r, m.g, m.b));
       } else {
         let a = m.a;
@@ -710,7 +777,7 @@ export class GlowSystem {
       mesh.visible = n > 0;
       if (n === 0) continue;
       mesh.instanceMatrix.needsUpdate = true;
-      if (s >= LIT_FROM) {
+      if (LIT_SHAPES.has(s)) {
         if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
       } else {
         this.tint[s].needsUpdate = true;

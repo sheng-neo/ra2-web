@@ -130,8 +130,14 @@ const STATIC_KINDS: Record<UnitKind, boolean> = { hero: false, minion: false, mo
  * 建筑本来就高，不放大。只影响画面：碰撞、射程、拾取以外的判定仍然用模拟层的半径。
  */
 const VIEW_SCALE: Record<UnitKind, number> = { hero: 1.32, minion: 1.28, monster: 1.17, tower: 1, core: 1 };
-/** 个别英雄再微调：磐岳的模型本来就比别人高一头，按统一倍率会超出「720p 下 105~125 像素」的上限 */
-const HERO_VIEW_TRIM: Partial<Record<HeroId, number>> = { panyue: 0.94 };
+/**
+ * 英雄的显示身高(模型头顶高度 × 模型缩放 × 显示倍率，米)收在这个区间里：对局镜头下 1 米约 34.6 像素(720p)，
+ * 即站立 105~123 像素。魁梧的(樊哙、程咬金)顶到上限、娇小的托到下限，区间内的身高差原样保留。
+ * 英雄模型改了身高也不用回来调表。
+ */
+const HERO_VIEW_HEIGHT: [number, number] = [3.05, 3.55];
+/** 个别英雄需要偏离上面区间时的手动倍率(乘在自动结果上)；目前没有 */
+const HERO_VIEW_TRIM: Partial<Record<HeroId, number>> = {};
 /** 点选敌方单位时在模型轮廓之外再放宽的像素数 */
 const PICK_SLOP = 20;
 
@@ -246,7 +252,7 @@ export function createUnitsModule(ctx: RenderContext): UnitsModule {
     player: new THREE.Color(PALETTE.player.main),
     shadow: new THREE.Color(0x0a1020),
     /** 红方小兵的本体乘色(线性)：钢蓝灰 → 玄铁 */
-    redIron: new THREE.Color(0.42, 0.25, 0.24),
+    redIron: new THREE.Color(0.4, 0.2, 0.15),
     deadTint: new THREE.Color(0x8890a0),
     // 透视剪影色(与血条的敌我配色一致)
     xSelf: new THREE.Color(0x9dff5a),
@@ -281,7 +287,11 @@ export function createUnitsModule(ctx: RenderContext): UnitsModule {
     look.team.copy(teamColor(u.team));
     // 两队小兵共用几何：红方把石铁本体压成暖调的玄铁(布件与发光缝走队伍色蒙版，不受影响)
     if (u.kind === 'minion' && u.team === 1) look.body.copy(colors.redIron);
-    const scale = VIEW_SCALE[u.kind] * (u.kind === 'hero' ? (HERO_VIEW_TRIM[u.heroId] ?? 1) : 1);
+    let scale = VIEW_SCALE[u.kind];
+    if (u.kind === 'hero') {
+      const h = def.height * def.scale * scale;
+      scale *= (h > HERO_VIEW_HEIGHT[1] ? HERO_VIEW_HEIGHT[1] / h : h < HERO_VIEW_HEIGHT[0] ? HERO_VIEW_HEIGHT[0] / h : 1) * (HERO_VIEW_TRIM[u.heroId] ?? 1);
+    }
     const v: View = {
       id: u.id,
       kind: u.kind,
