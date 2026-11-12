@@ -7,7 +7,7 @@ import { DECAL } from '../decals';
 import { MODE, SHAPE } from '../glow';
 import type { FxKit } from '../kit';
 import { C, TAU, THEME } from '../util';
-import { type FxHandler, involvesPlayer, unitY } from './types';
+import { type FxHandler, castRange, castWidth, fixedValue, involvesPlayer, unitY } from './types';
 
 const T = THEME.chijin;
 const S2 = HEROES.chijin.skills.s2;
@@ -87,14 +87,14 @@ const s2Dash: FxHandler = (k, e, env) => {
   dx /= dist;
   dz /= dist;
   const facing = Math.atan2(dz, dx);
-  const dur = dist / (S2.values.dashSpeed as number);
+  const dur = dist / fixedValue(S2, 'dashSpeed');
   const id = e.unitId ?? -1;
   const r = k.rnd;
   flash(k, from.x, 1, from.y, 1.8, T.accent, 0.2);
   embers(k, from.x, 0.5, from.y, 8, 0.4, 2, T.hot, T.glow, 0.8);
   k.decals
     .add(DECAL.streak, (from.x + to.x) / 2, (from.y + to.y) / 2, dist / 2 + 0.4, 0.75)
-    .rot(facing, (S2.cast.width * 0.45) / (dist / 2 + 0.4))
+    .rot(facing, (castWidth(S2) * 0.45) / (dist / 2 + 0.4))
     .params(0.7, 0.75 / dur)
     .color(T.glow, 1.9)
     .under(T.dark, 0.55);
@@ -134,7 +134,7 @@ const s2Dash: FxHandler = (k, e, env) => {
 const ultStart: FxHandler = (k, e, env) => {
   const x = e.pos.x;
   const z = e.pos.y;
-  const R0 = ULT.cast.type === 'self' ? ULT.cast.radius : 4.2;
+  const R0 = castRange(ULT);
   const id = e.unitId ?? -1;
   const has = k.anchor(id);
   ring(k, x, z, R0, 0.45, T.glow, 2, 0.1, 0.4);

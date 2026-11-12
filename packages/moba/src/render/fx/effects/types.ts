@@ -1,7 +1,7 @@
 /**
  * 一次性特效处理函数的公共类型与取位置的小工具。
  */
-import type { GameEvent, GameState, PlayerTeam } from '../../../core/types';
+import type { GameEvent, GameState, PlayerTeam, SkillDef } from '../../../core/types';
 import type { FxKit } from '../kit';
 
 export type FxEvent = Extract<GameEvent, { type: 'fx' }>;
@@ -22,4 +22,16 @@ export function unitY(k: FxKit, id: number | undefined, frac = 0.5, fallback = 1
 /** 事件是否与玩家直接相关(决定震屏/闪光是否给足) */
 export function involvesPlayer(e: FxEvent, env: FxEnv): boolean {
   return e.unitId === env.playerId || e.targetId === env.playerId;
+}
+
+/** 技能的射程 / 判定宽度 / 固定数值(各等级相同的那种) */
+export function castRange(def: SkillDef): number {
+  return def.cast.type === 'self' ? def.cast.radius : def.cast.range;
+}
+export function castWidth(def: SkillDef): number {
+  return def.cast.type === 'direction' ? def.cast.width : 1;
+}
+export function fixedValue(def: SkillDef, key: string): number {
+  const v = def.values[key];
+  return typeof v === 'number' ? v : v ? v[0] : 0;
 }

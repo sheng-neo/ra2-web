@@ -7,7 +7,7 @@ import { DECAL } from '../decals';
 import { MODE, SHAPE } from '../glow';
 import type { FxKit } from '../kit';
 import { C, TAU, THEME } from '../util';
-import { type FxHandler, involvesPlayer, unitY } from './types';
+import { type FxHandler, castWidth, fixedValue, involvesPlayer, unitY } from './types';
 
 const T = THEME.yeque;
 const S1 = HEROES.yeque.skills.s1;
@@ -30,13 +30,13 @@ const s1Dash: FxHandler = (k, e, env) => {
   dx /= dist;
   dz /= dist;
   const facing = Math.atan2(dz, dx);
-  const dur = dist / (S1.values.dashSpeed as number);
+  const dur = dist / fixedValue(S1, 'dashSpeed');
   const r = k.rnd;
   k.ribbons.trace(R.shadow, from.x, 1.0, from.y, to.x, 1.0, to.y, dur, T.glow, T.dark);
   k.ribbons.trace(R.thin, from.x, 1.1, from.y, to.x, 1.1, to.y, dur, T.hot, T.glow);
   k.decals
     .add(DECAL.streak, (from.x + to.x) / 2, (from.y + to.y) / 2, dist / 2 + 0.5, 0.55)
-    .rot(facing, (S1.cast.width * 0.4) / (dist / 2 + 0.5))
+    .rot(facing, (castWidth(S1) * 0.4) / (dist / 2 + 0.5))
     .params(0.25, 0.55 / dur)
     .color(T.glow, 2)
     .under(T.dark, 0.65);
@@ -68,7 +68,7 @@ const s2Cast: FxHandler = (k, e) => {
   const x = e.pos.x + dx * 0.7;
   const z = e.pos.y + dz * 0.7;
   const y = 1.2;
-  const spread = S2.values.spread as number;
+  const spread = fixedValue(S2, 'spread');
   for (let i = -1; i <= 1; i++) {
     const a = facing + i * spread;
     slashArc(k, x, y, z, a, 1.2, 0.2, i === 0 ? T.hot : T.glow, 2.2, Math.PI * 0.5, false, 0.9).vel(Math.cos(a) * 9, 0, Math.sin(a) * 9);

@@ -3,7 +3,6 @@
  * 预警圈：敌方红、友方蓝、自己金，圈内由中心向外填充表示倒计时。
  * 敌方的持续区域额外套一圈红色细边，方便判断「这块地方别站」。
  */
-import type * as THREE from 'three';
 import { TICK_DT, type AreaEffect, type AreaVisual, type TeamId } from '../../core/types';
 import type { FrameInfo } from '../engine/context';
 import { P, dustRing, embers, ring } from './common';
@@ -32,7 +31,6 @@ interface AreaView {
   slots: number[];
   meshes: FxMesh[];
   acc: number;
-  acc2: number;
   phase: number;
 }
 
@@ -357,7 +355,6 @@ export class AreaViews {
       slots: [],
       meshes: [],
       acc: 0,
-      acc2: 0,
       phase: this.phaseN,
     };
   }
@@ -387,5 +384,3 @@ export class AreaViews {
     this.views.clear();
   }
 }
-
-export type { THREE };

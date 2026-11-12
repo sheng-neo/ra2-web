@@ -6,7 +6,7 @@ import { P, R, boulders, debris, dustPuff, dustRing, embers, flash, hoop, orb, p
 import { DECAL } from '../decals';
 import { MODE, SHAPE } from '../glow';
 import { C, TAU, THEME } from '../util';
-import { type FxHandler, involvesPlayer } from './types';
+import { type FxHandler, castRange, castWidth, fixedValue, involvesPlayer } from './types';
 
 const T = THEME.panyue;
 const S1 = HEROES.panyue.skills.s1;
@@ -39,8 +39,8 @@ const s1Dash: FxHandler = (k, e) => {
   const dx = e.dir?.x ?? 1;
   const dz = e.dir?.y ?? 0;
   const facing = Math.atan2(dz, dx);
-  const range = S1.cast.range;
-  const dur = range / (S1.values.dashSpeed as number);
+  const range = castRange(S1);
+  const dur = range / fixedValue(S1, 'dashSpeed');
   const r = k.rnd;
   // 向后喷的尘土
   const p = k.particles.use(P.dust);
@@ -53,7 +53,7 @@ const s1Dash: FxHandler = (k, e) => {
   ring(k, x, z, 1.6, 0.3, T.glow, 1.3, 0.2, 0.25);
   k.decals
     .add(DECAL.streak, x + dx * range * 0.5, z + dz * range * 0.5, range * 0.5, 0.6)
-    .rot(facing, (S1.cast.width * 0.5) / (range * 0.5))
+    .rot(facing, (castWidth(S1) * 0.5) / (range * 0.5))
     .params(0.5, 1 / (dur / 0.6))
     .color(T.glow, 1.5)
     .under(T.dark, 0.5);
@@ -78,7 +78,7 @@ const s1Dash: FxHandler = (k, e) => {
 const s1Impact: FxHandler = (k, e, env) => {
   const x = e.pos.x;
   const z = e.pos.y;
-  const R0 = e.radius ?? (S1.values.impactRadius as number);
+  const R0 = e.radius ?? fixedValue(S1, 'impactRadius');
   const r = k.rnd;
   flash(k, x, 0.7, z, R0 * 1.7, T.hot, 0.24, true);
   shockShell(k, x, 0.4, z, 0.5, R0, 0.3, T.glow, 1.8);
@@ -129,7 +129,7 @@ const ultLeap: FxHandler = (k, e, env) => {
   const x = from.x;
   const z = from.y;
   const id = e.unitId ?? -1;
-  const leap = ULT.values.leapTime as number;
+  const leap = fixedValue(ULT, 'leapTime');
   flash(k, x, 0.6, z, 2, T.hot, 0.2);
   ring(k, x, z, 2.8, 0.4, T.glow, 1.6, 0.15, 0.35);
   k.decals.add(DECAL.cracks, x, z, 2.2, 1.2).params(0, 0.2).color(T.glow, 1.6).under(C.shadow, 0.85);
@@ -157,7 +157,7 @@ const ultLand: FxHandler = (k, e, env) => {
   pillar(k, x, z, R0 * 0.45, 6.5, 0.5, T.glow, 1.7, 0.8);
   ring(k, x, z, R0, 0.5, T.glow, 2.2, 0.1, 0.45);
   ring(k, x, z, R0 * 1.35, 0.6, T.hot, 1.1, 0.2, 0.2, 0.1);
-  k.decals.add(DECAL.cracks, x, z, R0 * 1.06, (ULT.values.zoneDur as number) + 0.4).params(0, 0.35).color(T.glow, 2).under(C.shadow, 0.95);
+  k.decals.add(DECAL.cracks, x, z, R0 * 1.06, fixedValue(ULT, 'zoneDur') + 0.4).params(0, 0.35).color(T.glow, 2).under(C.shadow, 0.95);
   scorch(k, x, z, R0 * 0.9, 4.2, T.deep);
   const rings: [number, number, number, number, number][] = [
     [5, 0.3, 2.7, 0.9, 0],

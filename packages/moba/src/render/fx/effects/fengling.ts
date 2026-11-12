@@ -7,7 +7,7 @@ import { DECAL } from '../decals';
 import { MODE, SHAPE } from '../glow';
 import type { FxKit } from '../kit';
 import { C, TAU, THEME } from '../util';
-import type { FxHandler } from './types';
+import { type FxHandler, fixedValue } from './types';
 
 const T = THEME.fengling;
 const S2 = HEROES.fengling.skills.s2;
@@ -63,7 +63,7 @@ const s2Dash: FxHandler = (k, e) => {
   dx /= dist;
   dz /= dist;
   const facing = Math.atan2(dz, dx);
-  const dur = dist / (S2.values.dashSpeed as number);
+  const dur = dist / fixedValue(S2, 'dashSpeed');
   const id = e.unitId ?? -1;
   ring(k, from.x, from.y, 1.6, 0.35, T.glow, 1.4, 0.15, 0.25);
   leaves(k, from.x, 0.3, from.y, 8, 1.5);
