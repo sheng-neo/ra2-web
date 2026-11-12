@@ -61,6 +61,8 @@ export interface BotView {
   scoreboard(): readonly HeroUnit[];
   /** 敌方英雄最后一次被本队看到的位置与时间 */
   lastSeen(heroUnitId: number): LastSeen | null;
+  /** 这个己方英雄当前是否由 AI 控制（真人队友不会听从队伍的任务分配，协作时不能指望他到场） */
+  botControlled(hero: HeroUnit): boolean;
 
   // ── 地形 ──
   /** 半径 radius(默认自身)的单位能否站在 pos */

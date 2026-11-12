@@ -52,8 +52,9 @@ export class BarLayer {
   private stamp = 0;
   private text: TextCache;
   private icons: IconCache;
-  private a: UnitAnchor = { x: 0, y: 0, z: 0, height: 2, radius: 0.6, visible: false, unit: null };
+  private a: UnitAnchor = { x: 0, y: 0, z: 0, height: 2, radius: 0.6, visible: false, opacity: 1, unit: null };
   private p = { x: 0, y: 0 };
+  private foot = { x: 0, y: 0 };
   private order: Unit[] = [];
 
   constructor(text: TextCache, icons: IconCache) {
@@ -107,10 +108,18 @@ export class BarLayer {
       this.advance(u, bs, dt);
       if (!anchors.get(u.id, a) || !a.visible) continue;
       if (!project(a.x, a.y + a.height + 0.22, a.z, p)) continue;
-      if (p.x < -70 || p.x > W + 70 || p.y < -30 || p.y > H + 60) continue;
+      if (p.x < -70 || p.x > W + 70 || p.y > H + 60) continue;
+      const building = u.kind === 'tower' || u.kind === 'core';
+      if (p.y < -30) {
+        // 头顶在屏幕上沿之外。建筑很高(八九米)：只要塔身还有一截在屏内，就把血条压在上沿，否则推塔时看不到塔的血量
+        if (!building || !project(a.x, a.y + 2.4, a.z, this.foot) || this.foot.y < 30 * s) continue;
+      }
       const x = Math.round(p.x);
-      // 很高的建筑在屏幕上沿时把血条压回屏内
-      const y = Math.max(16 * s, p.y);
+      const y = Math.max((building ? 20 : 16) * s, p.y);
+      // 跟着模型一起淡入淡出(刚进视野/丢失视野)；草丛里、不可选中的半透明不影响血条
+      const fade = a.opacity >= 0.4 ? 1 : a.opacity / 0.4;
+      if (fade <= 0.02) continue;
+      g.globalAlpha = fade;
       switch (u.kind) {
         case 'hero':
           this.hero(g, u, bs, x, y, s, frame);
@@ -140,6 +149,7 @@ export class BarLayer {
         }
       }
     }
+    g.globalAlpha = 1;
     // 清理已经不在场的单位
     if ((stamp & 63) === 0) {
       for (const [id, bs] of this.states) if (bs.seen < stamp - 60) this.states.delete(id);

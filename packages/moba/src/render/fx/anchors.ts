@@ -1,8 +1,9 @@
 /**
  * 单位锚点查询：特效/叠加层需要的「某个单位此刻画在哪」。
  *
- * 默认实现 = ctx.unitQuery(位置已按 tick 插值；R2 的单位视图通过 ctx.setUnitQuery 换成带跳跃/击飞高度的版本后，
- * 这里自动跟着变) + GameState 里的半径/可见性。集成时如需完全自定义，可用 FxModule.setAnchors() 整体替换。
+ * 默认实现：有单位视图模块('units')时直接取它的渲染信息——真正画出来的位置(含跳跃/击飞/河道下沉)、模型头顶高度、
+ * 显示不透明度(视野淡入淡出)；没有时退回 ctx.unitQuery + GameState 的插值位置。半径与敌我可见性取自 GameState。
+ * 需要完全自定义可用 FxModule.setAnchors() 整体替换。
  */
 import type * as THREE from 'three';
 import { VISION } from '../../core/data/units';
@@ -18,8 +19,13 @@ export interface UnitAnchor {
   height: number;
   /** 碰撞半径 */
   radius: number;
-  /** 存活且对玩家队伍可见 */
+  /** 存活且对玩家队伍可见(单位视图还在淡出的那一小段时间也算) */
   visible: boolean;
+  /**
+   * 单位模型当前显示的不透明度 0..1：刚进视野时从 0 淡入、丢失视野后淡出到 0，草丛里/不可选中时停在半透明。
+   * 血条等跟着它淡入淡出。没有单位视图模块时恒为 1。
+   */
+  opacity: number;
   unit: Unit | null;
 }
 
@@ -39,13 +45,23 @@ export interface UnitAnchors {
   attach?(id: number, name: string, out: THREE.Vector3): boolean;
 }
 
-/** 单位视图模块里与挂点有关的那一小部分(鸭子类型：不依赖其具体实现) */
-interface AttachProvider extends RenderModule {
+/** 单位视图模块里与锚点有关的那一小部分(鸭子类型：不依赖其具体实现) */
+interface ViewProvider extends RenderModule {
   getAttach?(id: number, name: string, out: THREE.Vector3): boolean;
+  getInfo?(id: number, out: ViewInfo): boolean;
+}
+
+/** 单位视图的渲染信息(units 模块 UnitViewInfo 的子集) */
+interface ViewInfo {
+  x: number;
+  y: number;
+  z: number;
+  height: number;
+  opacity: number;
 }
 
 export function createAnchor(): UnitAnchor {
-  return { x: 0, y: 0, z: 0, height: 2, radius: 0.6, visible: false, unit: null };
+  return { x: 0, y: 0, z: 0, height: 2, radius: 0.6, visible: false, opacity: 1, unit: null };
 }
 
 function sightOf(u: Unit): number {
@@ -69,9 +85,13 @@ export function createDefaultAnchors(ctx: RenderContext, pos: THREE.Vector3): Un
   let allies = new Float32Array(64 * 3);
   let allyCount = 0;
   let frame: FrameInfo = ctx.frame;
+  // 单位视图模块(有的话)：位置/头顶高度/显示不透明度都以真正画出来的模型为准
+  let views: ViewProvider | undefined;
+  const info: ViewInfo = { x: 0, y: 0, z: 0, height: 2, opacity: 1 };
   return {
     begin(f) {
       frame = f;
+      views = ctx.getModule<ViewProvider>('units');
       index.clear();
       allyCount = 0;
       const team = f.playerTeam;
@@ -94,6 +114,19 @@ export function createDefaultAnchors(ctx: RenderContext, pos: THREE.Vector3): Un
     get(id, out) {
       const u = index.get(id);
       if (!u) return false;
+      const seen = u.team === frame.playerTeam || u.visible[frame.playerTeam];
+      out.radius = u.radius;
+      out.unit = u;
+      if (views?.getInfo && views.getInfo(id, info)) {
+        out.x = info.x;
+        out.y = info.y;
+        out.z = info.z;
+        out.height = info.height;
+        out.opacity = info.opacity;
+        // 模拟层刚判定「看不见」时模型还要淡出一小会儿：这段时间血条/状态跟着一起淡，而不是先消失
+        out.visible = u.alive && (seen || info.opacity > 0.02);
+        return true;
+      }
       if (!ctx.unitQuery.getPosition(id, pos)) {
         const a = frame.alpha;
         pos.set(u.prevPos.x + (u.pos.x - u.prevPos.x) * a, 0, u.prevPos.y + (u.pos.y - u.prevPos.y) * a);
@@ -102,9 +135,8 @@ export function createDefaultAnchors(ctx: RenderContext, pos: THREE.Vector3): Un
       out.y = pos.y;
       out.z = pos.z;
       out.height = ctx.unitQuery.getHeight(id);
-      out.radius = u.radius;
-      out.visible = u.alive && (u.team === frame.playerTeam || u.visible[frame.playerTeam]);
-      out.unit = u;
+      out.opacity = 1;
+      out.visible = u.alive && seen;
       return true;
     },
     unit(id) {
@@ -119,7 +151,7 @@ export function createDefaultAnchors(ctx: RenderContext, pos: THREE.Vector3): Un
       return false;
     },
     attach(id, name, out) {
-      const units = ctx.getModule<AttachProvider>('units');
+      const units = views ?? ctx.getModule<ViewProvider>('units');
       return units?.getAttach ? units.getAttach(id, name, out) : false;
     },
   };

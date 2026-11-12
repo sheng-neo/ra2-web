@@ -63,6 +63,43 @@ function canopyTint(x: number, z: number, rng: Rng): RGB {
   return [v * (1 + warm * 0.5), v * (1 + warm * 0.08), v * (1 - warm * 0.35)];
 }
 
+/** 对局镜头俯角约 52°：高度 h 的东西会挡住它北边 h × cot(52°) 远的地面 */
+const OCCLUDE_PER_METER = 0.78;
+/** 树模型在缩放 1 时的大致顶高 / 树冠半径 */
+const TREE_TOP = 3.6;
+const TREE_CANOPY = 1.7;
+/** 树冠中心高度(缩放 1) */
+const TREE_CROWN_Y = 2.4;
+/** 小于这个缩放的树不像树了 */
+const MIN_TREE_SCALE = 0.55;
+/** 允许树冠压住可走地面边缘的宽度(墙脚本来就有碎石草簇，单位很少贴着走) */
+const OCCLUDE_SLACK = 0.9;
+
+/**
+ * 种在 (x, z)、根部高度 baseY 的树最大能多大，才不会遮住北侧的可走地面。
+ * 沿正北(以及树冠两侧)逐步探出去，找到第一处可走地面的距离，反推树顶高度上限。
+ */
+function treeScaleLimit(field: MapField, x: number, z: number, baseY: number): number {
+  const bound = field.map.bound;
+  let room = 14;
+  for (const ox of [-1.1, 0, 1.1]) {
+    for (let dz = 0.5; dz < room; dz += 0.5) {
+      const sx = x + ox;
+      const sz = z - dz;
+      // 地图边界以外是装饰带，随便挡
+      if (Math.abs(sx) > bound || Math.abs(sz) > bound) break;
+      if (field.solidDist(sx, sz, 2) > 0.05) {
+        room = dz;
+        break;
+      }
+    }
+  }
+  // 顶高 × 系数 ≤ 可用纵深 + 容差；树冠北缘也要落在里面
+  const byTop = ((room + OCCLUDE_SLACK) / OCCLUDE_PER_METER - baseY) / TREE_TOP;
+  const byCanopy = (room + OCCLUDE_SLACK - baseY * OCCLUDE_PER_METER) / (TREE_CANOPY * 0.8 + TREE_CROWN_Y * OCCLUDE_PER_METER);
+  return Math.min(byTop, byCanopy);
+}
+
 export interface ScatterResult {
   /** 地面发光点(给贴地光晕用)：x, z, 半径, 颜色 */
   glows: { x: number; z: number; y: number; r: number; color: RGB }[];
@@ -97,13 +134,15 @@ export function scatterWallTops(batch: SceneryBatcher, lib: PropLibrary, field: 
         const pz = q.y;
         const ty = cliff.topY(d) - 0.04;
         const roll = rng.next();
-        // 树：树干离边至少 1.7m；并且正北方 2 米处仍在台上，避免树冠遮住北侧可走区域
-        const northOk = pointInPolygon({ x: px, y: pz - 2.0 }, poly);
-        if (d >= (big ? 1.9 : 1.55) && northOk && roll < (big ? 0.8 : 0.5)) {
+        // 树：树干离边至少 1.7m。镜头朝北俯视，树冠会挡住它北边的一条地面(顶高 × cot 俯角)：
+        // 先量出正北方向到最近可走地面的距离，按它给树的大小封顶；空间不够长出一棵像样的树就不种，让位给灌木/岩石
+        const wantSc = (big ? rng.range(0.92, 1.3) : rng.range(0.62, 0.8)) * Math.min(1.1, 0.7 + d * 0.12);
+        const maxSc = d >= (big ? 1.9 : 1.55) ? treeScaleLimit(field, px, pz, ty) : 0;
+        if (maxSc >= MIN_TREE_SCALE && roll < (big ? 0.8 : 0.5)) {
           let ok = true;
           for (const t of treeSpots) if (Math.hypot(t[0] - px, t[1] - pz) < t[2] + 1.0) ok = false;
           if (ok) {
-            const sc = (big ? rng.range(0.92, 1.3) : rng.range(0.62, 0.8)) * Math.min(1.1, 0.7 + d * 0.12);
+            const sc = Math.min(wantSc, maxSc);
             // 偶尔一株花树/金叶树做色彩点缀
             const accent = rng.next();
             if (accent < 0.11) batch.add(lib.accentTrees[accent < 0.06 ? 0 : 1], trs(px, ty, pz, rng.range(0, 6.28), sc, sc * rng.range(0.95, 1.12)), { tint: scaleRgb([1, 1, 1], rng.range(0.92, 1.05)) });

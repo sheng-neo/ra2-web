@@ -362,6 +362,74 @@ export function fightSkills(b: HeroBot, t: HeroUnit): boolean {
   }
 }
 
+// ───────────────────────── 收人头 ─────────────────────────
+
+/**
+ * 补一个技能就能带走的残血：不管当前是不是在全力交战，够得着就出手(不留蓝)。
+ * 只用「隔着距离也能打到」的技能，位移技能只在落点安全时用。返回 true = 放了技能。
+ */
+export function finisherSkills(b: HeroBot, t: HeroUnit): boolean {
+  const me = b.me;
+  const d = dist(me.pos, t.pos);
+  const left = (t.hp + t.shield) * 1.08;
+  const kills = (slot: AbilitySlot, hits?: number): boolean => can(b, slot) && estimateSkillDamage(me, slot, t, hits) >= left;
+  switch (b.heroId) {
+    case 'panyue':
+      if (d <= 9.4 && kills('s1')) {
+        lead(b, t, 0, val(b, 's1', 'dashSpeed'), P);
+        const l = Math.hypot(P.x - me.pos.x, P.y - me.pos.y) || 1;
+        if (dashSafe(b, (P.x - me.pos.x) / l, (P.y - me.pos.y) / l, Math.min(7.5, l))) {
+          castToward(b, 's1', P);
+          return true;
+        }
+      }
+      return false;
+    case 'chijin':
+      if (d <= 5.3 && kills('s1')) {
+        lead(b, t, 0.1, 0, P);
+        castToward(b, 's1', P);
+        return true;
+      }
+      if (d <= 6.3 && kills('s2')) {
+        lead(b, t, 0, val(b, 's2', 'dashSpeed'), P);
+        const l = Math.hypot(P.x - me.pos.x, P.y - me.pos.y) || 1;
+        if (dashSafe(b, (P.x - me.pos.x) / l, (P.y - me.pos.y) / l, 5.5)) {
+          castToward(b, 's2', P);
+          return true;
+        }
+      }
+      return false;
+    case 'xingli':
+      if (d <= 12.2 && kills('s1')) {
+        lead(b, t, 0.08, val(b, 's1', 'speed'), P);
+        castToward(b, 's1', P);
+        return true;
+      }
+      return false;
+    case 'fengling':
+      if (d <= 13.6 && kills('s1')) {
+        lead(b, t, 0.12, val(b, 's1', 'speed'), P);
+        castToward(b, 's1', P);
+        return true;
+      }
+      return false;
+    case 'yeque':
+      if (d <= 8.4 && kills('s2', 1)) {
+        lead(b, t, 0.06, val(b, 's2', 'speed'), P);
+        if (!blocked(b, P, 0.5)) {
+          castToward(b, 's2', P);
+          return true;
+        }
+      }
+      // 处决会把自己送到目标身后：那边不能是塔下，也不能是一群人中间
+      if (d <= 8.3 && kills('ult') && (b.diving || b.v.enemyStructureCovering(t.pos, 0.5) === null) && b.advantageAt(t.pos.x, t.pos.y) >= 0.8) {
+        b.act.castTarget('ult', t.id);
+        return true;
+      }
+      return false;
+  }
+}
+
 // ───────────────────────── 对线消耗 ─────────────────────────
 
 /** 远距离蹭一下：只用消耗型技能，并且放完还留得出一套的蓝 */
@@ -470,7 +538,7 @@ export function waveSkills(b: HeroBot, units: readonly Unit[], jungle: boolean):
       centroid(units, 4, P);
       const dx = P.x - me.pos.x;
       const dy = P.y - me.pos.y;
-      if (Math.hypot(dx, dy) <= 12 && lineCount(b, units, dx, dy, 14, 0.65) >= need + (jungle ? 0 : 0)) {
+      if (Math.hypot(dx, dy) <= 12 && lineCount(b, units, dx, dy, 14, 0.65) >= need) {
         b.act.castDir('s1', dx, dy);
         return true;
       }

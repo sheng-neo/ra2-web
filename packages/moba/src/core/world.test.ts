@@ -565,7 +565,7 @@ describe('确定性', () => {
 });
 
 describe('整局冒烟', () => {
-  it('兜底 AI 跑 12 分钟：无异常、无 NaN、单位不出界不进墙、有塔被推', () => {
+  it('默认 Bot 跑 12 分钟：无异常、无 NaN、单位不出界不进墙、有塔被推', () => {
     const counts: Record<PlayerTeam, number> = { 0: 0, 1: 0 };
     const kinds = new Set<GameEvent['type']>();
     let maxUnits = 0;

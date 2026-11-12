@@ -50,9 +50,9 @@ export interface Profile {
 
 export const PROFILES: Record<Difficulty, Profile> = {
   easy: {
-    think: 0.3, reaction: 0.6, aimError: 0.3, aimLead: 0, dodge: 0.12, lastHitError: 0.3, lastHitSkip: 0.4,
-    aggression: 0.72, harass: 0.15, dive: false, comboGap: 0.75, orbwalk: false, flashKill: 0, escapeSense: 0.6,
-    focus: 0, awareness: 0, teamwork: 0.25, idleRate: 0.045, idleMin: 0.7, idleMax: 1.8, gankCooldown: 75,
+    think: 0.3, reaction: 0.6, aimError: 0.2, aimLead: 0, dodge: 0.15, lastHitError: 0.22, lastHitSkip: 0.3,
+    aggression: 0.8, harass: 0.2, dive: false, comboGap: 0.6, orbwalk: false, flashKill: 0, escapeSense: 0.75,
+    focus: 0, awareness: 0, teamwork: 0.4, idleRate: 0.035, idleMin: 0.7, idleMax: 1.8, gankCooldown: 70,
   },
   normal: {
     think: 0.16, reaction: 0.28, aimError: 0.09, aimLead: 0.8, dodge: 0.6, lastHitError: 0.1, lastHitSkip: 0.1,
@@ -60,9 +60,9 @@ export const PROFILES: Record<Difficulty, Profile> = {
     focus: 0.6, awareness: 0.4, teamwork: 0.7, idleRate: 0, idleMin: 0, idleMax: 0, gankCooldown: 34,
   },
   hard: {
-    think: 0.1, reaction: 0.12, aimError: 0.025, aimLead: 1, dodge: 0.95, lastHitError: 0.03, lastHitSkip: 0,
-    aggression: 1.12, harass: 0.85, dive: true, comboGap: 0.05, orbwalk: true, flashKill: 0.9, escapeSense: 1.15,
-    focus: 1, awareness: 0.8, teamwork: 1, idleRate: 0, idleMin: 0, idleMax: 0, gankCooldown: 28,
+    think: 0.1, reaction: 0.12, aimError: 0.03, aimLead: 1, dodge: 0.85, lastHitError: 0.04, lastHitSkip: 0,
+    aggression: 1.06, harass: 0.75, dive: true, comboGap: 0.08, orbwalk: true, flashKill: 0.9, escapeSense: 1.1,
+    focus: 1, awareness: 0.7, teamwork: 1, idleRate: 0, idleMin: 0, idleMax: 0, gankCooldown: 30,
   },
 };
 
@@ -159,6 +159,8 @@ export const TUNE = {
   /** 打野 gank：同一个目标 / 同一条路 的最短间隔（秒） */
   gankSameTarget: 80,
   gankSameLane: 45,
+  /** 被派去回防后，至少守这么久（秒，威胁完全消失则提前解除） */
+  defendHold: 6,
   /** 回防时守军没到齐，先退到建筑后方这么远集合（米） */
   regroupBack: 11,
   /** 回防保持时间（秒）：敌方多人逼近过的建筑，在他们消失后还要守多久 */

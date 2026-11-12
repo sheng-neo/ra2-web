@@ -9,6 +9,8 @@ import { laneWork } from './lane';
 import { TUNE } from './params';
 import { waveSkills } from './skills';
 
+/** 愿意在营地旁干等野怪刷新的最长时间（秒） */
+const JUNGLE_WAIT = 6;
 const MONS: MonsterUnit[] = [];
 const P: Vec2 = { x: 0, y: 0 };
 
@@ -33,6 +35,8 @@ function chooseCamp(b: HeroBot): CampDef | null {
   const state = v.state.camps;
   // 手上的营地还没打完就不换
   if (b.campId >= 0 && state[b.campId].alive) return camps[b.campId];
+  // 已经选好去等的营地(还没刷出来)：快刷了就别换，免得在几个营地之间来回跑
+  if (b.campId >= 0 && camps[b.campId].side === b.team && state[b.campId].respawnIn <= JUNGLE_WAIT) return camps[b.campId];
   let best: CampDef | null = null;
   let bestCost = Infinity;
   const speed = Math.max(1, me.stats.moveSpeed);
@@ -41,7 +45,8 @@ function chooseCamp(b: HeroBot): CampDef | null {
     const d = dist(me.pos, c.pos);
     const st = state[c.id];
     const wait = st.alive ? 0 : Math.max(0, st.respawnIn - d / speed);
-    if (wait > 6) continue;
+    // 走到了还得干等很久的不考虑(开局例外：野怪第一次刷新前，直接去第一个营地等)
+    if (wait > JUNGLE_WAIT && b.time > 30) continue;
     let cost = d + wait * speed;
     if (c.monsterType === 'frost_golem' && !hasBuff(me, 'frost_insight')) cost -= 10;
     if (c.monsterType === 'ember_golem' && !hasBuff(me, 'ember_might')) cost -= 12;

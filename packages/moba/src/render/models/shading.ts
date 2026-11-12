@@ -202,6 +202,41 @@ void main() {
 }
 `;
 
+/**
+ * 透视剪影：单位被断崖/树冠/高草挡住时，在遮挡物上画出队伍色的抖动剪影(俯视角下墙后、树后的单位不能凭空消失)。
+ * 做法：深度测试取「更远才通过」、不写深度，并排在场景不透明物之后、单位本体之前绘制——
+ * 没被挡住的地方本体随后盖上来，被挡住的地方只剩剪影。顶点沿视线朝镜头拉近一点，
+ * 这样只有确实躲在遮挡物后面超过这段距离的部分才显示，脚踩进地面/倒地贴地时不会冒出色块。
+ */
+const XRAY_VERTEX = /* glsl */ `
+#include <common>
+${SKIN_PARS}
+attribute vec4 aInstA;
+attribute vec4 aInstX;
+uniform float uPull;
+varying vec4 vX;
+void main() {
+  ${SKIN_MAIN}
+  vec4 mv = viewMatrix * vec4(skinnedPos, 1.0);
+  mv.xyz *= 1.0 - uPull / max(uPull * 2.0, -mv.z);
+  gl_Position = projectionMatrix * mv;
+  vX = vec4(aInstX.rgb, aInstX.a * aInstA.x);
+  // 不需要剪影的实例整个挪出裁剪空间
+  if (vX.a <= 0.01) gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
+}
+`;
+
+const XRAY_FRAGMENT = /* glsl */ `
+#include <common>
+${GLSL_DITHER}
+varying vec4 vX;
+void main() {
+  if (vX.a * 0.72 <= ditherThreshold(gl_FragCoord.xy)) discard;
+  gl_FragColor = vec4(vX.rgb, 1.0);
+  ${GLSL_OUTPUT_FRAGMENT}
+}
+`;
+
 export interface UnitMaterialOptions {
   /** 轮廓光强度 / 指数 */
   rim?: number;
@@ -216,6 +251,8 @@ export interface UnitMaterialOptions {
   /** 描边线宽(CSS 像素)；0 = 不描边 */
   outline?: number;
   outlineColor?: THREE.ColorRepresentation;
+  /** 被遮挡时画透视剪影(逐实例颜色见 InstanceLook.xray) */
+  xray?: boolean;
 }
 
 function createUnitMaterial(bones: THREE.DataTexture, o: UnitMaterialOptions): THREE.ShaderMaterial {
@@ -270,6 +307,16 @@ function createOutlineMaterial(bones: THREE.DataTexture, px: number, color: THRE
   return mat;
 }
 
+function createXrayMaterial(bones: THREE.DataTexture): THREE.ShaderMaterial {
+  return new THREE.ShaderMaterial({
+    uniforms: { uBones: { value: bones }, uPull: { value: 0.7 } },
+    vertexShader: XRAY_VERTEX,
+    fragmentShader: XRAY_FRAGMENT,
+    depthFunc: THREE.GreaterDepth,
+    depthWrite: false,
+  });
+}
+
 /** 逐实例外观参数 */
 export interface InstanceLook {
   opacity: number;
@@ -281,10 +328,13 @@ export interface InstanceLook {
   /** 整体染色与强度 0..1 */
   tint: THREE.Color;
   tintAmount: number;
+  /** 被遮挡时的剪影颜色与强度 0..1(0 = 不画；只有开启了 xray 的批才生效) */
+  xray: THREE.Color;
+  xrayAmount: number;
 }
 
 export function createInstanceLook(): InstanceLook {
-  return { opacity: 1, flash: 0, glow: 1, team: new THREE.Color(1, 1, 1), tint: new THREE.Color(1, 1, 1), tintAmount: 0 };
+  return { opacity: 1, flash: 0, glow: 1, team: new THREE.Color(1, 1, 1), tint: new THREE.Color(1, 1, 1), tintAmount: 0, xray: new THREE.Color(1, 1, 1), xrayAmount: 0 };
 }
 
 /**
@@ -305,17 +355,24 @@ export class RigBatch {
   private instA!: THREE.InstancedBufferAttribute;
   private instTeam!: THREE.InstancedBufferAttribute;
   private instTint!: THREE.InstancedBufferAttribute;
+  private instX: THREE.InstancedBufferAttribute | null = null;
+  private readonly wantXray: boolean;
   private readonly material: THREE.ShaderMaterial;
   private readonly depth: THREE.ShaderMaterial;
   /** 描边壳(背面外扩)；不描边的批为 null */
   readonly outline: THREE.Mesh | null = null;
   private readonly outlineMat: THREE.ShaderMaterial | null = null;
+  /** 透视剪影；没开启的批为 null */
+  readonly xray: THREE.Mesh | null = null;
+  private readonly xrayMat: THREE.ShaderMaterial | null = null;
+  private xrayOn = true;
 
   constructor(source: THREE.BufferGeometry, bones: number, capacity: number, opts: UnitMaterialOptions = {}, name = 'unit-batch') {
     this.source = source;
     this.bones = bones;
     this.capacity = Math.max(1, capacity);
     this.triangles = (source.index ? source.index.count : source.attributes.position.count) / 3;
+    this.wantXray = opts.xray === true;
     this.allocate();
     this.material = createUnitMaterial(this.tex, opts);
     this.depth = createDepthMaterial(this.tex);
@@ -328,7 +385,19 @@ export class RigBatch {
     mesh.frustumCulled = false;
     mesh.matrixAutoUpdate = false;
     mesh.visible = false;
+    // 绘制次序(同在不透明队列)：场景 0 → 剪影 1 → 本体与描边 2
+    mesh.renderOrder = 2;
     this.mesh = mesh;
+    if (this.wantXray) {
+      this.xrayMat = createXrayMaterial(this.tex);
+      const xr = new THREE.Mesh(this.geo, this.xrayMat);
+      xr.name = `${name}:xray`;
+      xr.frustumCulled = false;
+      xr.matrixAutoUpdate = false;
+      xr.visible = false;
+      xr.renderOrder = 1;
+      this.xray = xr;
+    }
     const px = opts.outline ?? 0;
     if (px > 0) {
       this.outlineMat = createOutlineMaterial(this.tex, px, opts.outlineColor ?? 0x1b2233);
@@ -337,6 +406,7 @@ export class RigBatch {
       ol.frustumCulled = false;
       ol.matrixAutoUpdate = false;
       ol.visible = false;
+      ol.renderOrder = 2;
       this.outline = ol;
     }
   }
@@ -345,15 +415,21 @@ export class RigBatch {
   addTo(parent: THREE.Object3D): void {
     parent.add(this.mesh);
     if (this.outline) parent.add(this.outline);
+    if (this.xray) parent.add(this.xray);
   }
 
   removeFrom(parent: THREE.Object3D): void {
     parent.remove(this.mesh);
     if (this.outline) parent.remove(this.outline);
+    if (this.xray) parent.remove(this.xray);
   }
 
   setOutlineVisible(on: boolean): void {
     this.outlineOn = on;
+  }
+
+  setXrayVisible(on: boolean): void {
+    this.xrayOn = on;
   }
   private outlineOn = true;
 
@@ -372,6 +448,11 @@ export class RigBatch {
     geo.setAttribute('aInstA', this.instA);
     geo.setAttribute('aInstTeam', this.instTeam);
     geo.setAttribute('aInstTint', this.instTint);
+    if (this.wantXray) {
+      this.instX = new THREE.InstancedBufferAttribute(new Float32Array(cap * 4), 4);
+      this.instX.setUsage(THREE.DynamicDrawUsage);
+      geo.setAttribute('aInstX', this.instX);
+    }
     geo.instanceCount = 0;
     this.geo = geo;
     this.data = new Float32Array(this.bones * 8 * cap);
@@ -387,6 +468,7 @@ export class RigBatch {
     const oldA = this.instA.array as Float32Array;
     const oldTeam = this.instTeam.array as Float32Array;
     const oldTint = this.instTint.array as Float32Array;
+    const oldX = this.instX ? (this.instX.array as Float32Array) : null;
     const oldGeo = this.geo;
     const oldTex = this.tex;
     this.capacity *= 2;
@@ -395,12 +477,17 @@ export class RigBatch {
     (this.instA.array as Float32Array).set(oldA);
     (this.instTeam.array as Float32Array).set(oldTeam);
     (this.instTint.array as Float32Array).set(oldTint);
+    if (this.instX && oldX) (this.instX.array as Float32Array).set(oldX);
     this.mesh.geometry = this.geo;
     this.material.uniforms.uBones.value = this.tex;
     this.depth.uniforms.uBones.value = this.tex;
     if (this.outline && this.outlineMat) {
       this.outline.geometry = this.geo;
       this.outlineMat.uniforms.uBones.value = this.tex;
+    }
+    if (this.xray && this.xrayMat) {
+      this.xray.geometry = this.geo;
+      this.xrayMat.uniforms.uBones.value = this.tex;
     }
     // 旧的实例属性与贴图直接释放；共享的模型顶点缓冲会在下次绘制时由新几何体重新上传
     oldGeo.dispose();
@@ -430,18 +517,27 @@ export class RigBatch {
     n[i * 4 + 1] = look.tint.g;
     n[i * 4 + 2] = look.tint.b;
     n[i * 4 + 3] = look.tintAmount;
+    if (this.instX) {
+      const x = this.instX.array as Float32Array;
+      x[i * 4] = look.xray.r;
+      x[i * 4 + 1] = look.xray.g;
+      x[i * 4 + 2] = look.xray.b;
+      x[i * 4 + 3] = look.xrayAmount;
+    }
   }
 
   end(): void {
     const n = this.count;
     this.mesh.visible = n > 0;
     if (this.outline) this.outline.visible = n > 0 && this.outlineOn;
+    if (this.xray) this.xray.visible = n > 0 && this.xrayOn;
     this.geo.instanceCount = n;
     if (n === 0) return;
     this.tex.needsUpdate = true;
     this.instA.needsUpdate = true;
     this.instTeam.needsUpdate = true;
     this.instTint.needsUpdate = true;
+    if (this.instX) this.instX.needsUpdate = true;
   }
 
   setShadows(cast: boolean): void {
@@ -454,5 +550,6 @@ export class RigBatch {
     this.material.dispose();
     this.depth.dispose();
     this.outlineMat?.dispose();
+    this.xrayMat?.dispose();
   }
 }

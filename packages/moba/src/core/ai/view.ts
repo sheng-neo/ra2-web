@@ -15,6 +15,8 @@ import { bushIndexAt } from '../vision';
 import type { Sim } from '../world';
 import type { BotView, LastSeen, PublicState } from './types';
 
+/** safePath 的 A* 启发权重 */
+const SAFE_PATH_GREED = 1.6;
 /** 感知敌方区域/弹道的距离（约等于英雄视野） */
 const PERCEPTION_RANGE = 13;
 
@@ -156,6 +158,11 @@ export class SimBotView implements BotView {
     return this.sim.lastSeen[this.team][u.h.index];
   }
 
+  botControlled(hero: HeroUnit): boolean {
+    const u = this.sim.byId.get(hero.id);
+    return !!u && u.kind === 'hero' && u.team === this.team && u.h.controller !== null;
+  }
+
   walkable(pos: Vec2, radius?: number): boolean {
     return this.sim.nav.isFree(pos.x, pos.y, radius ?? this.self.rt.navR);
   }
@@ -196,8 +203,13 @@ export class SimBotView implements BotView {
       zr = Math.min(zr, Math.hypot(p.x - s.pos.x, p.y - s.pos.y) - 0.4, Math.hypot(to.x - s.pos.x, to.y - s.pos.y) - 0.4);
       if (zr > s.radius + 1) zones.push({ x: s.pos.x, y: s.pos.y, r: zr });
     }
+    // 敌方泉水同样是禁区
+    const base = this.map.bases[this.enemyTeam];
+    const fr = Math.min(base.fountainRadius + margin, Math.hypot(p.x - base.fountain.x, p.y - base.fountain.y) - 0.4, Math.hypot(to.x - base.fountain.x, to.y - base.fountain.y) - 0.4);
+    if (fr > 1) zones.push({ x: base.fountain.x, y: base.fountain.y, r: fr });
     if (nav.segmentFree(p.x, p.y, to.x, to.y, r) && !segmentHitsZones(zones, p.x, p.y, to.x, to.y)) return [{ x: to.x, y: to.y }];
-    const path = nav.findPath(p.x, p.y, to.x, to.y, r, zones);
+    // 长途赶路用更贪心的搜索：展开的节点少得多，换来的只是偶尔多绕一点
+    const path = nav.findPath(p.x, p.y, to.x, to.y, r, zones, SAFE_PATH_GREED);
     return path && path.length > 0 ? path : null;
   }
 

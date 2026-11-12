@@ -3,13 +3,14 @@
  *
  * 只汇总本队本来就能看到的信息(己方单位、可见敌人、建筑、记分板、野怪)，据此给每个英雄派任务：
  *   lane 对线 / jungle 打野 / push 抱团推进 / defend 回防 / epic 打史诗野怪
- * 另外维护：各路兵线态势、集火目标、「看见敌人交过哪些技能」的记忆。
+ * 另外维护：各路兵线态势、中期游走小队、敌方大部队的动向与回防保持、打史诗野怪的时机、集火目标、
+ * 以及「看见敌人交过哪些技能」的记忆。
  * 英雄自己的战术层(bot.ts)拿到任务后自行决定怎么执行，生存/战斗判断可以临时压过任务。
  */
 import { HEROES, skillLevelsAt } from '../data/heroes';
 import { MONSTERS } from '../data/units';
 import type {
-  AbilitySlot, CoreUnit, HeroId, HeroUnit, LaneId, MonsterUnit, PlayerTeam, TowerUnit, UnitAnim, Vec2,
+  AbilitySlot, CoreUnit, HeroId, HeroUnit, LaneId, MonsterUnit, PlayerTeam, TowerUnit, UnitAnim,
 } from '../types';
 import { dist, LANES, laneGeo, type LaneGeo } from './geom';
 import { PROFILES, TUNE, type Profile } from './params';
@@ -46,9 +47,8 @@ export interface LaneState {
   threatHeroes: number;
   threatMinions: number;
   threat: number;
-  /** 这条路上可见的敌方英雄数，以及其中最靠近我方基地的那个的进度 */
+  /** 这条路上可见的敌方英雄数 */
   foeHeroes: number;
-  foeHeroP: number;
   /** 回防保持：最近有敌方英雄逼近这条路的建筑，在此时间之前都按 threatSeen 个敌人来布防 */
   threatUntil: number;
   threatSeen: number;
@@ -87,10 +87,9 @@ export class TeamBrain {
   epicCamp = -1;
   /** 集火目标 */
   focusId = -1;
-  /** 敌方大部队(3 人以上聚在一条路)最近一次出现的路、时间、最靠前者的进度 */
+  /** 敌方大部队(3 人以上聚在一条路)最近一次出现的路与时间 */
   massLane: LaneId | null = null;
   massAt = -99;
-  massP = 0;
   /** 中期游走小队(打野 + 中单)当前要去帮的边路；null = 各自发育 */
   squadLane: LaneId | null = null;
   private squadUntil = 0;
@@ -103,7 +102,7 @@ export class TeamBrain {
   private lastTime = -1;
   private readonly casts = new Map<number, Record<AbilitySlot, number>>();
   private readonly castStamp = new Map<number, number>();
-  private readonly tmp: Vec2 = { x: 0, y: 0 };
+  private readonly defendHold = new Map<HeroId, { lane: LaneId; until: number }>();
 
   constructor(view: BotView) {
     this.team = view.team;
@@ -114,7 +113,7 @@ export class TeamBrain {
     const foeCore = view.enemyStructures().find((s) => s.kind === 'core') as CoreUnit;
     const mk = (lane: LaneId): LaneState => ({
       lane, allyFront: -1, enemyFront: -1, allyMinions: 0, enemyMinions: 0, ownStruct: core, ownP: 0, foeStruct: foeCore, foeP: 0,
-      foeTowers: 3, ownTowers: 3, threatHeroes: 0, threatMinions: 0, threat: 0, foeHeroes: 0, foeHeroP: 0, threatUntil: -1, threatSeen: 0,
+      foeTowers: 3, ownTowers: 3, threatHeroes: 0, threatMinions: 0, threat: 0, foeHeroes: 0, threatUntil: -1, threatSeen: 0,
       atFoeStruct: false,
     });
     this.lanes = { top: mk('top'), mid: mk('mid'), bot: mk('bot') };
@@ -190,7 +189,6 @@ export class TeamBrain {
       ls.threatHeroes = 0;
       ls.threatMinions = 0;
       ls.foeHeroes = 0;
-      ls.foeHeroP = 1e9;
       ls.atFoeStruct = false;
       ls.ownTowers = 0;
       ls.foeTowers = 0;
@@ -249,12 +247,7 @@ export class TeamBrain {
         if (dist(u.pos, ls.ownStruct.pos) <= THREAT_MINION_RANGE) ls.threatMinions++;
       } else if (u.kind === 'hero') {
         const lane = geo.nearestLane(u.pos.x, u.pos.y);
-        if (geo.lateral < 10) {
-          const ls = this.lanes[lane];
-          ls.foeHeroes++;
-          const p = geo.prog(team, lane, u.pos.x, u.pos.y);
-          if (p < ls.foeHeroP) ls.foeHeroP = p;
-        }
+        if (geo.lateral < 10) this.lanes[lane].foeHeroes++;
         for (const l of LANES) {
           const ls = this.lanes[l];
           if (dist(u.pos, ls.ownStruct.pos) <= THREAT_HERO_RANGE) ls.threatHeroes++;
@@ -276,7 +269,6 @@ export class TeamBrain {
       if (ls.foeHeroes >= 3) {
         this.massLane = lane;
         this.massAt = v.time;
-        this.massP = ls.foeHeroP;
       }
     }
     // 他们在别的路露面了：原来那条路的防线可以撤
@@ -366,7 +358,7 @@ export class TeamBrain {
       for (let i = 0; i < board.length; i++) {
         const h = board[i];
         if (h.team !== this.team || !h.alive || h.hp < h.stats.maxHp * 0.55) continue;
-        if (dist(h.pos, camp.pos) > 48) continue;
+        if (dist(h.pos, camp.pos) > (v.botControlled(h) ? 48 : 14)) continue;
         n++;
         lv += h.level;
       }
@@ -442,6 +434,8 @@ export class TeamBrain {
     const board = v.scoreboard();
     const allies: HeroUnit[] = [];
     for (let i = 0; i < board.length; i++) if (board[i].team === this.team) allies.push(board[i]);
+    // 真人队友照样给他算一个「默认任务」(界面可以拿来做提示)，但调人回防/打龙时不指望他
+    const isBot = (h: HeroUnit): boolean => v.botControlled(h);
     const numbers = this.aliveAllies - this.aliveFoes;
     // 多两个人：全员压上(推塔/上高地)
     const powerPlay = this.phase !== 'lane' && numbers >= 2;
@@ -498,17 +492,31 @@ export class TeamBrain {
         need = ls.threatHeroes > 0 ? ls.threatHeroes + (critical ? 1 : 0) : ls.threatMinions >= 3 ? 1 : 0;
         if (critical && ls.threatHeroes >= 2) need = 5;
       }
+      // 真人已经在场就少派一个人
+      for (const h of allies) if (h.alive && !isBot(h) && dist(h.pos, ls.ownStruct.pos) < 18) need--;
       if (need <= 0) continue;
-      const cands = allies.filter((h) => h.alive && !taken.has(h.heroId)).sort((a, b) => dist(a.pos, ls.ownStruct.pos) - dist(b.pos, ls.ownStruct.pos));
+      const cands = allies.filter((h) => h.alive && isBot(h) && !taken.has(h.heroId)).sort((a, b) => dist(a.pos, ls.ownStruct.pos) - dist(b.pos, ls.ownStruct.pos));
       for (const h of cands) {
         if (need <= 0) break;
         // 对线期只调动打野和本路英雄，别把其他路的人拽走
         if (this.phase === 'lane' && h.lane !== 'jungle' && h.lane !== lane) continue;
         if (dist(h.pos, ls.ownStruct.pos) > 70 && !critical) continue;
         this.tasks.set(h.heroId, { kind: 'defend', lane, campId: -1 });
+        this.defendHold.set(h.heroId, { lane, until: v.time + TUNE.defendHold });
         taken.add(h.heroId);
         need--;
       }
+    }
+    // 回防任务保持一小段时间：威胁值在门槛上下波动时，别让人在「回防」和「回去干活」之间来回跑
+    for (const h of allies) {
+      const hold = this.defendHold.get(h.heroId);
+      if (!hold || taken.has(h.heroId) || !h.alive) continue;
+      if (v.time >= hold.until || this.lanes[hold.lane].threat <= 0) {
+        this.defendHold.delete(h.heroId);
+        continue;
+      }
+      this.tasks.set(h.heroId, { kind: 'defend', lane: hold.lane, campId: -1 });
+      taken.add(h.heroId);
     }
 
     // —— 史诗野怪：打野 + 附近状态好的队友 ——
@@ -517,7 +525,7 @@ export class TeamBrain {
       const colossus = camp.monsterType === 'star_colossus';
       const want = (colossus ? TUNE.colossusHeroes : TUNE.drakeHeroes) + 1;
       const cands = allies
-        .filter((h) => h.alive && !taken.has(h.heroId) && h.hp >= h.stats.maxHp * 0.5 && dist(h.pos, camp.pos) < 55)
+        .filter((h) => h.alive && !taken.has(h.heroId) && h.hp >= h.stats.maxHp * 0.5 && dist(h.pos, camp.pos) < (isBot(h) ? 55 : 14))
         .sort((a, b) => (a.lane === 'jungle' ? -100 : 0) + dist(a.pos, camp.pos) - ((b.lane === 'jungle' ? -100 : 0) + dist(b.pos, camp.pos)));
       let n = 0;
       for (const h of cands) {
@@ -537,26 +545,16 @@ export class TeamBrain {
     }
   }
 
-  /** 推进/打龙时身边聚了多少队友（含自己）：pos 周围 radius 内的存活己方英雄数 */
-  alliesNear(v: BotView, pos: Vec2, radius: number): number {
-    let n = 0;
-    for (const h of v.alliedHeroes()) if (dist(h.pos, pos) <= radius) n++;
-    return n;
-  }
-
-  /** 被派去同一个推进任务的存活队友数（含自己） */
+  /** 被派去同一个推进任务的存活队友数（含自己）。真人队友只有已经在身边时才算数 */
   pushers(v: BotView, lane: LaneId): number {
     let n = 0;
     for (const h of v.alliedHeroes()) {
       const t = this.tasks.get(h.heroId);
-      if (t && t.kind === 'push' && t.lane === lane) n++;
+      if (!t || t.kind !== 'push' || t.lane !== lane) continue;
+      if (!v.botControlled(h) && dist(h.pos, v.hero.pos) > 16) continue;
+      n++;
     }
     return n;
-  }
-
-  /** 兵线上某进度处的点（己方坐标），写入内部缓冲 */
-  lanePoint(lane: LaneId, p: number, side = 0): Vec2 {
-    return this.geo.point(this.team, lane, p, this.tmp, side);
   }
 }
 

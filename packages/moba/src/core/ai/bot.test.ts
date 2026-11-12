@@ -153,7 +153,7 @@ describe('Bot：难度', () => {
     const lead = (difficulty: 'easy' | 'hard'): number => {
       let sum = 0;
       for (const seed of [11, 12]) {
-        const r = runHeadless({ seed, playerHero: 'xingli', difficulty, autoPlay: true }, { maxTime: 8 * 60 });
+        const r = runHeadless({ seed, playerHero: 'xingli', difficulty, autoPlay: true }, { maxTime: 6.5 * 60 });
         const t = r.sim.state.teams;
         // 红方相对蓝方的经济领先(对局提前结束则按胜负计一个大数)
         sum += r.winner === null ? t[1].gold - t[0].gold : r.winner === 1 ? 5000 : -5000;

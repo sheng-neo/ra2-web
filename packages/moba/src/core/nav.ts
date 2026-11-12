@@ -434,9 +434,10 @@ export class NavGrid {
 
   /**
    * 为半径 r 的单位规划 (sx,sy)→(gx,gy) 的路径。返回拉直后的路点(不含起点)。
+   * avoid = 这次搜索额外的禁行圆；heurW = 启发权重(越大搜索越贪心、展开节点越少，路径可能略绕)。
    * 终点不可走时走到离它最近的可走点；完全不连通时返回尽量靠近终点的部分路径；起点无处可走返回 null。
    */
-  findPath(sx: number, sy: number, gx: number, gy: number, r: number, avoid?: readonly AvoidZone[]): Vec2[] | null {
+  findPath(sx: number, sy: number, gx: number, gy: number, r: number, avoid?: readonly AvoidZone[], heurW = HEUR_W): Vec2[] | null {
     const n = this.n;
     const f = this.clear;
     const rp = r + PATH_MARGIN;
@@ -503,7 +504,7 @@ export class NavGrid {
             bestH = h;
             bestNode = ni;
           }
-          this.heapPush(ni, ng + h * HEUR_W);
+          this.heapPush(ni, ng + h * heurW);
         }
       }
     }

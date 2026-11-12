@@ -198,7 +198,7 @@ export function respawnTime(level: number, gameTime: number): number {
  * 新小兵的生命与攻击 ×(1 + 5×minionBoostPerMin)。
  */
 export const ENDGAME = {
-  start: 660,
+  start: 600,
   structureVulnPerMin: 0.2,
   minionBoostPerMin: 0.22,
 };

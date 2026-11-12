@@ -56,7 +56,7 @@ export class FloaterLayer {
   private stagger = new Map<number, { t: number; n: number }>();
   private heals = new Map<number, { sum: number; t: number }>();
   private now = 0;
-  private a: UnitAnchor = { x: 0, y: 0, z: 0, height: 2, radius: 0.6, visible: false, unit: null };
+  private a: UnitAnchor = { x: 0, y: 0, z: 0, height: 2, radius: 0.6, visible: false, opacity: 1, unit: null };
   private p = { x: 0, y: 0 };
   private text: TextCache;
   private icons: IconCache;

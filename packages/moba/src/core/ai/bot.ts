@@ -18,7 +18,7 @@ import { epicWork, jungleWork } from './jungle';
 import { laneWork } from './lane';
 import { PROFILES, STYLES, TUNE, type Profile, type Style } from './params';
 import { shop } from './shop';
-import { escapeSkills, fightSkills, pokeSkills } from './skills';
+import { escapeSkills, fightSkills, finisherSkills, pokeSkills } from './skills';
 import { teamBrain, type TeamBrain } from './team';
 import type { BotController, BotView } from './types';
 
@@ -210,6 +210,7 @@ export class HeroBot implements BotController {
     }
     if (this.dodge()) return;
     if (this.survive()) return;
+    this.finish();
     if (this.sustain()) return;
     if (this.combat()) return;
     if (this.assist()) return;
@@ -519,6 +520,14 @@ export class HeroBot implements BotController {
     return tKill <= window;
   }
 
+  /** pos 是否在敌方泉水的打击范围内(外加 margin 米) */
+  nearFoeFountain(pos: Vec2, margin: number): boolean {
+    const r = this.v.map.bases[this.v.enemyTeam].fountainRadius + margin;
+    const dx = pos.x - this.foeHome.x;
+    const dy = pos.y - this.foeHome.y;
+    return dx * dx + dy * dy <= r * r;
+  }
+
   /** 附近有需要立刻应对的威胁(回城引导中用它决定要不要取消) */
   private threatened(): boolean {
     if (this.dmgRate > 0) return true;
@@ -544,6 +553,8 @@ export class HeroBot implements BotController {
    * 打单位 u 需不需要站进敌方建筑的射程。有兵扛塔且塔没盯着我时可以进。
    */
   safeToHit(u: Unit): boolean {
+    // 目标缩在敌方泉水里：够不着就算了(远程在泉水外能点到的另说)
+    if (this.nearFoeFountain(u.pos, 1.5 - this.me.stats.attackRange)) return false;
     const s = this.foeStruct;
     if (!s || u === s) return true;
     if (this.diving) return true;
@@ -698,6 +709,12 @@ export class HeroBot implements BotController {
     this.forceFightId = -1;
     if (time >= this.fightUntil) this.diving = false;
 
+    // —— 敌方泉水：进去就是送，无条件出来 ——
+    if (this.nearFoeFountain(this.me.pos, 1.2)) {
+      this.travel(this.home.x, this.home.y, 8, true);
+      this.label = 'leave-fountain';
+      return true;
+    }
     // —— 敌方建筑：盯上我了 / 没有兵扛 / 最后一个兵快死了 → 出塔 ——
     const st = this.foeStruct;
     const towerDanger = st !== null && this.inFoeRange && !this.diving && (this.towerOnMe || this.tankers === 0 || this.tankHp < 450);
@@ -845,7 +862,12 @@ export class HeroBot implements BotController {
       } else {
         this.label = 'base';
         if (inBase) this.act.halt();
-        else this.act.moveTo(this.home.x, this.home.y);
+        else if (dHome < 26) this.act.moveTo(this.home.x, this.home.y);
+        else if (!this.recallNow()) {
+          // 回城被打断了：换个安全的地方再回，而不是一路走回家
+          const spot = this.safeSpot();
+          this.travel(spot.x, spot.y, 3);
+        }
         return true;
       }
     }
@@ -879,7 +901,7 @@ export class HeroBot implements BotController {
       return true;
     }
     const spot = this.safeSpot();
-    this.act.moveTo(spot.x, spot.y);
+    this.travel(spot.x, spot.y, 3);
     return true;
   }
 
@@ -975,6 +997,15 @@ export class HeroBot implements BotController {
     return best;
   }
 
+  /** 补一个技能就能收掉的残血敌人：顺手收(施法不占用这次思考的移动/普攻决策) */
+  private finish(): void {
+    if (this.foes.length === 0 || this.v.busy()) return;
+    for (const e of this.foes) {
+      if (e.hp > e.stats.maxHp * 0.3) continue;
+      if (finisherSkills(this, e)) return;
+    }
+  }
+
   private combat(): boolean {
     if (this.foes.length === 0) return false;
     const t = this.pickTarget();
@@ -1023,6 +1054,8 @@ export class HeroBot implements BotController {
     if (!go) return false;
     // 够不着：只有大优势追残血才追出去
     if (d > eDist && !(adv >= thr * 1.2 && d <= 14 && (t.hp < t.stats.maxHp * 0.5 || this.friendsNear >= 1))) return false;
+    // 不追进敌方泉水
+    if (this.nearFoeFountain(sp, 1.5)) return false;
     // 塔下的目标：满足越塔条件才上
     const st = v.enemyStructureCovering(sp, 0.3);
     if (st) {

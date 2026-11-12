@@ -116,6 +116,8 @@ const STATIC_KINDS: Record<UnitKind, boolean> = { hero: false, minion: false, mo
  * 只影响画面：碰撞、射程、拾取以外的判定仍然用模拟层的半径。
  */
 const VIEW_SCALE: Record<UnitKind, number> = { hero: 1.26, minion: 1.22, monster: 1.12, tower: 1, core: 1 };
+/** 点选敌方单位时在模型轮廓之外再放宽的像素数 */
+const PICK_SLOP = 20;
 
 function modelKeyOf(u: Unit): string {
   switch (u.kind) {
@@ -184,6 +186,8 @@ export function createUnitsModule(ctx: RenderContext): UnitsModule {
   ctx.layers.units.add(root);
 
   const views = new Map<number, View>();
+  /** 本帧状态里的单位(拾取时查无敌等状态) */
+  const unitById = new Map<number, Unit>();
   const list: View[] = [];
   const batches = new Map<string, RigBatch>();
   const batchList: RigBatch[] = [];
@@ -212,13 +216,21 @@ export function createUnitsModule(ctx: RenderContext): UnitsModule {
     player: new THREE.Color(PALETTE.player.main),
     shadow: new THREE.Color(0x0a1020),
     deadTint: new THREE.Color(0x8890a0),
+    // 透视剪影色(与血条的敌我配色一致)
+    xSelf: new THREE.Color(0x9dff5a),
+    xAlly: new THREE.Color(0x58aaff),
+    xEnemy: new THREE.Color(0xff5a48),
+    xNeutral: new THREE.Color(0xf2c860),
   };
+  let playerTeam: 0 | 1 = ctx.frame.playerTeam;
   const teamColor = (t: 0 | 1 | 2): THREE.Color => (t === 0 ? colors.blue : t === 1 ? colors.red : colors.neutral);
 
   const batchFor = (def: ModelDef): RigBatch => {
     let b = batches.get(def.key);
     if (!b) {
-      b = new RigBatch(def.geometry, def.rig.count, capacityFor(def.key), { outline: 1.5 }, def.key);
+      // 会动的单位(英雄/小兵/野怪)被地形挡住时画透视剪影；建筑够高，不需要
+      const xray = def.key.startsWith('hero:') || def.key.startsWith('minion:') || def.key.startsWith('monster:');
+      b = new RigBatch(def.geometry, def.rig.count, capacityFor(def.key), { outline: 1.5, xray }, def.key);
       b.setShadows(shadows);
       b.setOutlineVisible(outlines);
       b.addTo(root);
@@ -494,6 +506,9 @@ export function createUnitsModule(ctx: RenderContext): UnitsModule {
     look.flash = v.flash;
     look.glow = v.puppet.output.glow;
     look.tintAmount = v.tintAmount;
+    // 透视剪影：敌红友蓝己绿、野怪金；倒地/离场的不画
+    look.xrayAmount = v.alive && v.dying < 0 ? 1 : 0;
+    look.xray.copy(v.isPlayer ? colors.xSelf : v.team === 2 ? colors.xNeutral : v.team === playerTeam ? colors.xAlly : colors.xEnemy);
     if (v.dying >= 0 && Number.isFinite(v.deathDur)) {
       // 演出的最后一段抖动淡出
       const left = v.deathDur - v.dying;
@@ -524,6 +539,7 @@ export function createUnitsModule(ctx: RenderContext): UnitsModule {
     update(frame) {
       const st = frame.state;
       time += frame.dt;
+      playerTeam = frame.playerTeam;
       // 换了一局(模拟时间倒退)：清掉旧视图
       if (st.time < lastStateTime - 0.5) clearViews();
       lastStateTime = st.time;
@@ -534,9 +550,11 @@ export function createUnitsModule(ctx: RenderContext): UnitsModule {
       updateCullRect();
 
       for (let i = 0; i < list.length; i++) list[i].seen = false;
+      unitById.clear();
       const units = st.units;
       for (let i = 0; i < units.length; i++) {
         const u = units[i];
+        unitById.set(u.id, u);
         let v = views.get(u.id);
         if (!v) {
           v = createView(u, st);
@@ -605,6 +623,9 @@ export function createUnitsModule(ctx: RenderContext): UnitsModule {
       }
     },
     pickUnit(clientX, clientY, st) {
+      // 屏幕空间的宽容拾取：每个单位一个包住模型的椭圆。点在椭圆里按「离中心多近」比较；
+      // 都没点中时，敌方单位再放宽 PICK_SLOP 像素(手指/快速点击经常差一点)。
+      // 调用方拿它选攻击目标：敌方优先于友方，英雄优先于小兵野怪，暂时打不了的(无敌建筑)靠后。
       let best = -1;
       let bestScore = Infinity;
       for (let i = 0; i < list.length; i++) {
@@ -617,12 +638,22 @@ export function createUnitsModule(ctx: RenderContext): UnitsModule {
         const rx = Math.max(24, Math.abs(_scr2.x - _scr.x) * 1.2);
         // 模型在屏幕上是竖长的：纵向按身高放宽
         const ry = Math.max(rx, rx * Math.min(2.2, v.height / (v.radius * 2.6 + 0.4)));
-        const dx = (_scr.x - clientX) / rx;
-        const dy = (_scr.y - clientY) / ry;
-        const score = dx * dx + dy * dy;
-        if (score > 1) continue;
-        // 英雄优先于小兵/野怪，方便点选
-        const bias = v.kind === 'hero' ? 0.6 : 1;
+        const px = _scr.x - clientX;
+        const py = _scr.y - clientY;
+        const enemy = v.team !== playerTeam;
+        let score = (px / rx) ** 2 + (py / ry) ** 2;
+        if (score > 1) {
+          if (!enemy) continue;
+          const near = (px / (rx + PICK_SLOP)) ** 2 + (py / (ry + PICK_SLOP)) ** 2;
+          if (near > 1) continue;
+          // 擦边的永远排在真正点中的之后
+          score = 2 + near;
+        }
+        let bias = enemy ? (v.kind === 'hero' ? 0.5 : 0.8) : 1.6;
+        if (enemy && STATIC_KINDS[v.kind]) {
+          const u = unitById.get(v.id);
+          if (u?.invulnerable) bias = 1.5;
+        }
         if (score * bias < bestScore) {
           bestScore = score * bias;
           best = v.id;
@@ -667,6 +698,7 @@ export function createUnitsModule(ctx: RenderContext): UnitsModule {
       for (const b of batchList) b.dispose();
       rings.dispose();
       views.clear();
+      unitById.clear();
       list.length = 0;
       ruins.length = 0;
       batches.clear();
