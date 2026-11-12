@@ -146,6 +146,69 @@ function measureFrame(id: HeroId, def: ModelDef): Box {
   return box;
 }
 
+interface Stage {
+  scene: THREE.Scene;
+  camera: THREE.PerspectiveCamera;
+  key: THREE.DirectionalLight;
+  rim: THREE.PointLight;
+}
+
+function createStage(shadows: boolean): Stage {
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(28, 1, 0.3, 80);
+  // 主光：左前上方的暖光；环境：偏冷的天光；背光：英雄辉光色，勾出轮廓
+  const key = new THREE.DirectionalLight(PALETTE.env.sun, 2.9);
+  key.position.set(-3.2, 6.5, 5.5);
+  if (shadows) {
+    key.castShadow = true;
+    key.shadow.mapSize.set(1024, 1024);
+    const c = key.shadow.camera;
+    c.left = c.bottom = -4.5;
+    c.right = c.top = 4.5;
+    c.near = 1;
+    c.far = 24;
+    key.shadow.bias = -0.0006;
+    key.shadow.normalBias = 0.04;
+  }
+  scene.add(key, key.target);
+  scene.add(new THREE.HemisphereLight(0xdfe8ff, 0x6d6880, 1.9));
+  const rim = new THREE.PointLight(0xffffff, 26, 14, 1.4);
+  rim.position.set(2.6, 3.4, -3.4);
+  scene.add(rim);
+  return { scene, camera, key, rim };
+}
+
+function setupRenderer(renderer: THREE.WebGLRenderer): void {
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.2;
+  renderer.setClearColor(0x000000, 0);
+}
+
+/** 展台：深海军蓝石台 + 金边 + 英雄辉光色的光槽与星纹 */
+function buildPedestal(glow: THREE.Color, radius: number): THREE.BufferGeometry {
+  const b = new ModelBuilder();
+  b.crease = 30;
+  b.paint(0x141c3a, { c2: 0x2c3a70 });
+  b.lathe([[-0.36, radius * 0.84], [-0.16, radius * 1.0], [-0.08, radius * 1.0], [-0.06, radius * 0.95], [0, radius * 0.93]], { seg: 24 });
+  b.paint(0xd8a848, { gloss: 1 });
+  b.lathe([[-0.125, radius * 1.015], [-0.085, radius * 1.015], [-0.08, radius * 0.97]], { seg: 24, cap0: false, cap1: false });
+  b.g(X(0, 0.002, 0), () => b.torus(radius * 0.66, 0.018, 0.01, 32, 4, { crease: 30 }));
+  const g: [number, number, number] = [glow.r, glow.g, glow.b];
+  b.paint(g, { glow: 0.5 });
+  b.g(X(0, 0.004, 0), () => b.torus(radius * 0.8, 0.03, 0.01, 40, 4, { crease: 30 }));
+  // 台面的八角星纹
+  const star: number[][] = [];
+  for (let i = 0; i < 16; i++) {
+    const a = (i / 16) * Math.PI * 2;
+    const r = (i % 2 === 0 ? 0.56 : 0.3) * radius;
+    star.push([Math.cos(a) * r, Math.sin(a) * r]);
+  }
+  b.paint([g[0] * 0.5, g[1] * 0.5, g[2] * 0.5], { glow: 0.12 });
+  b.g(X(0, 0.004, 0, -90, 0, 0), () => b.extrude(star, 0.006, 0));
+  return b.build();
+}
+
 // ───────────── 2D 占位(WebGL 不可用时) ─────────────
 
 function drawFallback(ctx: CanvasRenderingContext2D, w: number, h: number, heroId: HeroId, portrait: boolean): void {
