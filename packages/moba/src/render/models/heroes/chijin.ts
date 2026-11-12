@@ -25,7 +25,7 @@ const C = {
   leather: 0x5c4036,
 };
 
-const SCALE = 1.15;
+const SCALE = 1.18;
 
 function build(): { h: Human; b: ModelBuilder; extra: Extra } {
   const h = humanRig(STANDARD_DIMS);
@@ -36,9 +36,9 @@ function build(): { h: Human; b: ModelBuilder; extra: Extra } {
   const ponyPts = [[0, 1.94, -0.2], [0, 1.97, -0.44], [0, 1.78, -0.66], [0, 1.5, -0.75], [0, 1.2, -0.76]];
   const pony = rig.addChain('pony', J.head, ponyPts.slice(0, 4));
   rig.chain({ joints: pony, tip: [0, -0.3, -0.01], stiffness: 5, drag: 0.9, gravity: 9, maxAngle: 75, wind: 1.5, colliders: [{ joint: J.chest, x: 0, y: 0.1, z: -0.02, r: 0.3 }] });
-  const scarfPts = [[0.09, 1.4, -0.18], [0.13, 1.36, -0.5], [0.14, 1.29, -0.82], [0.14, 1.24, -1.14]];
+  const scarfPts = [[0.09, 1.4, -0.18], [0.13, 1.24, -0.44], [0.14, 0.98, -0.6], [0.14, 0.7, -0.68]];
   const scarf = rig.addChain('scarf', J.chest, scarfPts.slice(0, 3));
-  rig.chain({ joints: scarf, tip: [0, -0.05, -0.32], stiffness: 3.5, drag: 0.92, gravity: 7, maxAngle: 80, wind: 3, colliders: [{ joint: J.chest, x: 0, y: 0, z: 0, r: 0.26 }] });
+  rig.chain({ joints: scarf, tip: [0, -0.28, -0.08], stiffness: 3.5, drag: 0.92, gravity: 7, maxAngle: 80, wind: 3, colliders: [{ joint: J.chest, x: 0, y: 0, z: 0, r: 0.26 }] });
   const sashPts = [[0.19, 0.96, 0.09], [0.24, 0.74, 0.1], [0.25, 0.52, 0.08], [0.25, 0.34, 0.07]];
   const sash = rig.addChain('sash', J.hips, sashPts.slice(0, 3));
   rig.chain({ joints: sash, tip: [0, -0.18, -0.01], stiffness: 6, drag: 0.88, gravity: 10, maxAngle: 60, wind: 1 });

@@ -24,7 +24,7 @@ import { createRendererCore } from '../render/engine/core';
 import { PALETTE, createToonMaterial } from '../render/materials';
 import { type InstanceLook, type ModelDef, Puppet, RigBatch, allModelKeys, createInstanceLook, getModel, hasModel } from '../render/models';
 import { createTerrainModule } from '../render/terrain';
-import { type UnitsModule, createUnitsModule } from '../render/units';
+import { createUnitsModule } from '../render/units';
 
 const params = new URLSearchParams(location.search);
 const num = (k: string): number | null => {

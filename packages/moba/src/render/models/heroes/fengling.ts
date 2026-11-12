@@ -27,7 +27,7 @@ const C = {
 };
 
 const DIMS: HumanDims = { ...STANDARD_DIMS, hipX: 0.11, shoulderX: 0.27, clavX: 0.08 };
-const SCALE = 1.12;
+const SCALE = 1.16;
 
 interface Extra {
   bowUp: number;

@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+    <title>星陨战纪 · 特效画廊</title>
+    <style>
+      html, body { margin: 0; height: 100%; background: #070a14; overflow: hidden; }
+      #app { position: fixed; inset: 0; }
+      #panel {
+        position: fixed; left: 0; top: 0; bottom: 0; width: 232px; z-index: 20; overflow-y: auto; padding: 8px 8px 24px;
+        font: 12px/1.4 "PingFang SC", "HarmonyOS Sans SC", "Microsoft YaHei", sans-serif; color: #dbe8ff;
+        background: rgba(8, 14, 30, 0.86); border-right: 1px solid rgba(240, 200, 110, 0.28); box-sizing: border-box;
+      }
+      #panel h3 { margin: 12px 0 5px; font-size: 12px; font-weight: 700; color: #f0cc7a; letter-spacing: 1px; }
+      #panel h3:first-child { margin-top: 2px; }
+      #panel button {
+        display: inline-block; margin: 0 4px 4px 0; padding: 3px 7px; border-radius: 4px; cursor: pointer;
+        font: 11px/1.4 ui-monospace, Menlo, Consolas, monospace; color: #dff3ff;
+        background: rgba(60, 110, 190, 0.28); border: 1px solid rgba(120, 190, 255, 0.35);
+      }
+      #panel button:hover { background: rgba(80, 150, 240, 0.5); }
+      #panel button.on { background: rgba(240, 190, 80, 0.45); border-color: rgba(255, 220, 130, 0.8); }
+      #panel .row { margin-bottom: 4px; }
+      #hud {
+        position: fixed; right: 8px; top: 8px; z-index: 10; padding: 6px 10px; border-radius: 6px;
+        font: 12px/1.5 ui-monospace, Menlo, Consolas, monospace; color: #dff3ff; background: rgba(8, 14, 30, 0.72);
+        pointer-events: none; white-space: pre;
+      }
+    </style>
+  </head>
+  <body>
+    <!--
+      特效画廊：点哪个放哪个。URL 参数见 src/dev/fx.ts 顶部。
+      常用：?play=<FxKey | seq:名字 | proj:键 | area:键 | buff:键 | aim:种类>&t=<秒>  ?overlay=1  ?quality=low|medium|high  ?panel=0  ?hud=0  ?hero=xingli
+    -->
+    <div id="app"></div>
+    <div id="panel"></div>
+    <div id="hud"></div>
+    <script type="module" src="/src/dev/fx.ts"></script>
+  </body>
+</html>

@@ -58,31 +58,38 @@ const CSS = sfCss(`
 .sf-hud__tr .sf-iconbtn { width: max(38px, 40u); height: max(38px, 40u); }
 .sf-hud__tr .sf-hud__key { right: -4u; bottom: -8u; min-width: max(15px, 16u); height: max(14px, 15u); font-size: max(9px, 9.5u); }
 
-/* 窄横屏(小手机)：收起补刀、缩窄比分牌，给左右两侧让位 */
-@media (orientation: landscape) and (max-width: 760px) {
-  .sf-hud__score-plate { width: 286u; padding: 0 18u; }
-  .sf-hud__score-side { gap: 6u; }
+/* 横屏逐级收紧：屏越窄，比分牌与右上角越挤（按两位数击杀、五位数金币的最坏情况留位置） */
+/* ≤920px(主流手机横屏)：去掉队名与补刀 */
+@media (orientation: landscape) and (max-width: 920px) {
+  .sf-hud__score-plate { width: 300u; padding: 0 20u; }
   .sf-hud__score-team { display: none; }
   .sf-hud__kda-cs { display: none; }
   .sf-hud__gold { min-width: 0; }
+  .sf-hud__tr { gap: 5u; }
+}
+/* ≤700px(小手机)：比分牌只留击杀与计时，右上角再压一压 */
+@media (orientation: landscape) and (max-width: 700px) {
+  .sf-hud__score-plate { width: 204u; padding: 0 14u; }
+  .sf-hud__score-towers { display: none; }
+  .sf-hud__kda > .sf-i { display: none; }
   .sf-hud__tr { gap: 4u; }
   .sf-hud__tr .sf-hud__chip { padding: 0 8u; }
 }
-/* 极窄横屏(568 宽一类的小屏)：比分牌只留击杀与计时 */
+/* ≤620px(568 宽一类的极小屏)：居中已经放不下，比分牌改为紧贴小地图右侧 */
 @media (orientation: landscape) and (max-width: 620px) {
   .sf-hud { --hud-mini: 156u; }
-  .sf-hud__score-plate { width: 222u; padding: 0 20u; }
-  .sf-hud__score-towers { display: none; }
-  .sf-hud__kda > .sf-i { display: none; }
+  .sf-hud__score { left: calc(var(--hud-l) + var(--hud-mini) + 6u); transform: none; }
 }
-/* 竖屏：比分牌挪到小地图右侧，第二行放个人数据与按钮 */
+/* 竖屏：比分牌挪到小地图右侧，第二行放个人数据与按钮（宽度只有小地图右边那一截，数值牌用紧凑样式） */
 @media (orientation: portrait) {
   .sf-hud__score { left: calc(var(--hud-l) + var(--hud-mini) + 8u); right: var(--hud-r); top: 0; transform: none; }
   .sf-hud__score-plate { width: auto; padding: 0 16u; }
   .sf-hud__score-team { display: none; }
-  .sf-hud__tr { top: calc(var(--hud-t) + 56u); gap: 5u; }
-  .sf-hud__tr .sf-hud__chip { padding: 0 8u; }
+  .sf-hud__tr { top: calc(var(--hud-t) + 56u); gap: 4u; }
+  .sf-hud__tr .sf-hud__chip { height: max(27px, 31u); padding: 0 7u; gap: 4u; font-size: var(--sf-fs-xs); }
+  .sf-hud__kda > .sf-i, .sf-hud__kda-cs { display: none; }
   .sf-hud__gold { min-width: 0; }
+  .sf-hud__tr .sf-iconbtn { width: max(36px, 40u); height: max(36px, 40u); }
 }
 `);
 

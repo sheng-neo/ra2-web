@@ -25,7 +25,7 @@ const C = {
 };
 
 const DIMS: HumanDims = { ...STANDARD_DIMS, hipX: 0.105, shoulderX: 0.265, clavX: 0.08 };
-const SCALE = 1.13;
+const SCALE = 1.16;
 
 interface Extra {
   orb: number;

@@ -6,7 +6,7 @@ import { P, R, SLASH_SPAN, embers, flash, pillar, ring, scorch, slashArc, sparks
 import { DECAL } from '../decals';
 import { MODE, SHAPE } from '../glow';
 import type { FxKit } from '../kit';
-import { C, TAU, THEME } from '../util';
+import { TAU, THEME } from '../util';
 import { type FxHandler, castRange, castWidth, fixedValue, involvesPlayer, unitY } from './types';
 
 const T = THEME.chijin;

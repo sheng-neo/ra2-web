@@ -196,7 +196,7 @@ export function createBanner(): Banner {
       const by = kind === 'tower' || kind === 'core' ? '防御塔' : kind === 'monster' ? '野怪' : kind === 'minion' ? '小兵' : '战场';
       const glyph = kind === 'tower' || kind === 'core' ? uiIcon('tower') : kind === 'monster' ? uiIcon('monster') : uiIcon('cs');
       const foeTeam = victim.team === 0 ? 1 : 0;
-      return { tier: 2, tone: victim.team === c.team ? 'foe' : 'ally', title: '击杀', sub: [who(victim, c), `被${by}击杀`], left: glyphFace(glyph, teamCls(foeTeam, c.team)), right, slain: true };
+      return { tier: 2, tone: victim.team === c.team ? 'foe' : 'ally', title: '助攻', sub: [who(victim, c), `被${by}击杀`], left: glyphFace(glyph, teamCls(foeTeam, c.team)), right, slain: true };
     }
     const tone: Tone = killer.team === c.team ? 'ally' : 'foe';
     const key = a?.key ?? null;

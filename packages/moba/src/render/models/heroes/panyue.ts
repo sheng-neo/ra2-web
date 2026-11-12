@@ -24,7 +24,7 @@ const DIMS: HumanDims = {
   clavX: 0.16, shoulderX: 0.47, shoulderY: 1.43, elbowY: 1.06, wristY: 0.73, handY: 0.61,
 };
 
-const SCALE = 1.38;
+const SCALE = 1.42;
 
 interface Extra {
   shield: number;

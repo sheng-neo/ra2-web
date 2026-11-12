@@ -7,6 +7,8 @@ import { createChijin } from './heroes/chijin';
 import { createFengling } from './heroes/fengling';
 import { createPanyue } from './heroes/panyue';
 import { createXingli } from './heroes/xingli';
+import { createYeque } from './heroes/yeque';
+import { createMeleeMinion, createRangedMinion, createSiegeMinion, createSuperMinion } from './minions';
 import type { ModelDef } from './types';
 
 export type { AnimInput, AnimOutput, AttachName, ModelDef } from './types';
@@ -18,6 +20,11 @@ const factories: Record<string, () => ModelDef> = {
   'hero:chijin': createChijin,
   'hero:xingli': createXingli,
   'hero:fengling': createFengling,
+  'hero:yeque': createYeque,
+  'minion:melee': createMeleeMinion,
+  'minion:ranged': createRangedMinion,
+  'minion:siege': createSiegeMinion,
+  'minion:super': createSuperMinion,
 };
 
 const cache = new Map<string, ModelDef>();
