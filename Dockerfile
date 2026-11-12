@@ -7,9 +7,12 @@ COPY packages/data/package.json packages/data/
 COPY packages/game/package.json packages/game/
 COPY packages/client/package.json packages/client/
 COPY packages/server/package.json packages/server/
+COPY packages/moba/package.json packages/moba/
 RUN pnpm install --frozen-lockfile
 COPY . .
 RUN pnpm --filter @ra2web/client build
+# 《星陨战纪》(packages/moba)：构建后挂到主站的 /moba/ 路径下，同一容器同一端口托管
+RUN pnpm --filter @ra2web/moba build && cp -r packages/moba/dist packages/client/dist/moba
 
 FROM node:22-slim AS run
 WORKDIR /app

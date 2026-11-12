@@ -34,3 +34,6 @@ jobs:
 
       - name: Build client
         run: pnpm --filter @ra2web/client build
+
+      - name: Build moba
+        run: pnpm --filter @ra2web/moba build
