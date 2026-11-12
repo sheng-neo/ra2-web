@@ -26,8 +26,9 @@ export function grassBits(k: FxKit, x: number, z: number, count: number, spread:
 
 /** 弓弦回弹：立在弓位的一道竖弧光(弧顶朝前)，一闪即逝 */
 function stringSnap(k: FxKit, x: number, y: number, z: number, facing: number, size: number, pitch = 0): void {
-  const m = slashArc(k, x - Math.cos(facing) * size * 0.8, y, z - Math.sin(facing) * size * 0.8, facing, size, 0.16, T.hot, 2.2, Math.PI / 2, false, 0.95);
-  m.rot(Math.PI / 2, -facing, pitch).scale(size * 0.92, size * 1.06).fade(0.02, 0.35);
+  const m = slashArc(k, x - Math.cos(facing) * size * 0.8, y, z - Math.sin(facing) * size * 0.8 + 0.3, facing, size, 0.16, T.hot, 2.2, Math.PI / 2, false, 0.95);
+  // 弧面留 0.35 弧度的斜度：朝南北方向开弓时不至于侧对镜头成一条线
+  m.rot(Math.PI / 2 - 0.35, -facing, pitch).scale(size * 0.92, size * 1.06).fade(0.02, 0.35);
   m.k = 0.5;
 }
 

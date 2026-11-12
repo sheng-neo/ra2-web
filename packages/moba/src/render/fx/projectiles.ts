@@ -53,7 +53,8 @@ interface ProjDef {
   emit(k: FxKit, c: ProjColors, x: number, y: number, z: number, dx: number, dz: number): void;
   /** (dx, dz) = 弹体最后的飞行方向 */
   hit(k: FxKit, c: ProjColors, x: number, y: number, z: number, strong: boolean, dx: number, dz: number): void;
-  end(k: FxKit, c: ProjColors, x: number, y: number, z: number, dx: number, dz: number): void;
+  /** missed = 飞到尽头也没在这一刻命中任何目标(命中即止的弹体被拦下时为 false：不该再画「钉进地面」) */
+  end(k: FxKit, c: ProjColors, x: number, y: number, z: number, dx: number, dz: number, missed: boolean): void;
 }
 
 const none = (): void => {};
@@ -101,7 +102,7 @@ const DEFS: Record<ProjectileVisual, ProjDef> = {
   xingli_basic: def({
     shape: SHAPE.slash,
     mode: MODE.slash,
-    scale: [0.5, 0.5, 0.5],
+    scale: [0.62, 0.62, 0.62],
     colors: () => XINGLI,
     intensity: 2.3,
     add: 0.45,
@@ -119,14 +120,14 @@ const DEFS: Record<ProjectileVisual, ProjDef> = {
   xingli_s1: def({
     shape: SHAPE.slash,
     mode: MODE.slash,
-    scale: [0.92, 0.92, 0.92],
+    scale: [1.12, 1.12, 1.12],
     colors: () => XINGLI,
     intensity: 2.4,
-    add: 0.4,
-    k: 0.72,
+    add: 0.35,
+    k: 0.66,
     progress: -2,
     echo: 2,
-    echoGap: 0.52,
+    echoGap: 0.56,
     ribbon: R.string,
     ribbonWidth: 1.5,
     halo: 1.1,
@@ -193,19 +194,22 @@ const DEFS: Record<ProjectileVisual, ProjDef> = {
     hit(k, c, x, y, z, strong, dx, dz) {
       hitBurst(k, x, y, z, 1.6, C.white, c.glow, dx, dz, 6, FX_RULES.flashSkill, 9);
       ring(k, x, z, 1.5, 0.3, c.glow, 1.4, 0.2, 0.25);
-      // 石屑：灰白的碎片顺着箭势向前迸开
+      // 石屑：灰白的碎片顺着箭势向前迸开，带一小团石粉
       const p = k.particles.use(P.debris).tint(C.stone, C.stoneDark);
-      for (let i = 0; i < k.n(9); i++) {
-        const a = Math.atan2(dz, dx) + k.rnd.signed() * 0.9;
-        const s = k.rnd.range(3, 8);
-        const sz = k.rnd.range(0.12, 0.3);
-        p.spawn(x, y, z, Math.cos(a) * s, k.rnd.range(1.5, 5.5), Math.sin(a) * s, k.rnd.range(0.5, 0.8), sz, sz * 0.8);
+      for (let i = 0; i < k.n(12); i++) {
+        const a = Math.atan2(dz, dx) + k.rnd.signed() * 1.0;
+        const s = k.rnd.range(3, 8.5);
+        const sz = k.rnd.range(0.18, 0.4);
+        p.spawn(x, y, z, Math.cos(a) * s, k.rnd.range(2, 6.5), Math.sin(a) * s, k.rnd.range(0.55, 0.9), sz, sz * 0.8);
       }
+      const q = k.particles.use(P.dust).tint(C.stone, C.stoneDark);
+      for (let i = 0; i < k.n(3); i++) q.spawn(x, y, z, dx * k.rnd.range(1, 3) + k.rnd.signed(), k.rnd.range(0.3, 1.2), dz * k.rnd.range(1, 3) + k.rnd.signed(), 0.5, 0.6, 1.4);
       const f = k.particles.use(P.plume);
       for (let i = 0; i < k.n(3); i++) f.spawn(x, y, z, k.rnd.signed() * 3 - dx * 2, k.rnd.range(1, 3.5), k.rnd.signed() * 3 - dz * 2, 0.9, 0.4, 0.32);
       if (strong) k.shake(FX_RULES.shakeSkill, x, z);
     },
-    end(k, c, x, _y, z, dx, dz) {
+    end(k, c, x, _y, z, dx, dz, missed) {
+      if (!missed) return;
       // 力尽处：箭斜插进地面，停一会儿再淡去
       k.glow.spawn(SHAPE.arrow, MODE.solid, 0.7).at(x + dx * 0.2, 0.42, z + dz * 0.2).scale(1.7).rot(0, -Math.atan2(dz, dx), -0.62).color(c.hot, 1.3, 1).fade(0, 0.7).opt(0.2, 1, 0);
       k.particles.use(P.dust).spawn(x + dx * 0.6, 0.12, z + dz * 0.6, dx, 0.8, dz, 0.4, 0.4, 0.9);
@@ -243,7 +247,8 @@ const DEFS: Record<ProjectileVisual, ProjDef> = {
       }
       if (strong) k.shake(0.06, x, z);
     },
-    end(k, c, x, _y, z, dx, dz) {
+    end(k, c, x, _y, z, dx, dz, missed) {
+      if (!missed) return;
       k.glow.spawn(SHAPE.dagger, MODE.solid, 0.55).at(x + dx * 0.15, 0.3, z + dz * 0.15).scale(0.86).rot(0.4, -Math.atan2(dz, dx), -0.7).color(c.hot, 1.5, 1).fade(0, 0.6).opt(0.2, 1, 0);
       k.particles.use(P.inkFlat).spawn(x + dx * 0.4, 0.07, z + dz * 0.4, 0, 0, 0, 0.7, 0.4, 0.7);
     },
@@ -374,6 +379,8 @@ interface ProjView {
   dx: number;
   dz: number;
   echoes: FxMesh[];
+  /** 最近一次命中的特效时刻(判断消散是不是紧跟着命中) */
+  hitAt: number;
 }
 
 export const PROJECTILE_VISUALS = Object.keys(DEFS) as ProjectileVisual[];
@@ -412,13 +419,13 @@ export class ProjectileViews {
     const echoes: FxMesh[] = [];
     for (let i = 0; i < d.echo; i++) {
       const m = k.glow.hold(d.shape, d.mode);
-      m.color(colors.glow, d.intensity * (0.8 - i * 0.22), 0);
+      m.color(i === 0 ? colors.glow : colors.deep, d.intensity * (i === 0 ? 0.75 : 1.1), 0);
       m.add = d.add;
       m.k = d.k;
       m.progress = d.progress;
       echoes.push(m);
     }
-    return { id: p.id, def: d, colors, team: p.team, seen: 0, mesh, ribbon: -1, decal: -1, sx, sz, h0, x: sx, y: h0, z: sz, acc: 0, age: 0, shown: false, dx: p.dir.x, dz: p.dir.y, echoes };
+    return { id: p.id, def: d, colors, team: p.team, seen: 0, mesh, ribbon: -1, decal: -1, sx, sz, h0, x: sx, y: h0, z: sz, acc: 0, age: 0, shown: false, dx: p.dir.x, dz: p.dir.y, echoes, hitAt: -1 };
   }
 
   private release(v: ProjView): void {
@@ -554,9 +561,10 @@ export class ProjectileViews {
     const dz = v ? v.dz : 0;
     if (e.type === 'projectileHit') {
       if (k.anchor(e.targetId)) y = k.a.y + Math.min(k.a.height * 0.5, 3.2);
+      if (v) v.hitAt = k.now;
       d.hit(k, colors, x, y, z, e.targetId === playerId || (v !== undefined && v.team === playerTeam && k.a.unit !== null && k.a.unit.kind === 'hero'), dx, dz);
     } else {
-      d.end(k, colors, x, y, z, dx, dz);
+      d.end(k, colors, x, y, z, dx, dz, !v || v.hitAt < 0 || k.now - v.hitAt > 0.08);
     }
   }
 

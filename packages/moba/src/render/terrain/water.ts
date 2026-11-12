@@ -56,7 +56,8 @@ void main() {
 
   float ford = 1.0 - smoothstep(-1.2, 0.8, dLane);
   float depthF = smoothstep(0.1, 2.8, shore) * (1.0 - 0.32 * ford);
-  vec3 tint = mix(cShallow, cDeep, depthF);
+  // 河心的水色往浅色收一点(对色：河水中段 L* 60~64)
+  vec3 tint = mix(cShallow, cDeep, depthF * 0.86);
   float alpha = mix(0.1, 0.4, depthF);
 
   // 两个史诗潭：水色加深(河底几乎看不见，突出潭的深)

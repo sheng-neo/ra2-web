@@ -43,12 +43,18 @@ export interface UnitAnchors {
    * 没有实现或返回 false 时，调用方按单位高度估算。
    */
   attach?(id: number, name: string, out: THREE.Vector3): boolean;
+  /** 可选：让单位模型整体短暂染色(被吐息喷中等)，从 amount 起在 dur 秒内衰减。没有单位视图模块时无效 */
+  flashTint?(id: number, color: THREE.ColorRepresentation, amount: number, dur: number): void;
+  /** 可选：让单位模型的描边转金 dur 秒(河道巨龙的全队奖励到手)。没有单位视图模块或不描边的档位无效 */
+  flashRim?(id: number, dur: number): void;
 }
 
 /** 单位视图模块里与锚点有关的那一小部分(鸭子类型：不依赖其具体实现) */
 interface ViewProvider extends RenderModule {
   getAttach?(id: number, name: string, out: THREE.Vector3): boolean;
   getInfo?(id: number, out: ViewInfo): boolean;
+  flashTint?(id: number, color: THREE.ColorRepresentation, amount: number, dur: number): void;
+  flashRim?(id: number, dur: number): void;
 }
 
 /** 单位视图的渲染信息(units 模块 UnitViewInfo 的子集) */
@@ -153,6 +159,12 @@ export function createDefaultAnchors(ctx: RenderContext, pos: THREE.Vector3): Un
     attach(id, name, out) {
       const units = views ?? ctx.getModule<ViewProvider>('units');
       return units?.getAttach ? units.getAttach(id, name, out) : false;
+    },
+    flashTint(id, color, amount, dur) {
+      (views ?? ctx.getModule<ViewProvider>('units'))?.flashTint?.(id, color, amount, dur);
+    },
+    flashRim(id, dur) {
+      (views ?? ctx.getModule<ViewProvider>('units'))?.flashRim?.(id, dur);
     },
   };
 }

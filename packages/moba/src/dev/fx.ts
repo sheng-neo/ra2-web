@@ -769,7 +769,7 @@ const SEQ: Record<string, () => void> = {
     const c = at(0.5, 0);
     const casters = [player, ally, foe, foe2];
     const r = (hero: HeroId): number => castRadius(hero, 'ult');
-    // 磐岳落地 + 裂隙
+    // 樊哙落地 + 震裂
     fx('panyue_ult_land', at(1.5, -1), { unitId: ally.id, radius: r('panyue') });
     spawnArea('panyue_ult_fissure', at(1.5, -1), r('panyue'), 3, ally);
     // 星陨

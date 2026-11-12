@@ -205,7 +205,7 @@ void main() {
   float earth = 1.0 - smoothstep(0.3, 0.8, dl);
   vec3 laneEarth = cLaneEarth * dt * (0.94 + 0.2 * nA.b);
   float wear = smoothstep(-1.2, -3.2, dLane);
-  float tone = mix(sd.r * 2.0, 1.0, 0.4 * wear) * (1.0 + 0.08 * wear);
+  float tone = mix(sd.r * 2.0, 1.0, 0.4 * wear) * (1.0 + 0.03 * wear);
   vec3 laneStone = mix(cLane, cLaneAlt, smoothstep(0.5, 0.9, sd.b) * 0.7);
   // 主光很暖：反照率往冷灰收一点，受光后才是「暖灰米」而不是土黄
   laneStone = mix(laneStone, vec3(dot(laneStone, vec3(0.3, 0.5, 0.2))) * vec3(0.95, 1.0, 1.1), 0.42) * tone * (0.95 + 0.12 * nA.r) * uLaneGain;
@@ -426,7 +426,9 @@ void main() {
   float ford = stoneMask * 0.85 + plazaMask;
   albedo = mix(albedo, mix(bed, albedo, ford), bedMask * (1.0 - plazaMask));
   vec3 absorb = exp(-wdepth * vec3(6.2, 2.1, 1.25));
-  albedo = albedo * absorb + cScatter * (0.36 * (1.0 - absorb.r)) * under;
+  // 浅水里的湿沙压暗一档、水体散射抬高一档：河道横截面的明度落差收小(岸边浅水不再比河心亮一大截，河心 L* 60~64)
+  albedo *= 1.0 - 0.18 * under * (1.0 - smoothstep(0.12, 0.45, wdepth));
+  albedo = albedo * absorb + cScatter * (0.54 * (1.0 - absorb.r)) * under;
   // 岸边湿土 + 紧贴水线的一道深色水渍
   float wet = (1.0 - smoothstep(0.1, 1.1, dr)) * (1.0 - under);
   albedo *= 1.0 - 0.34 * wet;
@@ -658,7 +660,7 @@ export function createGround(field: MapField, splat: SplatTextures, noise: THREE
       uWaterLevel: { value: WATER_LEVEL },
       uFlow: { value: riverFlow(field) },
       // 石板反照率的整体增益(对色用：受光兵线的目标明度 L* 66~72)
-      uLaneGain: { value: 1.22 },
+      uLaneGain: { value: 1.04 },
       uLaneHalf: { value: map.laneWidth / 2 },
       cGrass: { value: col(E.grass) },
       cGrassWarm: { value: col(E.grassWarm) },

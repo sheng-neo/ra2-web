@@ -54,6 +54,10 @@ export interface UnitsModule extends RenderModule {
   getAttach(id: number, name: AttachName, out: THREE.Vector3): boolean;
   /** 给单位叠加整体染色(冰冻/石化等)，amount 0..1；0 = 取消 */
   setTint(id: number, color: THREE.ColorRepresentation, amount: number): void;
+  /** 一次短暂的整体染色(被巨龙吐息喷中等)：从 amount 起在 dur 秒内衰减到 0；与 setTint 的常驻染色取较强者 */
+  flashTint(id: number, color: THREE.ColorRepresentation, amount: number, dur: number): void;
+  /** 描边短暂转金(河道巨龙的全队奖励到手)：持续 dur 秒，最后三分之一淡出。不描边的档位(low)无效 */
+  flashRim(id: number, dur: number): void;
   /** 本帧实际提交绘制的模型实例数 */
   readonly instanceCount: number;
 }
@@ -102,6 +106,14 @@ interface View {
   tintAmount: number;
   /** 外部(特效层)要求的整体染色；模型自己的染色(出生冰封、死亡变灰)更强时以模型为准 */
   tintColor: THREE.Color;
+  /** 一次性染色(flashTint)：颜色、起始强度、总时长、剩余时间 */
+  pulseColor: THREE.Color;
+  pulseAmount: number;
+  pulseDur: number;
+  pulseLeft: number;
+  /** 描边转金(flashRim)：总时长、剩余时间 */
+  rimDur: number;
+  rimLeft: number;
   windup: number;
   /** 出生演出已播秒数；不在演出中为 -1 */
   spawnT: number;
@@ -232,6 +244,8 @@ export function createUnitsModule(ctx: RenderContext): UnitsModule {
   let time = 0;
   let instanceCount = 0;
   let lastStateTime = -1;
+  /** 两队「星陨祝福」的剩余秒数(每帧从 state.teams 读)：祝福期间该队英雄与小兵描边转暗金，小兵脚环加金边、自发光增强 */
+  const blessLeft: [number, number] = [0, 0];
   let booted = false;
   /** 视图被清空后，下一帧要按新状态重新摆废墟 */
   let needRuins = false;
@@ -256,6 +270,8 @@ export function createUnitsModule(ctx: RenderContext): UnitsModule {
     deadTint: new THREE.Color(0x8890a0),
     // 透视剪影色(与血条的敌我配色一致)
     xSelf: new THREE.Color(0x9dff5a),
+    /** 星陨祝福期间小兵队伍环外的细金边 */
+    blessRing: new THREE.Color(0xffcf60),
     xAlly: new THREE.Color(0x58aaff),
     xEnemy: new THREE.Color(0xff5a48),
     xNeutral: new THREE.Color(0xf2c860),
@@ -332,6 +348,12 @@ export function createUnitsModule(ctx: RenderContext): UnitsModule {
       ring: u.kind === 'hero' ? (u.id === st.playerId ? RING_PLAYER : RING_HERO) : u.kind === 'minion' ? RING_MINION : -1,
       tintAmount: 0,
       tintColor: new THREE.Color(1, 1, 1),
+      pulseColor: new THREE.Color(1, 1, 1),
+      pulseAmount: 0,
+      pulseDur: 0,
+      pulseLeft: 0,
+      rimDur: 0,
+      rimLeft: 0,
       // 对局中新刷出来的野怪播出生演出；开局 / 读档 / 时间轴跳变后已在场的不播
       spawnT: booted && u.kind === 'monster' && (def.spawnDur ?? 0) > 0 && u.alive ? 0 : -1,
       hitT: 99,
@@ -508,7 +530,7 @@ export function createUnitsModule(ctx: RenderContext): UnitsModule {
     if (u.kind === 'hero') {
       for (let i = 0; i < u.buffs.length; i++) {
         const b = u.buffs[i];
-        // 磐岳：攒满两层后的下一击(第三击)用重击动作——在出手那一刻锁定，命中后层数清零也不会中途换动作；壁垒期间举盾
+        // 樊哙：攒满两层后的下一击(第三击)用重击动作——在出手那一刻锁定，命中后层数清零也不会中途换动作；壁垒期间举盾
         if (newSwing && ((b.id === 'panyue_passive' && b.stacks >= 2) || b.id === 'fengling_crit' || b.id === 'chijin_ember')) v.special = true;
         else if (b.id === 'panyue_bulwark') inp.mode |= 2;
       }
@@ -578,13 +600,36 @@ export function createUnitsModule(ctx: RenderContext): UnitsModule {
     look.opacity = v.opacity;
     look.flash = v.flash;
     look.glow = po.glow;
-    if (po.tint > v.tintAmount) {
+    // 一次性染色按剩余时间线性衰减；与常驻染色、模型自己的染色三者取最强的一份
+    let extAmount = v.tintAmount;
+    let extColor = v.tintColor;
+    if (v.pulseLeft > 0) {
+      v.pulseLeft -= dt;
+      const pa = v.pulseLeft > 0 ? v.pulseAmount * (v.pulseLeft / v.pulseDur) : 0;
+      if (pa > extAmount) {
+        extAmount = pa;
+        extColor = v.pulseColor;
+      }
+    }
+    if (po.tint > extAmount) {
       look.tint.setHex(po.tintColor);
       look.tintAmount = po.tint;
     } else {
-      look.tint.copy(v.tintColor);
-      look.tintAmount = v.tintAmount;
+      look.tint.copy(extColor);
+      look.tintAmount = extAmount;
     }
+    // 描边掺金：星陨祝福期间己队英雄与小兵常驻暗金(剩 5 秒起闪烁)，河道巨龙奖励到手时亮金一闪；小兵另外自发光 ×1.3
+    let rim = 0;
+    const bless = v.alive && v.dying < 0 && v.team !== 2 && (v.kind === 'hero' || v.kind === 'minion') ? blessLeft[v.team] : 0;
+    if (bless > 0) {
+      rim = bless < 5 ? 0.3 + 0.22 * Math.cos(time * 9) : 0.52;
+      if (v.kind === 'minion') look.glow *= 1.3;
+    }
+    if (v.rimLeft > 0) {
+      v.rimLeft -= dt;
+      if (v.rimLeft > 0) rim = Math.max(rim, Math.min(1, (v.rimLeft / v.rimDur) * 3));
+    }
+    look.rim = rim;
     // 透视剪影：敌红友蓝己绿、野怪金；倒地/离场的不画
     // (出生演出里身体有一段在地面 / 水面以下：不画剪影，否则整只会透出来)
     look.xrayAmount = v.alive && v.dying < 0 && v.spawnT < 0 ? 1 : 0;
@@ -610,6 +655,8 @@ export function createUnitsModule(ctx: RenderContext): UnitsModule {
       if (v.ring >= 0 && v.alive) {
         const c = v.isPlayer ? colors.player : teamColor(v.team);
         rings.push(v.x, gy + 0.01, v.z, v.radius * (v.kind === 'hero' ? 1.3 : 1.15), c, (v.kind === 'hero' ? 0.85 : 0.6) * fade, v.ring, Math.PI / 2 - v.yaw);
+        // 星陨祝福：小兵的队伍环外再套一道细金边(英雄脚下的星轨环由特效层的状态环画)
+        if (bless > 0 && v.kind === 'minion') rings.push(v.x, gy + 0.012, v.z, v.radius * 1.34, colors.blessRing, (bless < 5 ? 0.35 + 0.25 * Math.cos(time * 9) : 0.6) * fade, RING_MINION);
       }
     }
   };
@@ -623,6 +670,8 @@ export function createUnitsModule(ctx: RenderContext): UnitsModule {
       const st = frame.state;
       time += frame.dt;
       playerTeam = frame.playerTeam;
+      blessLeft[0] = st.teams[0].blessingLeft;
+      blessLeft[1] = st.teams[1].blessingLeft;
       // 换了一局(模拟时间倒退)：清掉旧视图
       if (st.time < lastStateTime - 0.5) clearViews();
       lastStateTime = st.time;
@@ -794,6 +843,20 @@ export function createUnitsModule(ctx: RenderContext): UnitsModule {
       if (!v) return;
       v.tintColor.set(color);
       v.tintAmount = amount;
+    },
+    flashTint(id, color, amount, dur) {
+      const v = views.get(id);
+      if (!v || !(dur > 0)) return;
+      v.pulseColor.set(color);
+      v.pulseAmount = amount;
+      v.pulseDur = dur;
+      v.pulseLeft = dur;
+    },
+    flashRim(id, dur) {
+      const v = views.get(id);
+      if (!v || !(dur > 0)) return;
+      v.rimDur = dur;
+      v.rimLeft = dur;
     },
     reset() {
       clearViews();

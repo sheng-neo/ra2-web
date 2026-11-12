@@ -10,7 +10,7 @@
  *   ?t=180                  先不绘制地快进到指定模拟时间，再开始渲染
  *   ?follow=0..9            镜头与视角跟随指定英雄(下标同 state.heroes；缺省 0 = 玩家)。红方英雄 = 以红方视角观战
  *   ?x=&y=                  镜头固定看向某处(不跟随)
- *   ?manual=1               玩家英雄交给键鼠：WASD 移动，J/空格 普攻，Q/E/R 技能(朝鼠标)，F 闪现 G 恢复 B 回城，右键点地/点人
+ *   ?manual=1               玩家英雄交给键鼠：WASD 移动，J/空格 普攻，Q/E/R 技能(朝鼠标)，F 闪现 G 疗伤 B 回城，右键点地/点人
  *   ?seek=<事件>            定格模式：在整局事件索引里找到该事件，倒回去预滚一小段后停在事件之后 post 秒(见下)
  *      &nth=0 &after=秒 &team=0|1 &who=英雄id或下标 &pre=1.5 &post=0.12 &persp=unit|player
  *   ?hud=0 ?help=0          隐藏统计/帮助面板      ?bars=0 隐藏血条飘字
@@ -608,7 +608,7 @@ addEventListener('resize', () => {
 if (params.get('hud') === '0') hud.style.display = 'none';
 if (params.get('help') === '0' || params.get('hud') === '0') help.style.display = 'none';
 help.textContent = manual
-  ? 'WASD 移动 · J/空格 普攻 · Q/E/R 技能(朝鼠标) · F 闪现 G 恢复 B 回城 · 右键点地/点人\n1/2/3 画质 · [ ] 变速 · Tab 换跟随 · O 血条 · T 俯瞰 · H 面板'
+  ? 'WASD 移动 · J/空格 普攻 · Q/E/R 技能(朝鼠标) · F 闪现 G 疗伤 B 回城 · 右键点地/点人\n1/2/3 画质 · [ ] 变速 · Tab 换跟随 · O 血条 · T 俯瞰 · H 面板'
   : '空格 暂停 · 1/2/3 画质 · [ ] 变速 · Tab 换跟随 · O 血条 · T 俯瞰 · H 面板\n?speed= ?t= ?follow= ?seek= ?manual=1 ?mock=1';
 
 const startT = num('t');

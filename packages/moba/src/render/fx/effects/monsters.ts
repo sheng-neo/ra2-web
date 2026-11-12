@@ -73,10 +73,25 @@ const drakeBreathWarn: FxHandler = (k, e) => {
   const half = (e.angle ?? Math.PI / 3) * 0.5;
   const warn = Math.max(0.2, e.value ?? 0.9);
   const rot = Math.atan2(dz, dx);
-  // 扇形预警：琥珀实线边 + 紫色淡填充由顶点向外推进；被地形/单位挡住的部分也画出边线
-  k.decals.add(DECAL.coneWarn, e.pos.x, e.pos.y, radius, warn + 0.12).y(0.09).rot(rot).params(half, -1).color(WARN.monster.edge, 1.6, 0.95).under(WARN_FILL, 0.7).xray();
   const id = e.unitId ?? -1;
-  if (id < 0) return;
+  // 扇形预警：琥珀实线边 + 紫色淡填充由顶点向外推进；被地形/单位挡住的部分也画出边线
+  if (id < 0 || !k.anchor(id)) {
+    // 没有巨龙单位(画廊的合成事件)：一次性贴花按自身寿命推进
+    k.decals.add(DECAL.coneWarn, e.pos.x, e.pos.y, radius, warn + 0.12).y(0.09).rot(rot).params(half, -1).color(WARN.monster.edge, 1.6, 0.95).under(WARN_FILL, 0.7).xray();
+    return;
+  }
+  // 巨龙在场：用常驻贴花逐帧推进填充。蓄息中途巨龙被打死(单位离场、跟踪器随即结束)就立刻收掉——
+  // 模拟层此时已取消这次吐息，地上不能还留着一块走完全程的空预警
+  const slot = k.decals.hold(DECAL.coneWarn, 0.06);
+  k.decals.at(slot).at(e.pos.x, e.pos.y).radius(radius).y(0.09).rot(rot).params(half, 0).color(WARN.monster.edge, 1.6, 0.95).under(WARN_FILL, 0.7).xray();
+  k.track(
+    id,
+    warn + 0.12,
+    (_a, t) => {
+      k.decals.at(slot).params(half, t);
+    },
+    () => k.decals.release(slot, 0.12),
+  );
   // 口中聚光：一颗逐渐涨大的光球，四周的光点螺旋着被吸进去
   const m = k.glow.hold(SHAPE.sphere, MODE.core);
   m.color(C.violetHot, 1.4, 0);
@@ -200,6 +215,8 @@ export function drakeBreathHit(k: FxKit, sourceId: number, targetId: number): vo
   const p = k.particles.use(P.puff);
   for (let i = 0; i < k.n(3); i++) p.spawn(x + r.signed() * 0.3, y + r.signed() * 0.3, z + r.signed() * 0.3, r.signed() * 1.6, r.range(0.4, 1.4), r.signed() * 1.6, r.range(0.45, 0.65), 0.7, 1.7);
   glints(k, x, y, z, 3, 2.5, C.violetHot, C.violet, 0.4, 0.26);
+  // 模型整体染紫 0.3 秒(§5.5)：吐息每 tick 结算一次，连续被喷就连续续上
+  k.anchors.flashTint?.(targetId, C.violet, 0.5, 0.3);
 }
 
 // ───────────────────────── 野怪倒地 ─────────────────────────
@@ -472,6 +489,8 @@ export function epicSlainFx(k: FxKit, x: number, z: number, team: TeamId, type: 
           const rad = k.a.radius;
           k.decals.add(DECAL.sigil, k.a.x, k.a.z, rad * 2.1 + 0.5, 1.2).params(3, 0.3).color(C.violet, 1.6, 1).under(C.violetDeep, 0.35).follow(id);
           hitBurst(k, k.a.x, k.a.y + k.a.height * 0.5, k.a.z, 1.6, C.violetHot, C.violet, 0, 0, 4, FX_RULES.flashSkill, 4);
+          // 奖励到手：模型描边转金 1.5 秒(§5.7)
+          k.anchors.flashRim?.(id, 1.5);
           const p = k.particles.use(P.coin);
           const pg = k.particles.use(P.glint).tint(C.goldHot, C.abyssCyan);
           for (let j = 0; j < k.n(8); j++) {

@@ -15,20 +15,26 @@ const S2 = HEROES.chijin.skills.s2;
 const ULT = HEROES.chijin.skills.ult;
 /** 赤金：斧刃的亮色(比主题的橙红更偏金) */
 const GOLD = col(0xffc060);
+/**
+ * 斧弧的亮度：弧身压在色调映射的线性段里(最大通道约 0.85)，颜色才是饱满的赤红而不是发白的桃色；
+ * 只有刃光越过 bloom 阈值。
+ */
+const ARC_BODY = 1.45;
+const ARC_EDGE = 2.6;
 
 /**
  * 一道厚重的斧弧：赤金的斧刃沿弧扫过，赤红的弧身随即亮起再淡去。flip = 自右向左扫(否则自左向右)。
  * 返回弧身实例，into 里拿得到弧身与刃光两个实例(要整体 follow / delay 时用)。
  */
 function axeArc(k: FxKit, x: number, y: number, z: number, facing: number, radius: number, life: number, span: number, tilt: number, flip: boolean, into?: FxMesh[]): FxMesh {
-  return swipeArc(k, x, y, z, facing, radius, life, T.glow, GOLD, span, tilt, flip, 2.3, into);
+  return swipeArc(k, x, y, z, facing, radius, life, T.glow, GOLD, span, tilt, flip, ARC_BODY, into, ARC_EDGE);
 }
 
 /** 不扫过、整道常亮的斧影(大招里绕身飞转的那两道)：赤红弧身 + 叠在上面先一步淡去的赤金 */
 function axeGhost(k: FxKit, x: number, y: number, z: number, facing: number, radius: number, life: number, span: number, tilt: number, into: FxMesh[]): void {
-  const body = slashArc(k, x, y, z, facing, radius, life, T.glow, 2.3, tilt, false);
+  const body = slashArc(k, x, y, z, facing, radius, life, T.glow, ARC_BODY, tilt, false, 0.8);
   body.k = span / SLASH_SPAN;
-  const edge = slashArc(k, x, y + 0.04, z, facing, radius * 1.03, life * 0.8, GOLD, 2.5, tilt, false, 0.9);
+  const edge = slashArc(k, x, y + 0.04, z, facing, radius * 1.03, life * 0.7, GOLD, ARC_EDGE * 0.8, tilt, false, 0.7);
   edge.k = span / SLASH_SPAN;
   into.push(body, edge);
 }
@@ -63,7 +69,8 @@ const passiveHit: FxHandler = (k, e, env) => {
   const dx = Math.cos(facing);
   const dz = Math.sin(facing);
   // 竖劈：把水平的斩弧滚转 90° 立起来，自上而下扫过
-  axeArc(k, x - dx * 1.25, y + 0.25, z - dz * 1.25, facing, 2.0, 0.26, 2.1, Math.PI / 2, false);
+  // 弧面留一点斜度并朝镜头拉近：正立的弧会被目标挡住大半，朝南北出手时还会侧对镜头
+  axeArc(k, x - dx * 1.75, y + 0.35, z - dz * 1.75 + 0.55, facing, 2.0, 0.26, 2.1, Math.PI / 2 - 0.45, false);
   hitBurst(k, x, y, z, 1.7, GOLD, T.deep, dx, dz, 9, FX_RULES.flashSkill, 10);
   ironSparks(k, x, y - 0.2, z, 8, 8, GOLD, T.deep, dx, dz, 0.5);
   // 斧刃劈进地里的一道短痕

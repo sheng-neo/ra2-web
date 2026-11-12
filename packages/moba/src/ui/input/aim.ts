@@ -22,7 +22,7 @@ export function castSpecOf(me: HeroUnit, slot: SkillSlot): CastSpec {
   return slot === 's1' || slot === 's2' || slot === 'ult' ? HEROES[me.heroId].skills[slot].cast : SUMMONER_CAST[slot];
 }
 
-/** 这个技能有没有可瞄准/可预览的东西（回城、恢复这种纯自身技能没有） */
+/** 这个技能有没有可瞄准/可预览的东西（回城、疗伤这种纯自身技能没有） */
 export function isAimable(spec: CastSpec): boolean {
   return spec.type !== 'self' || spec.radius > 0;
 }

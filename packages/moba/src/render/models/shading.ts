@@ -395,6 +395,7 @@ attribute vec3 aInstTeam;
 attribute vec3 aInstBody;
 uniform float uLine;
 varying float vOpacity;
+varying float vRim;
 varying vec3 vBase;
 void main() {
   ${SKIN_MAIN}
@@ -407,6 +408,7 @@ void main() {
   float w = aOutline.w * uLine * -mvPosition.z * min(1.0, sc * 4.0);
   mvPosition = viewMatrix * vec4(skinnedPos + normalize(n) * w, 1.0);
   vOpacity = aInstA.x;
+  vRim = aInstA.w;
   // 描边带一点本体色(本体色压暗后与统一的深色各半)：比一律深蓝更干净，浅色件不会被勾出一圈脏边
   vBase = mix(color * aInstBody, aInstTeam, aFx.z);
   gl_Position = projectionMatrix * mvPosition;
@@ -420,12 +422,16 @@ const OUTLINE_FRAGMENT = /* glsl */ `
 ${GLSL_DITHER}
 uniform vec3 uColor;
 varying float vOpacity;
+varying float vRim;
 varying vec3 vBase;
 void main() {
   if (vOpacity < 0.995) {
     if (vOpacity <= ditherThreshold(gl_FragCoord.xy)) discard;
   }
-  gl_FragColor = vec4(mix(vBase * 0.35, uColor, 0.5), 1.0);
+  vec3 line = mix(vBase * 0.35, uColor, 0.5);
+  // 逐实例的描边掺金(InstanceLook.rim)：0.5 上下是暗金(星陨祝福期间常驻)，1 是亮金(河道巨龙击杀奖励的一闪)；亮度压在泛光阈值以下
+  line = mix(line, vec3(1.0, 0.74, 0.26) * (0.34 + 0.86 * vRim), min(1.0, vRim * 1.7));
+  gl_FragColor = vec4(line, 1.0);
   ${GLSL_OUTPUT_FRAGMENT}
 }
 `;
@@ -598,10 +604,12 @@ export interface InstanceLook {
   /** 被遮挡时的剪影颜色与强度 0..1(0 = 不画；只有开启了 xray 的批才生效) */
   xray: THREE.Color;
   xrayAmount: number;
+  /** 描边掺金 0..1(0 = 原样；约 0.5 暗金，1 亮金)。只影响描边壳，不描边的批(low 档)无效 */
+  rim: number;
 }
 
 export function createInstanceLook(): InstanceLook {
-  return { opacity: 1, flash: 0, glow: 1, team: new THREE.Color(1, 1, 1), tint: new THREE.Color(1, 1, 1), tintAmount: 0, body: new THREE.Color(1, 1, 1), xray: new THREE.Color(1, 1, 1), xrayAmount: 0 };
+  return { opacity: 1, flash: 0, glow: 1, team: new THREE.Color(1, 1, 1), tint: new THREE.Color(1, 1, 1), tintAmount: 0, body: new THREE.Color(1, 1, 1), xray: new THREE.Color(1, 1, 1), xrayAmount: 0, rim: 0 };
 }
 
 /**
@@ -782,7 +790,7 @@ export class RigBatch {
     a[i * 4] = look.opacity;
     a[i * 4 + 1] = look.flash;
     a[i * 4 + 2] = look.glow;
-    a[i * 4 + 3] = 0;
+    a[i * 4 + 3] = look.rim;
     const t = this.instTeam.array as Float32Array;
     t[i * 3] = look.team.r;
     t[i * 3 + 1] = look.team.g;

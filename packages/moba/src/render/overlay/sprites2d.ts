@@ -256,16 +256,23 @@ const ICONS: Record<IconId, (g: CanvasRenderingContext2D) => void> = {
     g.fill();
   },
   mark(g) {
-    g.fillStyle = '#bfeeff';
-    g.strokeStyle = '#1a3c8a';
-    g.lineWidth = 1.2;
-    star(g, 8, 8, 4, 7.2, 2.6);
-    g.fill();
-    g.stroke();
-    g.fillStyle = '#ffffff';
+    // 余音：一道金色的音波弧(叠几层画几道，连起来就是「)))」)
+    g.lineCap = 'round';
+    g.strokeStyle = '#4a3200';
+    g.lineWidth = 4.6;
     g.beginPath();
-    g.arc(8, 8, 1.6, 0, Math.PI * 2);
-    g.fill();
+    g.arc(0.5, 8, 9, -0.82, 0.82);
+    g.stroke();
+    g.strokeStyle = '#ffd98a';
+    g.lineWidth = 2.6;
+    g.beginPath();
+    g.arc(0.5, 8, 9, -0.82, 0.82);
+    g.stroke();
+    g.strokeStyle = '#fff6da';
+    g.lineWidth = 1;
+    g.beginPath();
+    g.arc(0.5, 8, 9.3, -0.5, 0.5);
+    g.stroke();
   },
   focus(g) {
     g.strokeStyle = '#ff4a38';
@@ -287,22 +294,40 @@ const ICONS: Record<IconId, (g: CanvasRenderingContext2D) => void> = {
     g.fill();
   },
   gale(g) {
-    g.fillStyle = '#9dffd8';
-    g.strokeStyle = '#0f5a44';
-    g.lineWidth = 1.1;
-    g.beginPath();
-    g.moveTo(1.5, 10);
-    g.quadraticCurveTo(7, 0.5, 14.5, 5);
-    g.quadraticCurveTo(8, 7.5, 1.5, 10);
-    g.fill();
-    g.stroke();
-    g.strokeStyle = '#9dffd8';
-    g.lineWidth = 1.5;
+    // 猿臂连射：一支斜向上的白羽箭(层数的数字由调用方叠在右下角)
     g.lineCap = 'round';
-    g.beginPath();
-    g.moveTo(3, 13.5);
-    g.lineTo(12, 11.5);
-    g.stroke();
+    g.lineJoin = 'round';
+    const draw = (): void => {
+      g.beginPath();
+      g.moveTo(2.6, 13.4);
+      g.lineTo(11.2, 4.8);
+      g.stroke();
+      g.beginPath();
+      g.moveTo(14.2, 1.8);
+      g.lineTo(13.2, 7.2);
+      g.lineTo(8.8, 2.8);
+      g.closePath();
+      g.fill();
+      g.stroke();
+      g.beginPath();
+      g.moveTo(2.6, 13.4);
+      g.lineTo(2.4, 10);
+      g.moveTo(2.6, 13.4);
+      g.lineTo(6, 13.6);
+      g.moveTo(4.6, 11.4);
+      g.lineTo(4.4, 8.2);
+      g.moveTo(4.6, 11.4);
+      g.lineTo(7.8, 11.6);
+      g.stroke();
+    };
+    g.strokeStyle = '#0f4a3a';
+    g.fillStyle = '#0f4a3a';
+    g.lineWidth = 3.2;
+    draw();
+    g.strokeStyle = '#f4fff8';
+    g.fillStyle = '#9dffd8';
+    g.lineWidth = 1.4;
+    draw();
   },
   ghost(g) {
     g.fillStyle = 'rgba(190,150,255,0.9)';

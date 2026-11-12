@@ -143,7 +143,7 @@ const ultStrike: FxHandler = (k, e, env) => {
   const facing = Math.atan2(dz, dx);
   k.ribbons.trace(R.thin, from.x, 1.05, from.y, to.x, 1.05, to.y, 0.05, C.white, T.accent);
   // 匕首寒光：立着的一道窄弧，自下而上划过(只有一道，不是十字)
-  swipeArc(k, x - dx * 1.55, y - 0.1, z - dz * 1.55, facing, 2.1, 0.24, T.hot, C.white, 1.25, -Math.PI / 2 + 0.12, false, 2.6);
+  swipeArc(k, x - dx * 1.7, y - 0.1, z - dz * 1.7 + 0.5, facing, 2.1, 0.24, T.hot, C.white, 1.25, -Math.PI / 2 + 0.4, false, 2.6);
   // 紧跟着一线向上的白光
   const w = k.particles.use(P.streak).tint(C.white, T.accent);
   w.spawn(x, y - 0.6, z, dx * 1.5, 16, dz * 1.5, 0.14, 0.11, 0.03, 0.03);

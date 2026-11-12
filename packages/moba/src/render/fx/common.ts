@@ -390,12 +390,14 @@ export function shieldPlate(k: FxKit, x: number, y: number, z: number, facing: n
  * 「抡 / 划」出来的弧：先是一道亮色的锋沿弧扫过，整道弧随即亮起、再淡去。
  * 只用 slashArc 自带的扫过时，任一帧里只看得到弧上的一小段；这里补上整道弧的余势，定格下也读得出是一道完整的弧。
  * span = 弧的张角(弧度)，roll = 绕前进轴的滚转(π/2 = 立起来、自上而下)，reverse = 反向扫。返回弧身(调用方可再改 follow / delay / scale)。
+ * 立起来的弧别滚满 π/2：镜头固定在南侧俯视，朝南北方向出手时正立的弧面恰好侧对镜头，只剩一条线；留 0.4 弧度左右的斜度。
+ * 弧心落在单位身上时再朝镜头(+z)拉近半米，免得被模型挡住。
  */
-export function swipeArc(k: FxKit, x: number, y: number, z: number, facing: number, radius: number, life: number, body: THREE.Color, edge: THREE.Color, span: number, roll = 0, reverse = false, intensity = 2.3, into?: FxMesh[]): FxMesh {
+export function swipeArc(k: FxKit, x: number, y: number, z: number, facing: number, radius: number, life: number, body: THREE.Color, edge: THREE.Color, span: number, roll = 0, reverse = false, intensity = 2.3, into?: FxMesh[], edgeIntensity = intensity * 1.15): FxMesh {
   const rx = reverse ? roll + Math.PI : roll;
-  const b = slashArc(k, x, y, z, facing, radius, life, body, intensity, rx, false).fade(0.2, 0.45);
+  const b = slashArc(k, x, y, z, facing, radius, life, body, intensity, rx, false, 0.9).fade(0.2, 0.45);
   b.scale(radius * 0.85, radius).k = span / SLASH_SPAN;
-  const e = slashArc(k, x, y, z, facing, radius * 1.02, life * 0.55, edge, intensity * 1.15, rx, true).fade(0.02, 0.6);
+  const e = slashArc(k, x, y, z, facing, radius * 1.02, life * 0.55, edge, edgeIntensity, rx, true).fade(0.02, 0.6);
   e.scale(radius * 0.88, radius * 1.02).k = span / SLASH_SPAN;
   if (into) into.push(b, e);
   return b;

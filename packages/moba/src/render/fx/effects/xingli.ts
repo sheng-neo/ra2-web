@@ -129,7 +129,7 @@ const ultCast: FxHandler = (k, e) => {
     const side = i === 0 ? 0 : i % 2 === 1 ? 1 : -1;
     const bx = x - dx * (1.6 + row * 0.9) - dz * side * row * 0.8;
     const bz = z - dz * (1.6 + row * 0.9) + dx * side * row * 0.8;
-    goose(k, bx, 2.9 + row * 0.15, bz, dx * 12, 2.2, dz * 12, 0.62, 0.95, 1.05, 0.05 + row * 0.03);
+    goose(k, bx, 3.3 + row * 0.12, bz, dx * 12, -1.3, dz * 12, 0.62, 1.0, 1.05, 0.05 + row * 0.03);
   }
   motes(k, x, 1.4, z, 8, 2.6, 0.7);
   k.particles.use(P.hitFlash).tint(C.white, T.glow).spawn(x, 1.6, z, 0, 0, 0, FX_RULES.flashSkill, 1.0, 1.7);
@@ -157,7 +157,8 @@ const meteor: FxHandler = (k, e) => {
   const hl = Math.hypot(ox, oz) || 1;
   const wx = (-oz / hl) * 0.72;
   const wz = (ox / hl) * 0.72;
-  for (const s of [1, -1]) k.ribbons.trace(R.thin, x + ox + wx * s, DIVE.y, z + oz + wz * s, x + wx * s, 0.55, z + wz * s, T0, T.hot, T.glow);
+  // 只画俯冲的后半程：整条路径都亮起来会读成两道从天而降的光线，抢了雁的戏
+  for (const s of [1, -1]) k.ribbons.trace(R.thin, x + ox * 0.45 + wx * s, DIVE.y * 0.45 + 0.3, z + oz * 0.45 + wz * s, x + wx * s, 0.55, z + wz * s, T0 * 0.45, T.hot, T.glow);
   k.after(T0, () => {
     k.particles.use(P.hitFlash).tint(C.white, T.glow).spawn(x, 0.5, z, 0, 0, 0, FX_RULES.flashSkill, R0 * 0.7, R0 * 1.2);
     // 落地后舒翼一瞬：保持俯冲的朝向(速度与俯冲同向、只取百分之一)，放大着淡去
