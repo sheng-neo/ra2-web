@@ -230,7 +230,7 @@ const DEFS: Partial<Record<BuffId, StatusDef>> = {
       m.a = 0.85 * grow * blink;
     },
   },
-  // 加速：风痕(移动时在身后拉出一道道流线，脚下卷起风叶)
+  // 加速：风痕(移动时在身后拉出一道道流线；站定时脚边几道打转的细风线——不再用绕飞的风叶)
   haste: {
     update(k, v, a, _b, dt) {
       const u = a.unit;
@@ -247,7 +247,7 @@ const DEFS: Partial<Record<BuffId, StatusDef>> = {
             .use(P.streak)
             .tint(WIND.glow, WIND.deep)
             .spawn(a.x + ox - (vx / sp) * 0.4, a.y + r.range(0.2, 1.6), a.z + oz - (vz / sp) * 0.4, -vx * 0.7, r.signed() * 0.3, -vz * 0.7, 0.34, 0.2, 0.07);
-        } else k.particles.use(P.leaf).orbit(a.x, a.y + 0.2, a.z, a.radius + 0.3, a.radius + 0.6, r.next() * TAU, 7, r.range(0.5, 1.5), 0.5, 0.28, 0.14);
+        } else k.particles.use(P.streak).tint(C.white, WIND.glow).orbit(a.x, a.y + r.range(0.15, 0.6), a.z, a.radius + 0.3, a.radius + 0.55, r.next() * TAU, 8, r.range(0.3, 1), 0.3, 0.14, 0.04);
       }
     },
   },

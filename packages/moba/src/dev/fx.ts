@@ -764,6 +764,29 @@ const SEQ: Record<string, () => void> = {
     fx('gold_gain', cp(m.pos), { unitId: player.id, value: 42 });
     events.push({ type: 'gold', unitId: player.id, amount: 42, pos: cp(m.pos), reason: 'lasthit' });
   },
+  /**
+   * 王昭君与程咬金同屏(两位都是红色系的模型，特效必须一眼分得开)：玩家放「雁落平沙」+「一弦穿云」，
+   * 队友位同时放「抡圆了砍」并补一记「拦腰一斧」。只看特效的色相与形状，与舞台上摆的是谁的模型无关。
+   */
+  duo_xingli_chijin: () => {
+    SEQ.xingli_ult();
+    after(0.9, () => {
+      const dir = dirTo(player.pos, foe.pos);
+      fx('xingli_s1_cast', P0(), { unitId: player.id, dir });
+      spawnProjectile('xingli_s1', player, P0(), dir, val('xingli', 's1', 'speed'), { range: castRange('xingli', 's1'), radius: 0.65, pierce: true });
+    });
+    const r = castRadius('chijin', 'ult');
+    const dur = val('chijin', 'ult', 'duration');
+    const interval = val('chijin', 'ult', 'tick');
+    fx('chijin_ult_start', cp(ally.pos), { unitId: ally.id });
+    setAnim(ally, 'spin', dur);
+    spawnArea('chijin_ult_spin', cp(ally.pos), r, dur, ally, ally);
+    for (let i = 0; i < Math.round(dur / interval); i++) after(0.1 + i * interval, () => fx('chijin_ult_tick', cp(ally.pos), { unitId: ally.id, radius: r }));
+    after(1.05, () => {
+      const c = skill('chijin', 's1').cast;
+      fx('chijin_s1_slash', cp(ally.pos), { unitId: ally.id, dir: dirTo(ally.pos, foe.pos), radius: castRange('chijin', 's1'), angle: c.type === 'cone' ? c.angle : 1.9 });
+    });
+  },
   /** 团战压力测试：五个大招 + 弹道 + 普攻命中同时进行 */
   teamfight: () => {
     const c = at(0.5, 0);
