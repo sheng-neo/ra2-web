@@ -28,6 +28,7 @@
  *   headless.ts   无头跑完整对局                       testkit.ts  测试辅助
  */
 import { createBot } from './ai/index';
+import { botTierFor } from './ai/params';
 import type { BotFactory, LastSeen } from './ai/types';
 import { SimBotView } from './ai/view';
 import { updateAnim } from './anim';
@@ -185,9 +186,8 @@ export class Sim implements World {
     // 每个英雄一个「公平视图」(各自独立的随机流)；除玩家外的 9 个英雄由 Bot 控制，autoPlay 时玩家英雄也交给 AI
     const botRng = new Rng((config.seed ^ 0x5bd1e995) >>> 0);
     for (const hero of this.heroes) {
-      // 难度只影响红方；蓝方队友固定 normal
-      const difficulty = hero.team === 1 ? config.difficulty : 'normal';
-      this.views.set(hero.id, new SimBotView(this, hero, difficulty, botRng.fork()));
+      // 难度决定双方 Bot 的档位：普通 / 困难只影响红方(队友固定 normal)；简单时红方再软一档、队友也降到 easy
+      this.views.set(hero.id, new SimBotView(this, hero, botTierFor(config.difficulty, hero.team), botRng.fork()));
       if (!opts.noBots && (!hero.isPlayer || config.autoPlay)) this.setBotControl(hero.id, true);
     }
 

@@ -6,7 +6,7 @@
  */
 import type { Rng } from '../rng';
 import type {
-  AreaEffect, CastSpec, CoreUnit, Difficulty, GameState, HeroUnit, MapData, MonsterUnit, PlayerCommand, PlayerTeam, Projectile,
+  AreaEffect, CastSpec, CoreUnit, GameState, HeroUnit, MapData, MonsterUnit, PlayerCommand, PlayerTeam, Projectile,
   SkillSlot, TowerUnit, Unit, Vec2,
 } from '../types';
 
@@ -46,7 +46,8 @@ export interface BotView {
   readonly hero: HeroUnit;
   readonly team: PlayerTeam;
   readonly enemyTeam: PlayerTeam;
-  readonly difficulty: Difficulty;
+  /** 这个 Bot 用哪一档难度档案(由玩家选的难度与所在队伍决定，见 params.ts 的 botTierFor) */
+  readonly difficulty: BotTier;
   /** 该 Bot 专属的确定性随机流 */
   readonly rng: Rng;
   readonly map: MapData;

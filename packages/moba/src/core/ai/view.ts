@@ -8,7 +8,7 @@ import { pathLength, segmentHitsZones, type AvoidZone } from '../nav';
 import type { Rng } from '../rng';
 import { getSkill, isSummonerSlot, SUMMONER_CAST } from '../skills/registry';
 import type {
-  AreaEffect, CastSpec, CoreUnit, Difficulty, HeroUnit, MapData, MonsterUnit, PlayerCommand, PlayerTeam, Projectile, SkillSlot,
+  AreaEffect, CastSpec, CoreUnit, HeroUnit, MapData, MonsterUnit, PlayerCommand, PlayerTeam, Projectile, SkillSlot,
   TowerUnit, Unit, Vec2,
 } from '../types';
 import { bushIndexAt } from '../vision';
@@ -25,7 +25,7 @@ export class SimBotView implements BotView {
   readonly hero: HeroUnit;
   readonly team: PlayerTeam;
   readonly enemyTeam: PlayerTeam;
-  readonly difficulty: Difficulty;
+  readonly difficulty: BotTier;
   readonly rng: Rng;
   readonly map: MapData;
   readonly state: PublicState;
@@ -43,7 +43,7 @@ export class SimBotView implements BotView {
   private readonly nearBuf: SimUnit[] = [];
   private readonly zones: AvoidZone[] = [];
 
-  constructor(sim: Sim, hero: SimHero, difficulty: Difficulty, rng: Rng) {
+  constructor(sim: Sim, hero: SimHero, difficulty: BotTier, rng: Rng) {
     this.sim = sim;
     this.self = hero;
     this.hero = hero;

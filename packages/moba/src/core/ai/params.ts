@@ -2,7 +2,7 @@
  * Bot 的全部可调参数：难度档案(反应/准头/进攻性…)、各英雄的打法参数、全局阈值。
  * 调平衡/调手感只改这里；逻辑文件里不出现魔法数字(几何常量除外)。
  */
-import type { Difficulty, HeroId } from '../types';
+import type { Difficulty, HeroId, PlayerTeam } from '../types';
 
 /** 难度档案：只描述「操作与判断的水平」，不改变规则、不给额外信息或数值 */
 export interface Profile {
@@ -48,7 +48,20 @@ export interface Profile {
   gankCooldown: number;
 }
 
-export const PROFILES: Record<Difficulty, Profile> = {
+/**
+ * Bot 档位：三档难度之外多一档 novice。玩家选「简单」时红方用 novice(比 easy 再软一档)，蓝方队友用 easy；
+ * 选「普通 / 困难」时红方用同名档、队友固定 normal(见 world.ts 的 botTierFor)。
+ */
+export type BotTier = Difficulty | 'novice';
+
+export const PROFILES: Record<BotTier, Profile> = {
+  // 「简单」局里的敌方：反应更慢、更不敢打、更爱发呆、几乎不配合。数值来自「慢反应真人」脚本的批量对照(Q3)：
+  // 认真打的新手八成能赢，泉水挂机只有三成多——赢不赢看玩家，而不是看队友
+  novice: {
+    think: 0.4, reaction: 0.9, aimError: 0.3, aimLead: 0, dodge: 0.05, lastHitError: 0.22, lastHitSkip: 0.3,
+    aggression: 0.72, harass: 0.1, dive: false, comboGap: 0.9, orbwalk: false, flashKill: 0, escapeSense: 0.75,
+    focus: 0, awareness: 0, teamwork: 0.25, idleRate: 0.07, idleMin: 1, idleMax: 2.5, gankCooldown: 100,
+  },
   easy: {
     think: 0.3, reaction: 0.6, aimError: 0.2, aimLead: 0, dodge: 0.15, lastHitError: 0.22, lastHitSkip: 0.3,
     aggression: 0.8, harass: 0.2, dive: false, comboGap: 0.6, orbwalk: false, flashKill: 0, escapeSense: 0.75,
@@ -65,6 +78,16 @@ export const PROFILES: Record<Difficulty, Profile> = {
     focus: 1, awareness: 0.7, teamwork: 1, idleRate: 0, idleMin: 0, idleMax: 0, gankCooldown: 30,
   },
 };
+
+/**
+ * 玩家选的难度 → 某一方 Bot 实际用的档位。
+ * 简单：敌方 novice、队友 easy——队友要是仍用 normal，四个人自己就能赢(实测泉水挂机九成胜率)，胜负与玩家无关；
+ * 普通 / 困难：敌方用同名档，队友固定 normal。
+ */
+export function botTierFor(difficulty: Difficulty, team: PlayerTeam): BotTier {
+  if (difficulty === 'easy') return team === 1 ? 'novice' : 'easy';
+  return team === 1 ? difficulty : 'normal';
+}
 
 /** 各英雄的打法参数（与难度无关） */
 export interface Style {
