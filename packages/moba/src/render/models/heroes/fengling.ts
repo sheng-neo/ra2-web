@@ -9,7 +9,7 @@
 import { type CKP, type CommonAnims, type Human, type HumanDims, type RunStyle, RUN_DEFAULT, STANDARD_DIMS, animateCommon, applyCKP, breathe, emptyCKP, humanRig, kp, lerpCKP, makeCommon, mix, mixQ, reachHand, runCycle, sat, seg, strikeWarp } from '../humanoid';
 import { MAT, type MatClass, ModelBuilder, PATTERN, type SoftBind, X, lerp } from '../kit';
 import { beard, boot, chainBind, face, hairCap, hand, head, lock, polyAt, strip, torsoBind, trim } from '../parts';
-import type { Pose } from '../rig';
+import { type Pose, poseSpace, setSpaceRot } from '../rig';
 import type { AnimInput, AnimOutput, ModelDef } from '../types';
 
 const C = {
@@ -305,9 +305,9 @@ function build(): { h: Human; b: ModelBuilder; extra: Extra } {
       const L = 0.6;
       const at = (t: number): number[] => {
         const q = t * t;
-        return [s * (0.07 + L * (0.16 * t + 0.1 * q)), cy + 0.27 + L * (0.8 * t - 0.38 * q), -0.13 - L * (0.42 * t + 0.5 * q)];
+        return [s * (0.075 + L * (0.2 * t + 0.1 * q)), cy + 0.26 + L * (0.66 * t - 0.34 * q), -0.13 - L * (0.5 * t + 0.46 * q)];
       };
-      const half = (t: number): number => 0.012 + 0.036 * Math.pow(Math.sin(Math.PI * Math.pow(t, 0.7)), 0.8) * (1 - 0.3 * t);
+      const half = (t: number): number => 0.012 + 0.038 * Math.pow(Math.sin(Math.PI * 0.86 * Math.pow(t, 0.7)), 0.8) * (1 - 0.3 * t);
       const blade: number[][] = [];
       for (let i = 0; i <= N; i++) {
         const t = i / N;
@@ -405,7 +405,7 @@ function makeAnims(h: Human): Anims {
     footR: [-0.15, 0.09, -0.1, 0, -34],
     armL: [-6, 0, 22],
     foreL: [-30, 0, 0],
-    propL: [-70, 0, -30],
+    propL: [-50, 0, -30],
     armR: [22, 0, -14],
     foreR: [-24, 0, 0],
   });
@@ -469,6 +469,10 @@ function makeAnims(h: Human): Anims {
 }
 
 const _sv = new Float32Array(8);
+const _hp = [0, 0, 0];
+const _hq = [0, 0, 0, 1];
+/** 待机时弓(上梢方向 = 关节的 +Z)在英雄自身坐标里的[俯仰, 偏航, 滚转](度) */
+const IDLE_BOW = [-125, -48, 0];
 
 export function createFengling(): ModelDef {
   const { h, b, extra } = build();
@@ -588,9 +592,12 @@ export function createFengling(): ModelDef {
       default: {
         applyCKP(h, pose, A.stance, () => {
           breathe(h, pose, a.time, a.seed);
-          pose.add(J.propL, Math.sin(a.time * 1.1) * 2, 0, 0);
           pose.add(J.hips, 0, 0, Math.sin(a.time * 0.8 + a.seed * 4) * 1.2);
         });
+        // 待机时弓的指向直接按英雄自身坐标给(不跟着手臂的欧拉角间接决定)：上梢朝左后上方斜出去、落在左肩外侧，
+        // 下梢斜到身前小腿的高度。原先弓几乎竖直握在体侧，上梢正好在左脸旁边，正面和四分之三侧面看都贴着脸
+        poseSpace(h.rig, pose, J.handL, _hp, _hq);
+        setSpaceRot(pose, J.propL, _hq, IDLE_BOW[0] + Math.sin(a.time * 1.1) * 2, IDLE_BOW[1], IDLE_BOW[2]);
         out.glow = 1 + 0.08 * Math.sin(a.time * 2.6);
       }
     }

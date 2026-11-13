@@ -544,20 +544,32 @@ void main() {
     float front = min(1.0, t / max(p0, 0.01));
     float ay = abs(p.y);
     float wob = 0.84 + 0.035 * sin(u * vW.z * 2.6 + seed * 20.0);
-    float cloth = (1.0 - smoothstep(wob - 0.07, wob, ay)) * smoothstep(0.0, 0.012, u) * (1.0 - smoothstep(front - 0.006, front + 0.006, u));
+    // 近端不是一刀齐的直边：按噪声撕出毛边，再压一根轴头(与前沿那根卷轴成对)——整条读成「手卷」而不是一块木板
+    float tear = vnoise(vec2(p.y * 5.0 + seed * 9.0, seed * 3.0)) * 0.035 / max(vW.z, 0.3);
+    float nearCut = smoothstep(0.0, 0.012, u - tear);
+    float farCut = 1.0 - smoothstep(front - 0.006, front + 0.006, u);
+    float cloth = (1.0 - smoothstep(wob - 0.07, wob, ay)) * nearCut * farCut;
     float du = 0.07 / max(vW.z, 0.3);
     float roll = (1.0 - smoothstep(du * 0.55, du, abs(u - front + du * 0.4))) * (1.0 - smoothstep(0.93, 1.0, ay)) * step(0.02, front);
+    float rod = (1.0 - smoothstep(du * 0.4, du * 0.75, abs(u - du * 0.55))) * (1.0 - smoothstep(0.93, 1.0, ay));
     float border = band(ay - (wob - 0.15), 0.04, 0.03);
-    // 帛边外侧一圈淡墨的投影：米白的帛铺在浅色石板上，靠它托出轮廓
-    float shade = (1.0 - smoothstep(wob, 1.0, ay)) * smoothstep(wob - 0.05, wob, ay) * smoothstep(0.0, 0.012, u) * (1.0 - smoothstep(front - 0.006, front + 0.006, u));
+    // 帛边外侧一圈淡墨的投影：帛铺在浅色石板上，靠它托出轮廓
+    float shade = (1.0 - smoothstep(wob, 1.0, ay)) * smoothstep(wob - 0.05, wob, ay) * nearCut * farCut;
+    // 帛面向两侧边缘压暗(中间亮、两边旧)：有一点卷曲的体积，不是平涂的一条
+    float aged = smoothstep(wob - 0.5, wob - 0.05, ay) * 0.26;
     float xs = u * vW.z * 2.0;
+    // 卷面的舆图：一道蜿蜒的河、疏密不等的山形折线、零星的墨点(城邑)
     float river = band(p.y - 0.3 * sin(xs * 1.5 + p1) - 0.1 * sin(xs * 3.7 + p1 * 2.3), 0.05, 0.05);
     float peak = abs(fract(xs * 0.55 + p1 * 0.3) - 0.5) * 2.0;
     float hills = band(p.y + 0.38 - peak * 0.22, 0.04, 0.04) * step(0.25, fract(xs * 0.275 + 0.13));
+    float peak2 = abs(fract(xs * 0.9 + p1 * 0.7 + 0.31) - 0.5) * 2.0;
+    float hills2 = band(p.y - 0.46 + peak2 * 0.16, 0.035, 0.035) * step(0.45, fract(xs * 0.3 + 0.61));
+    float dots = smoothstep(0.8, 0.86, vnoise(vec2(xs * 3.1 + p1, p.y * 4.3 + seed * 11.0)));
     float dis = vnoise(wp * 3.0 + seed * 7.0);
     float fade = 1.0 - smoothstep(0.62, 1.0, t + (dis - 0.5) * 0.35);
     cov = cloth * 0.92 * fade;
-    fil = max(max(max(border * 0.8, (river * 0.5 + hills * 0.42) * (1.0 - smoothstep(0.45, 0.62, ay))) * cloth, roll * 0.9), shade * 0.5) * fade;
+    float inked = (river * 0.6 + hills * 0.55 + hills2 * 0.45 + dots * 0.5) * (1.0 - smoothstep(0.5, 0.66, ay));
+    fil = max(max(max(max(border * 0.8, inked), aged) * cloth, max(roll, rod) * 0.9), shade * 0.5) * fade;
   } else if (type < 19.5) {
     // ── 音波环：若干道同心细环，带一点细微的颤动 ──
     float n = clamp(floor(p0 + 0.5), 1.0, 5.0);

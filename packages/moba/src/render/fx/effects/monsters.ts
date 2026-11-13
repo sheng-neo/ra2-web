@@ -94,8 +94,8 @@ const drakeBreathWarn: FxHandler = (k, e) => {
   );
   // 口中聚光：一颗逐渐涨大的光球，四周的光点螺旋着被吸进去
   const m = k.glow.hold(SHAPE.sphere, MODE.core);
-  m.color(C.violetHot, 1.4, 0);
-  m.add = 0.7;
+  m.color(C.violetHot, 1.25, 0);
+  m.add = 0.55;
   m.k = 1.4;
   let acc = 0;
   k.track(
@@ -103,9 +103,10 @@ const drakeBreathWarn: FxHandler = (k, e) => {
     warn,
     (_a, t, dt) => {
       if (!mouth(k, id, dx, dz, _v)) return;
-      const s = 0.15 + 0.5 * t * t;
+      // 聚光只是口中的一点(收小、压暗)：太大太亮会把整个龙头连同鳞片的明暗冲成一片紫白
+      const s = 0.12 + 0.36 * t * t;
       m.at(_v.x, _v.y, _v.z).scale(s);
-      m.a = 0.35 + 0.6 * t;
+      m.a = 0.25 + 0.5 * t;
       acc += dt * (14 + 30 * t) * k.density;
       const p = k.particles.use(P.glint).tint(C.violetHot, C.abyssCyan);
       while (acc >= 1) {
@@ -147,6 +148,7 @@ const drakeBreath: FxHandler = (k, e, env) => {
   const life = dur + 0.25;
   let puffAcc = 0;
   let markAcc = 0;
+  let flowAcc = 0;
   const rnd = k.rnd;
   const tick = (t01: number, dt: number): void => {
     const tt = t01 * life;
@@ -162,21 +164,33 @@ const drakeBreath: FxHandler = (k, e, env) => {
     const grow = Math.min(1, tt / 0.12);
     // 截面压扁(高约为宽的三分之一)：读成一股贴地横扫的气，而不是竖起来的一面扇子
     cone.at(_v.x, _v.y, _v.z).scale3(L * (0.35 + 0.65 * grow), endR * 0.36 * grow, endR * grow).rot(0, -ang, pitch);
-    cone.a = Math.min(1, tt / 0.08) * 0.85;
+    // 锥体只当气流的「体」：压淡，层次交给口部亮核、贴地流光与丝缕
+    cone.a = Math.min(1, tt / 0.08) * 0.6;
     cone.progress = tt > dur ? Math.min(1, (tt - dur) / 0.25) : 0;
     if (tt > dur) return;
-    // 口部白热：一团青白亮核(锥体在口部很细，单靠它看不出「从嘴里喷出来」)
-    k.sprites.draw(SPRITE.glow, _v.x, _v.y, _v.z, 1.9 * grow, 0, C.abyssCyan, 1.6, 0.95, 0.6);
-    // 雾团与星屑拉丝：沿锥体喷出
-    puffAcc += dt * 34 * k.density;
+    // 口部白热：一小颗很亮的核 + 一圈收着的青晕(以前是一大团 1.9 米的光，连龙头一起漂白)
+    k.sprites.draw(SPRITE.glow, _v.x, _v.y, _v.z, 1.15 * grow, 0, C.abyssCyan, 1.2, 0.75, 0.6);
+    k.sprites.draw(SPRITE.glow, _v.x + cx * 0.25, _v.y - 0.05, _v.z + cz * 0.25, 0.55 * grow, 0, C.violetHot, 2.6, 1, 0.85);
+    // 雾团与星屑拉丝：沿锥体喷出。丝缕(细长的亮线)占一半以上——「气」是一股一股的，不是一片薄纱
+    puffAcc += dt * 40 * k.density;
     while (puffAcc >= 1) {
       puffAcc -= 1;
       const a = ang + rnd.signed() * half * 0.85;
       const s = rnd.range(7, 12);
       const ca = Math.cos(a);
       const sa = Math.sin(a);
-      if (rnd.chance(0.6)) k.particles.use(P.puff).spawn(_v.x + ca * 0.4, _v.y - 0.1, _v.z + sa * 0.4, ca * s, -rnd.range(1.2, 2.4), sa * s, rnd.range(0.5, 0.75), 0.8, rnd.range(2.2, 3.2));
-      else k.particles.use(P.streak).tint(C.violetHot, C.abyssCyan).spawn(_v.x, _v.y, _v.z, ca * s * 1.6, -rnd.range(1, 3), sa * s * 1.6, rnd.range(0.25, 0.4), 0.16, 0.05);
+      if (rnd.chance(0.42)) k.particles.use(P.puff).spawn(_v.x + ca * 0.4, _v.y - 0.1, _v.z + sa * 0.4, ca * s, -rnd.range(1.2, 2.4), sa * s, rnd.range(0.5, 0.75), 0.8, rnd.range(2.2, 3.2));
+      else k.particles.use(P.streak).tint(C.violetHot, C.abyssCyan).spawn(_v.x, _v.y, _v.z, ca * s * 1.7, -rnd.range(1, 3), sa * s * 1.7, rnd.range(0.26, 0.42), 0.24, 0.07);
+    }
+    // 贴地流光：一道道梭形亮痕贴着水面 / 地面顺着气流往外窜
+    flowAcc += dt * 10;
+    while (flowAcc >= 1) {
+      flowAcc -= 1;
+      const a = ang + rnd.signed() * half * 0.7;
+      const d0 = md + 1.0;
+      const len = (radius - d0) * rnd.range(0.4, 0.62);
+      const mid = d0 + len * 0.5 + rnd.next() * Math.max(0, radius - d0 - len);
+      k.decals.add(DECAL.streak, ox + Math.cos(a) * mid, oz + Math.sin(a) * mid, len * 0.5, 0.34).rot(a, 0.1).params(0.6, 3.2).color(C.violetHot, 1.45, 0.8).under(C.violetDeep, 0.18);
     }
     // 渊蚀：被扫过的地面留下暗紫湿痕 + 细碎光点，1.5 秒淡出
     markAcc += dt * 16;
@@ -196,7 +210,8 @@ const drakeBreath: FxHandler = (k, e, env) => {
   }
   if (mouth(k, id, dx, dz, _w)) {
     hitBurst(k, _w.x, _w.y, _w.z, 1.8, C.violetHot, C.violet, dx, dz, 6, FX_RULES.flashSkill, 9);
-    k.light(_w.x, _w.z, _w.y, C.violet, 5, 9, FX_RULES.lightDur);
+    // 点光收小、压暗：强度 5 / 半径 9 会把整条龙照成亮紫白，鳞片与翼膜的明暗全被冲掉
+    k.light(_w.x, _w.z, _w.y, C.violet, 2.2, 5.5, FX_RULES.lightDur);
   }
   k.shake(0.12, ox, oz);
   void env;
