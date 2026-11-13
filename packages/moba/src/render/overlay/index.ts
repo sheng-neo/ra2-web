@@ -10,7 +10,7 @@ import type { GameEvent, GameState } from '../../core/types';
 import type { FrameInfo, RenderContext, RenderModule } from '../engine/context';
 import type { UnitAnchors } from '../fx/anchors';
 import { FxKit } from '../fx/kit';
-import { BarLayer, type Projector } from './bars';
+import { type AvoidRect, BarLayer, type Projector } from './bars';
 import { FloaterLayer } from './floaters';
 import { WorldMarks } from './marks';
 import { IconCache, TextCache } from './sprites2d';
@@ -20,6 +20,8 @@ export interface OverlayModule extends RenderModule {
   setVisible(part: 'bars' | 'floaters' | 'marks', on: boolean): void;
   /** 清空飘字与残影状态(重开对局) */
   reset(): void;
+  /** 顶部界面占用的屏幕矩形(CSS 像素，相对视口)：压到上沿的宽血条避开它们。null = 用缺省布局估 */
+  setAvoid(rects: AvoidRect[] | null): void;
 }
 
 interface KitHolder extends RenderModule {
@@ -110,6 +112,15 @@ export function createOverlayModule(ctx: RenderContext): OverlayModule {
       bars.reset();
       floaters.reset();
       marks.reset();
+    },
+    setAvoid(rects): void {
+      if (!rects) {
+        bars.avoid = null;
+        return;
+      }
+      // 换算到渲染容器的坐标系(容器通常铺满视口，这里只是保险)
+      const box = ctx.container.getBoundingClientRect();
+      bars.avoid = rects.map((r) => ({ left: r.left - box.left, top: r.top - box.top, right: r.right - box.left, bottom: r.bottom - box.top }));
     },
     dispose(): void {
       const i = kit.hooks.indexOf(hook);

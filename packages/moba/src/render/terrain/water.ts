@@ -171,8 +171,9 @@ export function createWater(field: MapField, splat: SplatTextures, noise: THREE.
         for (const side of [-1, 1]) {
           const x = a.x + dx * t - dy * half * side;
           const z = a.y + dy * t + dx * half * side;
-          // 夹到边界内：越界部分由外缘地形/瀑布负责
-          pos.push(Math.max(-bound, Math.min(bound, x)), WATER_LEVEL, Math.max(-bound, Math.min(bound, z)));
+          // 夹到边界内：越界部分由外缘地形/瀑布负责。西北河源一端多伸 0.35 米，探到出水口崖脚的下面(那里的崖脚沉在水下)，
+          // 水面与岩面之间不留一条露底的缝；东南一端不能伸(外面是低一级的台地，水面会悬空)
+          pos.push(Math.max(-bound - 0.35, Math.min(bound, x)), WATER_LEVEL, Math.max(-bound - 0.35, Math.min(bound, z)));
         }
       }
       idx.push(base, base + 2, base + 1, base + 1, base + 2, base + 3);

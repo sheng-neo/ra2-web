@@ -16,6 +16,9 @@ export interface GameRendererCore extends GameRenderer {
   snapCamera(): void;
   setDeathTint(amount: number): void;
   prewarm(): void;
+  prewarmAsync(onProgress?: (progress: number) => void): Promise<void>;
+  /** 最近一次分步预热的统计(调试 / 回归脚本用)：段数、总耗时、最长一段(毫秒)与超过 50 毫秒的各段 [完成比例, 毫秒] */
+  readonly warmStats: { steps: number; total: number; max: number; slow: [number, number][] };
   /** 与 render 相同的一帧推进(相机/模块/时钟)，但不提交绘制：快进、无头长跑、定格前的预滚 */
   advance(state: GameState, alpha: number, dtReal: number): void;
   /**
@@ -42,7 +45,98 @@ function defaultHeight(u: Unit): number {
   }
 }
 
+/**
+ * 让出主线程一帧(让加载页的进度条能画出来)。页面在后台时 requestAnimationFrame 不触发、定时器被压到每秒一次，
+ * 那时改用消息通道排一个宏任务：不等绘制，但也不会让加载在后台挂上一分钟。
+ */
+function yieldFrame(): Promise<void> {
+  return new Promise((resolve) => {
+    if (typeof document !== 'undefined' && document.hidden && typeof MessageChannel !== 'undefined') {
+      const ch = new MessageChannel();
+      ch.port1.onmessage = () => {
+        ch.port1.close();
+        resolve();
+      };
+      ch.port2.postMessage(0);
+      return;
+    }
+    let done = false;
+    const fin = (): void => {
+      if (done) return;
+      done = true;
+      resolve();
+    };
+    requestAnimationFrame(fin);
+    window.setTimeout(fin, 50);
+  });
+}
+
+/** 同步构建：一口气建完所有模块(画廊页、不在意卡顿的调用方) */
 export function createRendererCore(container: HTMLElement, state: GameState, opts: RendererOptions, factories: RenderModuleFactory[]): GameRendererCore {
+  const host = assembleCore(container, state, opts);
+  for (const f of factories) host.modules.push(f(host.ctx));
+  return host.api;
+}
+
+/**
+ * 分段构建：模块一个一个建，带 staged 入口的模块(地形)内部再分段，每段之间让出一帧；onProgress 收到 0..1 的完成比例。
+ * 建到一半被 dispose() 也没关系(返回的渲染器已是释放状态)。
+ */
+export async function createRendererCoreAsync(
+  container: HTMLElement,
+  state: GameState,
+  opts: RendererOptions,
+  factories: RenderModuleFactory[],
+  onProgress?: (progress: number) => void,
+): Promise<GameRendererCore> {
+  const host = assembleCore(container, state, opts);
+  const n = Math.max(1, factories.length);
+  // 各模块在进度条里占的份额：带分段入口的(地形，最重)占大头
+  let weightSum = 0;
+  const weights = factories.map((f) => {
+    const w = f.staged ? 6 : 1;
+    weightSum += w;
+    return w;
+  });
+  let base = 0;
+  onProgress?.(0);
+  await yieldFrame();
+  for (let i = 0; i < n && i < factories.length; i++) {
+    if (host.isDisposed()) break;
+    const f = factories[i];
+    const span = weights[i] / weightSum;
+    if (f.staged) {
+      const it = f.staged(host.ctx);
+      for (;;) {
+        const r = it.next();
+        if (r.done) {
+          host.modules.push(r.value);
+          break;
+        }
+        onProgress?.(base + span * Math.min(1, Math.max(0, r.value)));
+        await yieldFrame();
+        if (host.isDisposed()) {
+          // 半成品已经挂在场景图上：引擎的 dispose 按场景图释放过了，这里只把生成器收掉
+          it.return(undefined as never);
+          break;
+        }
+      }
+    } else host.modules.push(f(host.ctx));
+    base += span;
+    onProgress?.(Math.min(1, base));
+    await yieldFrame();
+  }
+  return host.api;
+}
+
+interface CoreHost {
+  api: GameRendererCore;
+  ctx: RenderContext;
+  modules: RenderModule[];
+  isDisposed(): boolean;
+}
+
+function assembleCore(container: HTMLElement, state: GameState, opts: RendererOptions): CoreHost {
   if (getComputedStyle(container).position === 'static') container.style.position = 'relative';
   const engine = new RenderEngine(container, opts.quality);
 
@@ -127,10 +221,10 @@ export function createRendererCore(container: HTMLElement, state: GameState, opt
   const b = state.map.bound;
   engine.rig.bounds = { minX: -b, maxX: b, minZ: -b, maxZ: b };
 
-  for (const f of factories) modules.push(f(ctx));
-
   /** 预热做过了吗(切画质、上下文恢复后所有材质要重编译，需要再做一遍) */
   let warmed = false;
+  /** 分步预热进行中：期间不画正常的帧(场景处在「全部可见 / 分桶可见」的临时状态) */
+  let warming = false;
 
   engine.onQualityChanged = (s) => {
     for (const m of modules) m.setQuality?.(s);
@@ -182,15 +276,25 @@ export function createRendererCore(container: HTMLElement, state: GameState, opt
   let disposed = false;
 
   // 瞄准前探：长射程技能朝屏幕外(尤其是朝南)瞄的时候，镜头往那边让一让，保证指示器末端看得见。
-  // 跟着鼠标算出来的指示器(aim.pointer)不前探：镜头一动鼠标底下的地面点就变，落点会顺着镜头一路滑到最大射程
+  // 跟着鼠标算出来的指示器(aim.pointer)不能照搬：镜头一动鼠标底下的地面点就变，落点会顺着镜头一路滑到最大射程。
+  // 它们改用「按指针的屏幕位置下探」(只对落点型)：指针越靠屏幕下方镜头越往南让，量只由指针的屏幕纵坐标和技能射程决定，
+  // 没有回路——否则朝屏幕下方放不到最大射程(横屏向南只看得到 9.3 米，指针停在状态栏上沿时只有 7.8 米)
   let aim: AimIndicator | null = null;
   const updateReach = (s: GameState, alpha: number): void => {
     const rig = engine.rig;
+    const hero = playerOf(s);
+    if (aim && aim.pointer && aim.kind === 'position' && hero && hero.alive) {
+      rig.setReach(null);
+      // 落点(= 指针底下的地面点；界面层若已夹到射程圈上也一样)投到屏幕上的纵坐标
+      pos.set(aim.pos.x, 0, aim.pos.y).project(engine.rig.camera);
+      rig.setPointerReach(Math.max(-1, Math.min(1, pos.y)), aim.range + Math.min(aim.radius, 2.5) * 0.3);
+      return;
+    }
+    rig.setPointerReach(null);
     if (!aim || aim.pointer || aim.kind === 'self' || aim.kind === 'target') {
       rig.setReach(null);
       return;
     }
-    const hero = playerOf(s);
     if (!hero || !hero.alive) {
       rig.setReach(null);
       return;
@@ -214,6 +318,26 @@ export function createRendererCore(container: HTMLElement, state: GameState, opt
     const d = Math.hypot(dx, dz);
     if (d < 1e-4) rig.setReach(null);
     else rig.setReach(hx + (dx / d) * len, hz + (dz / d) * len);
+  };
+
+  // 高个子取景：玩家贴着史诗野怪(半径 ≥ 1.8 的野怪：河道巨龙 / 远古巨灵)且它不在自己南边时开；带一点迟滞，站在边界上不来回抖
+  let tallOn = false;
+  const updateTallFocus = (s: GameState): void => {
+    const hero = playerOf(s);
+    let near = false;
+    if (hero && hero.alive) {
+      const lim = tallOn ? 11.5 : 9.5;
+      for (const u of s.units) {
+        if (u.kind !== 'monster' || !u.alive || u.radius < 1.8 || !u.visible[frame.playerTeam]) continue;
+        const dz = u.pos.y - hero.pos.y;
+        if (dz < 3 && Math.hypot(u.pos.x - hero.pos.x, dz) < lim) {
+          near = true;
+          break;
+        }
+      }
+    }
+    tallOn = near;
+    engine.rig.setTallFocus(near);
   };
 
   const prewarmPass = (): void => {
@@ -242,8 +366,78 @@ export function createRendererCore(container: HTMLElement, state: GameState, opt
     engine.render(0, true);
   };
 
-  const step = (s: GameState, alpha: number, dtReal: number, draw: boolean): void => {
+  /**
+   * 分步预热：与 prewarm() 做同样的事，但拆成很多小段，段与段之间让出主线程(加载页的进度条能跟着走)。
+   * 期间不要调 render()(会被忽略)；中途 dispose() 是安全的。完成后补画正常的一帧。
+   */
+  const warmStats: GameRendererCore['warmStats'] = { steps: 0, total: 0, max: 0, slow: [] };
+  const prewarmAsync = async (onProgress?: (progress: number) => void): Promise<void> => {
+    if (disposed || warming) return;
+    warming = true;
+    const finish: (() => void)[] = [];
+    warmStats.steps = 0;
+    warmStats.total = 0;
+    warmStats.max = 0;
+    warmStats.slow.length = 0;
+    let mark = performance.now();
+    const lap = (p: number): void => {
+      const now = performance.now();
+      const ms = now - mark;
+      warmStats.steps++;
+      warmStats.total += ms;
+      if (ms > warmStats.max) warmStats.max = ms;
+      if (ms > 50) warmStats.slow.push([Math.round(p * 1000) / 1000, Math.round(ms)]);
+    };
+    try {
+      frame.dt = 0;
+      engine.updateCamera(0);
+      onProgress?.(0);
+      // 各模块把还没出场的东西摆进场景(单位模块要建全部模型，是其中最重的一段)
+      for (const m of modules) {
+        if (!m.prewarm) continue;
+        mark = performance.now();
+        const f = m.prewarm();
+        if (f) finish.push(f);
+        lap(0);
+        await yieldFrame();
+        if (disposed) return;
+      }
+      mark = performance.now();
+      for (const m of modules) m.update(frame);
+      lap(0.06);
+      onProgress?.(0.06);
+      await yieldFrame();
+      if (disposed) return;
+      const it = engine.prewarmStages();
+      for (;;) {
+        mark = performance.now();
+        const r = it.next();
+        if (r.done) {
+          lap(1);
+          break;
+        }
+        lap(0.06 + 0.94 * r.value);
+        onProgress?.(0.06 + 0.94 * r.value);
+        await yieldFrame();
+        if (disposed) {
+          it.return();
+          return;
+        }
+      }
+      warmed = true;
+    } finally {
+      // 已经释放的话模块自己清过场了，收尾函数不能再碰它们
+      if (!disposed) for (const f of finish) f();
+      warming = false;
+    }
     if (disposed) return;
+    for (const m of modules) m.update(frame);
+    engine.render(0, true);
+    onProgress?.(1);
+  };
+
+  const step = (s: GameState, alpha: number, dtReal: number, draw: boolean): void => {
+    if (disposed || warming) return;
     const dt = Math.min(Math.max(dtReal, 0), 0.1);
     if (draw && !warmed) {
       // 第一次出图前自动预热(集成层的加载页正好盖着)；同一次调用里紧接着画正常的一帧，预热画面不会被呈现出来
@@ -261,6 +455,7 @@ export function createRendererCore(container: HTMLElement, state: GameState, opt
     frame.playerTeam = playerTeamOf(s);
     followPlayer(s, alpha);
     updateReach(s, alpha);
+    updateTallFocus(s);
     engine.updateCamera(dt);
     for (const m of modules) m.update(frame);
     engine.render(dt, draw);
@@ -322,7 +517,13 @@ export function createRendererCore(container: HTMLElement, state: GameState, opt
     setDeathTint(amount: number): void {
       engine.setDeathTint(amount);
     },
+    setOverlayAvoid(rects): void {
+      const overlay = modules.find((m) => m.name === 'overlay') as (RenderModule & { setAvoid?: (r: typeof rects) => void }) | undefined;
+      overlay?.setAvoid?.(rects);
+    },
     prewarm,
+    prewarmAsync,
+    warmStats,
     dispose(): void {
       if (disposed) return;
       disposed = true;
@@ -332,5 +533,5 @@ export function createRendererCore(container: HTMLElement, state: GameState, opt
       overlayRoot.remove();
     },
   };
-  return api;
+  return { api, ctx, modules, isDisposed: () => disposed };
 }

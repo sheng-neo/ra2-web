@@ -226,14 +226,16 @@ const ICONS: Record<IconId, (g: CanvasRenderingContext2D) => void> = {
     g.stroke();
   },
   slow(g) {
-    g.strokeStyle = '#9fe0ff';
-    g.lineWidth = 1.6;
+    // 减速：两道下行的折线箭头(「慢下来」)，灰紫蓝；不用雪花——通用减速不带冰雪意象
+    g.strokeStyle = '#b4b8ff';
+    g.lineWidth = 2.1;
     g.lineCap = 'round';
+    g.lineJoin = 'round';
     g.beginPath();
-    for (let i = 0; i < 3; i++) {
-      const a = (i * Math.PI) / 3;
-      g.moveTo(8 + Math.cos(a) * 6.4, 8 + Math.sin(a) * 6.4);
-      g.lineTo(8 - Math.cos(a) * 6.4, 8 - Math.sin(a) * 6.4);
+    for (const y of [3.4, 8.2]) {
+      g.moveTo(3.2, y);
+      g.lineTo(8, y + 4.4);
+      g.lineTo(12.8, y);
     }
     g.stroke();
   },

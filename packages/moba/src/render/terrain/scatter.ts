@@ -13,7 +13,7 @@ import { pointInPolygon } from '../../core/map';
 import { PALETTE, Rng, fbm2 } from '../materials';
 import type { CliffInfo } from './cliffs';
 import { type MapField, type StaticCaster, WATER_LEVEL, polygonSignedDist } from './field';
-import { type RGB, type SceneryBatcher, mixRgb, rgb, scaleRgb } from './geo';
+import { type RGB, RANK_LOW, type SceneryBatcher, densityRank, mixRgb, rgb, scaleRgb } from './geo';
 import { VIEW_OCCLUDE_PER_METER } from '../engine/camera';
 import { type PropLibrary, TREE_CANOPY, TREE_CROWN_Y, TREE_TOP } from './models';
 
@@ -60,6 +60,14 @@ export function themeTint(field: MapField, x: number, z: number, rng: Rng): RGB 
   const baseD = field.baseDist(x, z, 14);
   if (baseD < 9) return x - z < 0 ? mixRgb(GLOW_CYAN, BLUE_GLOW, rng.range(0.4, 0.8)) : mixRgb(AMBER, RED_GLOW, rng.range(0.3, 0.7));
   return rng.chance(0.62) ? mixRgb(GLOW_CYAN, [0.8, 1, 0.95], rng.range(0, 0.35)) : mixRgb(VIOLET, GLOW_CYAN, rng.range(0, 0.3));
+}
+
+/** 把颜色里掺的「白」抽掉一部分(保持色相与最亮通道)：amount = 抽掉最暗通道的比例 */
+function saturateRgb(c: RGB, amount: number): RGB {
+  const hi = Math.max(c[0], c[1], c[2]);
+  const lo = Math.min(c[0], c[1], c[2]) * amount;
+  const k = hi > lo + 1e-4 ? hi / (hi - lo) : 1;
+  return [(c[0] - lo) * k, (c[1] - lo) * k, (c[2] - lo) * k];
 }
 
 /** 树冠色偏：整体青绿，带一点冷暖变化；红方一侧略偏暖 */
@@ -226,11 +234,11 @@ export function scatterWallTops(batch: SceneryBatcher, lib: PropLibrary, field: 
           const kind = rng.next();
           if (kind < 0.3) {
             const sc = rng.range(0.75, 1.2);
-            batch.add(rng.pick(lib.shrubs), trs(px, ty, pz, rng.range(0, 6.28), sc), { tint: canopyTint(px, pz, rng) });
+            batch.add(rng.pick(lib.shrubs), trs(px, ty, pz, rng.range(0, 6.28), sc), { tint: canopyTint(px, pz, rng), rank: RANK_LOW });
             out.aoBlobs.push({ x: px, y: ty + 0.06, z: pz, r: 0.95 * sc, strength: 0.3 });
           } else if (kind < (ridge ? 0.62 : 0.46)) {
             const sc = rng.range(0.45, 0.85) * (ridge ? 1.15 : 1);
-            batch.add(rng.pick(lib.boulders), trs(px, ty + 0.05, pz, rng.range(0, 6.28), sc, sc * rng.range(0.8, 1.2)), { tint: scaleRgb([1, 1, 1], rng.range(0.9, 1.1)) });
+            batch.add(rng.pick(lib.boulders), trs(px, ty + 0.05, pz, rng.range(0, 6.28), sc, sc * rng.range(0.8, 1.2)), { tint: scaleRgb([1, 1, 1], rng.range(0.9, 1.1)), rank: RANK_LOW });
             out.aoBlobs.push({ x: px, y: ty + 0.06, z: pz, r: 1.3 * sc, strength: 0.34 });
           } else if (kind < 0.6 && d > 0.95 && !ridge) {
             // 水晶簇：发光物，要先在网格里占位；占不到就换成蕨丛
@@ -238,19 +246,19 @@ export function scatterWallTops(batch: SceneryBatcher, lib: PropLibrary, field: 
               const tint = themeTint(field, px, pz, rng);
               const sc = rng.range(0.75, 1.2);
               const bigC = big && d > 2.2 && rng.chance(0.3);
-              batch.add(rng.pick(bigC ? lib.bigCrystals : lib.crystals), trs(px, ty, pz, rng.range(0, 6.28), sc), { tint, glow: rng.range(0.75, 1) });
+              batch.add(rng.pick(bigC ? lib.bigCrystals : lib.crystals), trs(px, ty, pz, rng.range(0, 6.28), sc), { tint, glow: rng.range(0.75, 1), rank: RANK_LOW });
               out.glows.push({ x: px, z: pz, y: ty + 0.05, r: bigC ? 3.2 : 2.0, color: tint });
               out.aoBlobs.push({ x: px, y: ty + 0.06, z: pz, r: bigC ? 1.5 : 0.9, strength: 0.25 });
             } else {
-              batch.add(rng.pick(lib.ferns), trs(px, ty, pz, rng.range(0, 6.28), rng.range(1.1, 1.6)), { shadow: false });
+              batch.add(rng.pick(lib.ferns), trs(px, ty, pz, rng.range(0, 6.28), rng.range(1.1, 1.6)), { shadow: false, rank: densityRank(px, pz) });
             }
           } else if (kind < 0.68) {
             if (glow.claim(px, pz)) {
               const sc = rng.range(0.9, 1.3);
-              batch.add(rng.pick(lib.lanterns), trs(px, ty, pz, rng.range(0, 6.28), sc));
+              batch.add(rng.pick(lib.lanterns), trs(px, ty, pz, rng.range(0, 6.28), sc), { rank: RANK_LOW });
               out.glows.push({ x: px, z: pz, y: ty + 0.05, r: 1.6, color: AMBER });
             } else {
-              batch.add(rng.pick(lib.ferns), trs(px, ty, pz, rng.range(0, 6.28), rng.range(1.0, 1.5)), { shadow: false });
+              batch.add(rng.pick(lib.ferns), trs(px, ty, pz, rng.range(0, 6.28), rng.range(1.0, 1.5)), { shadow: false, rank: densityRank(px, pz) });
             }
           } else if (kind < 0.75 && d < 1.9 && !ridge) {
             const tall = rng.chance(0.4);
@@ -260,11 +268,11 @@ export function scatterWallTops(batch: SceneryBatcher, lib: PropLibrary, field: 
             });
             out.aoBlobs.push({ x: px, y: ty + 0.06, z: pz, r: 0.85, strength: 0.34 });
           } else if (kind < 0.8) {
-            batch.add(rng.pick(lib.flowers), trs(px, ty + 0.02, pz, rng.range(0, 6.28), rng.range(1.5, 2.2)), { tint: rng.pick(FLOWER_COLORS), shadow: false, maskedTint: true });
+            batch.add(rng.pick(lib.flowers), trs(px, ty + 0.02, pz, rng.range(0, 6.28), rng.range(1.5, 2.2)), { tint: rng.pick(FLOWER_COLORS), shadow: false, maskedTint: true, rank: densityRank(px, pz, 0.55, 0.25) });
           } else if (kind < 0.92) {
-            batch.add(rng.pick(lib.ferns), trs(px, ty, pz, rng.range(0, 6.28), rng.range(1.0, 1.6)), { shadow: false });
+            batch.add(rng.pick(lib.ferns), trs(px, ty, pz, rng.range(0, 6.28), rng.range(1.0, 1.6)), { shadow: false, rank: densityRank(px, pz) });
           } else {
-            batch.add(rng.pick(lib.tufts), trs(px, ty, pz, rng.range(0, 6.28), rng.range(1.3, 2.0)), { shadow: false });
+            batch.add(rng.pick(lib.tufts), trs(px, ty, pz, rng.range(0, 6.28), rng.range(1.3, 2.0)), { shadow: false, rank: densityRank(px, pz) });
           }
         }
       }
@@ -278,7 +286,7 @@ export function scatterWallTops(batch: SceneryBatcher, lib: PropLibrary, field: 
           if (!pointInPolygon(q, poly)) continue;
           const d = -polygonSignedDist(q, poly);
           if (d < 1.35 || !rng.chance(0.3)) continue;
-          batch.add(rng.pick(lib.tufts), trs(q.x, cliff.topY(d) - 0.03, q.y, rng.range(0, 6.28), rng.range(1.2, 1.9)), { shadow: false, tint: [0.95, 1.0, 0.9] });
+          batch.add(rng.pick(lib.tufts), trs(q.x, cliff.topY(d) - 0.03, q.y, rng.range(0, 6.28), rng.range(1.2, 1.9)), { shadow: false, tint: [0.95, 1.0, 0.9], rank: densityRank(q.x, q.y) });
         }
       }
     }
@@ -294,19 +302,20 @@ export function scatterWallTops(batch: SceneryBatcher, lib: PropLibrary, field: 
         const nDr = rng.chance(0.75) ? 2 : 1;
         for (let k = 0; k < nDr; k++) {
           const off = rng.range(-0.45, 0.45);
-          batch.add(rng.pick(lib.drapes), trs(ex - rp.oz * off + rp.ox * 0.04, rp.y - 0.05, ez + rp.ox * off + rp.oz * 0.04, rot + rng.range(-0.25, 0.25), rng.range(0.9, 1.35)), { shadow: false, tint: scaleRgb([1, 1, 0.94], rng.range(0.88, 1.06)) });
+          batch.add(rng.pick(lib.drapes), trs(ex - rp.oz * off + rp.ox * 0.04, rp.y - 0.05, ez + rp.ox * off + rp.oz * 0.04, rot + rng.range(-0.25, 0.25), rng.range(0.9, 1.35)), { shadow: false, tint: scaleRgb([1, 1, 0.94], rng.range(0.88, 1.06)), rank: densityRank(ex + k * 0.37, ez - k * 0.21, 0.5, 0.25) });
         }
       }
       // 藤蔓：朝南、朝西的崖面上多
       const vineP = facing > 0.3 || rp.ox < -0.3 ? 0.2 : facing > -0.5 ? 0.06 : 0;
       if (!ridge && rng.chance(vineP)) {
         const back = Math.max(0.02, rp.inset - 0.26);
-        batch.add(rng.pick(lib.vines), trs(rp.x - rp.ox * back, rp.y - 0.12, rp.z - rp.oz * back, rot, rng.range(0.9, 1.25), rng.range(0.7, Math.max(0.8, Math.min(1.7, rp.y - 0.9)))), { shadow: false, tint: scaleRgb([1, 1, 1], rng.range(0.85, 1.08)) });
+        batch.add(rng.pick(lib.vines), trs(rp.x - rp.ox * back, rp.y - 0.12, rp.z - rp.oz * back, rot, rng.range(0.9, 1.25), rng.range(0.7, Math.max(0.8, Math.min(1.7, rp.y - 0.9)))), { shadow: false, tint: scaleRgb([1, 1, 1], rng.range(0.85, 1.08)), rank: densityRank(rp.x, rp.z, 0.5, 0.3) });
       }
       if (facing > -0.2 && rng.chance(0.07)) {
         const lit = glow.claim(rp.x, rp.z, 10);
-        const tint = lit ? themeTint(field, rp.x, rp.z, rng) : rgb(0xd9a070);
-        batch.add(rng.pick(lib.brackets), trs(rp.x - rp.ox * 0.06, rng.range(0.25, 0.42), rp.z - rp.oz * 0.06, rot, rng.range(0.9, 1.4)), { shadow: false, tint, maskedTint: true, glow: lit ? 1 : 0 });
+        // 发光的层架菌：色相锁在饱和的荧青 / 主题色上(主题色里掺的白去掉)，自发光压到 0.45——它是崖壁上的一点微光，不是全屏最亮的贴纸
+        const tint = lit ? saturateRgb(themeTint(field, rp.x, rp.z, rng), 0.7) : rgb(0xd9a070);
+        batch.add(rng.pick(lib.brackets), trs(rp.x - rp.ox * 0.06, rng.range(0.25, 0.42), rp.z - rp.oz * 0.06, rot, rng.range(0.9, 1.4)), { shadow: false, tint, maskedTint: true, glow: lit ? 0.45 : 0, rank: lit ? RANK_LOW : densityRank(rp.x, rp.z) });
         if (lit) out.glows.push({ x: rp.x + rp.ox * 0.4, z: rp.z + rp.oz * 0.4, y: 0.03, r: 1.0, color: tint });
       }
       // 崖脚：半埋的碎石(中心在碰撞轮廓内侧)，把石台和地面的接缝藏起来
@@ -315,7 +324,7 @@ export function scatterWallTops(batch: SceneryBatcher, lib: PropLibrary, field: 
         const off = rng.range(-0.4, 0.4);
         const bx = rp.x - rp.ox * 0.22 - rp.oz * off;
         const bz = rp.z - rp.oz * 0.22 + rp.ox * off;
-        if (field.riverDist(bx, bz) > 0.2) batch.add(rng.pick(lib.rocks), trs(bx, -0.04, bz, rng.range(0, 6.28), sc, sc * rng.range(0.7, 1.05)), { tint: scaleRgb([1, 1, 1], rng.range(0.82, 1.05)) });
+        if (field.riverDist(bx, bz) > 0.2) batch.add(rng.pick(lib.rocks), trs(bx, -0.04, bz, rng.range(0, 6.28), sc, sc * rng.range(0.7, 1.05)), { tint: scaleRgb([1, 1, 1], rng.range(0.82, 1.05)), rank: densityRank(bx, bz, 0.5, 0.25) });
       }
     }
   });
@@ -346,10 +355,10 @@ export function scatterGround(batch: SceneryBatcher, lib: PropLibrary, field: Ma
       const fl = fbm2(px * 0.07 + 31, pz * 0.07, 2, 23);
       // 花丛：数量比原来少六成，单朵放大一倍，成片同色
       if (kind < 0.05 + Math.max(0, fl - 0.52) * 0.7) {
-        batch.add(rng.pick(lib.flowers), trs(px, y, pz, rng.range(0, 6.28), rng.range(1.3, 1.9)), { tint: FLOWER_COLORS[Math.floor(fl * 5.99 + rng.range(0, 0.8)) % FLOWER_COLORS.length], shadow: false, maskedTint: true });
+        batch.add(rng.pick(lib.flowers), trs(px, y, pz, rng.range(0, 6.28), rng.range(1.3, 1.9)), { tint: FLOWER_COLORS[Math.floor(fl * 5.99 + rng.range(0, 0.8)) % FLOWER_COLORS.length], shadow: false, maskedTint: true, rank: densityRank(px, pz, 0.55, 0.25) });
       } else {
         const g = 0.88 + n * 0.24;
-        batch.add(rng.pick(lib.tufts), trs(px, y, pz, rng.range(0, 6.28), rng.range(0.9, 1.6)), { shadow: false, tint: [g * 0.97, g, g * 0.9] });
+        batch.add(rng.pick(lib.tufts), trs(px, y, pz, rng.range(0, 6.28), rng.range(0.9, 1.6)), { shadow: false, tint: [g * 0.97, g, g * 0.9], rank: densityRank(px, pz) });
       }
     }
   }
@@ -377,14 +386,14 @@ export function scatterGround(batch: SceneryBatcher, lib: PropLibrary, field: Ma
         const kind = r2.next();
         if (kind < 0.34) {
           const sc = r2.range(0.16, 0.34) * (off < 0.2 ? 1.25 : 1);
-          batch.add(r2.pick(lib.rocks), trs(px, y, pz, r2.range(0, 6.28), sc, sc * r2.range(0.7, 1.1)), { shadow: false, tint: scaleRgb([1, 1, 1], r2.range(0.85, 1.08)) });
+          batch.add(r2.pick(lib.rocks), trs(px, y, pz, r2.range(0, 6.28), sc, sc * r2.range(0.7, 1.1)), { shadow: false, tint: scaleRgb([1, 1, 1], r2.range(0.85, 1.08)), rank: densityRank(px, pz, 0.5, 0.25) });
         } else if (kind < 0.56) {
-          batch.add(r2.pick(lib.ferns), trs(px, y - 0.02, pz, r2.range(0, 6.28), r2.range(0.8, 1.25)), { shadow: false, tint: scaleRgb([1, 1, 1], r2.range(0.85, 1.05)) });
+          batch.add(r2.pick(lib.ferns), trs(px, y - 0.02, pz, r2.range(0, 6.28), r2.range(0.8, 1.25)), { shadow: false, tint: scaleRgb([1, 1, 1], r2.range(0.85, 1.05)), rank: densityRank(px, pz) });
         } else if (kind < 0.66) {
           // 伞菇组团：约三成发光(并且要在发光网格里占到位)，其余是不发光的暖色菇
           const lit = r2.chance(0.4) && glow.claim(px, pz);
           const tint = lit ? mixRgb(themeTint(field, px, pz, r2), [1, 1, 1], 0.2) : r2.pick([rgb(0xd8683a), rgb(0xe0b070), rgb(0xc98a6a)]);
-          batch.add(r2.pick(lib.mushrooms), trs(px, y, pz, r2.range(0, 6.28), r2.range(1.0, 1.5)), { shadow: false, tint, maskedTint: true, glow: lit ? 1 : 0 });
+          batch.add(r2.pick(lib.mushrooms), trs(px, y, pz, r2.range(0, 6.28), r2.range(1.0, 1.5)), { shadow: false, tint, maskedTint: true, glow: lit ? 1 : 0, rank: lit ? RANK_LOW : densityRank(px, pz, 0.4, 0.3) });
           if (lit) out.glows.push({ x: px, z: pz, y: y + 0.03, r: 1.1, color: tint });
         } else if (kind < 0.7 && off > 0.15) {
           if (glow.claim(px, pz)) {
@@ -392,7 +401,7 @@ export function scatterGround(batch: SceneryBatcher, lib: PropLibrary, field: Ma
             out.glows.push({ x: px, z: pz, y: y + 0.03, r: 1.3, color: AMBER });
           }
         } else if (kind < 0.86) {
-          batch.add(r2.pick(lib.tufts), trs(px, y - 0.02, pz, r2.range(0, 6.28), r2.range(1.3, 2.0)), { shadow: false });
+          batch.add(r2.pick(lib.tufts), trs(px, y - 0.02, pz, r2.range(0, 6.28), r2.range(1.3, 2.0)), { shadow: false, rank: densityRank(px, pz) });
         }
       }
     }
@@ -485,7 +494,7 @@ export function scatterGround(batch: SceneryBatcher, lib: PropLibrary, field: Ma
         const pz = p0.y + ((p1.y - p0.y) * s) / l + nz * inward * 0.14;
         if (field.riverDist(px, pz) > 1.0 || field.laneDist(px, pz) < 1.2) continue;
         if (!r5.chance(0.8)) continue;
-        batch.add(r5.pick(lib.reeds), trs(px, Math.min(0, field.heightAt(px, pz)) - 0.05, pz, r5.range(0, 6.28), r5.range(0.85, 1.3)), { shadow: false, tint: scaleRgb([1, 1, 1], r5.range(0.85, 1.05)) });
+        batch.add(r5.pick(lib.reeds), trs(px, Math.min(0, field.heightAt(px, pz)) - 0.05, pz, r5.range(0, 6.28), r5.range(0.85, 1.3)), { shadow: false, tint: scaleRgb([1, 1, 1], r5.range(0.85, 1.05)), rank: densityRank(px, pz, 0.55, 0.25) });
       }
     }
   });

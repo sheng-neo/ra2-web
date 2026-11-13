@@ -47,7 +47,7 @@ export const DECAL = {
   streak: 12,
   /** 脚下指向环：圆环 + 指向 rot 的三角 */
   pointer: 13,
-  /** 持续区域边界：亮边 + 内向渐隐 + 转动的虚线，p0 虚线段数，p1 脉冲相位 */
+  /** 持续区域边界：一道外沿亮边 + 很淡的内向渐隐。p0 = 0 实线 / > 0 短划的段数 / < 0 弧形起伏的波数取负；p1 脉冲相位 */
   zone: 14,
   /**
    * 纹章细环(增益脚环 / 获得瞬间的展开环)：只画外圈一条细带，中心留空。
@@ -442,14 +442,16 @@ void main() {
     cov = (band(r - 0.6, 0.05, aa) + tri) * 0.45;
   } else if (type < 14.5) {
     // ── 持续区域边界 ──
-    float edge = band(r - 0.972, 0.022, aa);
+    // 只有一道外沿边线(不再有内圈刻度环)。p0 > 0：边线断成 p0 段短划；p0 < 0：边线按 -p0 个波起伏成弧形(音波)
+    float wav = p0 < -0.5 ? 0.014 * sin(ang * (-p0) + now * 1.6) : 0.0;
+    float gapK = p0 > 0.5 ? 1.0 - smoothstep(0.26, 0.3, abs(fract(ang / TAU * p0 + now * 0.05) - 0.5)) : 1.0;
+    float edge = band(r - 0.972 - wav, 0.022, aa) * gapK;
     float falloff = exp(-(1.0 - r) * 6.0) * disc;
-    float dashes = p0 > 0.5 ? band(r - 0.885, 0.012, aa) * (1.0 - smoothstep(0.3, 0.34, abs(fract(ang / TAU * p0 + now * 0.06) - 0.5))) * 0.7 : 0.0;
     float pulse = 1.0 + 0.2 * sin(now * 4.0 + p1);
     // 沿边流动的亮段：静止的环读成「贴图」，流动的环才读成「正在生效」
     float flow = 0.75 + 0.25 * band(fract(ang / TAU * 3.0 - now * 0.35) - 0.5, 0.18, 0.12);
-    fil = (falloff * 0.17 + 0.05) * disc;
-    e = edge * 1.15 * pulse * flow + dashes;
+    fil = (falloff * 0.12 + 0.03) * disc;
+    e = edge * 1.15 * pulse * flow;
     hot = edge * 0.15 * flow;
     cov = band(r - 0.972, 0.06, 0.03) * 0.7 + 0.05 * disc;
   } else if (type < 15.5) {

@@ -346,8 +346,12 @@ interface Anims {
   common: CommonAnims;
 }
 
-/** 扛斧：斧柄搭在右肩，斧头在头的右后上方，刃朝外 */
-const CARRY = { gripR: [-0.25, -0.06, 0.32], aim: [-128, 26, -74], gripL: [0, -0.24, 0] };
+/**
+ * 扛斧：右手在右胸前攥住柄的下段，斧柄斜着搭在右肩的披膊上，斧头落在右肩后上方、刃朝外上。
+ * 握点抬到齐肩高、柄往后放倒到离水平约 36°：从正面看是一根从胸前斜过肩头的柄，而不是竖在身侧的一根杆
+ * (原先握点低、柄离竖直只有 38°，柄从肩膀上方二十多厘米处悬空穿过，读成「拄着」而不是「扛着」)。
+ */
+const CARRY = { gripR: [-0.17, 0.12, 0.32], aim: [-147, 40, -74], gripL: [0, -0.24, 0] };
 
 function makeAnims(h: Human): Anims {
   // 站姿：两脚开立，肚子挺着，斧扛右肩，左手叉腰
@@ -425,11 +429,15 @@ function makeAnims(h: Human): Anims {
     gripL: [1, -0.2, 0],
   });
   const bFollow = kp(h, bHit, { chest: [-12, -26, 0], gripR: [-0.18, 0.2, 0.32], aim: [-46, -46, -105] });
+  // 收势：斧从右前上方落回右肩。中间垫一帧「斧在右肩外侧上方、向右歪着」——俯仰与偏航各自线性插值的话，
+  // 斧会先竖起来再从头顶正上方往后倒，斧面有两三帧扫过盔顶与盔缨；垫这一帧让它绕着右肩外侧落下去
+  const bBack = kp(h, stance, { hips: [-3, -16, 0], chest: [-6, -8, 0], head: [2, 14, 0], gripR: [-0.24, 0.2, 0.33], aim: [-126, 82, -86], gripL: [0.5, -0.2, 0] });
   const atkB = track([
     [0, stance],
     [0.2, bWind, E.out],
     [0.35, bHit, E.in3],
     [0.5, bFollow, E.out],
+    [0.76, bBack, E.io],
     [1, stance, E.io],
   ]);
   // 一技能·拦腰一斧：斧自右后经身前平扫到左，拧腰带动
@@ -466,7 +474,7 @@ function makeAnims(h: Human): Anims {
     [1, stance, E.io],
   ]);
   // 跑动：扛着斧大步走，左臂自己摆
-  const carry = kp(h, null, { gripR: [-0.25, -0.04, 0.32], aim: [-126, 26, -74], gripL: [-1, 0, 0] });
+  const carry = kp(h, null, { gripR: [CARRY.gripR[0], CARRY.gripR[1] + 0.02, CARRY.gripR[2]], aim: [CARRY.aim[0] + 2, CARRY.aim[1], CARRY.aim[2]], gripL: [-1, 0, 0] });
   // 二技能·半路杀出：压低身子前冲，斧头在前像撞角
   const dash = kp(h, null, {
     hipsPos: [0, -0.2, 0.1],

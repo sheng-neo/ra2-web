@@ -103,7 +103,7 @@ export const PALETTE = {
     grassCool: 0x4f8f62,
     grassDark: 0x3d7046,
     cliffGrass: 0x5a9150,
-    cliffGrassLight: 0x7fae55,
+    cliffGrassLight: 0x6f9a4e,
     // 兵线石：石板 / 交替石板 / 夯土(路边) / 石缝
     lane: 0xc0b08d,
     laneAlt: 0xb0a592,
@@ -239,7 +239,7 @@ export const TONE_MAPPING = THREE.CustomToneMapping;
  * 逐像素的颜色变换放在材质里做和放在全屏通道里做结果相同(不透明物体完全一致)，所以 low 档不需要后期也能和高档同一个色调；
  * 色彩分离、薄霾、暗角这些与屏幕位置有关或可有可无的项仍只在后期里。
  */
-export const BASE_GRADE = { contrast: 1.08, pivot: 0.42, saturation: 1.06, vibrance: 0.12 } as const;
+export const BASE_GRADE = { contrast: 1.08, pivot: 0.42, saturation: 1.06, vibrance: 0.07 } as const;
 const TONE_MAPPING_GLSL = /* glsl */ `vec3 CustomToneMapping( vec3 color ) {
 	const float StartCompression = 0.76;
 	const float Desaturation = 0.15;
@@ -1012,6 +1012,8 @@ export interface ToonMaterialOptions {
   /** 是否采样环境染色贴图(发光体/基地/河道对周围的染色 + 树冠下的天光遮蔽)。默认 true */
   lightTint?: boolean;
   side?: THREE.Side;
+  /** 双面材质的背面是否翻转法线(默认 true)。薄叶片(草簇/蕨/花)传 false：两面同一个法线，背面不会掉进暗部 */
+  flipBackNormals?: boolean;
   /** 真透明混合(默认 false：淡出用抖动镂空) */
   transparent?: boolean;
   opacity?: number;
@@ -1160,7 +1162,7 @@ void main() {
   vec3 N = normalize(cross(dFdx(vViewPosition), dFdy(vViewPosition)));
   #else
   vec3 N = normalize(vNormal);
-  #ifdef DOUBLE_SIDED
+  #if defined(DOUBLE_SIDED) && !defined(TOON_KEEP_BACK_NORMALS)
   N *= gl_FrontFacing ? 1.0 : -1.0;
   #endif
   #endif
@@ -1190,7 +1192,9 @@ void main() {
   #endif
   #ifdef TOON_MAP_TOP
   // 顶面：按世界 xz 平铺的草贴图 + 大块色斑(与地表草地同一套做法，崖顶和地面连成一片)
-  float topW = smoothstep(0.55, 0.8, Nw.y);
+  // 过渡放在 0.32~0.6：崖顶中轴线附近隆起处的斜面(法线 y 0.6~0.8)也铺满草贴图，不再是一块块没有纹理的浅色三角；
+  // 竖直的岩面本来就被 aFx.z 蒙版挡在外面
+  float topW = smoothstep(0.32, 0.6, Nw.y);
   #ifdef TOON_MAP_MASK
   topW *= 1.0 - vFx.z;
   #endif
@@ -1204,7 +1208,8 @@ void main() {
   vec2 tn = 0.5 + 0.5 * vec2(sin(vWorldPos.x * 0.13 + sin(vWorldPos.z * 0.11) * 1.7), sin(vWorldPos.z * 0.17 - vWorldPos.x * 0.09 + 1.3));
   #endif
   vec3 topTint = mix(vec3(0.84, 0.97, 1.06), vec3(1.0), smoothstep(0.34, 0.62, tn.x));
-  topTint = mix(topTint, vec3(1.16, 1.07, 0.8), smoothstep(0.5, 0.74, tn.y) * 0.6);
+  // 日晒那一档往橄榄收(不再发黄)，幅度减半
+  topTint = mix(topTint, vec3(1.08, 1.04, 0.84), smoothstep(0.5, 0.74, tn.y) * 0.5);
   tg *= mix(vec3(1.0), topTint, uMapTop.z);
   #endif
   base.rgb *= mix(vec3(1.0), tg, topW);
@@ -1316,6 +1321,7 @@ export class ToonMaterial extends THREE.ShaderMaterial {
     if (lightTint) defines.TOON_LIGHT_TINT = '';
     if (tri || opts.mapTop || lightTint) defines.TOON_WORLD_POS = '';
     if (opts.flat) defines.TOON_FLAT = '';
+    if (opts.flipBackNormals === false) defines.TOON_KEEP_BACK_NORMALS = '';
     if ((opts.wind ?? 0) > 0) defines.TOON_WIND = '';
     if ((opts.specular ?? 0) > 0) defines.TOON_SPECULAR = '';
     if ((opts.kicker ?? 0) > 0) defines.TOON_KICKER = '';

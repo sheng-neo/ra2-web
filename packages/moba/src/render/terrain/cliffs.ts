@@ -12,7 +12,7 @@
 import { fbm2, hash2, PALETTE, Rng } from '../materials';
 import type { Polygon, Vec2 } from '../../core/types';
 import { polygonSignedDist } from './field';
-import { type MeshBuilder, type OutlinePoint, type RGB, denseOutline, extrudeRings, lerp, mixRgb, outlineNormals, rgb, scaleRgb, smoothstep } from './geo';
+import { type MeshBuilder, type OutlinePoint, type RGB, RANK_CASTER, RANK_MAIN_ONLY, denseOutline, extrudeRings, lerp, mixRgb, outlineNormals, rgb, scaleRgb, smoothstep } from './geo';
 
 export type CliffKind = 'terrace' | 'steep' | 'ridge';
 
@@ -348,7 +348,8 @@ export function buildCliff(b: MeshBuilder, poly: Polygon, seed: number, opts: Cl
     // 岩面：竖缝里压暗
     const de = Math.min(d, r.maxD);
     return { t: de * r.k, y, color: scaleRgb(color, c.tone * (1 - g * 0.22)), ao, tex };
-  });
+    // 崖沿以内的顶面全部朝天：阴影通道画背面，它们一个也留不下，不必再交一遍(只进主通道)
+  }, (k) => (k < 6 ? RANK_CASTER : RANK_MAIN_ONLY));
 
   for (let i = 0; i < n; i++) {
     const m = meta[i];

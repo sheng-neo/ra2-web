@@ -121,6 +121,11 @@ export class BloomPyramidPass extends Pass {
     return rt;
   }
 
+  /** 三个全屏通道的材质与它们画进去的那类渲染目标(预编译用) */
+  get precompileSet(): { materials: THREE.ShaderMaterial[]; target: THREE.WebGLRenderTarget } {
+    return { materials: [this.prefilter, this.downMat, this.upMat], target: this.down[0] };
+  }
+
   /** bloom 结果(半分辨率)。未启用时为 1×1 黑图 */
   get texture(): THREE.Texture {
     return this.enabled ? this.up[0].texture : this.black;
@@ -401,6 +406,35 @@ export class PostPipeline {
 
   render(dt: number): void {
     this.composer.render(dt);
+  }
+
+  /** 场景通道画进去的渲染目标(预编译时要绑上它：程序的缓存键取决于「画到屏幕还是画到渲染目标」) */
+  get sceneTarget(): THREE.WebGLRenderTarget {
+    return this.composer.renderTarget1;
+  }
+
+  /**
+   * 把全屏通道的着色器先「下单」：只发出编译 / 链接指令，不等结果(等结果由调用方分帧去做)。
+   * 缓存键必须与真正绘制时一致：bloom 各通道画进渲染目标，合成通道画到屏幕；几何与 FullScreenQuad 的那个三角形同构(position + uv)。
+   */
+  precompile(renderer: THREE.WebGLRenderer, camera: THREE.Camera): void {
+    const prev = renderer.getRenderTarget();
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute([-1, 3, 0, -1, -1, 0, 3, -1, 0], 3));
+    geo.setAttribute('uv', new THREE.Float32BufferAttribute([0, 2, 0, 0, 2, 0], 2));
+    const mesh = new THREE.Mesh<THREE.BufferGeometry, THREE.ShaderMaterial>(geo, this.finalPass.material);
+    mesh.frustumCulled = false;
+    const set = this.bloomPass.precompileSet;
+    renderer.setRenderTarget(set.target);
+    for (const m of set.materials) {
+      mesh.material = m;
+      renderer.compile(mesh, camera);
+    }
+    renderer.setRenderTarget(null);
+    mesh.material = this.finalPass.material;
+    renderer.compile(mesh, camera);
+    renderer.setRenderTarget(prev);
+    geo.dispose();
   }
 
   dispose(): void {

@@ -16,7 +16,7 @@
 import type { GameState } from '../core/types';
 import type { GameRenderer, RendererOptions } from './api';
 import type { RenderModuleFactory } from './engine/context';
-import { createRendererCore, type GameRendererCore } from './engine/core';
+import { createRendererCore, createRendererCoreAsync, type GameRendererCore } from './engine/core';
 import { createFxModule } from './fx';
 import { createOverlayModule } from './overlay';
 import { createTerrainModule } from './terrain';
@@ -25,7 +25,7 @@ import { createUnitsModule } from './units';
 export { createUnitsModule } from './units';
 export type { UnitViewInfo, UnitsModule } from './units';
 export { detectQuality } from './engine/quality';
-export { createRendererCore } from './engine/core';
+export { createRendererCore, createRendererCoreAsync } from './engine/core';
 export type { GameRendererCore } from './engine/core';
 export type { FrameInfo, RenderContext, RenderModule, RenderModuleFactory, TerrainQuery, UnitQuery } from './engine/context';
 export type { LightTint } from './engine/lighttint';
@@ -45,6 +45,15 @@ export const DEFAULT_MODULES: RenderModuleFactory[] = [createTerrainModule, crea
 
 export function createGameRenderer(container: HTMLElement, state: GameState, opts: RendererOptions): GameRenderer {
   const core: GameRendererCore = createRendererCore(container, state, opts, DEFAULT_MODULES);
+  return core;
+}
+
+/**
+ * 分段构建版：场景一段一段地建，段间让出主线程，onProgress 收到 0..1 的完成比例(给加载页的进度条)。
+ * 建好之后调用方再 await renderer.prewarmAsync?.(onProgress) 做分步预热，然后才开始逐帧 render()。
+ */
+export async function createGameRendererAsync(container: HTMLElement, state: GameState, opts: RendererOptions, onProgress?: (progress: number) => void): Promise<GameRenderer> {
+  const core: GameRendererCore = await createRendererCoreAsync(container, state, opts, DEFAULT_MODULES, onProgress);
   return core;
 }
 

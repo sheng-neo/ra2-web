@@ -32,12 +32,62 @@ const _v = new THREE.Vector3();
 const _n = new THREE.Vector3();
 const _nm = new THREE.Matrix3();
 
+/**
+ * 三角形的「档位」：合并网格时按档位把索引排成连续的几段，画质档与阴影通道各取一段前缀/区间(只改 drawRange，不多一个 draw call)。
+ *   MAIN_ONLY  只进主通道：朝天的顶面(崖顶、界外林地)——阴影通道画的是背面，它们本来就全被剔掉，白交一遍顶点
+ *   CASTER     主要投影者(崖壁、树、建筑、构件)：三档主通道都画，阴影通道 medium / high 都画
+ *   LOW        三档主通道都画；阴影通道只有 high 画(灌木、碎石、照不到场内的界外林木)
+ *   MEDIUM     medium / high 才画的加密散件
+ *   HIGH       只有 high 画的加密散件
+ */
+export const RANK_MAIN_ONLY = -1;
+export const RANK_CASTER = 0;
+export const RANK_LOW = 1;
+export const RANK_MEDIUM = 2;
+export const RANK_HIGH = 3;
+const RANK_SLOTS = 5;
+
+/** 按位置散列把一个散件分到 LOW / MEDIUM / HIGH：low 档留 lowShare，medium 档留 lowShare + mediumShare，high 档全留 */
+export function densityRank(x: number, z: number, lowShare = 0.45, mediumShare = 0.3): number {
+  let h = (Math.imul(Math.round(x * 97) | 0, 374761393) ^ Math.imul(Math.round(z * 89) | 0, 668265263)) | 0;
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  const r = ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+  return r < lowShare ? RANK_LOW : r < lowShare + mediumShare ? RANK_MEDIUM : RANK_HIGH;
+}
+
+/**
+ * 按画质档设置合并网格的绘制范围：主通道画到 mainRank 为止；投影网格的阴影通道画 CASTER 到 min(mainRank, shadowRank)。
+ * 阴影通道的范围靠 onBeforeShadow / onAfterShadow 临时切换(同一份几何，不多占显存)。
+ */
+export function applyRankRange(mesh: THREE.Mesh, mainRank: number, shadowRank: number): void {
+  const geo = mesh.geometry;
+  const ends = geo.userData.rankEnds as number[] | undefined;
+  if (!ends) return;
+  const main = ends[Math.min(RANK_HIGH, Math.max(RANK_CASTER, mainRank)) + 1];
+  geo.setDrawRange(0, main);
+  if (!mesh.castShadow) return;
+  const s0 = ends[0];
+  const s1 = Math.max(s0, ends[Math.min(mainRank, shadowRank) + 1]);
+  mesh.onBeforeShadow = () => geo.setDrawRange(s0, s1 - s0);
+  mesh.onAfterShadow = () => geo.setDrawRange(0, main);
+}
+
 export class MeshBuilder {
   positions: number[] = [];
   normals: number[] = [];
   colors: number[] = [];
   fx: number[] = [];
   indices: number[] = [];
+  /** 档位分段：[索引起点, 档位, 索引起点, 档位, …]；空 = 全部是 CASTER */
+  private rankRuns: number[] = [];
+  private rank = RANK_CASTER;
+
+  /** 之后写入的三角形都记在这一档(见 RANK_*) */
+  setRank(rank: number): void {
+    if (rank === this.rank) return;
+    this.rank = rank;
+    this.rankRuns.push(this.indices.length, rank);
+  }
 
   get vertexCount(): number {
     return this.positions.length / 3;
@@ -236,7 +286,30 @@ export class MeshBuilder {
     for (let i = 0; i < fx.length; i++) fx[i] = Math.round(clamp01(this.fx[i]) * 255);
     g.setAttribute('aFx', new THREE.BufferAttribute(fx, 4, true));
     const n = this.positions.length / 3;
-    g.setIndex(n > 65535 ? new THREE.Uint32BufferAttribute(this.indices, 1) : new THREE.Uint16BufferAttribute(this.indices, 1));
+    // 按档位把索引排成连续的几段(段内保持原顺序)，并记下各段的终点
+    let indices = this.indices;
+    const total = indices.length;
+    const ends = [0, total, total, total, total];
+    const runs = this.rankRuns;
+    if (runs.length > 0) {
+      const buckets: number[][] = Array.from({ length: RANK_SLOTS }, () => []);
+      let rank = RANK_CASTER;
+      let from = 0;
+      for (let r = 0; r <= runs.length; r += 2) {
+        const to = r < runs.length ? runs[r] : total;
+        const dst = buckets[Math.min(RANK_HIGH, Math.max(RANK_MAIN_ONLY, rank)) + 1];
+        for (let i = from; i < to; i++) dst.push(indices[i]);
+        from = to;
+        if (r < runs.length) rank = runs[r + 1];
+      }
+      indices = [];
+      for (let k = 0; k < RANK_SLOTS; k++) {
+        for (const v of buckets[k]) indices.push(v);
+        ends[k] = indices.length;
+      }
+    }
+    g.userData.rankEnds = ends;
+    g.setIndex(n > 65535 ? new THREE.Uint32BufferAttribute(indices, 1) : new THREE.Uint16BufferAttribute(indices, 1));
     g.computeBoundingBox();
     g.computeBoundingSphere();
     return g;
@@ -261,15 +334,22 @@ export class SceneryBatcher {
     return b;
   }
 
-  /** 按实例矩阵的平移量决定归属格 */
-  add(geo: THREE.BufferGeometry, m: THREE.Matrix4, opts: { tint?: RGB; shadow?: boolean; glow?: number; sway?: number; maskedTint?: boolean } = {}): void {
+  /**
+   * 按实例矩阵的平移量决定归属格。rank = 档位(见 RANK_*)：投影组缺省 CASTER，不投影组缺省 LOW(三档都画)。
+   */
+  add(geo: THREE.BufferGeometry, m: THREE.Matrix4, opts: { tint?: RGB; shadow?: boolean; glow?: number; sway?: number; maskedTint?: boolean; rank?: number } = {}): void {
     const e = m.elements;
-    this.builder(e[12], e[14], opts.shadow ?? true).append(geo, m, opts.tint, opts.glow ?? 1, opts.sway ?? 1, opts.maskedTint ?? false);
+    const shadow = opts.shadow ?? true;
+    const b = this.builder(e[12], e[14], shadow);
+    b.setRank(opts.rank ?? (shadow ? RANK_CASTER : RANK_LOW));
+    b.append(geo, m, opts.tint, opts.glow ?? 1, opts.sway ?? 1, opts.maskedTint ?? false);
   }
 
-  /** 直接取某位置所属的构建器(手工写顶点) */
-  at(x: number, z: number, shadow = true): MeshBuilder {
-    return this.builder(x, z, shadow);
+  /** 直接取某位置所属的构建器(手工写顶点)。档位复位到该组的缺省值(或给定的 rank) */
+  at(x: number, z: number, shadow = true, rank = shadow ? RANK_CASTER : RANK_LOW): MeshBuilder {
+    const b = this.builder(x, z, shadow);
+    b.setRank(rank);
+    return b;
   }
 
   /** 已登记的三角形总数(统计用) */
@@ -444,7 +524,15 @@ export interface RingVertex {
  * 逐环挤出：对轮廓上每个点 i、每一环 k 调用 ring(p, i, k) 得到偏移/高度/颜色，相邻环之间连成四边形带。
  * 返回每一环的顶点下标。
  */
-export function extrudeRings(b: MeshBuilder, outline: OutlinePoint[], closed: boolean, ringCount: number, ring: (p: OutlinePoint, i: number, k: number) => RingVertex): number[][] {
+export function extrudeRings(
+  b: MeshBuilder,
+  outline: OutlinePoint[],
+  closed: boolean,
+  ringCount: number,
+  ring: (p: OutlinePoint, i: number, k: number) => RingVertex,
+  /** 第 k 环到第 k+1 环之间那条带子的档位(缺省全部 CASTER)。写完后档位复位到 CASTER */
+  stripRank?: (k: number) => number,
+): number[][] {
   const n = outline.length;
   const idx: number[][] = [];
   for (let k = 0; k < ringCount; k++) {
@@ -458,11 +546,13 @@ export function extrudeRings(b: MeshBuilder, outline: OutlinePoint[], closed: bo
   }
   const last = closed ? n : n - 1;
   for (let k = 0; k < ringCount - 1; k++) {
+    if (stripRank) b.setRank(stripRank(k));
     for (let i = 0; i < last; i++) {
       const j = (i + 1) % n;
       // 轮廓方向 + 挤出方向在左 → 外表面朝外/朝上
       b.quad(idx[k][i], idx[k + 1][i], idx[k + 1][j], idx[k][j]);
     }
   }
+  if (stripRank) b.setRank(RANK_CASTER);
   return idx;
 }

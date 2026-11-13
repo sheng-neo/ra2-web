@@ -2,8 +2,9 @@
  * 区域效果视图：按 state.areas 同步(出现 → 持续 → 结束)。半径一律取模拟层的精确值；跟随单位的区域用单位的插值位置。
  * 预警圈(§7.2 第 7 项的统一规范)：边线实、填充淡、倒计时由内向外推进；四色 = 敌红 / 友蓝 / 己绿 / 野怪琥珀。
  * 持续区域的填充与亮度上限由贴花着色器统一压住(≤0.22，low 档再乘 DECAL_FILL)，各条目只管意象。
- * 敌方的持续区域额外套一圈红色细边，方便判断「这块地方别站」。
+ * 每个持续区域只有一道外沿边线，颜色表示敌我(敌方 = 红，「这块地方别站」)；英雄的意象在圈内的纹样与粒子上。
  */
+import type * as THREE from 'three';
 import { TICK_DT, type AreaEffect, type AreaVisual, type TeamId } from '../../core/types';
 import type { FrameInfo } from '../engine/context';
 import { P, WARN, dustRing, goose, ring } from './common';
@@ -51,12 +52,16 @@ function hold(k: FxKit, v: AreaView, type: number, fadeIn = 0.12): number {
   return s;
 }
 
-/** 敌方区域的红色细边 */
-function hostileEdge(k: FxKit, v: AreaView): void {
-  if (!v.hostile) return;
-  const s = hold(k, v, DECAL.range);
-  v.edge = s;
-  k.decals.at(s).params(0.014, 0).color(EDGE_ENEMY, 1.8, 0.95).under(C.shadow, 0.4);
+/**
+ * 持续区域的边界：每个区域只画一道外沿边线，颜色表示敌我(敌红 / 友蓝 / 己绿)，英雄的意象留给圈内的纹样(填充很淡)。
+ * 以前是「英雄色边线 + 内圈刻度环 + 敌方再套一道红圈」，三四个技能叠在一起就是十来道同心环，圈里的人看不清。
+ * style：0 = 实线；> 0 = 短划虚线的段数(李广的箭雨)；< 0 = 弧形起伏的波数取负(王昭君的雁落)。pulse = 明暗脉冲的相位。
+ */
+function zoneEdge(k: FxKit, v: AreaView, style: number, pulse: number, dark: THREE.Color): number {
+  const w = v.hostile ? WARN.enemy : v.mine ? WARN.mine : WARN.ally;
+  const z = hold(k, v, DECAL.zone);
+  k.decals.at(z).params(style, pulse).color(v.hostile ? EDGE_ENEMY : w.edge, v.hostile ? 1.7 : 1.4, v.hostile ? 0.95 : 0.85).under(dark, 0.12);
+  return z;
 }
 
 /** 把所有贴花槽位的位置对齐到区域中心(跟随型区域每帧都在动) */
@@ -98,9 +103,7 @@ const DEFS: Record<AreaVisual, AreaDef> = {
   // ── 樊哙·拥盾怒目：跟随自身的震慑减速场。三面小盾影绕身缓转，尘屑被吸向中心 ──
   panyue_s2_aura: {
     create(k, v) {
-      const z = hold(k, v, DECAL.zone);
-      k.decals.at(z).params(0, 0).color(TP.glow, 1.4, 0.85).under(TP.dark, 0.3);
-      hostileEdge(k, v);
+      zoneEdge(k, v, 0, 0, TP.dark);
       for (let i = 0; i < 3; i++) {
         const m = k.glow.hold(SHAPE.shield, MODE.plate);
         m.color(TP.hot, 1.15, 0);
@@ -139,9 +142,7 @@ const DEFS: Record<AreaVisual, AreaDef> = {
   // ── 樊哙·死且不避落地后的震裂地面：只冒尘，碎土偶尔跳一下 ──
   panyue_ult_fissure: {
     create(k, v) {
-      const z = hold(k, v, DECAL.zone);
-      k.decals.at(z).params(12, 1).color(TP.glow, 1.4, 0.85).under(TP.dark, 0.35);
-      hostileEdge(k, v);
+      zoneEdge(k, v, 0, 1, TP.dark);
     },
     update(k, v, dt) {
       place(k, v);
@@ -164,9 +165,7 @@ const DEFS: Record<AreaVisual, AreaDef> = {
   // ── 程咬金·抡圆了砍：跟随自身的斧影旋风。两道常驻的斧影绕身飞转，风沙被卷起来；圈内的英雄必须看得清 ──
   chijin_ult_spin: {
     create(k, v) {
-      const z = hold(k, v, DECAL.zone);
-      k.decals.at(z).params(0, 2).color(TC.glow, 1.6, 0.9).under(TC.dark, 0.35);
-      hostileEdge(k, v);
+      zoneEdge(k, v, 0, 2, TC.dark);
       // 风沙漏斗：赤金掺尘黄，压矮、很透；low 档再淡一半
       const m = k.glow.hold(SHAPE.cone, MODE.vortex);
       m.color(AXE_DUST, 0.9, 0);
@@ -211,13 +210,11 @@ const DEFS: Record<AreaVisual, AreaDef> = {
     },
   },
 
-  // ── 王昭君·回环收弦：延迟后收束。两臂回旋的曲线 + 由外向内依次亮起的四道同心细环 + 四颗金色音珠(四弦)沿环收拢 ──
+  // ── 王昭君·回环收弦：延迟后收束。两臂回旋的曲线 + 一道随倒计时收拢的音环 + 四颗金色音珠(四弦)沿环收拢 ──
   xingli_s2_well: {
     create(k, v) {
       const s = hold(k, v, DECAL.swirl, 0.08);
-      k.decals.at(s).params(2, -3).color(TX.glow, 1.4, 0.8).under(TX.dark, 0.35);
-      const rg = hold(k, v, DECAL.rings, 0.08);
-      k.decals.at(rg).params(4, 0).color(TX.hot, 1.5, 0.9).under(TX.dark, 0.3);
+      k.decals.at(s).params(2, -3).color(TX.glow, 1.4, 0.8).under(TX.dark, 0.2);
       const m = k.glow.hold(SHAPE.hoop, MODE.hoop);
       m.color(TX.glow, 1.2, 0.85);
       m.add = 0.3;
@@ -227,7 +224,6 @@ const DEFS: Record<AreaVisual, AreaDef> = {
       // 音环随倒计时向中心收拢
       const shrink = 1 - 0.72 * v.t * v.t;
       k.decals.at(v.slots[0]).at(v.x, v.z).radius(v.radius);
-      k.decals.at(v.slots[1]).at(v.x, v.z).radius(v.radius).params(4, Math.min(1, v.t * 1.25));
       const m = v.meshes[0];
       m.at(v.x, 0.7 + v.t * 0.6, v.z).scale(v.radius * shrink);
       m.rot(0, v.age * 3, 0);
@@ -245,19 +241,15 @@ const DEFS: Record<AreaVisual, AreaDef> = {
     },
   },
 
-  // ── 王昭君·雁落平沙：边界环 + 淡淡的圆月倒影 + 缓慢外扩的沙面涟漪；两波之间有小雁掠过、白羽零星飘落 ──
+  // ── 王昭君·雁落平沙：一道弧形起伏的边线(音波) + 淡淡的圆月倒影；两波之间有小雁掠过、白羽零星飘落 ──
   xingli_ult_storm: {
     create(k, v) {
-      const z = hold(k, v, DECAL.zone);
-      k.decals.at(z).params(0, 0).color(TX.glow, 1.5, 0.9).under(TX.dark, 0.4);
+      zoneEdge(k, v, -9, 0, TX.dark);
       const mo = hold(k, v, DECAL.moon, 0.3);
-      k.decals.at(mo).params(0.74, 0.6).color(TX.hot, 1.1, 0.5).under(TX.dark, 0.2);
-      const rp = hold(k, v, DECAL.rings, 0.3);
-      k.decals.at(rp).params(3, 2).color(TX.glow, 1.1, 0.6).under(TX.dark, 0.2);
-      hostileEdge(k, v);
+      k.decals.at(mo).params(0.74, 0.6).color(TX.hot, 1.0, 0.4).under(TX.dark, 0.1);
     },
     update(k, v, dt) {
-      place(k, v, (i) => (i === 1 ? 0.5 : i === 2 ? 0.94 : 1));
+      place(k, v, (i) => (i === 1 ? 0.5 : 1));
       for (let n = due(k, v, dt, 7); n > 0; n--) {
         const r = k.rnd;
         const a = r.next() * TAU;
@@ -279,11 +271,9 @@ const DEFS: Record<AreaVisual, AreaDef> = {
   // ── 李广·箭锁阴山：边界 + 压暗一层的地面(箭阵的影子) + 两波之间零星落下的箭 ──
   fengling_ult_rain: {
     create(k, v) {
-      const z = hold(k, v, DECAL.zone);
-      k.decals.at(z).params(0, 0).color(TF.glow, 1.4, 0.9).under(TF.dark, 0.35);
+      zoneEdge(k, v, 30, 0, TF.dark);
       const sh = hold(k, v, DECAL.glow, 0.25);
-      k.decals.at(sh).params(0.6).color(C.black, 0, 0.55).under(TF.dark, 0.05);
-      hostileEdge(k, v);
+      k.decals.at(sh).params(0.6).color(C.black, 0, 0.32).under(TF.dark, 0.05);
     },
     update(k, v, dt) {
       place(k, v);
@@ -348,7 +338,6 @@ export class AreaViews {
       this.sync(v, a, frame);
       v.def.update(k, v, frame.dt);
       // 红边套在区域自身的亮边外面一点，两条线不重合
-      if (v.edge >= 0) k.decals.at(v.edge).at(v.x, v.z).radius(v.radius * 1.045);
     }
     const list = this.list;
     for (let i = list.length - 1; i >= 0; i--) {

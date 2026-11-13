@@ -4,7 +4,8 @@
  * 十人团战的可读性规则：
  *   - 分级：与玩家自己相关的(自己打出 / 自己挨打)是一级，全尺寸；其余英雄之间的伤害是二级，缩小、半透明、同屏有上限；
  *     不涉及玩家的小兵 / 野怪 / 建筑挨打不出字(小兵互殴、队友打野的数字都是噪音)。
- *   - 合并：同一来源打同一目标、同一种字样，0.3 秒内的多段伤害并进还在弹出期的那个数字(数值累加、重新弹一下)，不再一段一个。
+ *   - 合并：同一来源打同一目标、同一种字样，0.3 秒内的多段伤害并进还在弹出期的那个数字(数值累加、重新弹一下)，不再一段一个；
+ *     间隔更长但每段数值相同的(持续伤害、分波的大招)，只要上一个数字还清楚地挂着(0.75 秒内)也并进去——不再上下错一行摆两个一样的数。
  *   - 错位：同一目标还没淡出的数字按错位槽散开，并整体向上错开，不叠在一起。
  * 数字用预渲染的字形条逐个贴图，任何数值都不产生新的文字精灵。
  */
@@ -47,6 +48,8 @@ interface Floater {
   src: number;
   dst: number;
   amount: number;
+  /** 最近并进来的那一段的数值(判断「同值多段」用) */
+  last: number;
   prio: number;
   /** 被后来的数字顶上去的高度(目标值 / 当前缓动值，CSS 像素，未乘界面缩放) */
   lift: number;
@@ -60,6 +63,8 @@ const LIFT = 21;
 const POOL = 72;
 /** 多段伤害合并的时间窗(秒)：只并进还在这段时间内的数字 */
 const MERGE_WINDOW = 0.3;
+/** 同值多段的合并时间窗(秒)：每段数值与上一段相同时放宽到这么久 */
+const MERGE_SAME_WINDOW = 0.75;
 /** 二级(与玩家无关的英雄间伤害)飘字的同屏上限与单个目标上限 */
 const MAX_MINOR = 8;
 const MAX_MINOR_PER_TARGET = 2;
@@ -87,7 +92,7 @@ export class FloaterLayer {
     this.text = text;
     this.icons = icons;
     for (let i = 0; i < POOL; i++) {
-      this.pool.push({ live: false, style: 0, text: '', sprite: null, wx: 0, wy: 0, wz: 0, ox: 0, oy: 0, dir: 1, t: 0, life: 1, scale: 1, alpha: 1, crit: false, coin: false, src: -1, dst: -1, amount: 0, prio: 2, lift: 0, liftNow: 0 });
+      this.pool.push({ live: false, style: 0, text: '', sprite: null, wx: 0, wy: 0, wz: 0, ox: 0, oy: 0, dir: 1, t: 0, life: 1, scale: 1, alpha: 1, crit: false, coin: false, src: -1, dst: -1, amount: 0, last: 0, prio: 2, lift: 0, liftNow: 0 });
     }
     this.setDpr(dpr);
   }
@@ -152,6 +157,7 @@ export class FloaterLayer {
     f.src = -1;
     f.dst = targetId;
     f.amount = 0;
+    f.last = 0;
     f.prio = 2;
     f.lift = 0;
     f.liftNow = 0;
@@ -159,9 +165,10 @@ export class FloaterLayer {
   }
 
   /** 找一个还能并进去的同源同目标同字样数字 */
-  private mergeable(src: number, dst: number, style: number): Floater | null {
+  private mergeable(src: number, dst: number, style: number, amount: number): Floater | null {
     for (const f of this.pool) {
-      if (f.live && f.src === src && f.dst === dst && f.style === style && f.t < MERGE_WINDOW) return f;
+      if (!f.live || f.src !== src || f.dst !== dst || f.style !== style) continue;
+      if (f.t < MERGE_WINDOW || (f.t < MERGE_SAME_WINDOW && Math.abs(f.last - amount) < 1)) return f;
     }
     return null;
   }
@@ -197,11 +204,14 @@ export class FloaterLayer {
           // 与玩家无关的：只显示英雄挨打(小兵 / 野怪 / 建筑挨别人的打不出字)
           if (!mine && (t === undefined || t.kind !== 'hero')) break;
           const style = e.crit ? STYLE.crit : styleOf(e.dtype);
-          const m = this.mergeable(e.sourceId, e.targetId, style);
+          const m = this.mergeable(e.sourceId, e.targetId, style, e.amount);
           if (m) {
             m.amount += e.amount;
+            m.last = e.amount;
             const n = Math.round(m.amount);
             m.text = e.crit ? `${n}!` : String(n);
+            // 重新弹一下，并从头计寿命(数字留在原处继续累加)
+            m.t = Math.min(m.t, 0.04);
             break;
           }
           if (!mine && this.minorFull(e.targetId)) break;
@@ -210,6 +220,7 @@ export class FloaterLayer {
           if (f) {
             f.src = e.sourceId;
             f.amount = e.amount;
+            f.last = e.amount;
             f.prio = mine ? 2 : 1;
             // 玩家自己挨打的数字放在身体左侧，和自己打出去的(右侧)分开
             if (e.targetId === pid && e.sourceId !== pid) {

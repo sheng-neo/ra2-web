@@ -143,4 +143,14 @@ export interface RenderModule {
   dispose(): void;
 }
 
-export type RenderModuleFactory = (ctx: RenderContext) => RenderModule;
+/**
+ * 分段构建：生成器每 yield 一次是一个可以让出主线程的点(值 = 本模块的完成比例 0..1)，最后 return 模块本身。
+ * 构建较重的模块(地形)提供它；宿主的异步入口(createRendererCoreAsync)在每段之间让出一帧。
+ */
+export type RenderModuleStages = Generator<number, RenderModule, void>;
+
+export interface RenderModuleFactory {
+  (ctx: RenderContext): RenderModule;
+  /** 可选：同一个模块的分段构建入口 */
+  staged?: (ctx: RenderContext) => RenderModuleStages;
+}

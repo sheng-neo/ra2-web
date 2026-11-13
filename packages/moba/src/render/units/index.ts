@@ -18,6 +18,7 @@ import { SUN_DIR } from '../engine/lighting';
 import { PALETTE } from '../materials';
 import { type AttachName, type InstanceLook, type ModelDef, Puppet, RigBatch, allModelKeys, coreKey, createInstanceLook, getModel, hasModel, heroKey, minionKey, monsterKey, ruinKey, towerKey } from '../models';
 import { getFallbackModel } from '../models/fallback';
+import { lodIndexCount } from '../models/kit';
 import { RING_BLOB, RING_HERO, RING_MINION, RING_PLAYER, RingBatch } from './rings';
 
 /** 单位的渲染信息快照 */
@@ -81,7 +82,13 @@ interface View {
   hasYaw: boolean;
   opacity: number;
   targetOpacity: number;
+  /** 受击闪亮里叠白的那一份(着色器的 flash 通道) */
   flash: number;
+  /** 受击闪亮里保色相提亮的那一份：本体色 / 队伍色乘 1 + flashBoost */
+  flashBoost: number;
+  /** 当前这次闪亮的起点(模拟时间)与已经处理过的 lastHitTime(判断「又挨了一下」) */
+  flashStart: number;
+  flashSeen: number;
   /** 上一次用于累计步幅的位置 */
   sx: number;
   sz: number;
@@ -145,16 +152,53 @@ const VIEW_SCALE: Record<UnitKind, number> = { hero: 1.32, minion: 1.28, monster
 /**
  * 英雄的显示身高(模型头顶高度 × 模型缩放 × 显示倍率，米)收在这个区间里：对局镜头下 1 米约 34.6 像素(720p)，
  * 即站立 105~123 像素。魁梧的(樊哙、程咬金)顶到上限、娇小的托到下限，区间内的身高差原样保留。
- * 英雄模型改了身高也不用回来调表。
+ * 英雄模型改了身高也不用回来调表(顶到同一个上限的两位之间谁高谁矮，见下面的 HERO_VIEW_TRIM)。
  */
 const HERO_VIEW_HEIGHT: [number, number] = [3.05, 3.55];
 /**
  * 个别英雄需要偏离上面区间时的手动倍率(乘在自动结果上)。
- * 樊哙：他和程咬金都顶到了区间上限，对局里坦克不比战士高；再放大 4%(约 3.69 米、128 像素)，「全场最魁梧」在对局镜头下也成立。
+ * 樊哙与程咬金都顶到了区间上限，但两人的「头顶高度」量的不是同一种东西：樊哙含炸开的发束、程咬金含盔缨。
+ * 一起夹到 3.55 米之后，樊哙的身体(发束以下)只比程咬金高不到 2%，再被程咬金扛着的大斧一衬，坦克反而显矮。
+ * 所以樊哙放大 7%(头顶 3.80 米、约 131 像素)、程咬金收 3%(3.44 米、约 119 像素)：樊哙的身体比程咬金高约 8%，
+ * 肩宽本来就宽一截——「坦克全场最魁梧」在对局镜头下成立；程咬金仍比法师、射手、刺客高大。
  */
-const HERO_VIEW_TRIM: Partial<Record<HeroId, number>> = { panyue: 1.04 };
+const HERO_VIEW_TRIM: Partial<Record<HeroId, number>> = { panyue: 1.07, chijin: 0.97 };
 /** 点选敌方单位时在模型轮廓之外再放宽的像素数 */
 const PICK_SLOP = 20;
+
+/**
+ * 受击闪亮。以「保色相的提亮」为主：本体色与队伍色一起乘亮(线性空间乘 1 + boost)，着色器里那层近白只叠很薄的一点(white)。
+ * 原先只靠叠白：深色模型(龙、巨灵、黑发、深色甲)的线性色只有 0.05 上下，叠 0.25 的白就整只刷成灰白石膏，打野打龙时看不到模型本色。
+ * 体型越大占屏越多，叠白越轻：大型野怪(半径 ≥ 1.2 米)与建筑 0.04，其余 0.1。时长 0.16 秒，按平方衰减。
+ * 距上一次起闪不足 FLASH_REARM 秒的受击不重新起闪——被集火(每秒五六下)时是一下一下的闪，而不是连成一片常亮。
+ */
+const FLASH_DUR = 0.16;
+const FLASH_REARM = 0.25;
+const FLASH_BOOST = 0.85;
+const FLASH_WHITE = 0.1;
+const FLASH_WHITE_BIG = 0.04;
+const WHITE = new THREE.Color(1, 1, 1);
+
+/**
+ * 分通道减面：一个单位每帧要画 3~4 遍(本体 / 描边壳 / 阴影 / 透视剪影)，后三遍只看轮廓，用不着模型的全部三角形。
+ * 模型的索引已按「描边的形体从大到小 → 不描边的形体」排好(models/kit.ts)，这三个通道各自用 drawRange 只画一段前缀：
+ *   - 描边壳：只画描边的形体(五官、发光嵌线这些线宽为 0 的画了也看不见)，三档相同；
+ *   - 阴影：再跳过包围盒最大边小于阈值的小件(带扣、甲钉、手指、箭羽——在阴影贴图上不到两三个 texel，软阴影一糊就没了)；
+ *     medium 的阴影贴图只有 high 的一半分辨率，阈值放宽；
+ *   - 透视剪影：只是一片抖动的纯色，阈值最宽。
+ * 本体永远画完整模型，所以三档的模型细节一致，没有肉眼可见的差别。阈值单位：米(模型空间 × 模型缩放)。
+ */
+const PASS_LOD: Record<QualitySettings['name'], { shadow: number; xray: number }> = {
+  high: { shadow: 0.14, xray: 0.3 },
+  medium: { shadow: 0.25, xray: 0.3 },
+  low: { shadow: 0.25, xray: 0.36 },
+};
+/** 每个批各通道该画的索引数(画质切换时重算) */
+interface PassRange {
+  outline: number;
+  shadow: number;
+  xray: number;
+}
 
 function modelKeyOf(u: Unit): string {
   switch (u.kind) {
@@ -242,7 +286,8 @@ export function createUnitsModule(ctx: RenderContext): UnitsModule {
   const shadowAngle = Math.atan2(shadowDz, shadowDx);
   root.add(rings.mesh);
 
-  let outlines = ctx.settings.name !== 'low';
+  let quality = ctx.settings.name;
+  let outlines = quality !== 'low';
   let shadows = ctx.settings.shadows;
   let time = 0;
   let instanceCount = 0;
@@ -282,6 +327,46 @@ export function createUnitsModule(ctx: RenderContext): UnitsModule {
   let playerTeam: 0 | 1 = ctx.frame.playerTeam;
   const teamColor = (t: 0 | 1 | 2): THREE.Color => (t === 0 ? colors.blue : t === 1 ? colors.red : colors.neutral);
 
+  /** 各批的分通道索引范围(与 batchList 同序) */
+  const passRanges = new Map<RigBatch, { def: ModelDef; range: PassRange }>();
+  const computeRange = (def: ModelDef, out: PassRange): void => {
+    const lod = PASS_LOD[quality];
+    const k = Math.max(0.001, def.scale);
+    out.outline = lodIndexCount(def.geometry, 0);
+    out.shadow = lodIndexCount(def.geometry, lod.shadow / k);
+    out.xray = lodIndexCount(def.geometry, lod.xray / k);
+  };
+  /**
+   * 给一个批装上分通道的绘制范围：描边壳、剪影、阴影各自在开画前把几何的 drawRange 收到自己的前缀，画完放回整个模型。
+   * 三个网格共用同一份几何，所以必须「用前设、用后还」；几何对象由回调参数给出(批扩容后换了新几何也照常生效)。
+   */
+  const installPassLod = (b: RigBatch, def: ModelDef): void => {
+    const range: PassRange = { outline: Infinity, shadow: Infinity, xray: Infinity };
+    computeRange(def, range);
+    passRanges.set(b, { def, range });
+    const restore = (_r: unknown, _s: unknown, _c: unknown, geometry: THREE.BufferGeometry): void => {
+      geometry.setDrawRange(0, Infinity);
+    };
+    if (b.outline) {
+      b.outline.onBeforeRender = (_r, _s, _c, geometry) => {
+        geometry.setDrawRange(0, range.outline);
+      };
+      b.outline.onAfterRender = restore;
+    }
+    if (b.xray) {
+      b.xray.onBeforeRender = (_r, _s, _c, geometry) => {
+        geometry.setDrawRange(0, range.xray);
+      };
+      b.xray.onAfterRender = restore;
+    }
+    b.mesh.onBeforeShadow = (_r, _o, _c, _sc, geometry) => {
+      geometry.setDrawRange(0, range.shadow);
+    };
+    b.mesh.onAfterShadow = (_r, _o, _c, _sc, geometry) => {
+      geometry.setDrawRange(0, Infinity);
+    };
+  };
+
   const batchFor = (def: ModelDef): RigBatch => {
     let b = batches.get(def.key);
     if (!b) {
@@ -290,6 +375,7 @@ export function createUnitsModule(ctx: RenderContext): UnitsModule {
       b = new RigBatch(def.geometry, def.rig.count, capacityFor(def.key), { outline: outlineFor(def), xray }, def.key);
       b.setShadows(shadows);
       b.setOutlineVisible(outlines);
+      installPassLod(b, def);
       b.addTo(root);
       batches.set(def.key, b);
       batchList.push(b);
@@ -331,6 +417,10 @@ export function createUnitsModule(ctx: RenderContext): UnitsModule {
       opacity: 0,
       targetOpacity: 1,
       flash: 0,
+      flashBoost: 0,
+      // 视图创建之前挨的打不补闪(读档 / 时间轴跳变 / 从迷雾里走出来)
+      flashStart: -999,
+      flashSeen: u.lastHitTime,
       sx: u.pos.x,
       sz: u.pos.y,
       stride: seed,
@@ -490,9 +580,16 @@ export function createUnitsModule(ctx: RenderContext): UnitsModule {
     }
     v.targetOpacity = target;
 
-    // 受击闪白。镜头拉近后模型在屏幕上大了一圈：闪得太白会在对线时(一秒挨好几下)把模型细节反复盖掉，峰值压低一些
+    // 受击闪亮(见 FLASH_* 的说明)：新挨的一下距上次起闪够久才重新起闪
     const since = tRender - u.lastHitTime;
-    v.flash = since >= 0 && since < 0.16 && u.alive ? (1 - since / 0.16) ** 2 * (STATIC_KINDS[u.kind] ? 0.3 : 0.42) : 0;
+    if (u.lastHitTime !== v.flashSeen) {
+      v.flashSeen = u.lastHitTime;
+      if (u.lastHitTime - v.flashStart >= FLASH_REARM || u.lastHitTime < v.flashStart) v.flashStart = u.lastHitTime;
+    }
+    const fT = tRender - v.flashStart;
+    const fEnv = fT >= 0 && fT < FLASH_DUR && u.alive ? (1 - fT / FLASH_DUR) ** 2 : 0;
+    v.flashBoost = fEnv * FLASH_BOOST;
+    v.flash = fEnv * (STATIC_KINDS[u.kind] || (u.kind === 'monster' && u.radius >= 1.2) ? FLASH_WHITE_BIG : FLASH_WHITE);
 
     // 动画输入
     const inp = v.puppet.input;
@@ -603,6 +700,10 @@ export function createUnitsModule(ctx: RenderContext): UnitsModule {
     look.opacity = v.opacity;
     look.flash = v.flash;
     look.glow = po.glow;
+    // 受击提亮：本体乘色与队伍色一起乘亮(红方小兵的本体乘色是玄铁色，其余为白)
+    const fk = 1 + v.flashBoost;
+    look.body.copy(v.kind === 'minion' && v.team === 1 ? colors.redIron : WHITE).multiplyScalar(fk);
+    look.team.copy(teamColor(v.team)).multiplyScalar(fk);
     // 一次性染色按剩余时间线性衰减；与常驻染色、模型自己的染色三者取最强的一份
     let extAmount = v.tintAmount;
     let extColor = v.tintColor;
@@ -721,6 +822,7 @@ export function createUnitsModule(ctx: RenderContext): UnitsModule {
           }
           v.dying += frame.dt;
           v.flash = 0;
+          v.flashBoost = 0;
           if (v.dying >= v.deathDur) {
             views.delete(v.id);
             list.splice(i, 1);
@@ -771,11 +873,14 @@ export function createUnitsModule(ctx: RenderContext): UnitsModule {
       };
     },
     setQuality(s: QualitySettings) {
+      quality = s.name;
       outlines = s.name !== 'low';
       shadows = s.shadows;
       for (const b of batchList) {
         b.setShadows(shadows);
         b.setOutlineVisible(outlines);
+        const pr = passRanges.get(b);
+        if (pr) computeRange(pr.def, pr.range);
       }
     },
     pickUnit(clientX, clientY, st) {
@@ -868,6 +973,7 @@ export function createUnitsModule(ctx: RenderContext): UnitsModule {
     dispose() {
       ctx.layers.units.remove(root);
       for (const b of batchList) b.dispose();
+      passRanges.clear();
       rings.dispose();
       views.clear();
       unitById.clear();

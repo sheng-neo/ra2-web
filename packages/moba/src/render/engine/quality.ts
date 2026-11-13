@@ -47,6 +47,15 @@ export interface QualitySettings {
   unitPatterns: boolean;
   /** 装饰构件的附属效果(星灯柱光晕、构件环境粒子等)倍率 0..1 */
   props: number;
+  /**
+   * 地形散件的密度档(terrain/geo.ts 的 RANK_*)：1 = 只画基础那一批，2 = 再加 medium 的加密散件，3 = 全部。
+   * 合并网格里按档位排好了索引，这里只决定画到哪一段(不增减 draw call)。
+   */
+  sceneryRank: 1 | 2 | 3;
+  /**
+   * 阴影通道画到哪一档的地形投影者：0 = 只画主要投影者(崖壁、场内的树、建筑与构件)，3 = 连灌木、碎石、界外林木一起画。
+   */
+  shadowRank: 0 | 3;
 }
 
 export const QUALITY: Record<Quality, QualitySettings> = {
@@ -72,6 +81,8 @@ export const QUALITY: Record<Quality, QualitySettings> = {
     waterDetail: 0,
     unitPatterns: false,
     props: 0.5,
+    sceneryRank: 1,
+    shadowRank: 0,
   },
   medium: {
     name: 'medium',
@@ -95,6 +106,8 @@ export const QUALITY: Record<Quality, QualitySettings> = {
     waterDetail: 1,
     unitPatterns: true,
     props: 0.75,
+    sceneryRank: 2,
+    shadowRank: 0,
   },
   high: {
     name: 'high',
@@ -120,6 +133,8 @@ export const QUALITY: Record<Quality, QualitySettings> = {
     waterDetail: 2,
     unitPatterns: true,
     props: 1,
+    sceneryRank: 3,
+    shadowRank: 3,
   },
 };
 

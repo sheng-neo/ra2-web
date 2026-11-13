@@ -32,7 +32,7 @@ const C = {
   hairHi: 0x6a6a70,
   cap: 0x1c1b20,
   capHi: 0x3a3842,
-  pheasant: 0x6e4a2a,
+  pheasant: 0xa07242,
   pheasantTip: 0x2a1c12,
   lining: 0xe9e2cf,
   liningShade: 0xbfb69e,
@@ -297,15 +297,32 @@ function build(): { h: Human; b: ModelBuilder; extra: Extra } {
     // 冠两侧的铜珰
     b.paint(C.brass, { c2: C.brassDark, gloss: 1, mat: MAT.metal });
     b.sym(() => b.ball(0.13, cy + 0.22, -0.06, 0.022, 0.022, 0.014, 0));
-    // 双鹖尾：自冠两侧向后上方张开的两支长羽(俯视呈 V 形)，褐色，梢头近黑
+    // 双鹖尾：插在冠顶后部两侧、贴着发髻向后上方斜掠出去的两支长羽，末段向后平垂，俯视是头后的一个 V。
+    // 羽片宽面朝上朝前(正面、俯视都看得到羽面)：中段最宽、梢头收尖；浅褐底上一道道深色横斑、梢头近黑、正中一条浅色羽轴。
+    // 原先是从冠的两侧竖着长出来、向外卷的两根细圆条，正面看像一对触角；根部收到冠顶、整体向后掠之后读作冠羽
     for (const s of [1, -1]) {
-      const root = [s * 0.12, cy + 0.21, -0.09];
-      const dir = [s * 0.3, 1, -0.35];
-      b.paint(C.pheasant, { c2: C.pheasantTip, mat: MAT.fur, by: (_x, y) => (y - (cy + 0.23)) / 0.42 });
-      lock(b, root, dir, 0.44, 0.046, { curl: [s * 0.25, -0.55, -0.9], n: 6, seg: 4, flat: 0.4, up: [s * 0.8, 0, 0.6], tip: 0.3 });
-      // 羽轴一道浅色
-      b.paint(C.bone, { mat: MAT.fur, line: 0 });
-      lock(b, [root[0], root[1] + 0.012, root[2] + 0.004], dir, 0.38, 0.007, { curl: [s * 0.25, -0.55, -0.9], n: 5, seg: 3, flat: 1, tip: 0.4 });
+      const N = 10;
+      const L = 0.6;
+      const at = (t: number): number[] => {
+        const q = t * t;
+        return [s * (0.07 + L * (0.16 * t + 0.1 * q)), cy + 0.27 + L * (0.8 * t - 0.38 * q), -0.13 - L * (0.42 * t + 0.5 * q)];
+      };
+      const half = (t: number): number => 0.012 + 0.036 * Math.pow(Math.sin(Math.PI * Math.pow(t, 0.7)), 0.8) * (1 - 0.3 * t);
+      const blade: number[][] = [];
+      for (let i = 0; i <= N; i++) {
+        const t = i / N;
+        const p = at(t);
+        blade.push([p[0], p[1], p[2], i === N ? 0.004 : half(t), 0.006]);
+      }
+      // 横斑：沿羽片一环深一环浅，越往梢头越深
+      b.paint(C.pheasant, { c2: C.pheasantTip, mat: MAT.fur, by: (_x, _y, _z, g) => Math.min(1, (Math.round(g * N) % 2 === 1 ? 0.7 : 0.0) + Math.max(0, g - 0.66) * 2.6) });
+      b.tube(blade, { seg: 4, up: [s, 0, 0], crease: 180 });
+      // 羽轴：羽片上下两面正中的一道浅色
+      b.paint(C.bone, { c2: C.pheasant, mat: MAT.fur, line: 0 });
+      b.tube(blade.slice(0, N).map((p, i) => [p[0], p[1], p[2], 0.005 * (1 - (i / N) * 0.6), 0.011]), { seg: 4, up: [s, 0, 0], crease: 180 });
+      // 羽根的铜管座
+      b.paint(C.brass, { c2: C.brassDark, gloss: 1, mat: MAT.metal });
+      b.limb(at(-0.06), at(0.07), 0.02, 0.017, { seg: 5 });
     }
   }
 
@@ -388,7 +405,7 @@ function makeAnims(h: Human): Anims {
     footR: [-0.15, 0.09, -0.1, 0, -34],
     armL: [-6, 0, 22],
     foreL: [-30, 0, 0],
-    propL: [-50, 0, -30],
+    propL: [-70, 0, -30],
     armR: [22, 0, -14],
     foreR: [-24, 0, 0],
   });

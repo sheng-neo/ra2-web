@@ -106,9 +106,24 @@ function addSkinned(def: ModelDef, puppet: Puppet, box: Box): void {
   }
 }
 
-/** 立绘的摆动范围(弧度)：yaw = YAW0 + sin(t)·YAW_AMP */
-const YAW0 = 0.25;
-const YAW_AMP = 0.8;
+/**
+ * 立绘左右摆动的[中心, 幅度](弧度)：yaw = 中心 + sin(t)·幅度，正值 = 英雄向自己的左手边转。各英雄不同——
+ * 标志物要始终有一面朝着镜头：樊哙的盾在左臂，向左转过 20° 盾就只剩一条窄边，所以整体偏向右转(盾面迎着镜头)；
+ * 程咬金扛在右肩的宣花斧，斧面朝右上方，向左转过 30° 斧面就成了一条线、读成一根长杆，同样偏向右转。
+ * 其余三位的标志物(琵琶、弓、匕首)在身前，沿用原来的范围。
+ */
+const SWAY: Record<HeroId, [number, number]> = {
+  panyue: [-0.44, 0.44],
+  chijin: [-0.38, 0.44],
+  xingli: [0.25, 0.8],
+  fengling: [0.25, 0.8],
+  yeque: [0.25, 0.8],
+};
+/**
+ * 选人页的名牌(英雄名 + 称号两行)压在立绘画布的左上角，高约 48 个 CSS 像素。画布矮的时候(手机横屏只有两百多像素高)
+ * 6% 的上边距不够：樊哙的发束、程咬金的斧头会顶进名牌里。所以上边距至少留出名牌的高度，上限 24%。
+ */
+const PLATE_PX = 48;
 
 /**
  * 量出立绘需要装下的范围：待机在整个左右摆动范围内的包围盒(必须完整入画)，
@@ -134,8 +149,9 @@ function measureFrame(id: HeroId, def: ModelDef): Box {
     puppet.settle();
     addSkinned(def, puppet, box);
   };
-  for (let i = 0; i <= 8; i++) pose('idle', 0, 0, YAW0 + YAW_AMP * Math.sin(((i / 8) * 2 - 1) * Math.PI * 0.5), idle);
-  for (const variant of [0, 1]) for (const p of [0.2, 0.35, 0.5]) for (const yaw of [YAW0 - YAW_AMP, YAW0, YAW0 + YAW_AMP]) pose('attack', p, variant, yaw, act);
+  const [yaw0, yawAmp] = SWAY[id];
+  for (let i = 0; i <= 8; i++) pose('idle', 0, 0, yaw0 + yawAmp * Math.sin(((i / 8) * 2 - 1) * Math.PI * 0.5), idle);
+  for (const variant of [0, 1]) for (const p of [0.2, 0.35, 0.5]) for (const yaw of [yaw0 - yawAmp, yaw0, yaw0 + yawAmp]) pose('attack', p, variant, yaw, act);
   const grow = (idle.maxX - idle.minX) * 0.25;
   const box: Box = {
     minX: Math.min(idle.minX, Math.max(act.minX, idle.minX - grow)),
@@ -335,10 +351,13 @@ export function createHeroPreview(canvas: HTMLCanvasElement, heroId: HeroId): He
     const spanH = top - bottom;
     // 靠近镜头的部分(前伸的武器)在透视下更大：把前伸量计入距离
     const near = Math.max(0, box.maxZ);
+    // 上边距：不低于名牌的高度(见 PLATE_PX)
+    const cssH = Math.max(1, canvas.clientHeight || renderer.domElement.height / renderer.getPixelRatio());
+    const mTop = Math.min(0.24, Math.max(MARGIN.top, PLATE_PX / cssH + 0.015));
     const distW = halfW / (tanW * (1 - 2 * MARGIN.side)) + near * 0.6;
-    const distH = spanH / (2 * tanH * (1 - MARGIN.top - MARGIN.bottom)) + near * 0.5;
+    const distH = spanH / (2 * tanH * (1 - mTop - MARGIN.bottom)) + near * 0.5;
     // 五位英雄共用一个基准距离(按最高大的樊哙定)：小个子就显得小，坦克最魁梧；只有装不下时才再退远
-    const distRef = Math.max(REF.halfW / (tanW * (1 - 2 * MARGIN.side)), (REF.top - bottom) / (2 * tanH * (1 - MARGIN.top - MARGIN.bottom)));
+    const distRef = Math.max(REF.halfW / (tanW * (1 - 2 * MARGIN.side)), (REF.top - bottom) / (2 * tanH * (1 - mTop - MARGIN.bottom)));
     const dist = Math.max(distW, distH, distRef);
     // 注视点：展台底边落在画框下边距处(各英雄站在同一高度)，头顶自然在上边距以内
     const lookY = bottom + tanH * dist * (1 - 2 * MARGIN.bottom);
@@ -365,8 +384,8 @@ export function createHeroPreview(canvas: HTMLCanvasElement, heroId: HeroId): He
     last = now;
     if (!canvas.isConnected || document.hidden || !batch) return;
     time += dt;
-    // 缓慢地左右转动：始终以正面与两个四分之三侧面示人
-    yaw = YAW0 + Math.sin(time * 0.5) * YAW_AMP;
+    // 缓慢地左右转动：始终以正面到四分之三侧面示人(各英雄的范围见 SWAY)
+    yaw = SWAY[current][0] + Math.sin(time * 0.5) * SWAY[current][1];
     const a = puppet.input;
     if (anim !== 'idle') {
       animT += dt;

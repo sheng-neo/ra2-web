@@ -66,7 +66,24 @@ function shortName(name: string): string {
   return i > 0 ? name.slice(0, i) : name;
 }
 
+/** 屏幕矩形(CSS 像素，相对渲染容器左上角) */
+export interface AvoidRect {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+}
+
 export class BarLayer {
+  /**
+   * 顶部界面占用的矩形(比分条、当前目标 / 引导卡)：宽血条(史诗野怪、建筑)被压到上沿时要落在它们下面，不能被盖住。
+   * null = 界面层没给过，按 1280×720 基准的缺省布局估(随界面缩放)。
+   */
+  avoid: AvoidRect[] | null = null;
+  private defaults: AvoidRect[] = [
+    { left: 0, top: 0, right: 0, bottom: 0 },
+    { left: 0, top: 0, right: 0, bottom: 0 },
+  ];
   private states = new Map<number, BarState>();
   private stamp = 0;
   private text: TextCache;
@@ -124,6 +141,20 @@ export class BarLayer {
     const p = this.p;
     const slots = this.heroSlots;
     slots.length = 0;
+    // 缺省的顶部避让区：比分条(居中，宽约 380、高约 52)与它下面的当前目标 / 引导卡(宽约 340，到约 98)
+    let avoid = this.avoid;
+    if (!avoid) {
+      avoid = this.defaults;
+      const d0 = avoid[0];
+      const d1 = avoid[1];
+      d0.left = W / 2 - 190 * s;
+      d0.right = W / 2 + 190 * s;
+      d0.bottom = 52 * s;
+      d1.left = W / 2 - 170 * s;
+      d1.right = W / 2 + 170 * s;
+      d1.top = 58 * s;
+      d1.bottom = 98 * s;
+    }
     for (const u of order) {
       if (!u.alive) continue;
       const bs = this.stateOf(u);
@@ -133,12 +164,29 @@ export class BarLayer {
       if (!project(a.x, a.y + a.height + 0.22, a.z, p)) continue;
       if (p.x < -70 || p.x > W + 70 || p.y > H + 60) continue;
       const building = u.kind === 'tower' || u.kind === 'core';
+      // 高个子：建筑(八九米)与史诗野怪(巨龙近 6 米、巨灵 8 米多)。玩家从南面打它们时头顶在屏幕上沿之外
+      const epic = u.kind === 'monster' && MONSTERS[u.monsterType].epic;
+      const tall = building || epic;
       if (p.y < -30) {
-        // 头顶在屏幕上沿之外。建筑很高(八九米)：只要塔身还有一截在屏内，就把血条压在上沿，否则推塔时看不到塔的血量
-        if (!building || !project(a.x, a.y + 2.4, a.z, this.foot) || this.foot.y < 30 * s) continue;
+        // 头顶出屏：只要身子还有一截在屏内，就把血条压在上沿(落在顶部界面的下面)，否则打龙 / 推塔时看不到它的血量
+        if (!tall || !project(a.x, a.y + (building ? 2.4 : 1.2), a.z, this.foot) || this.foot.y < 30 * s) continue;
       }
       const x = Math.round(p.x);
-      const y = Math.max((building ? 20 : 16) * s, p.y);
+      let y = Math.max((building ? 20 : 16) * s, p.y);
+      if (tall && p.y < 150 * s) {
+        // 血条块(史诗野怪连名牌)不能与顶部界面的矩形相交：相交就整块挪到那个矩形的下沿之下
+        const half = (u.kind === 'core' ? 64 : epic ? 52 : 54) * s;
+        const blockH = (epic ? 34 : 14) * s;
+        for (let pass = 0; pass < 3; pass++) {
+          let moved = false;
+          for (const r of avoid) {
+            if (x + half <= r.left || x - half >= r.right || y - blockH >= r.bottom || y <= r.top) continue;
+            y = r.bottom + blockH + 4 * s;
+            moved = true;
+          }
+          if (!moved) break;
+        }
+      }
       // 跟着模型一起淡入淡出(刚进视野/丢失视野)；草丛里、不可选中的半透明不影响血条
       const fade = a.opacity >= 0.4 ? 1 : a.opacity / 0.4;
       if (fade <= 0.02) continue;
@@ -159,7 +207,6 @@ export class BarLayer {
           if (u.hp < u.stats.maxHp - 0.5) this.simple(g, u, bs, x, y, 34 * s, 4 * s, u.team === frame.playerTeam ? PAL.ally.fill : PAL.enemy.fill, false);
           break;
         case 'monster': {
-          const epic = MONSTERS[u.monsterType].epic;
           if (!epic && u.hp >= u.stats.maxHp - 0.5) break;
           const w = (epic ? 96 : 40 + u.radius * 24) * s;
           this.simple(g, u, bs, x, y, w, (epic ? 8 : 5) * s, PAL.neutral.fill, epic);
@@ -195,7 +242,7 @@ export class BarLayer {
 
   /**
    * 英雄血条块的避让：块 = 名字 + 血条(宽约 100、高约 30 CSS 像素)。按屏幕 y 从下往上放，
-   * 与已放好的块重叠就把它抬到那个块的上方；抬升超过一个块高就不再抬(宁可轻微重叠，也不让血条离开头顶太远)。
+   * 与已放好的块重叠就把它抬到那个块的上方；最多抬两个块高(三四个人挤成一团时也能一层层码开)，再多就不抬了(血条不能离头顶太远)。
    * 玩家自己的块最先放、位置不动。
    */
   private declutter(slots: HeroSlot[], s: number): void {
@@ -206,13 +253,13 @@ export class BarLayer {
     for (let i = 1; i < slots.length; i++) {
       const c = slots[i];
       const y0 = c.y;
-      for (let pass = 0; pass < 3; pass++) {
+      for (let pass = 0; pass < 4; pass++) {
         let moved = false;
         for (let j = 0; j < i; j++) {
           const o = slots[j];
           if (Math.abs(o.x - c.x) >= W || Math.abs(o.y - c.y) >= H) continue;
           const ny = o.y - H;
-          if (y0 - ny > H * 1.05) continue;
+          if (y0 - ny > H * 2.1) continue;
           c.y = ny;
           moved = true;
         }

@@ -609,25 +609,69 @@ function makeShrub(seed: number): THREE.BufferGeometry {
   return finish(b);
 }
 
+/**
+ * 一块凿出来的岩石：从球出发，用几刀随机的平面把鼓出去的部分削平(大的平切面 + 削不到的地方保持圆钝)，再压扁、垫平底面。
+ * 顶点共用，由调用方统一按折痕角算法线：切面之间是利落的棱，切面内是平的——不再是一个每个面都一样大的正多面体。
+ */
+function addRockChunk(b: MeshBuilder, cx: number, cy: number, cz: number, rx: number, ry: number, rz: number, seed: number, detail: number, bottom: RGB, top: RGB): void {
+  const ico = icosphere(detail);
+  const rng = new Rng(seed * 31 + 7);
+  const cuts: [number, number, number, number][] = [];
+  const nCuts = detail > 0 ? 6 : 3;
+  for (let i = 0; i < nCuts; i++) {
+    // 刀的朝向：第一刀朝上(一块平顶)，其余朝四周略偏上
+    const a = rng.range(0, TAU);
+    const up = i === 0 ? rng.range(0.75, 0.95) : rng.range(-0.1, 0.55);
+    const h = Math.sqrt(Math.max(0, 1 - up * up));
+    cuts.push([Math.cos(a) * h, up, Math.sin(a) * h, rng.range(0.52, 0.82)]);
+  }
+  const base = b.vertexCount;
+  for (let i = 0; i < ico.verts.length; i++) {
+    let [x, y, z] = ico.verts[i];
+    for (const [nx, ny, nz, d] of cuts) {
+      const over = x * nx + y * ny + z * nz - d;
+      if (over > 0) {
+        x -= nx * over;
+        y -= ny * over;
+        z -= nz * over;
+      }
+    }
+    const k = 1 + (hash2(i, seed, 71) - 0.5) * 0.1;
+    // 底面垫平(半埋在地里)
+    const yy = Math.max(-0.42, y * k);
+    const t = Math.min(1, Math.max(0, (yy + 0.42) / 1.2));
+    const c = scaleRgb(mixRgb(bottom, top, t * t * (3 - 2 * t)), 0.94 + hash2(i, seed, 5) * 0.12);
+    b.vertex(cx + x * k * rx, cy + yy * ry, cz + z * k * rz, c, 0, 1, 0, 0, 0, 0, 0.68 + 0.32 * t);
+  }
+  for (const [a, bb, c] of ico.tris) b.tri(base + a, base + bb, base + c);
+}
+
 function makeRock(seed: number, big: boolean): THREE.BufferGeometry {
   const rng = new Rng(seed);
   const b = new MeshBuilder();
   const dark = rgb(E.rockDark);
   const light = rgb(E.rockLight);
-  const n = big ? 1 + rng.int(2) : 1;
+  // 大石：一块主体 + 一两块靠在旁边的小块；碎石：单独一小块
+  const n = big ? 2 + rng.int(2) : 1;
   for (let i = 0; i < n; i++) {
-    const r = i === 0 ? 1 : rng.range(0.45, 0.7);
+    const r = i === 0 ? 1 : rng.range(0.42, 0.66);
     const a = rng.range(0, TAU);
-    const d = i === 0 ? 0 : rng.range(0.7, 1.0);
-    addBlob(b, Math.cos(a) * d, r * rng.range(0.25, 0.45), Math.sin(a) * d, r * rng.range(0.85, 1.15), r * rng.range(0.6, 0.95), r * rng.range(0.8, 1.1), {
-      detail: big && i === 0 ? 1 : 0,
-      bump: big ? 0.16 : 0.22,
-      seed: seed + i * 7,
-      bottom: mixRgb(dark, light, 0.2),
-      top: mixRgb(dark, light, 0.8),
-      flat: true,
-    });
+    const d = i === 0 ? 0 : rng.range(0.68, 0.95);
+    addRockChunk(
+      b,
+      Math.cos(a) * d,
+      r * rng.range(0.28, 0.42),
+      Math.sin(a) * d,
+      r * rng.range(0.9, 1.2),
+      r * rng.range(0.62, 0.9),
+      r * rng.range(0.8, 1.1),
+      seed + i * 7,
+      big && i === 0 ? 1 : 0,
+      mixRgb(dark, light, 0.15),
+      mixRgb(dark, light, 0.85),
+    );
   }
+  b.computeNormals(35);
   return finish(b);
 }
 
@@ -742,9 +786,10 @@ function makeBracketFungus(seed: number): THREE.BufferGeometry {
     const y = i * rng.range(0.16, 0.24);
     const r = rng.range(0.2, 0.32) * (1 - i * 0.15);
     const off = rng.range(-0.15, 0.15);
-    const c0: RGB = [0.62, 0.62, 0.62];
-    const c1: RGB = [1, 1, 1];
-    const center = b.vertex(-0.03, y + 0.05, off, c0, 0.2, 1, 0, 0, 0.1, 1);
+    // 菌盖：靠崖壁的中心暗、不发光(并压一档环境光)，只有外沿一圈带微光——有明有暗才有体积，不是一片平涂的贴纸
+    const c0: RGB = [0.45, 0.45, 0.45];
+    const c1: RGB = [0.86, 0.86, 0.86];
+    const center = b.vertex(-0.03, y + 0.07, off, c0, 0.2, 1, 0, 0, 0, 1, 0.7);
     const ring: number[] = [];
     const segs = 6;
     for (let s = 0; s <= segs; s++) {

@@ -10,7 +10,7 @@
  * 水晶 = 三级八角台基 + 四支弧形托臂 + 巨大的星核晶体 + 双层浑仪环(与星陨巨灵同源的造型语言)。
  */
 import { PALETTE } from '../materials';
-import { MAT, ModelBuilder, PATTERN, X, lerp, shade } from './kit';
+import { MAT, ModelBuilder, PATTERN, type RGB, X, lerp, shade } from './kit';
 import { type Pose, Rig, bump, easeOut, seg } from './rig';
 import type { AnimInput, AnimOutput, ModelDef } from './types';
 
@@ -23,13 +23,21 @@ interface Look {
   /** 大块晶体(核心/星核)的亮面色：比主色稍亮，但不发白 */
   crystalMid: number;
   crystalHot: number;
+  /**
+   * 大块晶面(塔的核心、水晶的星核与内核)自发光的倍率。红晶的红通道本来就顶满，自发光再往上推，
+   * 色调映射与泛光会把绿、蓝通道一起抬起来——红就发成了肉粉色；所以红方压得比蓝方低。
+   */
+  glowK: number;
   /** 红方的造型更尖锐 */
   spiky: boolean;
 }
 
+// 蓝方 stoneLight 取 #c9d3e6：再浅的话塔身受光面在 low 档(没有阴影贴图、不过色调映射的后期)会顶成一片白，砌缝全丢。
+// 红方晶体三阶：深绯红 → 朱红 → 余烬橙(白热端往橙走，不往粉走)。反照率比色表的红方晶 #ff5a36 暗一截、偏橙一点：
+// 受光 + 自发光之后红通道会顶满，色调映射把高亮的红压向粉白并吃掉色相里的橙，留出这段余量显示出来才是 #ff5a36 上下。
 const LOOKS: [Look, Look] = [
-  { stone: PALETTE.blue.stone, stoneDark: PALETTE.blue.stoneDark, stoneLight: 0xdfe6f4, trim: PALETTE.blue.trim, crystal: 0x1668e8, crystalMid: 0x38a0ff, crystalHot: 0x8cd0ff, spiky: false },
-  { stone: PALETTE.red.stone, stoneDark: PALETTE.red.stoneDark, stoneLight: 0x7c6a70, trim: PALETTE.red.trim, crystal: 0xff4a30, crystalMid: 0xff7448, crystalHot: 0xffb08a, spiky: true },
+  { stone: PALETTE.blue.stone, stoneDark: PALETTE.blue.stoneDark, stoneLight: 0xc9d3e6, trim: PALETTE.blue.trim, crystal: 0x1668e8, crystalMid: 0x38a0ff, crystalHot: 0x8cd0ff, glowK: 0.85, spiky: false },
+  { stone: PALETTE.red.stone, stoneDark: PALETTE.red.stoneDark, stoneLight: 0x7c6a70, trim: PALETTE.red.trim, crystal: 0xd63a16, crystalMid: 0xf25a26, crystalHot: 0xff8a30, glowK: 0.35, spiky: true },
 ];
 const ALERT = 0xfff0b0;
 
@@ -53,9 +61,11 @@ function plinth(b: ModelBuilder, L: Look, r: number): void {
 
 /**
  * 分层砌筑的八角塔身：n 层石块，层与层之间一道内凹的砌缝。rOf(y) 给出收分后的半径。
+ * 砌缝里再嵌一圈压暗的灰缝(seam 色)：缝的明暗不只靠阴影——low 档没有阴影贴图，浅色的蓝方塔身受光面上缝会淡到看不见。
+ * 调用前先 paint 好石块的颜色；灰缝画完后画笔停在 seam 色上，调用方接着画别的要重新 paint。
  * 返回各层的中点高度(往上贴窗缝、石板用)。
  */
-function courses(b: ModelBuilder, y0: number, y1: number, n: number, rOf: (y: number) => number, capTop: boolean): number[] {
+function courses(b: ModelBuilder, y0: number, y1: number, n: number, rOf: (y: number) => number, capTop: boolean, seam: RGB): number[] {
   const prof: number[][] = [];
   const mids: number[] = [];
   const h = (y1 - y0) / n;
@@ -68,6 +78,11 @@ function courses(b: ModelBuilder, y0: number, y1: number, n: number, rOf: (y: nu
     mids.push(a + h / 2);
   }
   b.lathe(prof, { seg: 8, phase: 22.5, crease: 30, cap0: false, cap1: capTop });
+  b.paint(seam, { mat: MAT.rock, line: 0 });
+  for (let i = 0; i < n - 1; i++) {
+    const c = y0 + (i + 1) * h;
+    b.lathe([[c - 0.047, rOf(c) - 0.04], [c - 0.003, rOf(c) - 0.04]], { seg: 8, phase: 22.5, crease: 30, cap0: false, cap1: false });
+  }
   return mids;
 }
 
@@ -137,9 +152,11 @@ function createTower(tier: 1 | 2 | 3, team: 0 | 1): ModelDef {
   // ── 塔身：下半段 / 上半段各自分层砌筑，中间一道腰箍 ──
   b.bone(lower).paint(L.stoneDark, { c2: L.stone, by: (_x, y) => (y - 0.35) / (MID - 0.35), ...stoneMat });
   b.lathe([[0.35, colR(0.35) * 1.16], [0.5, colR(0.5) * 1.16], [0.56, colR(0.56) * 1.04]], { seg: 8, phase: 22.5, crease: 30, cap0: false, cap1: false });
-  courses(b, 0.56, MID, 4, colR, true);
+  const seam = shade(L.stoneDark, 0.62);
+  courses(b, 0.56, MID, 4, colR, true, seam);
   b.bone(upper).paint(L.stone, { c2: L.stoneLight, by: (_x, y) => (y - MID) / (H - MID), ...stoneMat });
-  courses(b, MID, H - 0.3, 3 + (tier > 1 ? 1 : 0), colR, false);
+  courses(b, MID, H - 0.3, 3 + (tier > 1 ? 1 : 0), colR, false, seam);
+  b.paint(L.stone, { c2: L.stoneLight, by: (_x, y) => (y - MID) / (H - MID), ...stoneMat });
   b.lathe([[H - 0.3, colR(H - 0.3)], [H - 0.1, colR(H) * 1.5], [H + 0.12, colR(H) * 1.62], [H + 0.2, colR(H) * 1.2]], { seg: 8, phase: 22.5, cap0: false });
   b.paint(L.trim, { ...trimMat });
   b.lathe([[H - 0.12, colR(H) * 1.56], [H + 0.14, colR(H) * 1.68], [H + 0.16, colR(H) * 1.5]], { seg: 8, phase: 22.5, cap0: false, cap1: false });
@@ -222,10 +239,10 @@ function createTower(tier: 1 | 2 | 3, team: 0 | 1): ModelDef {
   }
 
   // ── 核心：悬浮的大晶体 + 更亮的内核 ──
-  b.bone(core).paint(L.crystal, { c2: L.crystalMid, glow: 0.24, glow2: 0.42, ...crystalMat, gloss: 0.8 });
+  b.bone(core).paint(L.crystal, { c2: L.crystalMid, glow: 0.24 * L.glowK, glow2: 0.42 * L.glowK, ...crystalMat, gloss: 0.8 });
   const cr = 0.5 + tier * 0.05;
   b.g(X(0, coreY - 0.85, 0), () => b.crystal(cr, 1.7, 6, 0.5, 0.5, 1));
-  b.paint(L.crystalHot, { glow: 0.65, mat: MAT.crystal, line: 0 });
+  b.paint(L.crystalHot, { glow: 0.65 * L.glowK, mat: MAT.crystal, line: 0 });
   b.g(X(0, coreY - 0.45, 0), () => b.crystal(cr * 0.45, 0.9, 4, 0.5, 0.5, 1));
   // 符环：扁金环 + 发光晶钉
   rings.forEach((r, i) => {
@@ -450,7 +467,7 @@ function createCore(team: 0 | 1): ModelDef {
   b.lathe([[0.25, 2.81], [0.32, 2.81], [0.325, 2.46]], { seg: 8, phase: 22.5, cap0: false, cap1: false });
   b.lathe([[0.57, 2.45], [0.64, 2.45], [0.645, 2.06]], { seg: 8, phase: 22.5, cap0: false, cap1: false });
   // 台面的星纹嵌线与中央聚能井
-  b.paint(L.crystal, { c2: L.crystalHot, glow: 0.4, mat: MAT.crystal, line: 0 });
+  b.paint(L.crystal, { c2: L.crystalHot, glow: 0.4 * (0.5 + 0.5 * L.glowK), mat: MAT.crystal, line: 0 });
   for (let i = 0; i < 8; i++) {
     const a = (i / 8) * TAU;
     b.g(X(Math.cos(a) * 1.5, 0.96, Math.sin(a) * 1.5, 0, -(a * 180) / Math.PI, 0), () => b.box(0, 0, 0, 0.76, 0.04, i % 2 ? 0.05 : 0.09));
@@ -494,13 +511,13 @@ function createCore(team: 0 | 1): ModelDef {
     });
   });
   // ── 星核：放大的多面晶体，向六个方向伸出星芒；内核更亮 ──
-  b.bone(star).paint(L.crystal, { c2: L.crystalMid, glow: 0.16, glow2: 0.32, ...crystalMat, gloss: 0.8 });
+  b.bone(star).paint(L.crystal, { c2: L.crystalMid, glow: 0.16 * L.glowK, glow2: 0.32 * L.glowK, ...crystalMat, gloss: 0.8 });
   b.g(X(0, coreY - 1.8, 0), () => b.crystal(1.25, 3.6, 6, 0.5, 0.5, 1));
   for (let k = 0; k < 6; k++) {
     const a = (k / 6) * TAU;
     b.g(X(0, coreY, 0, 0, -(a * 180) / Math.PI, 0), () => b.g(X(0.9, 0, 0, 0, 0, -90), () => b.crystal(0.36, 1.5, 4, 0.8, 0.05)));
   }
-  b.bone(inner).paint(L.crystalHot, { glow: 0.5, mat: MAT.crystal, line: 0 });
+  b.bone(inner).paint(L.crystalHot, { glow: 0.5 * L.glowK, mat: MAT.crystal, line: 0 });
   b.g(X(0, coreY - 0.85, 0), () => b.crystal(0.56, 1.7, 4, 0.5, 0.5, 1));
   // 受损的裂纹：贴着晶体表面的白热折线，三组
   const crR = (y: number): number => 1.25 * (1 - Math.abs(y - coreY) / 1.85) * 0.98 + 0.06;

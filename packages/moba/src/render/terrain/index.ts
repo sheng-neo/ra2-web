@@ -18,6 +18,7 @@ import type { RenderContext, RenderModule, TerrainQuery } from '../engine/contex
 import { disposeObject3D } from '../engine/dispose';
 import { SUN_DIR, SUN_SHADOW_DIR, SUN_SHADOW_LENGTH } from '../engine/lighting';
 import { PALETTE, createToonMaterial, getRockTexture, makeNoiseTexture } from '../materials';
+import type { QualitySettings } from '../engine/quality';
 import { type AtmosSpec, createAtmos } from './atmos';
 import { decorateBases } from './bases';
 import { buildBorder, createBorderInfo, createWaterfalls, scatterBorder } from './border';
@@ -25,7 +26,7 @@ import { decorateCamps } from './camps';
 import { buildCliff, type CliffInfo } from './cliffs';
 import { type DecalSpec, createDecals, mapDecals } from './decals';
 import { MapField, WATER_LEVEL, bakeSplat, stampStaticShadows } from './field';
-import { SceneryBatcher, centroid, rgb } from './geo';
+import { SceneryBatcher, applyRankRange, centroid, rgb } from './geo';
 import { MAX_PUSHERS, createBushes } from './grass';
 import { createGround } from './ground';
 import { buildLaneCurbs } from './lanes';
@@ -46,9 +47,12 @@ interface CulledCell {
 const SHADOW_CASTER_HEIGHT = 10;
 /** 崖顶贴图的第二尺度与色斑(材质侧的可选细节)。顶面的大块色斑已经烘在顶点色里，这里只决定要不要再叠材质那一层 */
 const MAP_TOP_DETAIL = true;
-/** 崖顶草贴图的亮度增益(见材质的 mapTopGain)：草贴图的线性均值约 0.18，叠第二尺度时再乘约 0.77 */
-const MAP_TOP_GAIN = 4.5;
-const MAP_TOP_GAIN_DETAIL = 5.8;
+/**
+ * 崖顶草贴图的亮度增益(见材质的 mapTopGain)：草贴图的线性均值约 0.18，叠第二尺度时再乘约 0.77。
+ * 明度阶梯要求崖顶(画框) < 可走草地：原先 4.5 / 5.8 时受光崖顶实测 L* 均值 59、峰值近 70，比草地还亮一档，压两成
+ */
+const MAP_TOP_GAIN = 3.6;
+const MAP_TOP_GAIN_DETAIL = 4.6;
 /** 岩体法线的折痕角 */
 const CREASE_DEG = 35;
 
@@ -62,20 +66,35 @@ export interface TerrainModule extends RenderModule {
   readonly counts: Record<string, number>;
 }
 
-export function createTerrainModule(ctx: RenderContext): TerrainModule {
+/** 对局镜头向界外最多能看到多远(米)才需要画远景：高原边缘离边界最近 17.5 米，边缘内 5 米起地势回落 */
+const SKY_VIEW_MARGIN = 11;
+const _corner = new THREE.Vector3();
+const _camPos = new THREE.Vector3();
+
+/**
+ * 分段构建：每 yield 一次是一个可以让出主线程的点(值 = 完成比例 0..1)，最后 return 模块。
+ * 同步入口 createTerrainModule 一口气跑完；加载页走 createRendererCoreAsync 时每段之间让出一帧，进度条不再卡住。
+ */
+function* buildTerrain(ctx: RenderContext): Generator<number, TerrainModule, void> {
   const timings: Record<string, number> = {};
   const counts: Record<string, number> = {};
   let mark = performance.now();
   const lap = (name: string): void => {
     const now = performance.now();
-    timings[name] = Math.round(now - mark);
+    timings[name] = Math.round((timings[name] ?? 0) + now - mark);
     mark = now;
+  };
+  /** 让出点之后重新起表(让出期间的等待不算进下一段) */
+  const resume = (): void => {
+    mark = performance.now();
   };
   const map = ctx.map;
   const field = new MapField(map);
   const maxAniso = ctx.renderer.capabilities.getMaxAnisotropy();
   const splat = bakeSplat(field, 768, SUN_DIR);
   lap('splat');
+  yield 0.2;
+  resume();
   const noise = makeNoiseTexture(256, 7);
   lap('noise');
   const root = ctx.layers.terrain;
@@ -87,6 +106,8 @@ export function createTerrainModule(ctx: RenderContext): TerrainModule {
   const water = createWater(field, splat, noise, q);
   root.add(water.mesh);
   lap('ground');
+  yield 0.45;
+  resume();
 
   // ── 材质：岩体(平滑法线 + 折痕、三阶明暗、三向投影岩石肌理、顶面铺草贴图) / 实体景物 / 贴地小物 ──
   const rockTex = getRockTexture();
@@ -106,10 +127,12 @@ export function createTerrainModule(ctx: RenderContext): TerrainModule {
     mapTopGain: MAP_TOP_DETAIL && q.groundDetail > 0 ? MAP_TOP_GAIN_DETAIL : MAP_TOP_GAIN,
     mapTopNoise: noise,
     mapTopDetail: MAP_TOP_DETAIL && q.groundDetail > 0,
+    mapTopPatch: 0.6,
   });
   // 实体景物(树、石、构件、建筑件)：三阶明暗但边界放软——树冠读成柔和的体块，石件仍有亮/灰/暗三个面
   const sceneryMat = createToonMaterial({ vertexColors: true, ramp: [0.0, 0.42, 0.6], softness: 0.3, rim: 0.12, rimPower: 2.6, kicker: 0.12, wind: 0.42, glowBoost: 1.7, shadeTint: PALETTE.env.shadeRock });
-  const clutterMat = createToonMaterial({ vertexColors: true, steps: 1, rim: 0, wind: 0.3, glowBoost: 1.5, side: THREE.DoubleSide });
+  // 贴地小物是双面的薄叶片：背面沿用正面的法线(不翻转)，否则草簇朝下的那一面只吃到地面反光，在亮草上是一撮撮近黑的小三角
+  const clutterMat = createToonMaterial({ vertexColors: true, steps: 1, rim: 0, wind: 0.3, glowBoost: 1.5, side: THREE.DoubleSide, flipBackNormals: false });
 
   // ── 墙体断崖(按 32 米分块合并)。先选好壁龛的位置，石台在那里加宽一级 ──
   const nicheSpots = pickNiches(field);
@@ -143,6 +166,8 @@ export function createTerrainModule(ctx: RenderContext): TerrainModule {
   };
   track(cliffBatch.build(cliffMat, cliffMat, cliffRoot, 'cliff', CREASE_DEG));
   lap('cliffs');
+  yield 0.58;
+  resume();
 
   // ── 边界外装饰带 ──
   const border = createBorderInfo(field);
@@ -169,12 +194,23 @@ export function createTerrainModule(ctx: RenderContext): TerrainModule {
   placeProps(batch, kit, field, cliffs, scatter, glow, moteSources);
   counts.props = batch.triangleCount - counts.campsBases;
   counts.curbs = buildLaneCurbs(batch, field);
+  lap('props');
+  yield 0.66;
+  resume();
   const beforeScatter = batch.triangleCount;
   scatterWallTops(batch, lib, field, cliffs, scatter, glow);
+  lap('scatter');
+  yield 0.72;
+  resume();
   scatterGround(batch, lib, field, 1, scatter, glow);
+  lap('scatter');
+  yield 0.78;
+  resume();
   scatterBorder(batch, lib, field, border, scatter);
   counts.scatter = batch.triangleCount - beforeScatter;
   lap('scatter');
+  yield 0.84;
+  resume();
   const sceneryRoot = new THREE.Group();
   sceneryRoot.name = 'scenery';
   root.add(sceneryRoot);
@@ -183,6 +219,13 @@ export function createTerrainModule(ctx: RenderContext): TerrainModule {
   kit.dispose();
   root.add(createWaterfalls(field, border, noise, scatter));
   lap('merge');
+  // 按画质档裁散件密度与阴影通道的投影者(只改各分块的绘制范围)
+  const applyRanks = (s: QualitySettings): void => {
+    for (const c of cells) applyRankRange(c.mesh, s.sceneryRank, s.shadowRank);
+  };
+  applyRanks(q);
+  yield 0.9;
+  resume();
 
   // ── 低画质的静态投影：树冠等高物的影子盖进受光蒙版 ──
   stampStaticShadows(splat, scatter.casters, SUN_DIR);
@@ -240,7 +283,8 @@ export function createTerrainModule(ctx: RenderContext): TerrainModule {
   counts.atmos = atmos.count;
 
   // ── 远景 ──
-  root.add(createSky());
+  const sky = createSky();
+  root.add(sky);
   lap('misc');
 
   const query: TerrainQuery = {
@@ -267,6 +311,23 @@ export function createTerrainModule(ctx: RenderContext): TerrainModule {
       _projView.multiplyMatrices(ctx.camera.projectionMatrix, ctx.camera.matrixWorldInverse);
       _frustum.setFromProjectionMatrix(_projView);
       for (const c of cells) c.mesh.visible = _frustum.intersectsBox(c.box);
+
+      // 远景(天穹 / 云海 / 远山)只在视野够得着高原边缘时才画：对局镜头俯角大，四个视锥角都落在边界附近的地面上时它们一个像素也露不出来
+      let skyOn = ctx.rig.isDebugView;
+      if (!skyOn) {
+        const cam = ctx.camera;
+        const far = map.bound + SKY_VIEW_MARGIN;
+        _camPos.setFromMatrixPosition(cam.matrixWorld);
+        for (let i = 0; i < 4 && !skyOn; i++) {
+          _corner.set(i & 1 ? 1 : -1, i & 2 ? 1 : -1, 0.5).unproject(cam).sub(_camPos);
+          if (_corner.y > -1e-4) skyOn = true;
+          else {
+            const t = -_camPos.y / _corner.y;
+            skyOn = Math.max(Math.abs(_camPos.x + _corner.x * t), Math.abs(_camPos.z + _corner.z * t)) > far;
+          }
+        }
+      }
+      sky.visible = skyOn;
 
       // 草丛里的可见单位把草拨开；玩家自己所在的草丛再额外伏低
       const st = frame.state;
@@ -321,6 +382,7 @@ export function createTerrainModule(ctx: RenderContext): TerrainModule {
       bushes.setQuality(s);
       motes.setQuality(s);
       atmos.setQuality(s);
+      applyRanks(s);
     },
     resize: syncViewport,
     dispose() {
@@ -333,3 +395,15 @@ export function createTerrainModule(ctx: RenderContext): TerrainModule {
     },
   };
 }
+
+/** 地形模块工厂。同步调用一口气建完；带 staged 入口，供分段构建(加载页)使用 */
+export const createTerrainModule: ((ctx: RenderContext) => TerrainModule) & { staged: (ctx: RenderContext) => Generator<number, TerrainModule, void> } = Object.assign(
+  (ctx: RenderContext): TerrainModule => {
+    const it = buildTerrain(ctx);
+    for (;;) {
+      const r = it.next();
+      if (r.done) return r.value;
+    }
+  },
+  { staged: buildTerrain },
+);

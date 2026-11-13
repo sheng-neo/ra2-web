@@ -73,6 +73,18 @@ export interface GameRenderer {
    * 同步执行，耗时较长(放在加载页后面)。不调用也可以：第一次 render() 会自动做一遍；切换画质后下一帧会自动重做。
    */
   prewarm?(): void;
+  /**
+   * 分步预热(可选扩展)：做的事与 prewarm() 相同，但拆成几十个小段，段与段之间让出主线程；onProgress 收到 0..1 的完成比例。
+   * 加载页用它代替「同步画头两帧」：await renderer.prewarmAsync?.((p) => 进度条(p))，结束后再开始逐帧 render()。
+   * 期间不要调 render()(会被忽略)；中途 dispose() 是安全的(Promise 照常结束)。没有实现时退回 prewarm() 或直接 render()。
+   */
+  prewarmAsync?(onProgress?: (progress: number) => void): Promise<void>;
+  /**
+   * (可选扩展) 顶部界面占用的屏幕矩形(clientX/clientY 坐标系：比分条、当前目标 / 引导卡等)。
+   * 史诗野怪与建筑的头顶出屏时，血条与名牌会压在屏幕上沿——给了这些矩形就落在它们的下面，不被界面盖住。
+   * 不调用时渲染层按 1280×720 基准的缺省布局估算；布局变化(横竖屏、引导卡出现 / 消失)后重新调用即可，传 null 恢复缺省。
+   */
+  setOverlayAvoid?(rects: { left: number; top: number; right: number; bottom: number }[] | null): void;
 }
 
 export interface RendererOptions {
@@ -97,6 +109,9 @@ export interface HeroPreview {
  *     —— 返回英雄头像的 data URL(方形，建议 128px；用 3D 模型离屏渲染半身像并缓存)。
  *   export function detectQuality(): Quality
  *     —— 依据设备(移动端/像素比/GPU 字符串)给出默认画质。
+ *   (可选扩展) export function createGameRendererAsync(container, state, opts, onProgress?): Promise<GameRenderer>
+ *     —— 与 createGameRenderer 结果相同，但场景分段构建、段间让出主线程；onProgress 收到 0..1 的完成比例。
  */
 export type CreateGameRenderer = (container: HTMLElement, state: GameState, opts: RendererOptions) => GameRenderer;
 export type CreateHeroPreview = (canvas: HTMLCanvasElement, heroId: HeroId) => HeroPreview;
+export type CreateGameRendererAsync = (container: HTMLElement, state: GameState, opts: RendererOptions, onProgress?: (progress: number) => void) => Promise<GameRenderer>;

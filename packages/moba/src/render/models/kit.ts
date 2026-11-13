@@ -181,6 +181,37 @@ function posHash(x: number, y: number, z: number, seed: number): number {
   return (h >>> 0) / 4294967296;
 }
 
+/**
+ * 模型几何的分通道减面信息(ModelBuilder.build 写在 geometry.userData.lod)：索引已按「描边的形体从大到小 → 不描边的形体」排好，
+ * sizes[i] 是第 i 个描边形体的包围盒最大边(米，模型空间，未乘模型缩放；从大到小)，ends[i] 是画到它为止的索引数。
+ */
+export interface GeometryLod {
+  sizes: number[];
+  ends: number[];
+  /** 全部描边形体的索引数(描边壳画到这里为止：不描边的形体线宽为 0，画了也看不见) */
+  outlined: number;
+  total: number;
+}
+
+/**
+ * 「只画包围盒最大边不小于 minSize(米，模型空间)的描边形体」时该画的索引数：给 geometry.setDrawRange(0, n) 用。
+ * minSize ≤ 0 = 全部描边形体。几何不是 ModelBuilder 建的(没有减面信息)时返回 Infinity = 整个都画。
+ */
+export function lodIndexCount(geometry: THREE.BufferGeometry, minSize: number): number {
+  const lod = geometry.userData.lod as GeometryLod | undefined;
+  if (!lod) return Infinity;
+  if (minSize <= 0) return lod.outlined;
+  // sizes 从大到小：二分找最后一个 ≥ minSize 的
+  let lo = 0;
+  let hi = lod.sizes.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (lod.sizes[mid] >= minSize) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo > 0 ? lod.ends[lo - 1] : 0;
+}
+
 export class ModelBuilder {
   readonly pos: number[] = [];
   readonly nor: number[] = [];
@@ -216,6 +247,8 @@ export class ModelBuilder {
   private soft: SoftBind | null = null;
   private m = new THREE.Matrix4();
   private stack: THREE.Matrix4[] = [];
+  /** 每次形体写入对应的一段索引(起点、长度)、形体包围盒的最大边(米)、是否描边：build() 按它重排索引(见 GeometryLod) */
+  private prims: { start: number; count: number; size: number; outlined: boolean }[] = [];
 
   get vertexCount(): number {
     return this.pos.length / 3;
@@ -285,6 +318,7 @@ export class ModelBuilder {
    */
   emit(P: number[], T: number[], G: number[] | null = null, crease = this.crease): void {
     const n = P.length / 3;
+    const idx0 = this.idx.length;
     const e = this.m.elements;
     const flip = this.m.determinant() < 0;
     const W = new Float32Array(P.length);
@@ -387,6 +421,23 @@ export class ModelBuilder {
         }
         this.idx.push(found);
       }
+    }
+    if (this.idx.length > idx0) {
+      let x0 = Infinity;
+      let y0 = Infinity;
+      let z0 = Infinity;
+      let x1 = -Infinity;
+      let y1 = -Infinity;
+      let z1 = -Infinity;
+      for (let i = 0; i < n; i++) {
+        x0 = Math.min(x0, W[i * 3]);
+        x1 = Math.max(x1, W[i * 3]);
+        y0 = Math.min(y0, W[i * 3 + 1]);
+        y1 = Math.max(y1, W[i * 3 + 1]);
+        z0 = Math.min(z0, W[i * 3 + 2]);
+        z1 = Math.max(z1, W[i * 3 + 2]);
+      }
+      this.prims.push({ start: idx0, count: this.idx.length - idx0, size: Math.max(x1 - x0, y1 - y0, z1 - z0), outlined: this.lineW > 0 });
     }
   }
 
@@ -857,7 +908,23 @@ export class ModelBuilder {
       ol[i * 4 + 3] = Math.round(sat(this.line[i]) * 127);
     }
     g.setAttribute('aOutline', new THREE.BufferAttribute(ol, 4, true));
-    g.setIndex(n > 65535 ? new THREE.Uint32BufferAttribute(this.idx, 1) : new THREE.Uint16BufferAttribute(this.idx, 1));
+    // 索引重排(只换三角形的先后，画出来的结果不变)：描边的形体按尺寸从大到小排在前面，不描边的(五官、发光嵌线、弓弦)排在最后。
+    // 这样「尺寸不小于某个阈值的描边形体」永远是索引的一段前缀——阴影 / 透视剪影 / 描边壳这几个只看轮廓的通道
+    // 用 drawRange 只画这段前缀，就能跳过在各自通道里看不出差别的小件(见 lodIndexCount 与 units/index.ts)。
+    const order = this.prims.map((p, i) => ({ p, i })).sort((a, b) => (a.p.outlined === b.p.outlined ? b.p.size - a.p.size || a.i - b.i : a.p.outlined ? -1 : 1));
+    const idx: number[] = new Array(this.idx.length);
+    const lod: GeometryLod = { sizes: [], ends: [], outlined: 0, total: this.idx.length };
+    let w = 0;
+    for (const { p } of order) {
+      for (let k = 0; k < p.count; k++) idx[w++] = this.idx[p.start + k];
+      if (p.outlined) {
+        lod.sizes.push(p.size);
+        lod.ends.push(w);
+        lod.outlined = w;
+      }
+    }
+    g.userData.lod = lod;
+    g.setIndex(n > 65535 ? new THREE.Uint32BufferAttribute(idx, 1) : new THREE.Uint16BufferAttribute(idx, 1));
     g.computeBoundingBox();
     g.computeBoundingSphere();
     return g;

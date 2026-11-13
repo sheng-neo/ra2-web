@@ -31,13 +31,29 @@ const EDGE_N_PORTRAIT = 0.6;
 const EDGE_S = 0.5;
 const EDGE_S_PORTRAIT = 0.35;
 const EDGE_X = 0.5;
-/** 瞄准前探：落点要进入的安全框(NDC)，以及前探时英雄自己最多被推到屏幕的哪里 */
+/**
+ * 瞄准前探：落点要进入的安全框(NDC)，以及前探时英雄自己最多被推到屏幕的哪里。
+ * 下沿：横屏 0.66(屏高 83% 处，状态栏之上)；竖屏下半屏是摇杆与技能键，收到 0.35(屏高 67% 处)。
+ * 英雄上限 0.4(屏高 30% 处)：再高就顶进顶栏和它下面的指引卡里了。
+ */
 const REACH_TOP = 0.8;
 const REACH_BOTTOM = 0.66;
+const REACH_BOTTOM_PORTRAIT = 0.35;
 const REACH_X = 0.86;
-const REACH_HERO_TOP = 0.55;
+const REACH_HERO_TOP = 0.4;
 const REACH_HERO_BOTTOM = 0.5;
 const REACH_HERO_X = 0.6;
+/**
+ * 鼠标瞄准落点型技能时的「按指针位置下探」：指针的屏幕纵坐标从 POINTER_START 往下到 POINTER_FULL(NDC，负 = 屏幕下半)，
+ * 镜头向南的偏移从 0 线性加到「刚好让最大射程落在 POINTER_FULL 处」。偏移只由指针在屏幕上的位置和技能射程决定，
+ * 与指针底下的地面点无关——不存在「镜头一动落点跟着跑」的回路。竖屏下沿收紧(同 REACH_BOTTOM)。
+ */
+const POINTER_START = -0.1;
+const POINTER_FULL = 0.72;
+const POINTER_FULL_PORTRAIT = 0.35;
+/** 高个子取景：玩家贴着史诗野怪(巨灵 8 米多、巨龙近 6 米)时，注视点北移、镜头略拉远，让它的上半身进画面 */
+const TALL_SHIFT = 2.6;
+const TALL_ZOOM = 0.13;
 
 export interface CameraBounds {
   minX: number;
@@ -64,6 +80,11 @@ export class CameraRig {
   private reach: THREE.Vector3 | null = null;
   private reachX = 0;
   private reachZ = 0;
+  /** 指针下探：目标偏移(米，向南为正) */
+  private pointerPan = 0;
+  /** 高个子取景：目标(0/1)与当前缓动值 */
+  private tallWant = 0;
+  private tallK = 0;
   private aspect = 16 / 9;
   private follow = new THREE.Vector3();
   private peek: THREE.Vector3 | null = null;
@@ -148,6 +169,28 @@ export class CameraRig {
     else (this.reach ??= new THREE.Vector3()).set(x, 0, z);
   }
 
+  /**
+   * 鼠标瞄准落点型技能：ndcY = 落点在屏幕上的纵坐标(NDC，+1 = 上沿)，range = 技能射程(含想露出来的落点圈余量)。
+   * 传 null 结束。与 setReach 互斥(设了 reach 时以 reach 为准)。
+   */
+  setPointerReach(ndcY: number | null, range = 0): void {
+    if (ndcY === null) {
+      this.pointerPan = 0;
+      return;
+    }
+    const full = -(POINTER_FULL + (POINTER_FULL_PORTRAIT - POINTER_FULL) * this.tall);
+    // 不偏移时，指针放在 full 处能够到英雄以南多远
+    const reachable = this.groundZ(full) - this.lead;
+    const max = Math.max(0, range - reachable);
+    const k = Math.min(1, Math.max(0, (POINTER_START - ndcY) / (POINTER_START - full)));
+    this.pointerPan = max * k * k * (3 - 2 * k);
+  }
+
+  /** 高个子取景开关(缓入缓出，约 0.4 秒) */
+  setTallFocus(on: boolean): void {
+    this.tallWant = on ? 1 : 0;
+  }
+
   /** 俯瞰全图的调试相机 */
   setTopView(on: boolean, half = 76): void {
     this.topView = on;
@@ -224,7 +267,7 @@ export class CameraRig {
           const rx = this.reach.x - gx;
           const rz = this.reach.z - gz;
           const zLo = this.groundZ(REACH_TOP);
-          const zHi = this.groundZ(-REACH_BOTTOM);
+          const zHi = this.groundZ(-(REACH_BOTTOM + (REACH_BOTTOM_PORTRAIT - REACH_BOTTOM) * this.tall));
           wantZ = rz - Math.min(zHi, Math.max(zLo, rz));
           // 英雄自己(相对注视点在 lead 处)不能被推得太靠边
           wantZ = Math.min(this.lead - this.groundZ(REACH_HERO_TOP), Math.max(this.lead - this.groundZ(-REACH_HERO_BOTTOM), wantZ));
@@ -232,13 +275,19 @@ export class CameraRig {
           wantX = rx - Math.min(half, Math.max(-half, rx));
           const heroHalf = this.halfWidthAt(this.lead - wantZ) * REACH_HERO_X;
           wantX = Math.min(heroHalf, Math.max(-heroHalf, wantX));
+        } else if (this.pointerPan > 0 && !this.peek) {
+          // 指针下探：只向南，英雄同样不能被推得太靠上
+          wantZ = Math.min(this.lead - this.groundZ(REACH_HERO_TOP), this.pointerPan);
         }
-        const kr = this.snapped ? 1 - Math.exp(-(this.reach ? 7 : 5) * dt) : 1;
+        const kr = this.snapped ? 1 - Math.exp(-(this.reach || this.pointerPan > 0 ? 7 : 5) * dt) : 1;
         this.reachX += (wantX - this.reachX) * kr;
         this.reachZ += (wantZ - this.reachZ) * kr;
+        // 高个子取景(瞄准前探期间让位：两者叠在一起英雄会被推出安全框)
+        const tallTarget = this.reach || this.pointerPan > 0 || this.peek ? 0 : this.tallWant;
+        this.tallK += (tallTarget - this.tallK) * (this.snapped ? 1 - Math.exp(-6 * dt) : 1);
         if (!this.peek) {
           gx += this.reachX;
-          gz += this.reachZ;
+          gz += this.reachZ - TALL_SHIFT * this.tallK;
         }
         // 地图边线最多退到屏幕的 EDGE_* 处(按当前取景换算成注视点的范围)
         const t = this.tall;
@@ -265,8 +314,9 @@ export class CameraRig {
     }
 
     const yaw = this.override ? this.override.yaw * DEG : 0;
-    const ch = Math.cos(this.pitch) * this.distance;
-    const cy = Math.sin(this.pitch) * this.distance;
+    const dist = this.topView || this.override ? this.distance : this.distance * (1 + TALL_ZOOM * this.tallK);
+    const ch = Math.cos(this.pitch) * dist;
+    const cy = Math.sin(this.pitch) * dist;
     cam.position.set(this.focus.x + Math.sin(yaw) * ch, cy, this.focus.z + Math.cos(yaw) * ch);
     cam.up.set(0, 1, 0);
     if (this.topView) cam.up.set(0, 0, -1);

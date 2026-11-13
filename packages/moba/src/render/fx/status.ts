@@ -36,6 +36,9 @@ const GOLD_HOT = col(0xfff2b0);
 const ROOT = THEME.panyue;
 const FROST = col(0x58c0ff);
 const FROST_DEEP = col(0x2a6cf0);
+/** 通用减速的「拖滞」色：灰紫蓝，不带冰雪意象(冰霜只属于蓝buff 与霜晶巨鹿；王昭君的减速也走这一套) */
+const DRAG = col(0xa4a8ee);
+const DRAG_DEEP = col(0x4c4fa6);
 const SHIELD = col(0xa8d8ff);
 const SHIELD_AMBER = col(0xffc060);
 const EMBER = col(0xff6a2a);
@@ -188,13 +191,13 @@ const DEFS: Partial<Record<BuffId, StatusDef>> = {
       }
     },
   },
-  // 减速：脚下冰蓝减速环
+  // 减速：脚下一圈灰紫的拖滞环(虚线圈 + 向内收的旋纹)，腿边不断有短线往地上坠——读成「被拖住、迈不开」，不是「被冻住」
   slow: {
     create(k, v) {
       const s = holdDecal(k, v, DECAL.swirl, 0.15);
-      k.decals.at(s).params(5, -1.5).color(FROST, 1.0, 0.75).under(FROST_DEEP, 0.15);
+      k.decals.at(s).params(3, 2.4).color(DRAG, 0.9, 0.7).under(DRAG_DEEP, 0.18);
       const e = holdDecal(k, v, DECAL.range, 0.15);
-      k.decals.at(e).params(0.04, 0).color(FROST, 1.4, 0.75).under(C.shadow, 0.2);
+      k.decals.at(e).params(0.05, 12).color(DRAG, 1.25, 0.75).under(C.shadow, 0.2);
     },
     update(k, v, a, b, dt) {
       // 减速越重，环越大越亮
@@ -202,9 +205,13 @@ const DEFS: Partial<Record<BuffId, StatusDef>> = {
       const rad = a.radius + 0.4 + b.value * 0.5;
       k.decals.at(v.slots[0]).at(a.x, a.z).radius(rad).alpha(0.45 + 0.3 * strength);
       k.decals.at(v.slots[1]).at(a.x, a.z).radius(rad);
-      for (let n = due(k, v, dt, 3); n > 0; n--) {
+      // 拖滞线：从膝盖高度竖直坠向地面的短线(减速越重越密)
+      for (let n = due(k, v, dt, 5 + 6 * strength); n > 0; n--) {
         const t = k.rnd.next() * TAU;
-        k.particles.use(P.frost).spawn(a.x + Math.cos(t) * rad * 0.8, a.y + k.rnd.range(0.1, 0.5), a.z + Math.sin(t) * rad * 0.8, 0, 0.5, 0, 0.8, 0.3, 0.14);
+        k.particles
+          .use(P.streak)
+          .tint(DRAG, DRAG_DEEP)
+          .spawn(a.x + Math.cos(t) * rad * 0.75, a.y + k.rnd.range(0.5, 1.0), a.z + Math.sin(t) * rad * 0.75, 0, -1.5, 0, 0.4, 0.16, 0.05);
       }
     },
   },
@@ -233,13 +240,19 @@ const DEFS: Partial<Record<BuffId, StatusDef>> = {
   },
   // 加速：风痕(移动时在身后拉出一道道流线；站定时脚边几道打转的细风线——不再用绕飞的风叶)
   haste: {
+    create(k, v) {
+      // 脚下一圈淡淡的风旋：站定时风线细，靠它保证「身上有加速」一眼看得见
+      const s = holdDecal(k, v, DECAL.swirl, 0.2);
+      k.decals.at(s).params(3, -1.8).color(WIND.glow, 0.9, 0.4).under(WIND.deep, 0.06);
+    },
     update(k, v, a, _b, dt) {
       const u = a.unit;
       if (!u) return;
       const vx = (u.pos.x - u.prevPos.x) / TICK_DT;
       const vz = (u.pos.y - u.prevPos.y) / TICK_DT;
       const sp = Math.hypot(vx, vz);
-      for (let n = due(k, v, dt, sp > 0.5 ? 26 : 8); n > 0; n--) {
+      k.decals.at(v.slots[0]).at(a.x, a.z).radius(a.radius + 0.6).alpha(sp > 0.5 ? 0.2 : 0.42);
+      for (let n = due(k, v, dt, sp > 0.5 ? 26 : 16); n > 0; n--) {
         const r = k.rnd;
         const ox = r.signed() * (a.radius + 0.35);
         const oz = r.signed() * (a.radius + 0.35);
@@ -248,7 +261,7 @@ const DEFS: Partial<Record<BuffId, StatusDef>> = {
             .use(P.streak)
             .tint(WIND.glow, WIND.deep)
             .spawn(a.x + ox - (vx / sp) * 0.4, a.y + r.range(0.2, 1.6), a.z + oz - (vz / sp) * 0.4, -vx * 0.7, r.signed() * 0.3, -vz * 0.7, 0.34, 0.2, 0.07);
-        } else k.particles.use(P.streak).tint(C.white, WIND.glow).orbit(a.x, a.y + r.range(0.15, 0.6), a.z, a.radius + 0.3, a.radius + 0.55, r.next() * TAU, 8, r.range(0.3, 1), 0.3, 0.14, 0.04);
+        } else k.particles.use(P.streak).tint(C.white, WIND.glow).orbit(a.x, a.y + r.range(0.15, 0.75), a.z, a.radius + 0.3, a.radius + 0.6, r.next() * TAU, 8, r.range(0.3, 1), 0.44, 0.24, 0.07);
       }
     },
   },
