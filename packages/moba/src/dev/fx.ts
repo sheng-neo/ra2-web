@@ -1120,10 +1120,10 @@ PLAYS.set('dbg:hero', () => {
     const p = at(f, r);
     return d.at(d.hold(type, 0)).at(p.x, p.y).radius(radius);
   };
-  hold(DECAL.ink, -5.2, 0.2, 2.6).rot(stageDir, 0.22).params(0, 1).color(new THREE.Color(0xe8f0ff), 1.6, 1).under(ink, 0.8);
+  hold(DECAL.ink, -5.4, 0.2, 2.4).rot(stageDir, 0.22).params(0, 1).color(new THREE.Color(0xe8f0ff), 1.6, 1).under(ink, 0.8);
   // 帛卷是按寿命铺开的：用一次性贴花(寿命很长，铺开只占开头一瞬)才看得到全貌
   const sp = at(0.4, 0.2);
-  d.add(DECAL.scroll, sp.x, sp.y, 2.6, 120).rot(stageDir, 0.12).params(0.002, 1.3).color(ink, 1, 1).under(new THREE.Color(0xf0e6cc), 0.6);
+  d.add(DECAL.scroll, sp.x, sp.y, 2.6, 40).rot(stageDir, 0.15).params(0.01, 1.3).color(ink, 1, 1).under(new THREE.Color(0xf0e6cc), 0.6);
   hold(DECAL.rings, 5.2, -2.8, 1.6).params(4, 0.6).color(new THREE.Color(0xf2f8ff), 1.5, 1).under(new THREE.Color(0x141a3c), 0.3);
   hold(DECAL.rings, 5.2, 0.9, 1.6).params(3, 2).color(new THREE.Color(0x8cc4ff), 1.3, 1).under(new THREE.Color(0x141a3c), 0.3);
   hold(DECAL.shieldMark, -5.6, 3.4, 1.7).rot(stageDir, 0.72).params(1, 0.4).color(new THREE.Color(0xffc44e), 1.8, 1).under(new THREE.Color(0x120c20), 0.8);

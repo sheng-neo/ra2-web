@@ -92,6 +92,11 @@ const s1Dash: FxHandler = (k, e) => {
   // 「侧其盾以撞」：盾影顶在身前，偏转约 25°，略向后仰
   const plate = shieldPlate(k, dx * 0.95, 0.05, dz * 0.95, facing, 2.5, dur + 0.1, T.hot, 1.9, 0.95, 0.2, 0.44, 0.1).follow(id);
   plate.fade(0.12, 0.75);
+  // 盾前被推开的两道弧形气浪(水平的月牙，弧顶朝前)：盾影在东西向冲撞时正好侧对镜头，俯视下靠它读出「顶着盾往前撞」
+  for (let i = 0; i < 2; i++) {
+    const arc = slashArc(k, dx * (0.55 - i * 0.35), 1.3 - i * 0.9, dz * (0.55 - i * 0.35), facing, 1.9 + i * 0.5, dur + 0.1, i === 0 ? T.hot : T.glow, i === 0 ? 2.2 : 1.5, 0, false, 0.95).follow(id);
+    arc.scale(1.4 + i * 0.4, 1.9 + i * 0.5).fade(0.15, 0.7).k = 0.66;
+  }
   let acc = 0;
   k.track(id, dur, (a, _t, dt) => {
     acc += dt;
@@ -120,6 +125,9 @@ const s1Impact: FxHandler = (k, e, env) => {
   hitBurst(k, x + dx * 0.9, 1.0, z + dz * 0.9, 2.2, T.hot, T.deep, dx, dz, 8, FX_RULES.flashSkill, 10);
   // 撞实的一瞬：盾影放大后迅速隐去
   shieldPlate(k, x + dx * 1.0, 0.05, z + dz * 1.0, facing, 2.9, 0.26, T.hot, 2.3, 1, 0.3, 0, 0.06).vel(dx * 2.5, 0, dz * 2.5).fade(0.04, 0.3);
+  // 撞出去的一道弧形冲击(水平月牙，向前推开)
+  const bow = slashArc(k, x - dx * 0.3, 1.0, z - dz * 0.3, facing, R0 * 0.95, 0.26, T.hot, 2.3, 0, false);
+  bow.scale(R0 * 0.55, R0 * 0.98).vel(dx * 3, 0, dz * 3).fade(0.04, 0.35).k = 0.7;
   ring(k, x, z, R0, 0.4, T.glow, 1.9, 0.15, 0.4);
   k.decals.add(DECAL.cracks, x, z, R0 * 0.95, 1.4).params(0, 0.25).color(T.glow, 1.7).under(C.shadow, 0.85);
   shockArcs(k, x, z, 4, R0 * 0.72, 1.25, 0.3, facing + Math.PI / 4, 5);
@@ -204,7 +212,7 @@ const ultLand: FxHandler = (k, e, env) => {
   ring(k, x, z, R0, 0.5, T.glow, 2.1, 0.3, 0.45, 0.12);
   shockArcs(k, x, z, 6, R0 * 0.55, 1.7, 0.34, r.next() * TAU, 7);
   shockArcs(k, x, z, 6, R0 * 0.9, 1.5, 0.3, r.next() * TAU, 5, 0.1);
-  k.decals.add(DECAL.cracks, x, z, R0 * 1.04, fixedValue(ULT, 'zoneDur') + 0.4).params(0, 0.3).color(T.glow, 1.8).under(C.shadow, 0.9);
+  k.decals.add(DECAL.cracks, x, z, R0 * 1.04, fixedValue(ULT, 'zoneDur') + 0.4).params(0, 0.1).color(T.glow, 1.25).under(C.shadow, 0.9);
   boulders(k, x, z, 4, 7, 9.5, 0.42);
   clods(k, x, z, 22, 8.5, 11, R0 * 0.5, 0.34);
   dustRing(k, x, z, 16, R0 * 0.55, 6.5, C.dust, C.dustDark, 2.1, 1.2);

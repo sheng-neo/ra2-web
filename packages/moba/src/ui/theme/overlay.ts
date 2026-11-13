@@ -154,6 +154,23 @@ let tipOwner: HTMLElement | null = null;
 let tipTimer = 0;
 let tipDocBound = false;
 
+/**
+ * 鼠标最近一次真实事件(移动 / 按下)的位置。元素自己出现在静止的光标底下时，浏览器也会补发 pointerenter
+ * (例如开局那一刻，道具栏正好落在刚点过的「开始对战」按钮的位置)——这种不是玩家移上去的「悬停」不该弹提示。
+ * 补发的事件坐标与上一次真实事件相同，据此分辨。模块加载时挂一次，全程只有这两个监听。
+ */
+let mouseX = NaN;
+let mouseY = NaN;
+if (typeof window !== 'undefined') {
+  const track = (ev: PointerEvent): void => {
+    if (ev.pointerType !== 'mouse') return;
+    mouseX = ev.clientX;
+    mouseY = ev.clientY;
+  };
+  window.addEventListener('pointermove', track, { capture: true, passive: true });
+  window.addEventListener('pointerdown', track, { capture: true, passive: true });
+}
+
 /** 全局只挂一个监听：点到提示目标以外的地方就收起（触控时没有 pointerleave 可依赖） */
 function bindTipDismiss(): void {
   if (tipDocBound) return;
@@ -228,11 +245,17 @@ export function attachTooltip(target: HTMLElement, content: () => string | Node,
   let downX = 0;
   let downY = 0;
 
+  /** 光标没动、是元素自己出现在它底下：先不弹，等鼠标真的动了再弹 */
+  let waitMove = false;
+
   const open = (): void => showTip(target, content());
   const onEnter = (ev: PointerEvent): void => {
-    if (ev.pointerType === 'mouse') open();
+    if (ev.pointerType !== 'mouse') return;
+    if (ev.clientX === mouseX && ev.clientY === mouseY) waitMove = true;
+    else open();
   };
   const onLeave = (ev: PointerEvent): void => {
+    waitMove = false;
     if (ev.pointerType === 'mouse' && tipOwner === target) hideTip();
   };
   const autoHide = (): void => {
@@ -254,7 +277,13 @@ export function attachTooltip(target: HTMLElement, content: () => string | Node,
     }
   };
   const onMove = (ev: PointerEvent): void => {
-    if (ev.pointerType === 'mouse') return;
+    if (ev.pointerType === 'mouse') {
+      if (waitMove) {
+        waitMove = false;
+        open();
+      }
+      return;
+    }
     if (Math.hypot(ev.clientX - downX, ev.clientY - downY) > 10) window.clearTimeout(pressTimer);
   };
   const onUp = (ev: PointerEvent): void => {

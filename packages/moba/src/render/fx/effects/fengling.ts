@@ -3,7 +3,7 @@
  * 不出现气旋、风环、风刃和绕飞的风叶。
  */
 import { HEROES } from '../../../core/data/heroes';
-import { FX_RULES, P, R, dustPuff, pillar, plumes, ring, slashArc } from '../common';
+import { FX_RULES, P, R, dustPuff, grassBits, pillar, plumes, ring, slashArc } from '../common';
 import { DECAL } from '../decals';
 import { MODE, SHAPE } from '../glow';
 import type { FxKit } from '../kit';
@@ -12,17 +12,6 @@ import { type FxHandler, fixedValue } from './types';
 
 const T = THEME.fengling;
 const S2 = HEROES.fengling.skills.s2;
-
-/** 草屑：从 (x, z) 的地面被带起来，(vx, vz) 是整体被吹走的方向 */
-export function grassBits(k: FxKit, x: number, z: number, count: number, spread: number, vx: number, vz: number, up = 2.2, delay = 0): void {
-  const p = k.particles.use(P.grass);
-  const r = k.rnd;
-  const n = k.n(count);
-  for (let i = 0; i < n; i++) {
-    const sz = r.range(0.16, 0.3);
-    p.spawn(x + r.signed() * spread, 0.12, z + r.signed() * spread, vx * r.range(0.5, 1.1) + r.signed() * 0.8, up * r.range(0.5, 1.2), vz * r.range(0.5, 1.1) + r.signed() * 0.8, r.range(0.4, 0.7), sz, sz * 0.8, delay + r.next() * 0.04);
-  }
-}
 
 /** 弓弦回弹：立在弓位的一道竖弧光(弧顶朝前)，一闪即逝 */
 function stringSnap(k: FxKit, x: number, y: number, z: number, facing: number, size: number, pitch = 0): void {

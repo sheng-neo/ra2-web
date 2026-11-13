@@ -153,7 +153,8 @@ const ultStrike: FxHandler = (k, e, env) => {
   for (let i = 0; i < 5; i++) {
     const a = facing + (i - 2) * 0.62 + r.signed() * 0.18;
     const l = r.range(1.1, 1.9) * (i === 2 ? 1.3 : 1);
-    inkStroke(k, x + Math.cos(a) * 0.3, z + Math.sin(a) * 0.3, x + Math.cos(a) * (0.3 + l), z + Math.sin(a) * (0.3 + l), r.range(0.5, 0.75), 1.5, 0.08);
+    // 笔触从外端「起笔」(粗、带一顿)收向目标(细)：读成甩出去的墨，而不是从目标身上长出来的刺
+    inkStroke(k, x + Math.cos(a) * (0.3 + l), z + Math.sin(a) * (0.3 + l), x + Math.cos(a) * 0.2, z + Math.sin(a) * 0.2, r.range(0.55, 0.8), 1.5, 0);
   }
   inkSplat(k, x, y, z, 1.9);
   inkDots(k, x, y, z, 10, 7, dx, dz, 1.3);

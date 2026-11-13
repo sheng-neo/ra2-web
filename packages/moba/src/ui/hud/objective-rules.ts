@@ -603,6 +603,16 @@ export class ObjectiveTracker {
     return false;
   }
 
+  /**
+   * 目标行此刻没在显示(被引导卡盖着、玩家关了提示)时喂入评估结果：没人看得见，不必防抖，直接换成最新的。
+   * 否则它重新露出来的那一下，可能先闪一条已经过时的目标，半秒后才换掉。返回这一次是否换了目标。
+   */
+  feedHidden(cand: Objective | null, now: number): boolean {
+    const cur = this.current;
+    if (!cand || !cur || cand.key === cur.key) return this.feed(cand, now);
+    return this.adopt(cand, now);
+  }
+
   private adopt(o: Objective, now: number): boolean {
     this.current = o;
     this.since = now;

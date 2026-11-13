@@ -62,6 +62,9 @@ const HOVER_HEIGHT = 8.5;
 /** 标签的半宽 / 半高(像素，估值)：摆位时让它不压到箭头 */
 const LABEL_HALF = { w: 66, h: 14 } as const;
 
+/** 玩家英雄头顶名牌(名字 + 血条)的大致范围：半宽(像素)、名牌顶端比头顶高出多少(像素)；估头顶位置用的身高(米) */
+const SELF_PLATE = { halfW: 62, above: 46, height: 3.7 } as const;
+
 /** 贴边箭头要躲开的顶部指引位：多少帧重读一次它的位置(卡片高度会随文案变) */
 const AVOID_EVERY = 12;
 /** 内缩矩形的上边最多被指引位往下推到视口高度的这个比例 */
@@ -101,6 +104,8 @@ export function createSceneArrow(ctx: HudCtx, avoid?: () => HTMLElement | null):
   /** 指引位下沿(相对 HUD 根节点，像素)；0 = 不用躲 */
   let avoidBottom = 0;
   let avoidAge = AVOID_EVERY;
+  /** 朝上指的贴边箭头躲开玩家名牌时往哪一侧挪(1 = 右)；带迟滞，目标方向明显偏到另一侧才换边 */
+  let dodge = 1;
 
   function place(c: HudCtx): void {
     if (!target) return;
@@ -190,6 +195,20 @@ export function createSceneArrow(ctx: HudCtx, avoid?: () => HTMLElement | null):
       const t = Math.min(tx, ty);
       x = cx + sx * t;
       y = cy + sy * t;
+      if (ty <= tx && sy < 0) {
+        // 目标在正北：朝上指的箭头连同它下面的标签会正好压在玩家自己的名字和血条上(指引位又把它往下推了一截)。
+        // 这时沿上边横移到名牌的一侧，箭头方向不变
+        const head = host.worldToScreen(me, SELF_PLATE.height);
+        const hx = head.x - rect.left;
+        const plateTop = head.y - rect.top - SELF_PLATE.above;
+        const labelBottom = y + size + 8 + 2 * LABEL_HALF.h;
+        const clear = SELF_PLATE.halfW + LABEL_HALF.w + 6;
+        if (plateTop < labelBottom + 4 && Math.abs(x - hx) < clear) {
+          if (sx > 0.1) dodge = 1;
+          else if (sx < -0.1) dodge = -1;
+          x = Math.min(x1, Math.max(x0, hx + dodge * clear));
+        }
+      }
       deg = (Math.atan2(sy, sx) * 180) / Math.PI;
       // 标签放在箭头靠屏幕中心的一侧，退到箭尾之后(横着指时要让出标签的半个宽度，竖着指时只要半个高度)
       const back = size + 8 + Math.abs(sx) * LABEL_HALF.w + Math.abs(sy) * LABEL_HALF.h;

@@ -148,8 +148,11 @@ const VIEW_SCALE: Record<UnitKind, number> = { hero: 1.32, minion: 1.28, monster
  * 英雄模型改了身高也不用回来调表。
  */
 const HERO_VIEW_HEIGHT: [number, number] = [3.05, 3.55];
-/** 个别英雄需要偏离上面区间时的手动倍率(乘在自动结果上)；目前没有 */
-const HERO_VIEW_TRIM: Partial<Record<HeroId, number>> = {};
+/**
+ * 个别英雄需要偏离上面区间时的手动倍率(乘在自动结果上)。
+ * 樊哙：他和程咬金都顶到了区间上限，对局里坦克不比战士高；再放大 4%(约 3.69 米、128 像素)，「全场最魁梧」在对局镜头下也成立。
+ */
+const HERO_VIEW_TRIM: Partial<Record<HeroId, number>> = { panyue: 1.04 };
 /** 点选敌方单位时在模型轮廓之外再放宽的像素数 */
 const PICK_SLOP = 20;
 

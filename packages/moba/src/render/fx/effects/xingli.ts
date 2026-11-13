@@ -2,7 +2,7 @@
  * 王昭君 · 月白青 + 弦金：弦(平行的金色细线)、音波(同心细环与弧)、雁(「人」字剪影 + 白羽)、月(圆形柔光)。
  * 不出现星形、晶屑、冰晶、雪花、六角形，也不用焦痕与粗光柱。
  */
-import { FX_RULES, P, R, dustPuff, hoop, pillar, plumes, ring, waveRings } from '../common';
+import { FX_RULES, P, R, dustPuff, goose, hoop, pillar, plumes, ring, waveRings } from '../common';
 import { DECAL } from '../decals';
 import { MODE, SHAPE } from '../glow';
 import type { FxKit } from '../kit';
@@ -25,15 +25,6 @@ function motes(k: FxKit, x: number, y: number, z: number, count: number, speed: 
     const s = speed * r.range(0.35, 1);
     p.spawn(x, y, z, Math.cos(a) * h * s, el * s, Math.sin(a) * h * s, life * r.range(0.6, 1.2), 0.22 * r.range(0.7, 1.3), 0.05, r.range(0, 0.05));
   }
-}
-
-/**
- * 一只雁影：从 (x, y, z) 以速度 (vx, vy, vz) 飞 life 秒。先垫一层深色剪影再画发光的雁，亮地面上轮廓才清楚。
- * size 是精灵边长(翼展约为它的 0.78 倍)。
- */
-export function goose(k: FxKit, x: number, y: number, z: number, vx: number, vy: number, vz: number, life: number, size: number, grow = 1, delay = 0): void {
-  k.particles.use(P.gooseShade).spawn(x, y, z, vx, vy, vz, life, size * 1.1, size * 1.1 * grow, delay);
-  k.particles.use(P.goose).spawn(x, y, z, vx, vy, vz, life, size, size * grow, delay);
 }
 
 /** 余音三叠·共振 @target：三道同心音波环连续外扩 + 一根竖直的金色弦光贯穿 + 金芒 */
@@ -64,9 +55,11 @@ const s1Cast: FxHandler = (k, e) => {
   const z = e.pos.y + dz * 0.8;
   const y = 1.45;
   k.particles.use(P.hitFlash).tint(C.white, T.glow).spawn(x, y, z, 0, 0, 0, FX_RULES.flashBasic, 0.8, 1.3);
-  // 垂直于弹道的两道音波环，向前推出
-  k.glow.spawn(SHAPE.hoop, MODE.hoop, 0.28).at(x, y, z).vel(dx * 6, 0, dz * 6).rot(0, -facing, -Math.PI / 2).scale(0.25, 1.15).color(T.glow, 1.8, 0.9).fade(0.1, 0.4);
-  k.glow.spawn(SHAPE.hoop, MODE.hoop, 0.24).at(x, y, z).vel(dx * 11, 0, dz * 11).rot(0, -facing, -Math.PI / 2).scale(0.18, 0.8).color(T.hot, 1.8, 0.9).fade(0.1, 0.4).delay(0.04);
+  // 垂直于弹道的一道音波环向前推出，后面跟两道越荡越开的音波弧
+  k.glow.spawn(SHAPE.hoop, MODE.hoop, 0.26).at(x, y, z).vel(dx * 8, 0, dz * 8).rot(0, -facing, -Math.PI / 2).scale(0.22, 1.05).color(T.glow, 1.8, 0.9).fade(0.1, 0.4);
+  const w = k.particles.use(P.wave).tint(T.hot, T.glow);
+  w.spawn(x, y, z, dx * 9, 0, dz * 9, 0.24, 0.9, 1.7);
+  w.spawn(x, y, z, dx * 6, 0, dz * 6, 0.28, 0.7, 1.4, 0.05);
   // 四弦：四根平行的金色短线，从琴位弹出去
   const p = k.particles.use(P.string);
   for (let i = 0; i < 4; i++) {
@@ -157,8 +150,8 @@ const meteor: FxHandler = (k, e) => {
   const hl = Math.hypot(ox, oz) || 1;
   const wx = (-oz / hl) * 0.72;
   const wz = (ox / hl) * 0.72;
-  // 只画俯冲的后半程：整条路径都亮起来会读成两道从天而降的光线，抢了雁的戏
-  for (const s of [1, -1]) k.ribbons.trace(R.thin, x + ox * 0.45 + wx * s, DIVE.y * 0.45 + 0.3, z + oz * 0.45 + wz * s, x + wx * s, 0.55, z + wz * s, T0 * 0.45, T.hot, T.glow);
+  // 只画俯冲的最后一小段：整条路径都亮起来会读成两道从天而降的光线，抢了雁的戏
+  for (const s of [1, -1]) k.ribbons.trace(R.thin, x + ox * 0.28 + wx * s, DIVE.y * 0.28 + 0.4, z + oz * 0.28 + wz * s, x + wx * s, 0.55, z + wz * s, T0 * 0.28, T.hot, T.glow);
   k.after(T0, () => {
     k.particles.use(P.hitFlash).tint(C.white, T.glow).spawn(x, 0.5, z, 0, 0, 0, FX_RULES.flashSkill, R0 * 0.7, R0 * 1.2);
     // 落地后舒翼一瞬：保持俯冲的朝向(速度与俯冲同向、只取百分之一)，放大着淡去

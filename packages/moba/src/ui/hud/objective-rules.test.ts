@@ -407,6 +407,21 @@ describe('ObjectiveTracker：防抖', () => {
     expect(tr.current).toBeNull();
     expect(tr.feed(mk('a'), 1.5)).toBe(true);
   });
+
+  it('目标行没在显示时(feedHidden)不防抖：直接换成最新的候选', () => {
+    const tr = new ObjectiveTracker();
+    tr.feed(mk('epic_up:1', 7), 0);
+    // 正常防抖下 0.5 秒后的新候选不会被换上来
+    expect(tr.feed(mk('push_lane:top:1'), 0.5)).toBe(false);
+    expect(tr.current?.key).toBe('epic_up:1');
+    // 行被引导卡盖着：直接换
+    expect(tr.feedHidden(mk('push_lane:top:1'), 1)).toBe(true);
+    expect(tr.current?.key).toBe('push_lane:top:1');
+    // 同一个键只换文字；候选为空照常清掉
+    expect(tr.feedHidden(mk('push_lane:top:1'), 1.5)).toBe(false);
+    expect(tr.feedHidden(null, 2)).toBe(true);
+    expect(tr.current).toBe(null);
+  });
 });
 
 describe('全 Bot 对局里的目标提示', () => {

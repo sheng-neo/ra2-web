@@ -6,9 +6,13 @@ three.js 3D 画面，美术与音频全部程序化生成——没有任何外�
 ## 玩法
 
 - 双方各出全部 5 位英雄(樊哙 · 坦克 / 程咬金 · 战士 / 王昭君 · 法师 / 李广 · 射手 / 荆轲 · 刺客)，玩家选 1 位加入蓝方(左下基地)，其余 9 位由 AI 控制。背景一句话：星陨高原的坠星之力召来了不同时代的英杰。
-- 每条路的防御塔要由外向内依次摧毁；任意一路高地塔告破后才能攻击水晶。
-- 补刀、击杀、推塔、打野获得金币，随时随地打开商店购买装备；技能随等级自动加点。
-- 对手难度(简单 / 普通 / 困难)只影响红方 AI。
+- 每条路的防御塔要由外向内依次摧毁(一塔 → 二塔 → 高地塔)；任意一路高地塔告破后才能攻击水晶。
+- 补刀、击杀、推塔、打野获得金币；**自动出装**默认开启——金币够了自动买下推荐出装的下一件(设置面板与商店顶部都能关)，
+  也可以随时随地打开商店自己买。17 件装备的名字直接写作用(如「吸血环首刀」「破甲长戟」「反伤钉盾」)。技能随等级自动加点。
+- 野区：蓝buff(技能冷却更短、回蓝更快) / 红buff(普攻附带灼烧和减速) / 小野怪；河道里有会吐息的河道巨龙(全队金币经验)和远古巨灵(全队增益)。
+- 第一次玩默认开着**新手引导**(移动 → 普攻补兵 → 放技能 → 回城与出装 → 推塔 → 获胜，做到一步自动进下一步，不打断操作)，
+  屏幕上方另有一行「当前目标」提示；两者都能在设置里关，引导可以随时「重看」。
+- 对手难度(简单 / 普通 / 困难)只影响红方 AI；第一次进入默认「程咬金 · 战士 + 简单」。
 
 ## 操作
 
@@ -31,7 +35,7 @@ three.js 3D 画面，美术与音频全部程序化生成——没有任何外�
 pnpm --filter @ra2web/moba dev            # 开发服务器(默认 5183 端口)
 pnpm --filter @ra2web/moba typecheck      # 类型检查
 pnpm exec eslint packages/moba/src        # 代码检查
-pnpm exec vitest run packages/moba        # 单元测试(模拟层 + 主循环)
+pnpm exec vitest run packages/moba        # 单元测试(模拟层 / 主循环 / 界面规则 / 音频)
 pnpm --filter @ra2web/moba build          # 多文件构建 → dist/
 pnpm --filter @ra2web/moba build:single   # 单文件构建 → dist-single/index.html(JS / CSS 全部内联，可离线打开或嵌入其它页面)
 ```
@@ -39,7 +43,7 @@ pnpm --filter @ra2web/moba build:single   # 单文件构建 → dist-single/inde
 自动化的端到端测试请对着构建产物跑(`pnpm --filter @ra2web/moba exec vite preview --port <端口>`)：
 开发服务器带热更新，测试途中任何源文件改动都会让被测页面整页重载。
 
-各模块的画廊 / 自测页只在开发服务器下可访问：`/dev/terrain.html`、`/dev/models.html`、`/dev/fx.html`、`/dev/hud.html`、`/dev/menu.html`、`/dev/audio.html`。
+各模块的画廊 / 自测页只在开发服务器下可访问：`/dev/terrain.html`、`/dev/models.html`、`/dev/heroes.html`、`/dev/fx.html`、`/dev/lookdev.html`、`/dev/scene.html`、`/dev/hud.html`、`/dev/menu.html`、`/dev/audio.html`。
 
 ## 目录与分层
 
@@ -96,6 +100,7 @@ src/dev/、dev/       各层的画廊与自测页(不进生产构建)
 | `speed=<1..64>` | 时间倍率，加速跑完整局 |
 | `quality=low\|medium\|high` | 本次会话的画质 |
 | `fps=1` | 显示帧率 |
+| `autobuy=0\|1` `tutorial=0\|1` `hints=0\|1` | 本次会话的自动出装 / 新手引导 / 当前目标提示开关(不写入存档) |
 
 例：`/?skipmenu=1&auto=1&speed=32&seed=7`。同样的键也可以写在 hash 里(`#skipmenu=1&auto=1`)，
 `#demo` 等于「跳过菜单 + 托管」，`#fps` 等于显示帧率。

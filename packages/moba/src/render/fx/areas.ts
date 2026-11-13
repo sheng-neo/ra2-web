@@ -6,7 +6,7 @@
  */
 import { TICK_DT, type AreaEffect, type AreaVisual, type TeamId } from '../../core/types';
 import type { FrameInfo } from '../engine/context';
-import { P, WARN, dustRing, ring } from './common';
+import { P, WARN, dustRing, goose, ring } from './common';
 import { DECAL } from './decals';
 import { MODE, SHAPE, type FxMesh } from './glow';
 import type { FxKit } from './kit';
@@ -103,9 +103,9 @@ const DEFS: Record<AreaVisual, AreaDef> = {
       hostileEdge(k, v);
       for (let i = 0; i < 3; i++) {
         const m = k.glow.hold(SHAPE.shield, MODE.plate);
-        m.color(TP.accent, 1.0, 0);
+        m.color(TP.hot, 1.15, 0);
         m.add = 0.25;
-        m.k = 0.12;
+        m.k = 0.16;
         v.meshes.push(m);
       }
     },
@@ -118,8 +118,8 @@ const DEFS: Record<AreaVisual, AreaDef> = {
         const a = v.phase + v.age * 1.1 + (i * TAU) / n;
         const m = v.meshes[i];
         // 盾面朝外，贴着身周缓缓转
-        m.at(v.x + Math.cos(a) * 1.55, 0.08, v.z + Math.sin(a) * 1.55).scale(1.55 * grow).rot(0, -a, 0.05);
-        m.a = 0.6 * fade;
+        m.at(v.x + Math.cos(a) * 2.05, 0.08, v.z + Math.sin(a) * 2.05).scale(1.75 * grow).rot(0, -a, 0.05);
+        m.a = 0.85 * fade;
         // 漆光每 1.6 秒自下而上扫一遍，三面错开
         m.progress = (v.age * 0.62 + i / n) % 1;
       }
@@ -267,7 +267,7 @@ const DEFS: Record<AreaVisual, AreaDef> = {
         if (r.chance(0.5)) {
           // 小雁影：与俯冲的雁同一个来向，低低地斜掠过去(不落地)
           const tf = r.range(0.5, 0.65);
-          k.particles.use(P.goose).spawn(x + 3.2, 4.6, z - 2.4, -6.4 / tf, -3.4 / tf, 4.8 / tf, tf, 0.85, 0.95);
+          goose(k, x + 3.2, 4.6, z - 2.4, -6.4 / tf, -3.4 / tf, 4.8 / tf, tf, 0.9, 1.05);
         } else k.particles.use(P.plume).spawn(x, r.range(1.5, 3), z, r.signed() * 0.5, -0.4, r.signed() * 0.5, r.range(0.9, 1.3), 0.34, 0.28);
       }
     },

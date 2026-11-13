@@ -235,6 +235,8 @@ void main() {
 
   float patEdge = 0.0;
   float glowMul = 1.0;
+  // 有纹样的金属面：高光打碎到纹样的棱边上(见下面的高光一节)。1 = 不打碎
+  float specBreak = 1.0;
   #ifdef UNIT_PATTERNS
   int pat = int(vMat.x * 8.0 + 0.5);
   // 屏幕空间导数放在分支外面算(分支里求导在个别驱动上不可靠)
@@ -283,6 +285,7 @@ void main() {
     base *= mix(1.0, toneSum / wSum, k);
     patEdge = edgeSum / wSum * k;
     glowMul = mix(1.0, glowSum / wSum, k);
+    specBreak = mix(1.0, 0.16 + 0.84 * min(1.0, edgeSum / wSum * 1.5), min(1.0, k * 4.0));
   }
   #endif
 
@@ -321,7 +324,17 @@ void main() {
   float sp = pow(saturate(dot(N, H)), sPow);
   // 金属 / 晶体 / 岩，以及只靠旧的 aFx.x 出高光的面：硬边亮斑；皮肤 / 皮革：边缘柔一些
   float hard = cat >= 3 || mp.x == 0.0 ? 0.08 : 0.3;
-  col += sun * RECIPROCAL_PI * smoothstep(0.5 - hard, 0.5 + hard, sp) * sAmt * (1.0 + patEdge) * lit;
+  // 金属的高光带上金属自己的颜色(深色的铁亮得有限，铜与亮钢才接近主光的亮度)。大块平直的甲片会整片对上高光方向：
+  // 原先一律按主光的亮度加上去，深色札甲上就是一块块不规则的米白斑；现在是一片提亮的金属色(最亮的甲片 L* 85~92)
+  // 带纹样的金属(札甲的甲片、陨铁的片晶)再把高光打碎到纹样的棱边上：读成一片片甲缘在反光，而不是整块面翻白；
+  // 远处纹样淡出后只留两成，对局镜头下不再冒零星白点
+  vec3 specCol = sun * RECIPROCAL_PI;
+  float specMask = smoothstep(0.5 - hard, 0.5 + hard, sp);
+  if (cat == 3) {
+    specCol *= 0.3 + base;
+    specMask *= specBreak;
+  }
+  col += specCol * (specMask * sAmt * (1.0 + patEdge) * lit);
   col += sun * RECIPROCAL_PI * base * patEdge * 0.5 * lit;
   // 假环境反射：反射方向朝上取天光(冷)、朝下取地面反光(暖)
   float env = max(mp.w, vFx.x * 0.22);

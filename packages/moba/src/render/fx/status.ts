@@ -480,12 +480,12 @@ const DEFS: Partial<Record<BuffId, StatusDef>> = {
   // 程咬金：半路杀出后的攻速加成 —— 脚下卷尘 + 贴地打转的赤色疾风线
   chijin_blaze: {
     update(k, v, a, _b, dt) {
-      for (let n = due(k, v, dt, 14); n > 0; n--) {
+      for (let n = due(k, v, dt, 20); n > 0; n--) {
         const r = k.rnd;
         const t = r.next() * TAU;
         const d = a.radius + r.range(0.05, 0.35);
-        if (r.chance(0.35)) k.particles.use(P.dust).spawn(a.x + Math.cos(t) * d, a.y + 0.15, a.z + Math.sin(t) * d, Math.sin(t) * 1.2, r.range(0.3, 0.9), -Math.cos(t) * 1.2, 0.45, 0.4, 0.9);
-        else k.particles.use(P.streak).tint(EMBER_HOT, EMBER).orbit(a.x, a.y + r.range(0.12, 0.5), a.z, d, d + 0.25, t, -9, r.range(0.2, 0.8), r.range(0.22, 0.32), 0.14, 0.04);
+        if (r.chance(0.35)) k.particles.use(P.dust).spawn(a.x + Math.cos(t) * d, a.y + 0.15, a.z + Math.sin(t) * d, Math.sin(t) * 1.2, r.range(0.3, 0.9), -Math.cos(t) * 1.2, 0.45, 0.45, 1.0);
+        else k.particles.use(P.streak).tint(EMBER_HOT, EMBER).orbit(a.x, a.y + r.range(0.12, 0.7), a.z, d, d + 0.3, t, -10, r.range(0.2, 0.8), r.range(0.24, 0.34), 0.2, 0.06);
       }
     },
   },
@@ -545,7 +545,7 @@ const DEFS: Partial<Record<BuffId, StatusDef>> = {
           y = k.v.y;
           z = k.v.z;
         }
-        k.sprites.draw(SPRITE.spark, x, y, z, 0.5 + g * 0.9, 0.4, SHADOW.hot, 2.1, g, 0.75, 0.45);
+        k.sprites.draw(SPRITE.spark, x, y, z, 0.4 + g * 0.55, 0.4, SHADOW.hot, 2.1, g, 0.75, 0.45);
       }
       for (let n = due(k, v, dt, 6); n > 0; n--) {
         const r = k.rnd;

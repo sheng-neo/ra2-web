@@ -431,6 +431,26 @@ export function plumes(k: FxKit, x: number, y: number, z: number, count: number,
   }
 }
 
+/**
+ * 一只雁影(王昭君)：从 (x, y, z) 以速度 (vx, vy, vz) 飞 life 秒，头朝飞行方向。先垫一层深色剪影再画发光的雁，亮地面上轮廓才清楚。
+ * size 是精灵边长(翼展约为它的 0.8 倍)，grow 是飞行中放大到的倍率。
+ */
+export function goose(k: FxKit, x: number, y: number, z: number, vx: number, vy: number, vz: number, life: number, size: number, grow = 1, delay = 0): void {
+  k.particles.use(P.gooseShade).spawn(x, y, z, vx, vy, vz, life, size * 1.1, size * 1.1 * grow, delay);
+  k.particles.use(P.goose).spawn(x, y, z, vx, vy, vz, life, size, size * grow, delay);
+}
+
+/** 草屑(李广)：从 (x, z) 的地面被带起来，(vx, vz) 是整体被吹走的方向 */
+export function grassBits(k: FxKit, x: number, z: number, count: number, spread: number, vx: number, vz: number, up = 2.2, delay = 0): void {
+  const p = k.particles.use(P.grass);
+  const r = k.rnd;
+  const n = k.n(count);
+  for (let i = 0; i < n; i++) {
+    const sz = r.range(0.16, 0.3);
+    p.spawn(x + r.signed() * spread, 0.12, z + r.signed() * spread, vx * r.range(0.5, 1.1) + r.signed() * 0.8, up * r.range(0.5, 1.2), vz * r.range(0.5, 1.1) + r.signed() * 0.8, r.range(0.4, 0.7), sz, sz * 0.8, delay + r.next() * 0.04);
+  }
+}
+
 /** 墨点飞溅(荆轲)：从一点甩出去的墨点，(dx, dz) 为主方向，spread 为张角(弧度) */
 export function inkDots(k: FxKit, x: number, y: number, z: number, count: number, speed: number, dx = 0, dz = 0, spread = Math.PI, delay = 0, tint: THREE.Color | null = null): void {
   const p = k.particles.use(P.inkDot);

@@ -30,9 +30,9 @@ const CSS = sfCss(`
 .sf-hud__coach.is-yield { opacity: 0; }
 .sf-hud__coach.is-yield button { pointer-events: none; }
 .sf-hud.is-over .sf-hud__coach { display: none; }
-/* 手机横屏(屏高不足 460px)：两侧让开小地图与右上角 */
+/* 手机横屏(屏高不足 460px)：两侧让开小地图与右上角；贴紧比分条下沿(屏幕矮，指引位下面紧挨着玩家英雄的头顶) */
 @media (orientation: landscape) and (max-height: 460px) {
-  .sf-hud__coach { width: min(440px, calc(100vw - 2 * (var(--hud-mini) + 40u))); }
+  .sf-hud__coach { top: calc(var(--hud-t) + 50u); width: min(440px, calc(100vw - 2 * (var(--hud-mini) + 40u))); }
 }
 /* 竖屏：放在商店按钮那一行的正下方，左右各留 8px */
 @media (orientation: portrait) {
@@ -208,7 +208,8 @@ export function createCoach(ctx: HudCtx, deps: CoachDeps): Coach {
       if (st.time - lastEval >= OBJECTIVE_DEBOUNCE.interval || st.time < lastEval) {
         lastEval = st.time;
         const cand = pickObjective(st, me, c.mode, mem);
-        if (tracker.feed(cand, st.time)) {
+        // 目标行上一帧没在显示(引导卡占着指引位 / 提示关着)：跳过防抖，露出来时就是最新的那条
+        if (row.visible() ? tracker.feed(cand, st.time) : tracker.feedHidden(cand, st.time)) {
           const cur = tracker.current;
           if (cur) {
             if (log.length >= LOG_MAX) log.shift();

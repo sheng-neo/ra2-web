@@ -66,12 +66,16 @@ const CSS = sfCss(`
 @media (prefers-reduced-motion: reduce) { .sf-hud__gglow::before, .sf-hud__gglow::after { animation: none; opacity: 0; } }
 /* 竖屏 / 小屏：卡片内边距收一点 */
 @media (max-width: 480px) { .sf-hud__gcard { padding: 5px 6px 6px 9px; } .sf-hud__gcard-head { gap: 6px; } }
-/* 手机横屏(屏高不足 460px)：卡片正下方就是玩家英雄头顶的血条，压矮一点 */
+/* 手机横屏(屏高不足 460px)：卡片正下方就是玩家英雄头顶的血条，再往北是正在交手的敌人，三行的卡片会把它们盖住。
+   压成一行：徽标(第几课) + 正文 + 跳过；课名与进度点收起。正文短的一行放下，长的折成两行，都比原来矮一行 */
 @media (orientation: landscape) and (max-height: 460px) {
-  .sf-hud__gcard { padding: 4px 6px 5px 9px; }
-  .sf-hud__gcard-head { min-height: 20px; }
-  .sf-hud__gcard-skip { height: 20px; }
-  .sf-hud__gcard-body { margin-top: 1px; line-height: 1.42; }
+  .sf-hud__gcard { padding: 4px 6px 4px 8px; }
+  .sf-hud__gcard.is-on { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; column-gap: 7px; }
+  .sf-hud__gcard-head { display: contents; }
+  .sf-hud__gcard-title, .sf-hud__gcard-dots { display: none; }
+  .sf-hud__gcard-badge { grid-column: 1; grid-row: 1; align-self: start; margin-top: 2px; }
+  .sf-hud__gcard-body { grid-column: 2; grid-row: 1; margin-top: 0; line-height: 1.4; }
+  .sf-hud__gcard-skip { grid-column: 3; grid-row: 1; align-self: start; height: 20px; margin: 1px 0 0; }
 }
 `);
 
