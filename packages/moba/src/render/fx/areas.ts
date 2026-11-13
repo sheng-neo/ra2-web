@@ -139,7 +139,7 @@ const DEFS: Record<AreaVisual, AreaDef> = {
     },
   },
 
-  // ── 樊哙·死且不避落地后的震裂地面：只冒尘，碎土偶尔跳一下 ──
+  // ── 樊哙·跃盾砸阵落地后的震裂地面：只冒尘，碎土偶尔跳一下 ──
   panyue_ult_fissure: {
     create(k, v) {
       zoneEdge(k, v, 0, 1, TP.dark);

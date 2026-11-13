@@ -313,6 +313,8 @@ export async function startMatch(env: MatchEnv, choice: MatchChoice, opts: Match
       setCssGray(!grade && target === 1);
     };
 
+    /** HUD 最近一次报上来的顶部界面占位：渲染器重建后要再交给新的那个 */
+    let overlayAvoid: { left: number; top: number; right: number; bottom: number }[] | null = null;
     const hudHost: HudHost = {
       command: (cmd) => world.command(state.playerId, cmd),
       setAim: (aim) => renderer?.setAim(aim),
@@ -327,6 +329,11 @@ export async function startMatch(env: MatchEnv, choice: MatchChoice, opts: Match
       getFps: () => perf.fps,
       audio,
       portrait: env.portrait,
+      // 渲染层的可选扩展：出屏的史诗野怪 / 建筑血条躲开顶部界面。老版本没有这个方法时什么都不做(渲染层按缺省布局估算)
+      setOverlayAvoid: (rects) => {
+        overlayAvoid = rects;
+        renderer?.setOverlayAvoid?.(rects);
+      },
     };
 
     const hud: HudHandle = createHud(matchEl, hudHost, state, {
@@ -449,6 +456,7 @@ export async function startMatch(env: MatchEnv, choice: MatchChoice, opts: Match
       renderer.resize();
       renderer.render(state, 1, 0);
       renderer.snapCamera?.();
+      if (overlayAvoid) renderer.setOverlayAvoid?.(overlayAvoid);
       // 新渲染器的去色是初始值：让阵亡去色在下一帧重新写入
       grayWritten = -1;
       hadGrade = false;

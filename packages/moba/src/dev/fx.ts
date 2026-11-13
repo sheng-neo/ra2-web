@@ -888,7 +888,7 @@ const SEQ2: Record<string, () => void> = {
     fx('monster_slain', cp(d.pos), { team: 2, unitId: d.id });
     events.push({ type: 'epicSlain', monsterType: 'abyss_drake', team: 0, pos: cp(d.pos) });
   },
-  /** 远古巨灵被击杀：星雨 + 八芒星印，之后全队挂星陨祝福(英雄脚环 + 小兵头顶金星) */
+  /** 星陨巨灵被击杀：星雨 + 八芒星印，之后全队挂星陨祝福(英雄脚环 + 小兵头顶金星) */
   colossus_slain: () => {
     const c = stageMonster('star_colossus', 7, 0);
     c.alive = false;

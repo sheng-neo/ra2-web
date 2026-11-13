@@ -172,7 +172,7 @@ const s2Cast: FxHandler = (k, e, env) => {
   k.shake(involvesPlayer(e, env) ? FX_RULES.shakeSkill : 0.06, x, z);
 };
 
-/** 死且不避·起跳 from → to：蹬裂地面、尘环、几块碎土，身后一道琥珀光尾 */
+/** 跃盾砸阵·起跳 from → to：蹬裂地面、尘环、几块碎土，身后一道琥珀光尾 */
 const ultLeap: FxHandler = (k, e, env) => {
   const from = e.from ?? e.pos;
   const x = from.x;
@@ -193,7 +193,7 @@ const ultLeap: FxHandler = (k, e, env) => {
 };
 
 /**
- * 死且不避·落地 @pos, radius：白闪 → 一枚砸进地面的大盾印 + 三道由内向外的同心冲击弧(最外一道精确到伤害半径)
+ * 跃盾砸阵·落地 @pos, radius：白闪 → 一枚砸进地面的大盾印 + 三道由内向外的同心冲击弧(最外一道精确到伤害半径)
  * → 厚尘浪与碎土块。裂纹贴花留到减速区结束，是之后「震裂地面」的底图。
  */
 const ultLand: FxHandler = (k, e, env) => {

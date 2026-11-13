@@ -3,7 +3,7 @@
  *   - 河道巨龙的吐息：drake_breath_warn(扇形预警 + 口部聚光) / drake_breath(开口锥气流 + 雾团星屑 + 地面渊蚀)，被喷中的单位身上爆开紫色水雾；
  *   - 野怪倒地 monster_slain：按种类换成冰屑 / 余烬 / 孢子 / 鳞粉 / 渊珠碎光 / 星核星雨，节拍对齐 C 包的死亡动作；
  *   - 野怪刷新(monsterSpawn 事件)：霜雾 / 地裂拱出 / 地洞尘土 / 灯花螺旋 / 潭面旋涡水柱 / 陨星砸潭；
- *   - 史诗野怪被击杀(epicSlain 事件)：河道巨龙 ≈3 秒的全队演出、远古巨灵的星雨与八芒星印。
+ *   - 史诗野怪被击杀(epicSlain 事件)：河道巨龙 ≈3 秒的全队演出、星陨巨灵的星雨与八芒星印。
  * 野怪预警统一「琥珀边 + 紫色由内向外推进的填充」，与敌方技能的红、己方的蓝区分开(§5.5)。
  */
 import * as THREE from 'three';
@@ -485,7 +485,7 @@ function homingBand(k: FxKit, id: number, sx: number, sy: number, sz: number, du
   );
 }
 
-/** 史诗野怪被击杀：河道巨龙 = 紫青光带飞向击杀方每位英雄 + 龙鳞纹环；远古巨灵 = 金色星雨 + 八芒星印 */
+/** 史诗野怪被击杀：河道巨龙 = 紫青光带飞向击杀方每位英雄 + 龙鳞纹环；星陨巨灵 = 金色星雨 + 八芒星印 */
 export function epicSlainFx(k: FxKit, x: number, z: number, team: TeamId, type: MonsterType, state: GameState): void {
   const th = teamTheme(team);
   if (type === 'abyss_drake') {
@@ -519,7 +519,7 @@ export function epicSlainFx(k: FxKit, x: number, z: number, team: TeamId, type: 
     }
     return;
   }
-  // 远古巨灵：每位英雄头顶落下金色星雨，脚下八芒星印展开(常驻的星轨环由 status.ts 画)
+  // 星陨巨灵：每位英雄头顶落下金色星雨，脚下八芒星印展开(常驻的星轨环由 status.ts 画)
   pillar(k, x, z, 0.7, 9, 1.0, C.gold, 1.3, 0.6);
   ring(k, x, z, 9, 0.9, th.glow, 1.4, 0.08, 0.25);
   k.light(x, z, 4, C.gold, FX_RULES.lightMax, 16, FX_RULES.lightDur);

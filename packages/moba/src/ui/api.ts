@@ -67,6 +67,11 @@ export interface HudHost {
   audio: AudioEngine;
   /** 英雄头像 data URL */
   portrait(heroId: HeroId): string;
+  /**
+   * (可选) HUD 顶部各块界面此刻占用的屏幕矩形(clientX/clientY 坐标系：比分条、右上角数值牌、小地图、引导卡 / 当前目标 / 横幅)。
+   * 宿主转给渲染层：史诗野怪与建筑的头顶出屏时，血条与名牌落在这些矩形下面而不是被盖住。布局变了 HUD 会重新调用；null = 不再占用。
+   */
+  setOverlayAvoid?(rects: { left: number; top: number; right: number; bottom: number }[] | null): void;
 }
 
 export interface Hud {

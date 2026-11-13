@@ -1,7 +1,7 @@
 /**
  * 「当前目标」行：顶部中央指引位里的一条低调的单行胶囊——「◎ 当前目标  跟着小兵，推掉敌方上路一塔」。
  * 规则与防抖在 objective-rules.ts(纯逻辑)；这里只负责画。不拦截指针。
- * 换目标时文字淡入一下；只变数字(倒计时)不触发动画。warn 琥珀色，go 金色。
+ * 换目标(键变了)时文字淡入一下；只变数字(倒计时)或同一目标换个说法(键不变)不触发动画。warn 琥珀色，go 金色。
  */
 import { uiIcon } from '../icons';
 import { h, icon, injectStyle, sfCss } from '../theme';
@@ -75,8 +75,9 @@ export function createObjectiveRow(): ObjectiveRow {
       if (o.key !== lastKey) {
         lastKey = o.key;
         el.dataset.key = o.key;
-        el.dataset.id = o.id;
       }
+      // 规则 id 单独记：「小兵进塔了，快打塔」与「推掉这座塔」共用一个键，只换文字与规则 id
+      if (el.dataset.id !== o.id) el.dataset.id = o.id;
       if (o.tone !== lastTone) {
         lastTone = o.tone;
         el.classList.toggle('is-warn', o.tone === 'warn');

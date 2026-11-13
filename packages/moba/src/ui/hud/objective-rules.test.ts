@@ -208,12 +208,17 @@ describe('pickObjective：逐条规则', () => {
     expect(help?.text).toBe('队友在打河道巨龙(左上河道)，过去帮忙');
     expect(help?.tone).toBe('go');
     expect(help?.pos).toEqual(def.pos);
-    // 看不见(我方没有视野)或队友不在场：不算
+    // 看不见(我方没有视野)：不算在打(刚才那条先保持几秒再收)
     drake.visible = [false, false];
+    expect(pick(sim, mem)?.key).toBe(`epic_up:${def.id}:help`);
+    (sim.state as GameState).time += OBJECTIVE_TUNE.epicHelpLinger + 1;
     expect(pick(sim, mem)?.id).not.toBe('epic_up');
     drake.visible = [true, false];
     expect(pick(sim, mem)?.key).toBe(`epic_up:${def.id}:help`);
+    // 队友走开：先保持 6 秒(绕着野怪走位时不来回改口)，之后才收起
     place(sim, mate, def.pos.x + 30, def.pos.y);
+    expect(pick(sim, mem)?.key).toBe(`epic_up:${def.id}:help`);
+    (sim.state as GameState).time += OBJECTIVE_TUNE.epicHelpLinger + 1;
     expect(pick(sim, mem)?.id).not.toBe('epic_up');
     place(sim, mate, def.pos.x + 4, def.pos.y);
     (sim.state.units as unknown[]).pop();
@@ -255,6 +260,20 @@ describe('pickObjective：逐条规则', () => {
     const b = pick(sim);
     expect(b?.text).toContain('7 秒后刷新');
     expect(b?.key).toBe(a?.key);
+    // 倒计时被「小兵进塔了，快打塔」顶掉过：这一轮不再回来(免得兵线进进出出时两条来回换)；下一轮照常
+    const mem = createObjectiveMemory();
+    const me = player(sim);
+    const t = tower(sim, 1, 'top', 1);
+    place(sim, me, t.pos.x - 15, t.pos.y);
+    expect(pick(sim, mem)?.id).toBe('epic_soon');
+    const m = spawnMinionAt(sim, 0, 'melee', t.pos.x - 3, t.pos.y, 'top');
+    expect(pick(sim, mem)?.id).toBe('push_now');
+    m.alive = false;
+    expect(pick(sim, mem)?.id).not.toBe('epic_soon');
+    cs.respawnIn = 40;
+    expect(pick(sim, mem)?.id).not.toBe('epic_soon');
+    cs.respawnIn = 9;
+    expect(pick(sim, mem)?.id).toBe('epic_soon');
     cs.respawnIn = 40;
     expect(pick(sim)?.id).not.toBe('epic_soon');
   });

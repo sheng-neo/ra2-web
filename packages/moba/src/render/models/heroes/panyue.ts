@@ -538,7 +538,7 @@ function makeAnims(h: Human): Anims {
     [0.8, s2Down, E.lin],
     [1, guard, E.io],
   ]);
-  // 大招·死且不避(跃击)：蹲 → 腾空时剑盾张开 → 下落时人压在盾上砸地
+  // 大招·跃盾砸阵(跃击)：蹲 → 腾空时剑盾张开 → 下落时人压在盾上砸地
   const crouch = kp(h, stance, { hipsPos: [0, -0.28, 0], hips: [18, 0, 0], chest: [10, 0, 0], armR: [20, 0, -30], propR: [80, -10, 0] });
   const lRise = kp(h, null, {
     hips: [-16, 0, 0],

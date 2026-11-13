@@ -367,7 +367,7 @@ function makeAnims(h: Human): Anims {
     [0.5, s2Hit, E.in3],
     [1, s2Hit, E.lin],
   ]);
-  // 大招·图穷匕见：左手持轴向前抖开图卷，右手匕首从卷尾翻出，随即俯身收束
+  // 大招·卷尽匕现：左手持轴向前抖开图卷，右手匕首从卷尾翻出，随即俯身收束
   const unroll = kp(h, stance, { hipsPos: [0, -0.1, 0.04], hips: [6, -10, 0], chest: [4, -6, 0], head: [6, 6, 0], armL: [-80, 0, 10], foreL: [-10, 0, 0], propL: [0, 0, 0], armR: [-60, 0, -20], foreR: [-60, 20, 0], propR: [-40, 0, 0] });
   const sink = kp(h, stance, { hipsPos: [0, -0.34, 0], hips: [24, 0, 0], spine: [14, 0, 0], chest: [10, 0, 0], head: [10, 0, 0], armL: [-30, 0, 50], foreL: [-100, -30, 0], armR: [-30, 0, -50], foreR: [-100, 30, 0] });
   const vanish = track([

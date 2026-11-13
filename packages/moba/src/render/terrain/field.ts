@@ -34,7 +34,7 @@ export const CORE_PAD_RADIUS = 6.6;
 
 /**
  * 营地主题号(地表/水面着色器的 uCamps / uPits 与贴花、布景共用；见 art-v2 §9.2 I7)：
- * 1 霜晶洼地(蓝buff) / 2 余烬坑(红buff) / 3 树根巢穴(苔背獾) / 4 灯花丛(荧翅蛾) / 5 沉渊潭(河道巨龙) / 6 坠星潭(远古巨灵)
+ * 1 霜晶洼地(蓝buff) / 2 余烬坑(红buff) / 3 树根巢穴(苔背獾) / 4 灯花丛(荧翅蛾) / 5 沉渊潭(河道巨龙) / 6 坠星潭(星陨巨灵)
  */
 export const CAMP_THEME: Record<MonsterType, number> = {
   frost_golem: 1,

@@ -319,6 +319,32 @@ export function createHud(root: HTMLElement, host: HudHost, state: GameState, op
   };
   document.addEventListener('visibilitychange', onVisibility);
 
+  // ── 顶部界面占用的矩形：告诉宿主(渲染层据此把出屏的血条 / 名牌放到界面下面，而不是被盖住) ──
+  const AVOID_EVERY = 0.4;
+  let avoidAt = -Infinity;
+  let avoidKey = '';
+  function reportAvoid(now: number): void {
+    if (!host.setOverlayAvoid || now - avoidAt < AVOID_EVERY) return;
+    avoidAt = now;
+    const rects: { left: number; top: number; right: number; bottom: number }[] = [];
+    const add = (node: Element | null | undefined): void => {
+      if (!node) return;
+      const r = node.getBoundingClientRect();
+      if (r.width < 2 || r.height < 2) return;
+      rects.push({ left: Math.round(r.left), top: Math.round(r.top), right: Math.round(r.right), bottom: Math.round(r.bottom) });
+    };
+    for (const part of top.els) add(part);
+    add(minimap.el);
+    // 指引位里实际显示着的那一块(引导卡或目标行)；横幅正在播时指引位让位，占位置的是横幅
+    if (banner.isShowing()) add(banner.el.firstElementChild);
+    else for (const child of Array.from(coach.els[coach.els.length - 1].children)) add(child);
+    let key = '';
+    for (const r of rects) key += `${r.left},${r.top},${r.right},${r.bottom};`;
+    if (key === avoidKey) return;
+    avoidKey = key;
+    host.setOverlayAvoid(rects);
+  }
+
   let over = false;
 
   function sync(st: GameState): void {
@@ -343,6 +369,7 @@ export function createHud(root: HTMLElement, host: HudHost, state: GameState, op
       }
       if (profiling) profiledUpdate(dtReal);
       else for (let i = 0; i < updaters.length; i++) (updaters[i].update as NonNullable<HudPart['update']>)(ctx, dtReal);
+      reportAvoid(ctx.now);
     },
     handleEvents(events: GameEvent[], st) {
       if (disposed || events.length === 0) return;
@@ -368,6 +395,7 @@ export function createHud(root: HTMLElement, host: HudHost, state: GameState, op
       dismissTooltip();
       host.setAim(null);
       host.setCameraPeek(null);
+      host.setOverlayAvoid?.(null);
       el.remove();
     },
     setShopOpen: (open) => actions.setShop(open),

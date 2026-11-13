@@ -21,7 +21,7 @@ import { type GlowGrid, type ScatterResult, faceDir, trs } from './scatter';
 
 function addBrazier(batch: SceneryBatcher, lib: PropLibrary, look: TeamLook, x: number, y: number, z: number, scale: number, out: ScatterResult, motes: MoteSource[]): void {
   batch.add(lib.brazier, trs(x, y, z, 0.4, scale), { tint: look.stone });
-  batch.add(lib.brazierCrystal, trs(x, y, z, 0.9, scale), { tint: look.glow, glow: 1 });
+  batch.add(lib.brazierCrystal, trs(x, y, z, 0.9, scale), { tint: look.crystalTint, glow: look.crystalGlow });
   out.glows.push({ x, z, y: y + 0.06, r: 2.6 * scale, color: look.glow });
   motes.push({ x, y: y + 2.2 * scale, z, radius: 0.5, color: look.glow, count: 3, mode: 1, range: 1.6, size: 0.8 });
 }
@@ -160,7 +160,7 @@ export function decorateBases(
     const sw = border.southWeight(cx, cz);
     const y = border.heightAt(cx, cz) - 0.3;
     const sc = sw > 0.5 ? 1.5 : 2.3;
-    batch.add(lib.bigCrystals[base.team % lib.bigCrystals.length], trs(cx, y, cz, 0.7, sc), { tint: look.glow, glow: 1 });
+    batch.add(lib.bigCrystals[base.team % lib.bigCrystals.length], trs(cx, y, cz, 0.7, sc), { tint: look.crystalTint, glow: look.crystalGlow });
     out.glows.push({ x: cx, z: cz, y: y + 0.4, r: 7, color: look.glow });
     motes.push({ x: cx, y: y + 1, z: cz, radius: 2.4, color: look.glow, count: 12, mode: 1, range: 5, size: 1.1 });
     // 泉水上升的光点、水晶周围的微粒

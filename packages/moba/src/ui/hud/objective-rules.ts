@@ -50,6 +50,10 @@ export interface ObjectiveMemory {
   epicSince: Map<number, number>;
   /** 已经提示过「刷新了，别一个人去」的营地(每局每种只说一次；之后的刷新横幅会播，目标行不再跟着换) */
   epicTold: Set<number>;
+  /** 营地 id → 最近一次确认「队友在打它」的时间(队友走开一两步时「过去帮忙」不立刻改口) */
+  epicHelpAt: Map<number, number>;
+  /** 这一轮刷新倒计时已经被别的目标打断过的营地：本轮不再提倒计时(刷新后清掉) */
+  epicSoonOff: Set<number>;
   lastId: ObjectiveId | null;
   lastKey: string;
   /** 兜底规则上一次说的是哪一路(被别的目标打断后也记着，回来接着说同一路) */
@@ -65,7 +69,7 @@ export interface ObjectiveMemory {
 }
 
 export function createObjectiveMemory(): ObjectiveMemory {
-  return { epicSince: new Map(), epicTold: new Set(), lastId: null, lastKey: '', pushLane: null, farmSeenAt: -Infinity, groupLane: null, groupAt: -Infinity, groupCand: null, groupCandSince: 0 };
+  return { epicSince: new Map(), epicTold: new Set(), epicHelpAt: new Map(), epicSoonOff: new Set(), lastId: null, lastKey: '', pushLane: null, farmSeenAt: -Infinity, groupLane: null, groupAt: -Infinity, groupCand: null, groupCandSince: 0 };
 }
 
 /**
@@ -92,6 +96,8 @@ export const OBJECTIVE_TUNE = {
   epicMates: [14, 20],
   /** 掉血到这个比例以下才算「在打」(野怪脱战会回满) */
   epicHurt: 0.97,
+  /** 「队友在打，过去帮忙」在条件不再满足后还保持多久(队友绕着野怪走位、暂时出了范围，不来回改口) */
+  epicHelpLinger: 6,
   /** 之后只有人在坑边才提示。设计稿写 30 米，实测上路英雄站在自家一塔下就在 30 米内，会从 2:00 一直提示到龙死，收紧到 18 */
   epicNear: [18, 22],
   epicSoon: 15,
@@ -280,10 +286,18 @@ export function pickObjective(state: GameState, me: HeroUnit, mode: InputMode, m
     const cs = campState(state, def.id);
     if (cs && cs.alive) {
       if (!mem.epicSince.has(def.id)) mem.epicSince.set(def.id, now);
-    } else mem.epicSince.delete(def.id);
+    } else {
+      mem.epicSince.delete(def.id);
+      mem.epicHelpAt.delete(def.id);
+    }
   }
 
   const res = pick();
+  // 倒计时正显示着，被非警告类的目标(快打塔、抓紧推塔…)顶掉了：这一轮倒计时到此为止，不再回来抢位置。
+  // 被警告类(残血、塔在打你、回防)顶掉的不算——警告过去后接着倒计时
+  if (mem.lastId === 'epic_soon' && res && res.id !== 'epic_soon' && res.priority > 3.5 && mem.lastKey.startsWith('epic_soon:')) {
+    mem.epicSoonOff.add(Number(mem.lastKey.slice(10)));
+  }
   mem.lastId = res ? res.id : null;
   mem.lastKey = res ? res.key : '';
   return res;
@@ -400,7 +414,9 @@ export function pickObjective(state: GameState, me: HeroUnit, mode: InputMode, m
         if (since === undefined) continue;
         const d = dist(def.pos, me.pos);
         const wasHelp = was === 'epic_up' && mem.lastKey === `epic_up:${def.id}:help`;
-        const help = matesFighting(state, me, def, T.epicMates[wasHelp ? 1 : 0], wasHelp ? 1 : T.epicHurt);
+        let help = matesFighting(state, me, def, T.epicMates[wasHelp ? 1 : 0], wasHelp ? 1 : T.epicHurt);
+        if (help) mem.epicHelpAt.set(def.id, now);
+        else if (wasHelp && now - (mem.epicHelpAt.get(def.id) ?? -Infinity) <= T.epicHelpLinger) help = true;
         const nearR = T.epicNear[was === 'epic_up' && mem.lastKey === `epic_up:${def.id}` ? 1 : 0];
         // 「刚刷新」只在这只史诗野怪本局第一次出现时提示；显示过这一段(时间到了)就记下，之后的刷新不再提
         const fresh = !mem.epicTold.has(def.id) && now - since < T.epicFresh;
@@ -422,14 +438,18 @@ export function pickObjective(state: GameState, me: HeroUnit, mode: InputMode, m
       }
     }
 
-    // 8. 史诗野怪快刷新了
+    // 8. 史诗野怪快刷新了(这一轮倒计时被「快打塔」之类更要紧的目标打断过，就不再回来：免得两条来回抢位置)
     {
       let best: CampDef | null = null;
       let left = Infinity;
       for (const def of map.camps) {
         if (!MONSTERS[def.monsterType].epic) continue;
         const cs = campState(state, def.id);
-        if (!cs || cs.alive || cs.respawnIn <= 0 || cs.respawnIn > T.epicSoon) continue;
+        if (!cs || cs.alive || cs.respawnIn <= 0 || cs.respawnIn > T.epicSoon) {
+          mem.epicSoonOff.delete(def.id);
+          continue;
+        }
+        if (mem.epicSoonOff.has(def.id)) continue;
         if (cs.respawnIn < left) {
           left = cs.respawnIn;
           best = def;

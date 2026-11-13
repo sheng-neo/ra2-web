@@ -297,6 +297,11 @@ void main() {
   float lit = (a * uRamp.z + b * (1.0 - uRamp.z)) * kitShadow();
   vec3 sun = kitSunColor();
   float ao = vFx.w;
+  #ifndef USE_SHADOWMAP
+  // 没有阴影贴图的画质档(low)：模型没有自阴影，凹处与檐下全靠顶点里烘的遮蔽撑明暗——让它再压一截主光，
+  // 浅色的塔身、城垣才不会整面一个亮度。有阴影贴图的档位不走这里
+  lit *= mix(0.72, 1.0, ao);
+  #endif
   float metal = cat == 3 ? 1.0 : 0.0;
 
   // 技能闪光的点光是按「离地一两米、照亮地面」调的强度；单位就站在光源边上，按平方衰减会比地面亮十倍，
@@ -628,6 +633,11 @@ export function createInstanceLook(): InstanceLook {
 /**
  * 一种模型的实例批：InstancedBufferGeometry(共享模型的顶点缓冲) + 骨骼贴图 + 逐实例属性。
  * 每帧 begin() → 若干次 push() → end()。容量不够时自动翻倍。
+ *
+ * 约定(单位视图的分通道减面依赖它，重构时保留)：本体 / 描边 / 透视剪影三个网格共用同一份索引，
+ * 索引顺序由 models/kit.ts 的 build 排成「描边形体从大到小 → 不描边形体」，各段长度写在 geometry.userData.lod；
+ * units/index.ts 在描边、剪影、阴影通道的渲染前后用 geometry.setDrawRange 只画一段前缀。
+ * 所以这里不能给各通道各建一份几何，也不能改索引顺序。
  */
 export class RigBatch {
   readonly mesh: THREE.Mesh;

@@ -81,7 +81,7 @@ const s2Cast: FxHandler = (k, e) => {
 };
 
 /**
- * 图穷匕见·隐去 @pos, targetId：帛卷从脚下朝目标方向铺开(到目标为止，上限 8 米，0.3 秒由近及远)，
+ * 卷尽匕现·隐去 @pos, targetId：帛卷从脚下朝目标方向铺开(到目标为止，上限 8 米，0.3 秒由近及远)，
  * 人形散成一团墨，原地留一摊晕开的墨渍标出「他刚才在这里」。
  */
 const ultVanish: FxHandler = (k, e) => {
@@ -128,7 +128,7 @@ const ultVanish: FxHandler = (k, e) => {
 };
 
 /**
- * 图穷匕见·现身一击 @target, from → to：起点到落点的一道细白直线 → 目标身上一道自下而上的匕首寒光
+ * 卷尽匕现·现身一击 @target, from → to：起点到落点的一道细白直线 → 目标身上一道自下而上的匕首寒光
  * → 五道短促的墨溅放射 + 几点朱砂 + 几片飘落的帛卷碎片。
  */
 const ultStrike: FxHandler = (k, e, env) => {

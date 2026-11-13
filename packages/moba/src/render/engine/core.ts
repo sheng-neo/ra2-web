@@ -320,7 +320,7 @@ function assembleCore(container: HTMLElement, state: GameState, opts: RendererOp
     else rig.setReach(hx + (dx / d) * len, hz + (dz / d) * len);
   };
 
-  // 高个子取景：玩家贴着史诗野怪(半径 ≥ 1.8 的野怪：河道巨龙 / 远古巨灵)且它不在自己南边时开；带一点迟滞，站在边界上不来回抖
+  // 高个子取景：玩家贴着史诗野怪(半径 ≥ 1.8 的野怪：河道巨龙 / 星陨巨灵)且它不在自己南边时开；带一点迟滞，站在边界上不来回抖
   let tallOn = false;
   const updateTallFocus = (s: GameState): void => {
     const hero = playerOf(s);

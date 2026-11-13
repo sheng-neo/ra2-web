@@ -22,13 +22,39 @@ export interface TeamLook {
   trim: RGB;
   /** 晶体 / 发光 */
   glow: RGB;
+  /**
+   * 装饰晶体(门阙晶、火盆晶、角晶)的本体色：暗 → 亮，以及整簇的色偏与自发光倍率。
+   * 红晶和塔晶 / 水晶(models/structures.ts)同一口径：深绯红 → 朱红，自发光只给蓝方的四成——
+   * 红通道本来就顶满，自发光照蓝方那样给足会把整块晶体冲成粉白。
+   */
+  crystal: [RGB, RGB];
+  crystalTint: RGB;
+  crystalGlow: number;
   /** 旗面 */
   cloth: RGB;
 }
 
 export const TEAM_LOOKS: [TeamLook, TeamLook] = [
-  { stone: rgb(PALETTE.blue.stone), stoneDark: rgb(PALETTE.blue.stoneDark), trim: rgb(PALETTE.blue.trim), glow: rgb(PALETTE.blue.glow), cloth: rgb(0x2f6fe0) },
-  { stone: rgb(0x6a5a62), stoneDark: rgb(PALETTE.red.stoneDark), trim: rgb(PALETTE.red.trim), glow: rgb(PALETTE.red.glow), cloth: rgb(0xd8352c) },
+  {
+    stone: rgb(PALETTE.blue.stone),
+    stoneDark: rgb(PALETTE.blue.stoneDark),
+    trim: rgb(PALETTE.blue.trim),
+    glow: rgb(PALETTE.blue.glow),
+    crystal: [scaleRgb(rgb(PALETTE.blue.glow), 0.7), mixRgb(rgb(PALETTE.blue.glow), [1, 1, 1], 0.35)],
+    crystalTint: rgb(PALETTE.blue.glow),
+    crystalGlow: 1,
+    cloth: rgb(0x2f6fe0),
+  },
+  {
+    stone: rgb(0x6a5a62),
+    stoneDark: rgb(PALETTE.red.stoneDark),
+    trim: rgb(PALETTE.red.trim),
+    glow: rgb(PALETTE.red.glow),
+    crystal: [rgb(0xd63a16), rgb(0xf25a26)],
+    crystalTint: rgb(0xe8481e),
+    crystalGlow: 0.4,
+    cloth: rgb(0xd8352c),
+  },
 ];
 
 const _m = new THREE.Matrix4();
@@ -83,8 +109,8 @@ function makeGatePillar(look: TeamLook): THREE.BufferGeometry {
 /** 门阙顶上悬着的队伍色晶体(发光) */
 function makeGateCrystal(look: TeamLook): THREE.BufferGeometry {
   const b = new MeshBuilder();
-  addCrystal(b, 0, 4.0, 0, 1.15, 0.26, 0, 0, scaleRgb(look.glow, 0.7), mixRgb(look.glow, [1, 1, 1], 0.35), 1, 3);
-  addCrystal(b, 0, 4.05, 0, 0.5, 0.26, Math.PI, 0, scaleRgb(look.glow, 0.7), look.glow, 1, 4);
+  addCrystal(b, 0, 4.0, 0, 1.15, 0.26, 0, 0, look.crystal[0], look.crystal[1], look.crystalGlow, 3);
+  addCrystal(b, 0, 4.05, 0, 0.5, 0.26, Math.PI, 0, look.crystal[0], mixRgb(look.crystal[0], look.crystal[1], 0.6), look.crystalGlow, 4);
   return b.build();
 }
 
