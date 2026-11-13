@@ -45,6 +45,7 @@ const HEAL = col(0x58f088);
 const HEAL_DEEP = col(0x1fc060);
 const SHADOW = THEME.yeque;
 const WIND = THEME.fengling;
+const BLAZE = THEME.chijin;
 const MARK = THEME.xingli;
 const LOCK = col(0xff3a28);
 /** 程咬金斧刃的赤金 */
@@ -211,7 +212,7 @@ const DEFS: Partial<Record<BuffId, StatusDef>> = {
   shield: {
     create(k, v, a, b) {
       const m = k.glow.hold(SHAPE.sphere, MODE.hex);
-      // 磐岳自己的壁垒是琥珀色，其余护盾是冰蓝白
+      // 樊哙自己的壁垒是琥珀色，其余护盾是冰蓝白
       const src = k.anchors.unit(b.sourceId);
       const amber = src !== undefined && src.kind === 'hero' && src.heroId === 'panyue';
       m.color(amber ? SHIELD_AMBER : SHIELD, 1.25, 0);
@@ -477,15 +478,21 @@ const DEFS: Partial<Record<BuffId, StatusDef>> = {
       }
     },
   },
-  // 程咬金：半路杀出后的攻速加成 —— 脚下卷尘 + 贴地打转的赤色疾风线
+  // 程咬金：半路杀出后的攻速加成 —— 脚下一圈贴地打转的赤色疾风(三臂旋涡贴花，带暗衬才压得住亮地面) + 卷起的尘土 + 绕脚的疾风线
   chijin_blaze: {
+    create(k, v) {
+      const s = holdDecal(k, v, DECAL.swirl, 0.15);
+      k.decals.at(s).y(0.07).params(3, -2.4).color(BLAZE.glow, 1.7, 0.9).under(BLAZE.dark, 0.5);
+    },
     update(k, v, a, _b, dt) {
-      for (let n = due(k, v, dt, 20); n > 0; n--) {
+      k.decals.at(v.slots[0]).at(a.x, a.z).radius(a.radius + 0.8);
+      for (let n = due(k, v, dt, 18); n > 0; n--) {
         const r = k.rnd;
         const t = r.next() * TAU;
-        const d = a.radius + r.range(0.05, 0.35);
-        if (r.chance(0.35)) k.particles.use(P.dust).spawn(a.x + Math.cos(t) * d, a.y + 0.15, a.z + Math.sin(t) * d, Math.sin(t) * 1.2, r.range(0.3, 0.9), -Math.cos(t) * 1.2, 0.45, 0.45, 1.0);
-        else k.particles.use(P.streak).tint(EMBER_HOT, EMBER).orbit(a.x, a.y + r.range(0.12, 0.7), a.z, d, d + 0.3, t, -10, r.range(0.2, 0.8), r.range(0.24, 0.34), 0.2, 0.06);
+        const d = a.radius + r.range(0.1, 0.4);
+        if (r.chance(0.4)) k.particles.use(P.dust).spawn(a.x + Math.cos(t) * d, a.y + 0.15, a.z + Math.sin(t) * d, Math.sin(t) * 1.6, r.range(0.3, 0.9), -Math.cos(t) * 1.6, 0.5, 0.5, 1.1);
+        // 风线要够粗：细于两三个像素的橙线在暖色地面上等于没画
+        else k.particles.use(P.streak).tint(EMBER_HOT, BLAZE.deep).orbit(a.x, a.y + r.range(0.15, 0.8), a.z, d, d + 0.35, t, -11, r.range(0.2, 0.8), r.range(0.26, 0.36), 0.36, 0.16);
       }
     },
   },
