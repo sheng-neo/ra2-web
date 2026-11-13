@@ -10,6 +10,7 @@ import type { PlayOpts, VoiceHandle } from './mixer';
 import { MusicEngine } from './music';
 import { SFX } from './sfx';
 import type { SfxKey } from './sfx';
+import { VoiceAnnouncer } from './voice';
 
 type FxEvent = Extract<GameEvent, { type: 'fx' }>;
 
@@ -139,6 +140,8 @@ export class Engine implements AudioEngine {
   private wantTrack: MusicTrack = 'none';
   private hidden = false;
   private disposed = false;
+  /** 人声击杀播报(浏览器语音合成；环境不支持时静默) */
+  private voice = new VoiceAnnouncer();
   private timer = 0;
 
   // 事件处理的缓存
@@ -263,6 +266,7 @@ export class Engine implements AudioEngine {
   /** 页面隐藏时淡出并挂起，恢复时继续(调度器基于 AudioContext 时间，挂起期间自然暂停) */
   private onVisibility = (): void => {
     this.hidden = document.hidden;
+    if (this.hidden) this.voice.stop();
     const ctx = this.ctx;
     const mixer = this.mixer;
     if (!ctx || !mixer) return;
@@ -281,6 +285,7 @@ export class Engine implements AudioEngine {
 
   setVolumes(v: AudioVolumes): void {
     this.vols = { master: v.master, sfx: v.sfx, music: v.music };
+    this.voice.setVolume(v.master * v.sfx);
     if (this.mixer && !this.hidden) this.mixer.setVolumes(v.master, v.sfx, v.music);
     else if (this.mixer) this.mixer.setVolumes(0, v.sfx, v.music);
   }
@@ -332,6 +337,7 @@ export class Engine implements AudioEngine {
     if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', this.onVisibility);
     this.removeGestureListeners();
     if (this.timer) window.clearInterval(this.timer);
+    this.voice.dispose();
     this.music?.dispose();
     this.mixer?.dispose();
     if (this.ctx && this.ctx.state !== 'closed') void this.ctx.close().catch(noop);
@@ -800,6 +806,7 @@ export class Engine implements AudioEngine {
     anns.sort((a, b) => ANN_RANK[b.key] - ANN_RANK[a.key]);
     const now = m.now();
     let when = Math.max(0, this.annFreeAt - now);
+    let spoke = false;
     for (let i = 0; i < anns.length && i < 2; i++) {
       // 排队超过两秒多的播报已经过时，丢弃
       if (when > 2.4) break;
@@ -807,6 +814,8 @@ export class Engine implements AudioEngine {
       const key: SfxKey = `ann_${a.key}`;
       const dark = a.team === 1 && DARKABLE.has(a.key);
       if (!m.play(key, { v: dark ? 1 : 0, when })) continue;
+      // 人声只念这一批里最要紧的那一条，等提示音起头后再开口
+      if (!spoke) spoke = this.voice.say(a.key, dark, when + 0.12);
       const len = SFX[key].len * 0.75;
       // 胜负的冲击音之后紧跟胜负短曲的开头，不要把它压下去
       if (a.key !== 'victory' && a.key !== 'defeat') m.duck(0.5, when + len);
