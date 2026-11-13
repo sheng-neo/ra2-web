@@ -28,7 +28,7 @@ import { type DecalSpec, createDecals, mapDecals } from './decals';
 import { MapField, WATER_LEVEL, bakeSplat, stampStaticShadows } from './field';
 import { SceneryBatcher, applyRankRange, centroid, rgb } from './geo';
 import { MAX_PUSHERS, createBushes } from './grass';
-import { createGround } from './ground';
+import { type GroundTextures, createGround, makeGroundTextures } from './ground';
 import { buildLaneCurbs } from './lanes';
 import { createPropLibrary } from './models';
 import { type MoteSource, createMotes } from './motes';
@@ -100,8 +100,19 @@ function* buildTerrain(ctx: RenderContext): Generator<number, TerrainModule, voi
   const root = ctx.layers.terrain;
   const q = ctx.settings;
 
-  // ── 地表与水面 ──
-  const ground = createGround(field, splat, noise, q, maxAniso);
+  // ── 地表与水面 ──(四张程序贴图一张一段)
+  const texIt = makeGroundTextures(maxAniso);
+  let groundTex: GroundTextures | null = null;
+  for (let n = 1; !groundTex; n++) {
+    const r = texIt.next();
+    if (r.done) groundTex = r.value;
+    else {
+      lap('ground');
+      yield 0.2 + 0.05 * n;
+      resume();
+    }
+  }
+  const ground = createGround(field, splat, noise, q, maxAniso, groundTex);
   root.add(ground.mesh);
   const water = createWater(field, splat, noise, q);
   root.add(water.mesh);
@@ -137,10 +148,18 @@ function* buildTerrain(ctx: RenderContext): Generator<number, TerrainModule, voi
   // ── 墙体断崖(按 32 米分块合并)。先选好壁龛的位置，石台在那里加宽一级 ──
   const nicheSpots = pickNiches(field);
   const cliffBatch = new SceneryBatcher(32);
-  const cliffs: CliffInfo[] = map.walls.map((poly, i) => {
+  const cliffs: CliffInfo[] = [];
+  for (let i = 0; i < map.walls.length; i++) {
+    const poly = map.walls[i];
     const c = centroid(poly);
-    return buildCliff(cliffBatch.at(c.x, c.y, true), poly, 100 + i * 7, { niches: nicheSpots[i] });
-  });
+    cliffs.push(buildCliff(cliffBatch.at(c.x, c.y, true), poly, 100 + i * 7, { niches: nicheSpots[i] }));
+    // 每 8 块墙体让出一次(几十块墙体连着挤出来是一整段几百毫秒)
+    if (i % 8 === 7 && i < map.walls.length - 1) {
+      lap('cliffs');
+      yield 0.45 + 0.1 * ((i + 1) / map.walls.length);
+      resume();
+    }
+  }
   counts.cliffs = cliffBatch.triangleCount;
   const cliffRoot = new THREE.Group();
   cliffRoot.name = 'cliffs';
@@ -164,6 +183,9 @@ function* buildTerrain(ctx: RenderContext): Generator<number, TerrainModule, voi
       cells.push({ mesh, box });
     }
   };
+  lap('cliffs');
+  yield 0.56;
+  resume();
   track(cliffBatch.build(cliffMat, cliffMat, cliffRoot, 'cliff', CREASE_DEG));
   lap('cliffs');
   yield 0.58;
@@ -178,9 +200,13 @@ function* buildTerrain(ctx: RenderContext): Generator<number, TerrainModule, voi
   lap('border');
 
   // ── 点缀物、路缘石、装饰构件、营地布景、基地建筑：全部并进同一组分块网格 ──
+  yield 0.6;
+  resume();
   const lib = createPropLibrary();
   const kit = createPropKit();
   lap('props');
+  yield 0.62;
+  resume();
   const batch = new SceneryBatcher(32);
   const scatter: ScatterResult = createScatterResult();
   const glow = new GlowGrid(8);
@@ -191,6 +217,9 @@ function* buildTerrain(ctx: RenderContext): Generator<number, TerrainModule, voi
   decorateCamps(batch, lib, field, cliffs, scatter, glow, moteSources, atmosSpecs);
   decorateBases(batch, lib, kit, field, border, cliffs, scatter, glow, moteSources, atmosSpecs);
   counts.campsBases = batch.triangleCount;
+  lap('props');
+  yield 0.64;
+  resume();
   placeProps(batch, kit, field, cliffs, scatter, glow, moteSources);
   counts.props = batch.triangleCount - counts.campsBases;
   counts.curbs = buildLaneCurbs(batch, field);

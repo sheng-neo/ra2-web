@@ -6,6 +6,7 @@
  *   ?preset=turn|face|sheet|game|lineup   转面四视图 / 面部近景 / 动作分镜 / 对局镜头 / 并排站立(默认 lineup)
  *   ?anim=<UnitAnim>&n=8&variant=&mode=    分镜用：动作、帧数、出手序号、状态位
  *   ?team=0|1  ?bg=studio|stone|grass  ?quality=low|medium|high  ?hud=0
+ *   ?lod=<米>                 只画「包围盒最大边不小于这个尺寸的描边形体」(对局里阴影 / 透视剪影通道的减面口径，见 units/index.ts 的 PASS_LOD)
  * 拖动旋转、滚轮缩放。
  *
  * 脚本接口(批量截图用，一次加载拍完所有镜头，不必反复刷新页面)：
@@ -23,6 +24,7 @@ import type { RenderModule, RenderModuleFactory } from '../render/engine/context
 import { type GameRendererCore, createRendererCore } from '../render/engine/core';
 import { PALETTE, createToonMaterial } from '../render/materials';
 import { type InstanceLook, type ModelDef, Puppet, RigBatch, createInstanceLook, getModel, hasModel } from '../render/models';
+import { lodIndexCount } from '../render/models/kit';
 import { getHeroPortrait } from '../render/preview';
 import { HEROES, HERO_IDS } from '../core/data/heroes';
 
@@ -233,6 +235,20 @@ const createStudio: RenderModuleFactory = (ctx): RenderModule => {
       for (const s of slots) {
         if (!batches.has(s.key)) {
           const b = new RigBatch(s.def.geometry, s.def.rig.count, 8, { outline: num('outline') ?? 1.5 }, s.key);
+          const lod = num('lod');
+          if (lod !== null) {
+            // 检查减面口径：本体与描边都只画够大的形体(看剪影里少了哪些件)
+            const n = lodIndexCount(s.def.geometry, lod / s.def.scale);
+            for (const m of [b.mesh, b.outline]) {
+              if (!m) continue;
+              m.onBeforeRender = (_r, _s, _c, geometry) => {
+                geometry.setDrawRange(0, n);
+              };
+              m.onAfterRender = (_r, _s, _c, geometry) => {
+                geometry.setDrawRange(0, Infinity);
+              };
+            }
+          }
           batches.set(s.key, b);
           b.addTo(root);
         }

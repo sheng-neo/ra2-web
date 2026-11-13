@@ -115,7 +115,7 @@ const ultVanish: FxHandler = (k, e) => {
     .params(Math.min(SCROLL.unroll, vanish) / life, r.next() * TAU)
     .color(C.ink, 1)
     // 帛色取旧帛的米黄(不是近白)，铺在水面上再淡一档——否则像漂着一块白木板
-    .under(SILK_AGED, k.ctx.terrain.inWater(x + dx * half, z + dz * half) ? 0.36 : 0.5);
+    .under(SILK_AGED, k.ctx.terrain.inWater(x + dx * half, z + dz * half) ? 0.42 : 0.52);
   // 人形散成墨：压矮的墨色漏斗迅速溶解 + 几团墨溅
   k.glow.spawn(SHAPE.cone, MODE.vortex, 0.38).at(x, 0.05, z).scale3(0.85, 1.7, 0.85, 0.3, 2.1, 0.3).color(C.ink, 1, 0.95).fade(0.04, 0.35).opt(0, 5, 1).spin(0, 11, 0);
   inkSplat(k, x, 1.1, z, 1.7);

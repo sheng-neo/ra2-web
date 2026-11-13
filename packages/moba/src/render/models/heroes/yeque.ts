@@ -40,9 +40,17 @@ const C = {
 const DIMS: HumanDims = { ...STANDARD_DIMS, hipX: 0.11, shoulderX: 0.275, clavX: 0.08 };
 const SCALE = 1.17;
 
+/** 帛卷的帛面沿长度分成几段(每一排顶点各跟一个关节) */
+const FURL_N = 5;
+/** 帛面全长(米) */
+const FURL_LEN = 1.05;
+
 interface Extra {
-  /** 大招里从左手抖开的帛卷(平时缩到看不见) */
+  /** 大招里从左手抖开的帛卷(平时缩到看不见)：卷轴所在的关节 */
   furl: number;
+  /** 帛面第 1..FURL_N 排的关节(父关节都是 furl)，与各排(含第 0 排 = 卷轴)在绑定姿态里的位置 */
+  furlRows: number[];
+  furlPts: number[][];
 }
 
 function build(): { h: Human; b: ModelBuilder; extra: Extra } {
@@ -61,8 +69,11 @@ function build(): { h: Human; b: ModelBuilder; extra: Extra } {
   const sashPts = [[-0.17, 0.94, -0.06], [-0.24, 0.72, -0.12], [-0.27, 0.5, -0.16], [-0.28, 0.3, -0.18]];
   const sash = rig.addChain('sash', J.hips, sashPts.slice(0, 3));
   rig.chain({ joints: sash, tip: [0, -0.2, -0.02], stiffness: 5, drag: 0.9, gravity: 9, maxAngle: 65, wind: 1.4 });
-  // 帛卷：挂在左手上
+  // 帛卷：卷轴挂在左手上；帛面的每一排顶点各跟一个关节——展开时卷尾的木轴带着还没放出来的帛面从手边一排一排滚向远端
   const furl = rig.add('furl', J.handL, d.shoulderX, d.handY, 0);
+  const silkMid = (v: number): number[] => [d.shoulderX, d.handY - 0.02 - v * FURL_LEN, 0.05 + 0.3 * Math.sin(v * Math.PI * 0.55)];
+  const furlPts = Array.from({ length: FURL_N + 1 }, (_, i) => silkMid(i / FURL_N));
+  const furlRows = furlPts.slice(1).map((p, i) => rig.add(`furl${i + 1}`, furl, p[0], p[1], p[2]));
 
   // 短衣下摆的蒙皮：腰部跟髋，越往下越跟同侧大腿
   const skirtBind: SoftBind = (x, y) => {
@@ -235,12 +246,19 @@ function build(): { h: Human; b: ModelBuilder; extra: Extra } {
 
   // ── 帛卷(大招)：左手捏着卷轴，米白帛面向前下方垂开，卷面几笔淡墨山川 ──
   b.bone(furl);
+  const rowJoint = (i: number): number => (i <= 0 ? furl : furlRows[Math.min(FURL_N, i) - 1]);
+  // 帛面上的点按沿长度的位置 v(由模型空间的 y 反推)跟相邻两排的关节
+  const silkBind: SoftBind = (_x, y) => {
+    const f = sat((d.handY - 0.02 - y) / FURL_LEN) * FURL_N;
+    const i0 = Math.min(FURL_N - 1, Math.floor(f + 1e-4));
+    return [rowJoint(i0), rowJoint(i0 + 1), sat(1 - (f - i0))];
+  };
   b.g(X(d.shoulderX, d.handY - 0.02, 0.0), () => {
     b.paint(C.tube, { c2: C.tubeDark, gloss: 0.5, mat: MAT.leather });
     b.tube([[-0.22, 0, 0.03, 0.02], [0.22, 0, 0.03, 0.02]], { seg: 5 });
-    const silk = (u: number, v: number, lift = 0): number[] => [lerp(-0.2, 0.2, u), -v * 1.05, 0.05 + 0.3 * Math.sin(v * Math.PI * 0.55) + lift];
-    b.paint(C.silk, { c2: C.silkShade, mat: MAT.cloth, by: (_x, y) => sat(-y / 1.05) });
-    b.sheet(2, 5, (u, v) => silk(u, v));
+    const silk = (u: number, v: number, lift = 0): number[] => [lerp(-0.2, 0.2, u), -v * FURL_LEN, 0.05 + 0.3 * Math.sin(v * Math.PI * 0.55) + lift];
+    b.bind(silkBind).paint(C.silk, { c2: C.silkShade, mat: MAT.cloth, by: (_x, y) => sat((d.handY - 0.02 - y) / FURL_LEN) });
+    b.sheet(2, FURL_N, (u, v) => silk(u, v));
     // 淡墨山川：两道起伏的山脊线
     b.paint(C.ink, { mat: MAT.cloth, line: 0 });
     for (const [v0, amp] of [[0.3, 0.06], [0.55, 0.04]] as const) {
@@ -253,14 +271,16 @@ function build(): { h: Human; b: ModelBuilder; extra: Extra } {
       }
       b.tube(pts, { seg: 3, up: [0, 0, 1] });
     }
-    // 卷尾：卷起的一截木轴
-    b.paint(C.tube, { c2: C.tubeDark, gloss: 0.5, mat: MAT.leather });
+    // 卷尾：卷起的一截木轴，裹着还没放出来的帛(比手里的轴粗一圈)
+    b.bone(furlRows[FURL_N - 1]).paint(C.tube, { c2: C.tubeDark, gloss: 0.5, mat: MAT.leather });
     const e = silk(0.5, 1);
     b.tube([[-0.21, e[1], e[2], 0.024], [0.21, e[1], e[2], 0.024]], { seg: 5 });
+    b.paint(C.silkShade, { c2: C.silk, mat: MAT.cloth });
+    b.tube([[-0.19, e[1], e[2], 0.034], [0.19, e[1], e[2], 0.034]], { seg: 6 });
   });
 
   b.bakeGrounding(2.05, 0.72, 0.88);
-  return { h, b, extra: { furl } };
+  return { h, b, extra: { furl, furlRows, furlPts } };
 }
 
 // ───────────────────────────── 动画 ─────────────────────────────
@@ -389,6 +409,24 @@ export function createYeque(): ModelDef {
   const k = A.tmp;
   const geometry = b.build();
 
+  /**
+   * 帛卷展开到 u(0 = 全卷在手边的轴上，1 = 全部放开)：放出来的几排留在原位，还没放出来的各排连同卷尾的木轴
+   * 都收在「展开前沿」上——前沿沿着帛面的走向从手边滚到远端。所以看到的是卷尾由近及远滚出去、帛面跟着铺开，而不是整幅由小变大。
+   */
+  const unfurl = (pose: Pose, u: number): void => {
+    const P = extra.furlPts;
+    const f = Math.min(FURL_N, Math.max(0, u * FURL_N));
+    const i0 = Math.min(FURL_N - 1, Math.floor(f));
+    const w = f - i0;
+    const fx = P[i0][0] + (P[i0 + 1][0] - P[i0][0]) * w;
+    const fy = P[i0][1] + (P[i0 + 1][1] - P[i0][1]) * w;
+    const fz = P[i0][2] + (P[i0 + 1][2] - P[i0][2]) * w;
+    for (let i = 1; i <= FURL_N; i++) {
+      if (i <= f) continue;
+      pose.pos(extra.furlRows[i - 1], fx - P[i][0], fy - P[i][1], fz - P[i][2]);
+    }
+  };
+
   const animate = (pose: Pose, a: AnimInput, out: AnimOutput): void => {
     pose.scale(extra.furl, 0);
     if (animateCommon(h, pose, a.anim === 'leap' ? 'airborne' : a.anim, a.t, a.p, a.time, A.common)) {
@@ -428,8 +466,10 @@ export function createYeque(): ModelDef {
       case 'cast_ult': {
         sampleTrack(A.vanish, a.p, k);
         applyCKP(h, pose, k, () => pose.rot(J.root, 0, -seg(a.p, 0.5, 1) * 120, 0));
-        // 图卷：0~0.3 抖开，0.5 之后随身形收束卷回
-        pose.scale(extra.furl, Math.min(seg(a.p, 0.05, 0.3), 1 - seg(a.p, 0.55, 0.8)));
+        // 图卷：卷轴先出现在左手，帛面随即由手边向远端一排排抖开(0.08~0.3)，0.55 之后随身形收束从远端卷回来，卷完才收掉
+        pose.scale(extra.furl, Math.min(seg(a.p, 0.03, 0.09), 1 - seg(a.p, 0.76, 0.82)));
+        const open = Math.min(seg(a.p, 0.07, 0.3), 1 - seg(a.p, 0.55, 0.77));
+        unfurl(pose, open * (2 - open));
         out.glow = 1 + 2.4 * a.p;
         break;
       }

@@ -6,7 +6,7 @@
  *   三档拉开：一塔单环；二塔双环 + 塔身两侧一对护翼；高地塔三环 + 大冠 + 队旗，塔身粗一成半。
  *   攻击：核心蓄光 → 环加速 → 出弹瞬间环张开一下；锁定英雄时顶晶外亮起一圈警戒晶(AnimInput.mode bit1)。
  *   受损三段(生命 75 / 50 / 25%)：外挂石板逐块脱落、塔身出现发光裂纹、环倾斜、光不稳。
- *   无敌态(mode bit0)：塔身外罩一圈缓慢转动的六边护罩纹。被毁：核心内爆 → 上半截折断倒下 → 沉入废墟。
+ *   无敌态(mode bit0)：塔身外的六边护罩由单位视图画(units/shield.ts 的半透明护罩壳)，不在模型里。被毁：核心内爆 → 上半截折断倒下 → 沉入废墟。
  * 水晶 = 三级八角台基 + 四支弧形托臂 + 巨大的星核晶体 + 双层浑仪环(与星陨巨灵同源的造型语言)。
  */
 import { PALETTE } from '../materials';
@@ -86,19 +86,6 @@ function courses(b: ModelBuilder, y0: number, y1: number, n: number, rOf: (y: nu
   return mids;
 }
 
-/** 六边护罩纹：围着半径 R 的圆柱面排一圈六边形线框(细发光条) */
-function hexCage(b: ModelBuilder, R: number, yc: number, size: number, n: number): void {
-  for (let i = 0; i < n; i++) {
-    const a0 = (i / n) * TAU;
-    const P = (k: number): number[] => {
-      const th = (k / 6) * TAU + Math.PI / 6;
-      const a = a0 + (Math.cos(th) * size) / R;
-      return [Math.cos(a) * R, yc + Math.sin(th) * size * 1.25, Math.sin(a) * R];
-    };
-    for (let k = 0; k < 6; k++) b.limb(P(k), P(k + 1), 0.024, 0.024, { seg: 3, cap0: false, cap1: false });
-  }
-}
-
 /** 塔身 / 晶体上的发光裂纹：一条贴着圆柱面爬的折线 */
 function crackLine(b: ModelBuilder, rOf: (y: number) => number, a0: number, y0: number, y1: number, seed: number, out = 1.012): void {
   const n = 4;
@@ -127,7 +114,6 @@ function createTower(tier: 1 | 2 | 3, team: 0 | 1): ModelDef {
   const rings = Array.from({ length: tier }, (_, i) => rig.add(`ring${i}`, root, 0, coreY - 0.15 + i * 0.2, 0));
   const tip = rig.add('tip', root, 0, coreY + 1.5, 0);
   const alert = rig.add('alert', tip, 0, coreY + 1.9, 0);
-  const shield = rig.add('shield', root, 0, 2.4, 0);
   const chunks = [0, 1, 2, 3].map((i) => rig.add(`chunk${i}`, i < 2 ? lower : upper, 0, i < 2 ? 1.7 : 3.2, 0));
   const cracks = [0, 1, 2].map((i) => rig.add(`crack${i}`, i === 0 ? upper : lower, 0, i === 0 ? 3.2 : 1.6, 0));
   const flag = tier === 3 ? rig.add('flag', upper, 0, H - 0.5, 0) : -1;
@@ -270,9 +256,6 @@ function createTower(tier: 1 | 2 | 3, team: 0 | 1): ModelDef {
     const a = (k / 4) * TAU + 0.4;
     b.g(X(Math.cos(a) * 0.44, coreY + 1.9, Math.sin(a) * 0.44, 0, -(a * 180) / Math.PI, 0), () => b.g(X(0, 0, 0, 0, 0, -90), () => b.crystal(0.07, 0.36, 4, 0.8, 0.2)));
   }
-  // 无敌态的六边护罩纹
-  b.bone(shield).paint(0xffffff, { team: 1, glow: 0.6, mat: MAT.crystal, line: 0 });
-  hexCage(b, 1.72 * W, 2.4, 0.74, 6);
   b.bakeGrounding(8, 0.75, 0.9);
   const height = coreY + 2.2 + tier * 0.25;
 
@@ -317,10 +300,6 @@ function createTower(tier: 1 | 2 | 3, team: 0 | 1): ModelDef {
     pose.rot(tip, 0, t * (locked ? 160 : 50), 0);
     pose.scale(alert, locked ? 1 + 0.2 * Math.sin(t * 12) : 0.001);
     pose.rot(alert, 0, locked ? t * 220 : 0, 0);
-    // 无敌护罩：缓慢转动、上下浮动
-    pose.scale(shield, a.mode & 1 ? 1 + 0.015 * Math.sin(t * 2.4) : 0.001);
-    pose.rot(shield, 0, t * 14, 0);
-    pose.pos(shield, 0, Math.sin(t * 0.8) * 0.18, 0);
     if (flag >= 0) pose.rot(flag, Math.sin(t * 1.4) * 1.5, 0, Math.sin(t * 1.1) * 2);
 
     if (a.deathT >= 0) {
@@ -340,7 +319,6 @@ function createTower(tier: 1 | 2 | 3, team: 0 | 1): ModelDef {
       pose.pos(tip, side * fall * 2, -fall * fall * (coreY + 1), 0);
       pose.rot(tip, 0, 0, -side * fall * 140);
       pose.scale(tip, Math.max(0.001, 1 - seg(d, 1.0, 1.5)));
-      pose.scale(shield, 0.001);
       cracks.forEach((c) => pose.scale(c, 1));
       const e = fall * fall;
       pose.rot(upper, 0, 0, -side * e * 84);
@@ -454,7 +432,6 @@ function createCore(team: 0 | 1): ModelDef {
   const ringA = rig.add('ringA', root, 0, coreY, 0);
   const ringB = rig.add('ringB', root, 0, coreY, 0);
   const orbit = rig.add('orbit', root, 0, coreY, 0);
-  const shield = rig.add('shield', root, 0, coreY, 0);
   const cracks = [0, 1, 2].map((i) => rig.add(`crack${i}`, star, 0, coreY, 0));
   const pylons = [0, 1, 2, 3].map((i) => rig.add(`pylon${i}`, root, Math.cos((i * Math.PI) / 2 + Math.PI / 4) * 2.2, 0.9, Math.sin((i * Math.PI) / 2 + Math.PI / 4) * 2.2));
   const b = new ModelBuilder();
@@ -547,10 +524,6 @@ function createCore(team: 0 | 1): ModelDef {
     const y = coreY + (hash(k, 3) - 0.5) * 2.6;
     b.g(X(Math.cos(a) * 1.8, y, Math.sin(a) * 1.8, hash(k, 4) * 40 - 20, 0, hash(k, 5) * 40 - 20), () => b.g(X(0, -0.2, 0), () => b.crystal(0.12, 0.44 + hash(k, 6) * 0.3, 4, 0.5, 0.4)));
   }
-  // 无敌态的六边护罩纹(两圈)
-  b.bone(shield).paint(0xffffff, { team: 1, glow: 0.6, mat: MAT.crystal, line: 0 });
-  hexCage(b, 3.0, coreY - 0.9, 0.9, 9);
-  hexCage(b, 3.0, coreY + 0.95, 0.9, 9);
   b.bakeGrounding(6, 0.75, 0.9);
 
   const animate = (pose: Pose, a: AnimInput, out: AnimOutput): void => {
@@ -579,8 +552,6 @@ function createCore(team: 0 | 1): ModelDef {
     pose.rot(ringB, -30 + weak * 18 * Math.cos(t * 1.2), -t * 22 * wob, -18 + dmg * 10 * Math.sin(t * 0.9));
     pose.rot(orbit, 0, -t * 18, 0);
     pose.scale(orbit, 1 - weak * 0.3);
-    pose.scale(shield, a.mode & 1 ? 1 + 0.012 * Math.sin(t * 2.4) : 0.001);
-    pose.rot(shield, 0, t * 10, 0);
     if (a.deathT >= 0) {
       // 爆炸：星核膨胀闪光后碎裂，环与碎晶四散，托臂向外倒塌
       const d = a.deathT;
@@ -594,7 +565,6 @@ function createCore(team: 0 | 1): ModelDef {
       pose.pos(ringA, 0, -fall * 2.5, 0);
       pose.pos(ringB, 0, -fall * 2.8, 0);
       pose.scale(orbit, Math.max(0.001, (1 + burst * 3) * (1 - seg(d, 0.9, 1.4))));
-      pose.scale(shield, 0.001);
       pylons.forEach((p, i) => {
         const ang = (i * Math.PI) / 2 + Math.PI / 4;
         const e = easeOut(fall) * fall;

@@ -33,6 +33,7 @@ import { type InstanceLook, type ModelDef, Puppet, RigBatch, allModelKeys, creat
 import { createHeroPreview, getHeroPortrait } from '../render/preview';
 import { createTerrainModule } from '../render/terrain';
 import { type UnitsModule, createUnitsModule } from '../render/units';
+import { ShieldBatch } from '../render/units/shield';
 
 const params = new URLSearchParams(location.search);
 const num = (k: string): number | null => {
@@ -202,6 +203,10 @@ const createStudio: RenderModuleFactory = (ctx): RenderModule => {
       b.addTo(root);
     }
   }
+  // 建筑的无敌护罩(对局里由单位视图画，这里按 ?bits=1 照样摆出来看)
+  const shields = new ShieldBatch(16);
+  root.add(shields.mesh);
+  const shieldColors = [new THREE.Color(0x58b4ff), new THREE.Color(0xff6a42)];
   let time = 0;
   let first = true;
   return {
@@ -226,6 +231,7 @@ const createStudio: RenderModuleFactory = (ctx): RenderModule => {
       camera.updateMatrixWorld();
 
       for (const b of batches.values()) b.begin();
+      shields.begin();
       for (const s of slots) {
         const a = s.puppet.input;
         a.anim = s.anim;
@@ -259,13 +265,20 @@ const createStudio: RenderModuleFactory = (ctx): RenderModule => {
         s.look.glow = s.puppet.output.glow;
         const batch = batches.get(s.key);
         if (batch) batch.push(s.puppet.skeleton, s.look);
+        if ((a.mode & 1) !== 0 && a.deathT < 0) {
+          const col = shieldColors[s.key.endsWith(':1') ? 1 : 0];
+          if (s.key.startsWith('core:')) shields.push(s.x, 0.95, s.z, 3.05, 5.4, 16, col, 1, 0);
+          else if (s.key.startsWith('tower:')) shields.push(s.x, 0.36, s.z, s.def.height > 9.2 ? 2.1 : 1.9, s.def.height - 3.3, 12, col, 1, 0);
+        }
       }
       first = false;
       for (const b of batches.values()) b.end();
+      shields.end();
     },
     dispose() {
       ctx.layers.units.remove(root);
       for (const b of batches.values()) b.dispose();
+      shields.dispose();
     },
   };
 };

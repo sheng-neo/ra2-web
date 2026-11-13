@@ -324,19 +324,17 @@ function assembleCore(container: HTMLElement, state: GameState, opts: RendererOp
   let tallOn = false;
   const updateTallFocus = (s: GameState): void => {
     const hero = playerOf(s);
-    let near = false;
+    let near = 0;
     if (hero && hero.alive) {
       const lim = tallOn ? 11.5 : 9.5;
       for (const u of s.units) {
         if (u.kind !== 'monster' || !u.alive || u.radius < 1.8 || !u.visible[frame.playerTeam]) continue;
         const dz = u.pos.y - hero.pos.y;
-        if (dz < 3 && Math.hypot(u.pos.x - hero.pos.x, dz) < lim) {
-          near = true;
-          break;
-        }
+        // 巨灵(半径 2.4，高 8 米多)比巨龙再多让一半
+        if (dz < 3 && Math.hypot(u.pos.x - hero.pos.x, dz) < lim) near = Math.max(near, u.radius >= 2.3 ? 1.5 : 1);
       }
     }
-    tallOn = near;
+    tallOn = near > 0;
     engine.rig.setTallFocus(near);
   };
 

@@ -204,7 +204,7 @@ export function buildBorder(field: MapField, info: BorderInfo, root: THREE.Objec
         mixRgb(ROCK_LIGHT, MOSS, mossN * 0.5),
         cap,
         scaleRgb(cap, 1.04),
-        scaleRgb(mixRgb(ROCK_LIGHT, ROCK_WARM, 0.7), 0.92),
+        scaleRgb(mixRgb(ROCK_LIGHT, ROCK_WARM, 0.7), 0.8),
         scaleRgb(ROCK_DARK, 0.66 * block),
         scaleRgb(ROCK_DARK, 0.5 * block),
       ];
@@ -218,7 +218,7 @@ export function buildBorder(field: MapField, info: BorderInfo, root: THREE.Objec
       const loCol = inBase ? lowStone[k] : lowCols[k];
       color = mixRgb(hiCol, loCol, sw);
       if (k === 0) ao = lerp(inBase ? 0.6 : 0.72, 0.72, sw);
-      else if (face && !inBase) ao = lerp(1 - away * 0.34 - seam * 0.25, k >= 5 ? 0.7 : 1, sw);
+      else if (face && !inBase) ao = lerp(1 - away * 0.27 - seam * 0.2, k >= 5 ? 0.7 : 1, sw);
       else if (inBase && k === 2) ao = 0.75;
       // 南侧外立面的墙脚：压一道接触暗部
       if (k === PROFILE_RINGS - 1) ao = lerp(ao, 0.55, sw);

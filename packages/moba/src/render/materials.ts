@@ -1213,6 +1213,8 @@ void main() {
   tg *= mix(vec3(1.0), topTint, uMapTop.z);
   #endif
   base.rgb *= mix(vec3(1.0), tg, topW);
+  // 崖顶草向灰收一点：贴图乘上顶点色之后饱和度比色表高一截(实测 0.6 上下)，崖顶是画框，不该比场内的草还艳
+  base.rgb = mix(base.rgb, vec3(dot(base.rgb, vec3(0.2126, 0.7152, 0.0722))), topW * 0.16);
   #endif
   #ifdef TOON_MAP_MASK
   base.rgb *= uTint;

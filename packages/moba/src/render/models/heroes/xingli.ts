@@ -184,8 +184,14 @@ function build(): { h: Human; b: ModelBuilder; extra: Extra } {
     b.g(X(x, 0, 0), () => furRing(b, 0.1, 0.1, 0.028, 0.026, { c: C.fur, c2: C.furShade, tufts: 6, seg: 5, y: d.elbowY + 0.03 }));
     b.bone(s > 0 ? J.foreL : J.foreR).paint(C.robeShade, { c2: C.robe, mat: MAT.cloth, gloss: 0.1 });
     b.lathe([[d.wristY - 0.04, 0.108, 0.108, x, 0], [d.wristY + 0.01, 0.104, 0.104, x, 0], [d.wristY + 0.14, 0.082, 0.082, x, 0], [d.elbowY + 0.03, 0.066, 0.066, x, 0]], { seg: 10, cap0: false });
-    b.paint(C.robeShade, { mat: MAT.cloth, ao: 0.7 });
-    b.lathe([[d.wristY - 0.02, 0.02, 0.02, x, 0], [d.wristY - 0.036, 0.104, 0.104, x, 0]], { seg: 10, cap0: false, cap1: false });
+    // 袖口里不是空的：喇叭口内先是一圈队伍色的内衬斜着收进去，再露出一小截贴腕的中衣窄袖(石青滚边)，手从窄袖里伸出来。
+    // 原先喇叭口里只有一个压暗的浅盘，近看像一截空心管口里套着一只小手
+    b.paint(0xffffff, { team: 1, mat: MAT.cloth, ao: 0.8, line: 0 });
+    b.lathe([[d.wristY - 0.008, 0.062, 0.064, x, 0], [d.wristY - 0.037, 0.103, 0.103, x, 0]], { seg: 10, cap0: false, cap1: false });
+    b.paint(C.robeShade, { c2: C.robe, mat: MAT.cloth });
+    b.lathe([[d.wristY - 0.058, 0.03, 0.034, x, 0], [d.wristY - 0.058, 0.055, 0.06, x, 0], [d.wristY - 0.008, 0.062, 0.065, x, 0]], { seg: 8, cap0: false, cap1: false });
+    b.paint(C.trim, { c2: C.trimDark, mat: MAT.cloth, line: 0 });
+    b.lathe([[d.wristY - 0.062, 0.057, 0.062, x, 0], [d.wristY - 0.046, 0.059, 0.064, x, 0]], { seg: 8, cap0: false, cap1: false });
     b.paint(C.trim, { c2: C.trimDark, mat: MAT.cloth });
     b.lathe([[d.wristY + 0.0, 0.108, 0.108, x, 0], [d.wristY + 0.04, 0.101, 0.101, x, 0]], { seg: 10, cap0: false, cap1: false });
     b.g(X(x, 0, 0), () => furRing(b, 0.108, 0.108, 0.03, 0.028, { c: C.fur, c2: C.furShade, tufts: 6, seg: 5, y: d.wristY - 0.04 }));

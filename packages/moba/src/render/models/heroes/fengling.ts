@@ -8,7 +8,7 @@
  */
 import { type CKP, type CommonAnims, type Human, type HumanDims, type RunStyle, RUN_DEFAULT, STANDARD_DIMS, animateCommon, applyCKP, breathe, emptyCKP, humanRig, kp, lerpCKP, makeCommon, mix, mixQ, reachHand, runCycle, sat, seg, strikeWarp } from '../humanoid';
 import { MAT, type MatClass, ModelBuilder, PATTERN, type SoftBind, X, lerp } from '../kit';
-import { beard, boot, chainBind, face, hairCap, hand, head, lock, polyAt, strip, torsoBind, trim } from '../parts';
+import { beard, boot, chainBind, face, hairCap, hand, head, polyAt, strip, torsoBind, trim } from '../parts';
 import { type Pose, poseSpace, setSpaceRot } from '../rig';
 import type { AnimInput, AnimOutput, ModelDef } from '../types';
 
@@ -301,7 +301,7 @@ function build(): { h: Human; b: ModelBuilder; extra: Extra } {
     // 羽片宽面朝上朝前(正面、俯视都看得到羽面)：中段最宽、梢头收尖；浅褐底上一道道深色横斑、梢头近黑、正中一条浅色羽轴。
     // 原先是从冠的两侧竖着长出来、向外卷的两根细圆条，正面看像一对触角；根部收到冠顶、整体向后掠之后读作冠羽
     for (const s of [1, -1]) {
-      const N = 10;
+      const N = 8;
       const L = 0.6;
       const at = (t: number): number[] => {
         const q = t * t;
@@ -316,13 +316,13 @@ function build(): { h: Human; b: ModelBuilder; extra: Extra } {
       }
       // 横斑：沿羽片一环深一环浅，越往梢头越深
       b.paint(C.pheasant, { c2: C.pheasantTip, mat: MAT.fur, by: (_x, _y, _z, g) => Math.min(1, (Math.round(g * N) % 2 === 1 ? 0.7 : 0.0) + Math.max(0, g - 0.66) * 2.6) });
-      b.tube(blade, { seg: 4, up: [s, 0, 0], crease: 180 });
+      b.tube(blade, { seg: 4, up: [s, 0, 0], crease: 180, cap0: false });
       // 羽轴：羽片上下两面正中的一道浅色
       b.paint(C.bone, { c2: C.pheasant, mat: MAT.fur, line: 0 });
-      b.tube(blade.slice(0, N).map((p, i) => [p[0], p[1], p[2], 0.005 * (1 - (i / N) * 0.6), 0.011]), { seg: 4, up: [s, 0, 0], crease: 180 });
+      b.tube(blade.slice(0, N).map((p, i) => [p[0], p[1], p[2], 0.005 * (1 - (i / N) * 0.6), 0.011]), { seg: 4, up: [s, 0, 0], crease: 180, cap0: false, cap1: false });
       // 羽根的铜管座
       b.paint(C.brass, { c2: C.brassDark, gloss: 1, mat: MAT.metal });
-      b.limb(at(-0.06), at(0.07), 0.02, 0.017, { seg: 5 });
+      b.limb(at(-0.06), at(0.07), 0.02, 0.017, { seg: 4, cap0: false });
     }
   }
 

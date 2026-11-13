@@ -186,9 +186,9 @@ export class CameraRig {
     this.pointerPan = max * k * k * (3 - 2 * k);
   }
 
-  /** 高个子取景开关(缓入缓出，约 0.4 秒) */
-  setTallFocus(on: boolean): void {
-    this.tallWant = on ? 1 : 0;
+  /** 高个子取景(缓入缓出，约 0.4 秒)：0 = 关；1 = 巨龙那么高(近 6 米)；更高的(巨灵 8 米多)给 1.5 */
+  setTallFocus(strength: number): void {
+    this.tallWant = Math.max(0, strength);
   }
 
   /** 俯瞰全图的调试相机 */

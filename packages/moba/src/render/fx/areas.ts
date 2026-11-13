@@ -214,7 +214,7 @@ const DEFS: Record<AreaVisual, AreaDef> = {
   xingli_s2_well: {
     create(k, v) {
       const s = hold(k, v, DECAL.swirl, 0.08);
-      k.decals.at(s).params(2, -3).color(TX.glow, 1.4, 0.8).under(TX.dark, 0.2);
+      k.decals.at(s).params(2, -3).color(TX.glow, 1.2, 0.55).under(TX.dark, 0.14);
       const m = k.glow.hold(SHAPE.hoop, MODE.hoop);
       m.color(TX.glow, 1.2, 0.85);
       m.add = 0.3;

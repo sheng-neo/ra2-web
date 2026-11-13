@@ -321,11 +321,11 @@ void main() {
     float edge = band(r - 0.962, 0.03, aa);
     float inner = 1.0 - smoothstep(prog - aa, prog + aa, r);
     float lead = band(r - prog + 0.012, 0.016, aa) * step(0.03, prog) * (1.0 - step(0.985, prog));
-    float ticks = band(fract(ang / TAU * 16.0) - 0.5, 0.07, 0.03) * band(r - 0.9, 0.035, aa);
-    // §7.1：边线实(0.9)、填充淡(0.18~0.28)，倒计时由内向外推进，快到点时边线加速闪
+    // §7.1：边线实(0.9)、填充淡(0.18~0.28)，倒计时由内向外推进，快到点时边线加速闪。
+    // 只有一道外沿边线：不画刻度；推进的前沿只留一条很淡的线(读成填充的边，不是第二道环)——几个预警圈叠在一起时圈里的人还看得清
     fil = (0.07 + inner * (0.12 + 0.05 * r + 0.06 * urgent * pulse)) * disc;
-    e = (edge * (1.1 + 0.45 * pulse * urgent) + lead * 0.85 + ticks * 0.5) * disc;
-    hot = (edge * 0.18 + lead * 0.25) * disc;
+    e = (edge * (1.1 + 0.45 * pulse * urgent) + lead * 0.32) * disc;
+    hot = (edge * 0.18 + lead * 0.08) * disc;
     cov = (0.1 + edge * 0.6) * disc;
   } else if (type < 6.5) {
     // ── 方向条：箭身 + 箭头 + 向前流动的尖纹 ──
@@ -543,7 +543,8 @@ void main() {
     float u = p.x * 0.5 + 0.5;
     float front = min(1.0, t / max(p0, 0.01));
     float ay = abs(p.y);
-    float wob = 0.84 + 0.035 * sin(u * vW.z * 2.6 + seed * 20.0);
+    // 帛边不是直线：两个频率叠出来的起伏(软的织物铺在地上)
+    float wob = 0.83 + 0.05 * sin(u * vW.z * 2.6 + seed * 20.0) + 0.025 * sin(u * vW.z * 7.3 + seed * 31.0);
     // 近端不是一刀齐的直边：按噪声撕出毛边，再压一根轴头(与前沿那根卷轴成对)——整条读成「手卷」而不是一块木板
     float tear = vnoise(vec2(p.y * 5.0 + seed * 9.0, seed * 3.0)) * 0.035 / max(vW.z, 0.3);
     float nearCut = smoothstep(0.0, 0.012, u - tear);
@@ -552,12 +553,12 @@ void main() {
     float du = 0.07 / max(vW.z, 0.3);
     float roll = (1.0 - smoothstep(du * 0.55, du, abs(u - front + du * 0.4))) * (1.0 - smoothstep(0.93, 1.0, ay)) * step(0.02, front);
     float rod = (1.0 - smoothstep(du * 0.4, du * 0.75, abs(u - du * 0.55))) * (1.0 - smoothstep(0.93, 1.0, ay));
-    float border = band(ay - (wob - 0.15), 0.04, 0.03);
+    float border = band(ay - (wob - 0.13), 0.028, 0.03) * 0.35;
     // 帛边外侧一圈淡墨的投影：帛铺在浅色石板上，靠它托出轮廓
     float shade = (1.0 - smoothstep(wob, 1.0, ay)) * smoothstep(wob - 0.05, wob, ay) * nearCut * farCut;
-    // 帛面向两侧边缘压暗(中间亮、两边旧)：有一点卷曲的体积，不是平涂的一条
-    float aged = smoothstep(wob - 0.5, wob - 0.05, ay) * 0.26;
     float xs = u * vW.z * 2.0;
+    // 帛面向两侧边缘略微压暗(A 色是墨，压多了整条帛会发灰：只留一点)
+    float aged = smoothstep(wob - 0.4, wob - 0.03, ay) * 0.09;
     // 卷面的舆图：一道蜿蜒的河、疏密不等的山形折线、零星的墨点(城邑)
     float river = band(p.y - 0.3 * sin(xs * 1.5 + p1) - 0.1 * sin(xs * 3.7 + p1 * 2.3), 0.05, 0.05);
     float peak = abs(fract(xs * 0.55 + p1 * 0.3) - 0.5) * 2.0;

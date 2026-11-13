@@ -392,9 +392,32 @@ export class RenderEngine {
     this.lightTint.bind(true);
     try {
       this.lights.fitShadow(cam);
-      // ── 1. 下单 ──
-      r.setRenderTarget(proxy);
-      r.compile(this.scene, cam);
+      // ── 1. 下单 ──(三十来个程序的着色器源码拼装 + 提交编译，加起来也有几百毫秒：按场景的二级子树分批提交)
+      const roots: THREE.Object3D[] = [];
+      for (const top of this.scene.children) {
+        if ((top as THREE.Light).isLight) continue;
+        if ((top as THREE.Mesh).isMesh || top.children.length === 0) roots.push(top);
+        else for (const c of top.children) roots.push(c);
+      }
+      // 子树里要是有灯，分批提交时它会被重复计数(灯数进程序的键)：那就退回整场景一次提交
+      let nestedLight = false;
+      this.scene.traverse((o) => {
+        if ((o as THREE.Light).isLight && o.parent !== this.scene) nestedLight = true;
+      });
+      if (nestedLight) {
+        roots.length = 0;
+        roots.push(this.scene);
+      }
+      let t1 = performance.now();
+      for (let i = 0; i < roots.length; i++) {
+        r.setRenderTarget(proxy);
+        r.compile(roots[i], cam, this.scene);
+        if (performance.now() - t1 > 10 && i < roots.length - 1) {
+          r.setRenderTarget(null);
+          yield (0.035 * (i + 1)) / roots.length;
+          t1 = performance.now();
+        }
+      }
       r.setRenderTarget(null);
       this.post?.precompile(r, cam);
       yield 0.04;

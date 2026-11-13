@@ -159,8 +159,8 @@ void main() {
   grass = mix(grass, cGrassWarm, smoothstep(0.5, 0.76, nA.g) * 0.55);
   grass = mix(grass, cGrassCool, (1.0 - smoothstep(0.4, 5.0, dRiver)) * 0.55);
   grass = mix(grass, cGrassDark, smoothstep(0.54, 0.8, nB.r) * 0.45);
-  // 草色整体向灰收一成：受光草地实测饱和度 0.56~0.70，比色表(0.45~0.53)艳，全屏高饱和面积超标
-  grass = mix(vec3(dot(grass, vec3(0.2126, 0.7152, 0.0722))), grass, 0.9);
+  // 草色整体向灰收一成半：受光草地实测饱和度 0.56~0.70，比色表(0.45~0.53)艳，全屏高饱和面积超标
+  grass = mix(vec3(dot(grass, vec3(0.2126, 0.7152, 0.0722))), grass, 0.84);
   // (草贴图是 sRGB 的暗灰绿，线性均值约 0.18：先乘回 1 附近，再把对比收到原来的六成；最亮的笔触封顶)
   vec3 gdet = min(mix(vec3(1.0), gt * 5.5 * (gt2 * 2.75 + 0.5), 0.6), vec3(1.55));
   grass *= mix(vec3(0.9, 0.97, 1.02), vec3(1.08, 1.05, 0.9), smoothstep(0.8, 1.35, gdet.g)) * gdet;
@@ -621,14 +621,42 @@ export function riverFlow(field: MapField): THREE.Vector2 {
 /** QualitySettings.waterDetail → 着色器的 WATER 档 */
 const waterLevelOf = (s: QualitySettings): number => s.waterDetail;
 
-export function createGround(field: MapField, splat: SplatTextures, noise: THREE.Texture, q: QualitySettings, maxAniso: number): Ground {
+/** 地表用到的四张程序贴图(画起来各要几十到两百多毫秒：分段构建时一张一段) */
+export interface GroundTextures {
+  grass: THREE.CanvasTexture;
+  dirt: THREE.CanvasTexture;
+  stone: ReturnType<typeof makeLaneStoneTextures>;
+  caust: THREE.DataTexture;
+}
+
+/** 逐张画地表贴图：每 yield 一次画完一张(同步调用方直接把生成器跑完即可) */
+export function* makeGroundTextures(maxAniso: number): Generator<void, GroundTextures, void> {
   const aniso = Math.min(8, maxAniso);
   const sunH = Math.hypot(SUN_DIR.x, SUN_DIR.z) || 1;
   const grass = makeGrassTexture(1024);
+  yield;
   const dirt = makeDirtTexture(512, SUN_DIR.x / sunH, SUN_DIR.z / sunH);
+  yield;
   const stone = makeLaneStoneTextures(SUN_DIR, 512, aniso);
+  yield;
   const caust = makeCausticTexture(256);
   for (const t of [grass, dirt]) t.anisotropy = aniso;
+  return { grass, dirt, stone, caust };
+}
+
+export function createGround(field: MapField, splat: SplatTextures, noise: THREE.Texture, q: QualitySettings, maxAniso: number, textures?: GroundTextures): Ground {
+  let tex = textures;
+  if (!tex) {
+    const it = makeGroundTextures(maxAniso);
+    for (;;) {
+      const r = it.next();
+      if (r.done) {
+        tex = r.value;
+        break;
+      }
+    }
+  }
+  const { grass, dirt, stone, caust } = tex;
   const E = PALETTE.env;
   const map = field.map;
   const col = (hex: number, mul = 1): THREE.Color => new THREE.Color(hex).multiplyScalar(mul);

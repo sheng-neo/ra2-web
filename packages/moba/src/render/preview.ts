@@ -38,12 +38,12 @@ const REF = { top: 3.2, halfW: 1.2 };
 const BUST: Record<HeroId, { drop: number; dist: number; yaw: number; x: number; anim?: UnitAnim; p?: number; variant?: number }> = {
   // 樊哙：3/4 侧脸，怒目与炸开的须发占上半，盾沿从左下切入(拍照时放下盾)
   panyue: { drop: 0.3, dist: 3.8, yaw: -14, x: 0.06, anim: 'channel' },
-  // 程咬金：正面略仰，斧面从右上角入画
+  // 程咬金：正面略仰，扛在右肩的斧柄与斧颈红缨从画面左上斜入
   chijin: { drop: 0.26, dist: 3.0, yaw: -12, x: -0.08 },
   // 王昭君：3/4 侧脸，白毛帽箍与毛领框住脸，琵琶琴头从一侧斜入
   xingli: { drop: 0.26, dist: 2.75, yaw: -18, x: 0.04 },
-  // 李广：侧身回望，鹖冠双羽与短须，弓臂竖在脸侧
-  fengling: { drop: 0.24, dist: 2.75, yaw: 26, x: 0.06 },
+  // 李广：侧身回望，鹖冠双羽与短须，弓臂竖在脸侧(拍照时用拄弓而立的姿势：待机时弓斜垂在身侧，入不了画)
+  fengling: { drop: 0.24, dist: 2.75, yaw: 26, x: 0.06, anim: 'channel' },
   // 荆轲：冷峻侧脸，反握的匕首举在脸前，白巾绕颈
   yeque: { drop: 0.24, dist: 2.7, yaw: -22, x: 0.0, anim: 'attack', p: 0.17, variant: 0 },
 };

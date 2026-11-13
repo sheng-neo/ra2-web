@@ -3,7 +3,9 @@
  *
  * - 新单位创建视图；离场的小兵/野怪/建筑先播完死亡演出再销毁(塔留下废墟)；英雄阵亡倒地后淡出，复活时重现。
  * - 位置按 lerp(prevPos, pos, alpha) 插值(瞬移时 prevPos = pos，自然不插值)，朝向平滑转向，按 unit.anim 驱动程序动画。
- * - 对玩家队伍不可见的敌方单位淡出隐藏；草丛内、不可选中的单位半透明；受击闪白(lastHitTime)。
+ * - 对玩家队伍不可见的敌方单位淡出隐藏；草丛内、不可选中的单位半透明；受击闪亮(lastHitTime：保色相的提亮 + 薄薄一层白)。
+ * - 无敌态的防御塔 / 水晶外罩一圈半透明的六边护罩(units/shield.ts)。
+ * - 描边 / 阴影 / 透视剪影三个通道各自只画模型里够大的形体(分通道减面，见 PASS_LOD)。
  * - 脚下：两层接触阴影(脚下的实芯 + 顺着太阳投影方向偏出去的椭圆软影) + 队伍色光环(玩家自己金绿色)。
  * - 动画输入除了动作与进度，还有：出生演出(对局中新刷出的野怪)、距上次受击的时间、警戒 / 特殊出手 / 建筑无敌等状态位。
  * - 同一种模型的所有实例一次 draw call(骨骼贴图实例化，见 models/shading.ts)；镜头外的单位不解算也不提交。
@@ -20,6 +22,7 @@ import { type AttachName, type InstanceLook, type ModelDef, Puppet, RigBatch, al
 import { getFallbackModel } from '../models/fallback';
 import { lodIndexCount } from '../models/kit';
 import { RING_BLOB, RING_HERO, RING_MINION, RING_PLAYER, RingBatch } from './rings';
+import { ShieldBatch } from './shield';
 
 /** 单位的渲染信息快照 */
 export interface UnitViewInfo {
@@ -130,6 +133,9 @@ interface View {
   mode: number;
   /** 本次普攻是强化的一击(出手时锁定) */
   special: boolean;
+  /** 建筑的无敌护罩：强度 0..1(出现时淡入)与解除进度(-1 = 完好；0..1 = 正在碎开淡出) */
+  shield: number;
+  shieldBreak: number;
 }
 
 interface Ruin {
@@ -178,6 +184,8 @@ const FLASH_BOOST = 0.85;
 const FLASH_WHITE = 0.1;
 const FLASH_WHITE_BIG = 0.04;
 const WHITE = new THREE.Color(1, 1, 1);
+/** 无敌护罩解除时碎开淡出的时长(秒) */
+const SHIELD_BREAK = 0.45;
 
 /**
  * 分通道减面：一个单位每帧要画 3~4 遍(本体 / 描边壳 / 阴影 / 透视剪影)，后三遍只看轮廓，用不着模型的全部三角形。
@@ -185,13 +193,16 @@ const WHITE = new THREE.Color(1, 1, 1);
  *   - 描边壳：只画描边的形体(五官、发光嵌线这些线宽为 0 的画了也看不见)，三档相同；
  *   - 阴影：再跳过包围盒最大边小于阈值的小件(带扣、甲钉、手指、箭羽——在阴影贴图上不到两三个 texel，软阴影一糊就没了)；
  *     medium 的阴影贴图只有 high 的一半分辨率，阈值放宽；
- *   - 透视剪影：只是一片抖动的纯色，阈值最宽。
+ *   - 透视剪影：只是一片抖动的纯色，同样跳过小件；但它是被挡住的单位唯一看得见的样子，四肢、头盔、武器必须都在，
+ *     阈值不能再宽：0.25 时少掉的还只是缠带、护腕、臂箍这类贴在肢体上的件，
+ *     到 0.3 射手的小腿、战士的头盔与披膊、提灯兵的灯头就从剪影里消失了。
  * 本体永远画完整模型，所以三档的模型细节一致，没有肉眼可见的差别。阈值单位：米(模型空间 × 模型缩放)。
+ * 各阈值下剪影里还剩哪些件，可以在英雄画廊页用 ?lod=<米> 直接看(dev/heroes.ts)。
  */
 const PASS_LOD: Record<QualitySettings['name'], { shadow: number; xray: number }> = {
-  high: { shadow: 0.14, xray: 0.3 },
-  medium: { shadow: 0.25, xray: 0.3 },
-  low: { shadow: 0.25, xray: 0.36 },
+  high: { shadow: 0.14, xray: 0.2 },
+  medium: { shadow: 0.25, xray: 0.25 },
+  low: { shadow: 0.25, xray: 0.25 },
 };
 /** 每个批各通道该画的索引数(画质切换时重算) */
 interface PassRange {
@@ -279,12 +290,14 @@ export function createUnitsModule(ctx: RenderContext): UnitsModule {
   const batchList: RigBatch[] = [];
   const ruins: Ruin[] = [];
   const rings = new RingBatch(320);
+  const shields = new ShieldBatch(16);
   // 接触阴影的软影顺着太阳的水平投影方向偏出去
   const sunLen = Math.hypot(SUN_DIR.x, SUN_DIR.z) || 1;
   const shadowDx = -SUN_DIR.x / sunLen;
   const shadowDz = -SUN_DIR.z / sunLen;
   const shadowAngle = Math.atan2(shadowDz, shadowDx);
   root.add(rings.mesh);
+  root.add(shields.mesh);
 
   let quality = ctx.settings.name;
   let outlines = quality !== 'low';
@@ -320,6 +333,8 @@ export function createUnitsModule(ctx: RenderContext): UnitsModule {
     xSelf: new THREE.Color(0x9dff5a),
     /** 星陨祝福期间小兵队伍环外的细金边 */
     blessRing: new THREE.Color(0xffcf60),
+    /** 无敌护罩：队伍色提亮一档(蓝 = 晶蓝，红 = 余烬橙红) */
+    shield: [new THREE.Color(0x58b4ff), new THREE.Color(0xff6a42)],
     xAlly: new THREE.Color(0x58aaff),
     xEnemy: new THREE.Color(0xff5a48),
     xNeutral: new THREE.Color(0xf2c860),
@@ -327,7 +342,7 @@ export function createUnitsModule(ctx: RenderContext): UnitsModule {
   let playerTeam: 0 | 1 = ctx.frame.playerTeam;
   const teamColor = (t: 0 | 1 | 2): THREE.Color => (t === 0 ? colors.blue : t === 1 ? colors.red : colors.neutral);
 
-  /** 各批的分通道索引范围(与 batchList 同序) */
+  /** 各批的分通道索引范围 */
   const passRanges = new Map<RigBatch, { def: ModelDef; range: PassRange }>();
   const computeRange = (def: ModelDef, out: PassRange): void => {
     const lod = PASS_LOD[quality];
@@ -452,6 +467,9 @@ export function createUnitsModule(ctx: RenderContext): UnitsModule {
       hitT: 99,
       mode: 0,
       special: false,
+      // 一出现就处于无敌态的建筑(开局的二塔、高地塔、水晶)：护罩直接是满的
+      shield: STATIC_KINDS[u.kind] && u.invulnerable && u.alive ? 1 : 0,
+      shieldBreak: -1,
       windup: u.kind === 'hero' ? HEROES[u.heroId].basicAttack.windup : STATIC_KINDS[u.kind] ? 0.3 : 0.35,
     };
     v.deathDur = deathDuration(v);
@@ -626,6 +644,17 @@ export function createUnitsModule(ctx: RenderContext): UnitsModule {
     } else if (u.kind === 'tower' || u.kind === 'core') {
       if (u.invulnerable) inp.mode |= 1;
       if (u.targetId >= 0 && views.get(u.targetId)?.kind === 'hero') inp.mode |= 2;
+      // 无敌护罩：在场时淡入；解除(前一座塔被毁)时碎开淡出
+      if (u.invulnerable && u.alive) {
+        v.shield = Math.min(1, v.shield + frame.dt * 2.5);
+        v.shieldBreak = -1;
+      } else if (v.shield > 0) {
+        v.shieldBreak = Math.max(0, v.shieldBreak) + frame.dt / SHIELD_BREAK;
+        if (v.shieldBreak >= 1) {
+          v.shield = 0;
+          v.shieldBreak = -1;
+        }
+      }
     }
     if (u.kind === 'hero') {
       for (let i = 0; i < u.buffs.length; i++) {
@@ -746,6 +775,13 @@ export function createUnitsModule(ctx: RenderContext): UnitsModule {
     v.batch.push(v.puppet.skeleton, look);
     instanceCount++;
 
+    // 无敌护罩：塔罩住塔身(到托举核心的冠沿)，水晶罩住整颗星核
+    if (v.shield > 0 && v.team !== 2 && v.dying < 0) {
+      const crack = Math.max(0, v.shieldBreak);
+      if (v.kind === 'core') shields.push(v.x, 0.95, v.z, 3.05, 5.4, 16, colors.shield[v.team], v.shield * v.opacity, crack);
+      else shields.push(v.x, 0.36, v.z, v.height > 9.2 ? 2.1 : 1.9, v.height - 3.3, 12, colors.shield[v.team], v.shield * v.opacity, crack);
+    }
+
     // 脚下标记
     if (!STATIC_KINDS[v.kind] && v.dying < 0) {
       const water = ctx.terrain.inWater(v.x, v.z);
@@ -807,6 +843,7 @@ export function createUnitsModule(ctx: RenderContext): UnitsModule {
       booted = true;
       for (let i = 0; i < batchList.length; i++) batchList[i].begin();
       rings.begin();
+      shields.begin();
       instanceCount = 0;
 
       for (let i = list.length - 1; i >= 0; i--) {
@@ -859,10 +896,13 @@ export function createUnitsModule(ctx: RenderContext): UnitsModule {
           puppet.update(0, 0, _focus.x, 0, _focus.z, 0, 1);
           b.push(puppet.skeleton, warmLook);
         }
+        // 护罩的着色器也在预热帧里编掉(开局镜头里不一定有无敌态的建筑)
+        shields.push(_focus.x, 0.36, _focus.z, 1.9, 4, 12, colors.shield[0], 1, 0);
       }
 
       for (let i = 0; i < batchList.length; i++) batchList[i].end();
       rings.end();
+      shields.end();
     },
     prewarm() {
       // 小兵 / 野怪 / 废墟等开局不在场的模型：现在就把几何建好、把批建好，免得它们第一次出场的那一帧又建模又上传
@@ -975,6 +1015,7 @@ export function createUnitsModule(ctx: RenderContext): UnitsModule {
       for (const b of batchList) b.dispose();
       passRanges.clear();
       rings.dispose();
+      shields.dispose();
       views.clear();
       unitById.clear();
       list.length = 0;
