@@ -7,6 +7,7 @@
  * - 河道在西北角有山泉瀑布注入，在东南角越过石沿跌落。
  */
 import * as THREE from 'three';
+import { SUN_SHADOW_DIR } from '../engine/lighting';
 import { GLSL_OUTPUT_FRAGMENT, PALETTE, Rng, SHARED, fbm2, hash2 } from '../materials';
 import type { Vec2 } from '../../core/types';
 import { TOP_TEX } from './cliffs';
@@ -161,8 +162,11 @@ export function buildBorder(field: MapField, info: BorderInfo, root: THREE.Objec
       // 南侧矮石沿：沿顶是长苔的暖石，外立面往下迅速压暗(当画框用，不抢对局区)
       const mossN = fbm2(p.s * 0.31, 5.7, 2, 19);
       const lowCols: RGB[] = [scaleRgb(ROCK, 0.8), mixRgb(ROCK_LIGHT, MOSS, mossN * 0.5), mixRgb(mixRgb(ROCK_LIGHT, ROCK_WARM, 0.6), MOSS, smoothstep(0.45, 0.7, mossN) * 0.7), mixRgb(ROCK, MOSS, mossN * 0.4), scaleRgb(ROCK_DARK, 0.9), scaleRgb(ROCK_DARK, 0.62)];
-      // 界外高崖是画框：岩面整体压一档(暗面 L* 落到 40 上下)，不和场内受光的岩石抢
-      const hiCol = inBase ? stoneCols[k] : k >= 1 && k <= 4 ? scaleRgb(rockCols[k], 0.82) : rockCols[k];
+      // 界外高崖是画框：岩面整体压一档(暗面 L* 落到 40 上下)，不和场内受光的岩石抢。
+      // 背着主光的那几面(西侧高崖朝场内的立面)只吃天光与阴影偏色，同一个反照率下实测 L* 仍有 47 上下、是一条发浅的蓝紫窄带：
+      // 按立面朝向(朝场内的法线 = -n，背光时与影子方向同向)再压一档，落回 40 上下
+      const away = smoothstep(0.1, 0.6, -(p.nx * SUN_SHADOW_DIR.x + p.nz * SUN_SHADOW_DIR.y));
+      const hiCol = inBase ? stoneCols[k] : k >= 1 && k <= 4 ? scaleRgb(rockCols[k], 0.82 * lerp(1, 0.74, away)) : rockCols[k];
       const loCol = inBase ? stoneCols[Math.min(5, k + 1)] : lowCols[k];
       color = mixRgb(hiCol, loCol, sw);
       if (k === 0) ao = 0.72;

@@ -972,6 +972,12 @@ for (const v of PROJECTILE_VISUALS) {
     } else spawnProjectile(v, player, P0(), dir, PROJ_SPEED[v], { target: foe });
   });
 }
+// 落空：擦着敌人身侧射过去，飞到尽头钉进地面(李广的重箭 / 荆轲的匕首各留一支在地上)
+for (const v of ['fengling_s1', 'yeque_s2'] as const) {
+  PLAYS.set('proj:' + v + ':miss', () => {
+    spawnProjectile(v, player, P0(), dirTo(player.pos, at(2.5, 1.7)), PROJ_SPEED[v], { range: 5.5, radius: 0.6 });
+  });
+}
 
 /** 区域预览(enemy = 敌方施放) */
 const AREA_SPEC: Record<AreaVisual, { radius: number; duration: number; follow: boolean }> = {
