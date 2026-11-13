@@ -1,8 +1,8 @@
 /**
  * 场景里的指路箭头（DOM 元素，每帧用 host.worldToScreen 对位；不做渲染层的 3D 地面标记）。
  *
- * 目标在屏幕内：目标脚下一个椭圆光圈 + 上方上下弹动的金色箭头 + 小标签(如「上路一塔」)。
- * 目标在屏幕外：箭头贴在一个内缩矩形的边上指向目标，标签带上距离。
+ * 目标在屏幕内：目标脚下一个椭圆光圈 + 上方上下弹动的金色箭头 + 小标签(如「我方上路一塔」)。
+ * 目标在屏幕外：箭头贴在一个内缩矩形的边上指向目标，标签分两行：名字 / 距离(两行比一长条窄，窄屏上才躲得开玩家头顶的名牌)。
  * 内缩矩形四边：左右 20%、上 22%、下 32%——避开小地图、顶部指引位、技能区与状态栏。
  * 只写 transform / 文字，不读布局；全部不拦截指针。
  */
@@ -36,10 +36,13 @@ const CSS = sfCss(`
 .sf-hud__garrow-tip::before { background: #1c1204; }
 .sf-hud__garrow-tip::after { inset: 9%; background: linear-gradient(90deg, #d8891a, #ffc93c 45%, #fff3b0); }
 .sf-hud__garrow-label {
-  position: absolute; left: 0; top: 0; transform: translate(-50%, -50%) translate(var(--lx, 0px), var(--ly, 0px)); padding: 2u 9u; border-radius: 99px; white-space: nowrap;
+  position: absolute; left: 0; top: 0; transform: translate(-50%, -50%) translate(var(--lx, 0px), var(--ly, 0px)); display: flex; flex-direction: column; align-items: center; padding: 2u 9u; border-radius: 10u; white-space: nowrap;
   font-size: var(--sf-fs-xs); font-weight: 800; letter-spacing: 0.06em; line-height: 1.5; color: #2b1a04; background: linear-gradient(180deg, #fff4d6, #e0b160);
   box-shadow: 0 0 0 1px rgba(8, 13, 31, 0.85), 0 3u 8u rgba(2, 4, 12, 0.5);
 }
+/* 第二行：距离(只在贴边时有) */
+.sf-hud__garrow-dist { font-family: var(--sf-font-num); font-weight: 800; line-height: 1.2; letter-spacing: 0.02em; opacity: 0.82; }
+.sf-hud__garrow-dist:empty { display: none; }
 @keyframes sf-hud-garrow-bob { 0%, 100% { transform: translateX(-28%); } 50% { transform: translateX(0); } }
 @keyframes sf-hud-garrow-ring { 0% { transform: scale(0.55); opacity: 1; } 100% { transform: scale(1.15); opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .sf-hud__garrow-tip, .sf-hud__garrow-ring::before, .sf-hud__garrow-ring::after { animation: none; } }
@@ -59,8 +62,8 @@ const INSET = { left: 0.2, right: 0.2, top: 0.22, bottom: 0.32 } as const;
 const ON_SCREEN = { x: 0.07, top: 0.14, bottom: 0.2, relax: 0.035 } as const;
 /** 屏内箭头悬在目标上方多高(米)：比防御塔略高 */
 const HOVER_HEIGHT = 8.5;
-/** 标签的半宽 / 半高(像素，估值)：摆位时让它不压到箭头 */
-const LABEL_HALF = { w: 66, h: 14 } as const;
+/** 标签的半高(像素，估值)：单行(屏内，只有名字) / 两行(贴边，名字 + 距离)。半宽按名字的字数现算，见 labelHalfW */
+const LABEL_HALF = { h: 14, h2: 20 } as const;
 
 /** 玩家英雄头顶名牌(名字 + 血条)的大致范围：半宽(像素)、名牌顶端比头顶高出多少(像素)；估头顶位置用的身高(米) */
 const SELF_PLATE = { halfW: 62, above: 46, height: 3.7 } as const;
@@ -79,14 +82,21 @@ export function createSceneArrow(ctx: HudCtx, avoid?: () => HTMLElement | null):
   const ring = h('i', 'sf-hud__garrow-ring');
   const tip = h('i', 'sf-hud__garrow-tip');
   const rot = h('i', 'sf-hud__garrow-rot', tip);
-  const label = h('span', 'sf-hud__garrow-label');
+  const labelName = h('span');
+  const labelDist = h('span', 'sf-hud__garrow-dist');
+  const label = h('span', 'sf-hud__garrow-label', labelName, labelDist);
   const mark = h('div', 'sf-hud__garrow-mark', rot, label);
   const el = h('div', 'sf-hud__garrow', ring, mark);
   el.setAttribute('aria-hidden', 'true');
 
   const setOn = classSlot(el, 'is-on');
   const setEdge = classSlot(el, 'is-edge');
-  const setLabel = textSlot(label);
+  const setName = textSlot(labelName);
+  const setDist = textSlot(labelDist);
+  /** 标签字号(像素)：尺寸变化时重读一次，估标签宽度用 */
+  let labelFs = 12;
+  /** 标签的半宽(像素，估值)：全角字按 1.06 个字宽(含字距)，两侧内边距各约 10 像素 */
+  const labelHalfW = (name: string): number => (name.length * labelFs * 1.06) / 2 + 11;
   let target: { pos: Vec2; label: string } | null = null;
   let edge = false;
   let shown = false;
@@ -113,6 +123,7 @@ export function createSceneArrow(ctx: HudCtx, avoid?: () => HTMLElement | null):
       const r = ctx.root.getBoundingClientRect();
       rect = { left: r.left, top: r.top, w: r.width, h: r.height };
       rectDirty = false;
+      labelFs = parseFloat(getComputedStyle(label).fontSize) || 12;
       avoidAge = AVOID_EVERY;
       if (rect.w === 0) return;
     }
@@ -156,7 +167,8 @@ export function createSceneArrow(ctx: HudCtx, avoid?: () => HTMLElement | null):
       deg = 90;
       lx = 0;
       ly = -(size + 8 + LABEL_HALF.h);
-      setLabel(target.label);
+      setName(target.label);
+      setDist('');
     } else {
       // 朝向：从玩家出发往目标方向走几米，看这一小段在屏幕上往哪偏(镜头有俯角，不能直接拿世界坐标的角度)
       const me = c.me.pos;
@@ -195,26 +207,31 @@ export function createSceneArrow(ctx: HudCtx, avoid?: () => HTMLElement | null):
       const t = Math.min(tx, ty);
       x = cx + sx * t;
       y = cy + sy * t;
+      // 标签放在箭头靠屏幕中心的一侧，退到箭尾之后(横着指时要让出标签的半个宽度，竖着指时只要半个高度)
+      const halfW = labelHalfW(target.label);
+      const back = size + 8 + Math.abs(sx) * halfW + Math.abs(sy) * LABEL_HALF.h2;
+      lx = -sx * back;
+      ly = -sy * back;
       if (ty <= tx && sy < 0) {
-        // 目标在正北：朝上指的箭头连同它下面的标签会正好压在玩家自己的名字和血条上(指引位又把它往下推了一截)。
-        // 这时沿上边横移到名牌的一侧，箭头方向不变
+        // 目标在北边：朝上指的箭头连同它后面的标签会正好压在玩家自己的名字和血条上(指引位又把它往下推了一截)。
+        // 这时沿上边横移到名牌的一侧，箭头方向不变。斜着指时标签是往屏幕中心一侧偏的(lx)，箭头与标签各算各的间距，两个都要让开
         const head = host.worldToScreen(me, SELF_PLATE.height);
         const hx = head.x - rect.left;
         const plateTop = head.y - rect.top - SELF_PLATE.above;
-        const labelBottom = y + size + 8 + 2 * LABEL_HALF.h;
-        const clear = SELF_PLATE.halfW + LABEL_HALF.w + 6;
-        if (plateTop < labelBottom + 4 && Math.abs(x - hx) < clear) {
+        const labelBottom = y + ly + LABEL_HALF.h2;
+        const needArrow = SELF_PLATE.halfW + size * 0.5 + 6;
+        const needLabel = SELF_PLATE.halfW + halfW + 6;
+        if (plateTop < labelBottom + 4 && (Math.abs(x - hx) < needArrow || Math.abs(x + lx - hx) < needLabel)) {
           if (sx > 0.1) dodge = 1;
           else if (sx < -0.1) dodge = -1;
-          x = Math.min(x1, Math.max(x0, hx + dodge * clear));
+          x = hx + dodge * Math.max(needArrow, needLabel - dodge * lx);
+          // 可以越过内缩矩形的左右边(那一带只有战场)，但标签要留在屏幕里
+          x = Math.min(W - halfW - 8 - lx, Math.max(halfW + 8 - lx, x));
         }
       }
       deg = (Math.atan2(sy, sx) * 180) / Math.PI;
-      // 标签放在箭头靠屏幕中心的一侧，退到箭尾之后(横着指时要让出标签的半个宽度，竖着指时只要半个高度)
-      const back = size + 8 + Math.abs(sx) * LABEL_HALF.w + Math.abs(sy) * LABEL_HALF.h;
-      lx = -sx * back;
-      ly = -sy * back;
-      setLabel(`${target.label} · ${Math.max(1, Math.round(dist))} 米`);
+      setName(target.label);
+      setDist(`${Math.max(1, Math.round(dist))} 米`);
     }
     mark.style.transform = `translate3d(${x.toFixed(1)}px, ${y.toFixed(1)}px, 0)`;
     const qd = Math.round(deg);

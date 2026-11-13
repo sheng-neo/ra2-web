@@ -134,7 +134,7 @@ const panyue: Record<HeroIconSlot, Draw> = {
         shield('translate(32 39.500) scale(1.02 .92)'),
     ),
 
-  // 死且不避：连人带盾从天上砸下来，落点炸开放射状的裂纹
+  // 跃盾砸阵：连人带盾从天上砸下来，落点炸开放射状的裂纹
   ult: () =>
     badge(
       heroBg('panyue', true),
@@ -558,7 +558,7 @@ const yeque: Record<HeroIconSlot, Draw> = {
     );
   },
 
-  // 图穷匕见：半展开的督亢图卷，卷尾露出一柄匕首
+  // 卷尽匕现：半展开的督亢图卷，卷尾露出一柄匕首
   ult: () =>
     badge(
       heroBg('yeque', true),

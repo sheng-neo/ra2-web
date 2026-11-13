@@ -13,6 +13,7 @@ import type {
 } from '../types';
 import { bushIndexAt } from '../vision';
 import type { Sim } from '../world';
+import type { BotTier } from './params';
 import type { BotView, ConeHazard, LastSeen, PublicState } from './types';
 
 /** safePath 的 A* 启发权重 */

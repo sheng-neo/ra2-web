@@ -37,7 +37,7 @@ const TEAM_COLOR = [COLORS.blue, COLORS.red] as const;
 /**
  * 营地标记(地图太小写不下字，用颜色 + 形状区分)：
  * 蓝buff = 蓝色圆点 + 同色细环(与法力条同色)；红buff = 红色圆点 + 细环；小野怪 = 黄色小菱形；
- * 河道巨龙 = 紫色三角(尖朝上) + 外环；远古巨灵 = 金色大菱形 + 双外环。
+ * 河道巨龙 = 紫色三角(尖朝上) + 外环；星陨巨灵 = 金色大菱形 + 双外环。
  */
 const CAMP_COLOR: Record<MonsterType, string> = {
   mossback: '#e2cf7a',
@@ -362,7 +362,7 @@ export function createMinimap(ctx: HudCtx): Minimap {
           c.lineWidth = Math.max(1, s);
           c.stroke();
         } else if (epic) {
-          // 史诗野怪：外环；远古巨灵再加一圈
+          // 史诗野怪：外环；星陨巨灵再加一圈
           campShape(c, shape, x, y, r + 2.4 * s);
           c.strokeStyle = col;
           c.lineWidth = Math.max(1, s);

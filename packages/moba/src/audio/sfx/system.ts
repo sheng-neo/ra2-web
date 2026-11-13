@@ -297,7 +297,7 @@ export const SYSTEM = {
         dragonRoar(q, 1.55, 1.1, 1);
       });
     } else {
-      // 远古巨灵：陨星拖尾坠下 → 砸进潭心 → 碎石浮起拼合 → 浑仪点亮
+      // 星陨巨灵：陨星拖尾坠下 → 砸进潭心 → 碎石浮起拼合 → 浑仪点亮
       p.sub(1, (q) => {
         q.osc({ f: 2200, f1: 240, ft: 0.95, a: 0.5, d: 0.5, g: 0.12 });
         q.noise({ flt: 'bandpass', fc: 5000, fc1: 700, fct: 0.95, q: 2, a: 0.85, d: 0.1, g: 0.5 });
@@ -317,7 +317,7 @@ export const SYSTEM = {
         q.osc({ f: 36.7, t: T + 1.4, a: 0.4, h: 0.3, d: 1.0, g: 0.4 });
       });
     }
-  }, { ...SYS, loud: -14, len: 3.6, gap: 1, poly: 1, prio: 3, range: 400, rev: 0.34, variants: [{ label: '河道巨龙', v: 0 }, { label: '远古巨灵', v: 1 }] }),
+  }, { ...SYS, loud: -14, len: 3.6, gap: 1, poly: 1, prio: 3, range: 400, rev: 0.34, variants: [{ label: '河道巨龙', v: 0 }, { label: '星陨巨灵', v: 1 }] }),
   epic_fall: def('状态与系统', '史诗野怪倒下', (p, v) => {
     if (v < 0.5) {
       // 河道巨龙：仰天长啸 → 渊珠碎裂 → 侧倒 → 头颈落水 → 鳞片化成上升的光点
@@ -333,7 +333,7 @@ export const SYSTEM = {
         [D5, A5, D6, A6].forEach((f, i) => bell(q, f, 2.0 + i * 0.12, 0.9, 0.5));
       });
     } else {
-      // 远古巨灵：浑仪环一道道崩断 → 双拳坠水 → 肩台胸甲塌成石冢 → 星核升空爆成星雨
+      // 星陨巨灵：浑仪环一道道崩断 → 双拳坠水 → 肩台胸甲塌成石冢 → 星核升空爆成星雨
       p.sub(1, (q) => {
         [0, 0.34, 0.68].forEach((t, i) => {
           q.fm({ f: 660 - i * 110, f1: 180, ft: 0.5, ratio: 1.41, idx: 3, idx1: 0.4, t, a: 0.002, d: 0.5, g: 0.3 });
@@ -351,7 +351,7 @@ export const SYSTEM = {
         q.scatter(12, 2.6, 0.9, (at, i) => bell(q, rain[i % rain.length], at, 0.6, 0.4));
       });
     }
-  }, { ...SYS, loud: -13, len: 3.6, gap: 1, poly: 1, prio: 3, range: 400, rev: 0.32, variants: [{ label: '河道巨龙', v: 0 }, { label: '远古巨灵', v: 1 }] }),
+  }, { ...SYS, loud: -13, len: 3.6, gap: 1, poly: 1, prio: 3, range: 400, rev: 0.32, variants: [{ label: '河道巨龙', v: 0 }, { label: '星陨巨灵', v: 1 }] }),
 
   // ───────────── 击杀提示(无更高级播报时) ─────────────
   kill_player: def('状态与系统', '玩家完成击杀', (p) => {
@@ -392,7 +392,7 @@ export const SYSTEM = {
     const lp = p.filt('lowpass', 1800, 0.8);
     [D4, A4].forEach((f) => p.osc({ w: 'softsaw', f, t: 0.38, a: 0.05, h: 0.2, d: 0.7, g: 0.16, to: lp }));
   }, { ...SYS, bus: 'ui', loud: -17, len: 1.7, rev: 0.3 }),
-  coin: def('状态与系统', '补刀金币', (p, v) => {
+  coin: def('状态与系统', '补兵金币', (p, v) => {
     const k = 1 + v * 0.25;
     p.noise({ flt: 'highpass', fc: 6000, a: 0.001, d: 0.006, g: 0.3 });
     p.ring(1976 * k, COIN, { a: 0.001, d: 0.2, g: 0.28 });

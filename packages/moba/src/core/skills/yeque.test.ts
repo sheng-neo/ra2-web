@@ -193,7 +193,7 @@ describe('荆轲 · S2 引匕一掷', () => {
   });
 });
 
-describe('荆轲 · 大招 图穷匕见', () => {
+describe('荆轲 · 大招 卷尽匕现', () => {
   it('隐身 0.35 秒(不可选中、免疫控制) → 出现在目标身后 → 340(+120%物攻) + 20% 已损生命的物理伤害', () => {
     const { sim, hero } = arena('yeque', 4);
     const a = enemyAt(sim, 'panyue', 5, 0, Math.PI);

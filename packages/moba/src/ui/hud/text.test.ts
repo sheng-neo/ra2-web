@@ -4,7 +4,8 @@
 import { describe, expect, it } from 'vitest';
 import { HEROES, HERO_IDS, SKILL_TAG_NAME, SUMMONER } from '../../core/data/heroes';
 import type { Buff, BuffId, SkillTag } from '../../core/types';
-import { SKILL_TAG_META, SUMMONER_CAST, buffDesc, castKind, castReach } from './text';
+import { MONSTERS } from '../../core/data/units';
+import { KILL_TITLES, SKILL_TAG_META, SUMMONER_CAST, buffDesc, castKind, castLabel, castReach } from './text';
 
 const HERO_BUFFS: BuffId[] = ['panyue_passive', 'panyue_bulwark', 'chijin_ember', 'chijin_blaze', 'chijin_spin', 'xingli_mark', 'fengling_gale', 'fengling_crit', 'yeque_shadow'];
 const buff = (id: BuffId, stacks = 2, value = 0.4): Buff => ({ id, sourceId: 1, timeLeft: 2, duration: 3, stacks, value });
@@ -42,17 +43,32 @@ describe('技能类型标签', () => {
 });
 
 describe('施法方式', () => {
-  it('五种施法方式各有一个词，距离 / 半径分开给', () => {
-    expect(castKind({ type: 'direction', range: 7.5, width: 2 })).toBe('方向');
-    expect(castKind({ type: 'cone', range: 5.5, angle: 1 })).toBe('扇形');
-    expect(castKind({ type: 'position', range: 9, radius: 3 })).toBe('范围');
-    expect(castKind({ type: 'target', range: 8 })).toBe('指向');
-    expect(castKind({ type: 'self', radius: 4.2 })).toBe('自身');
-    expect(castReach({ type: 'cone', range: 5.5, angle: 1 })).toBe('距离 5.5');
-    expect(castReach({ type: 'self', radius: 4.2 })).toBe('半径 4.2');
+  it('五种施法方式各有一个说「怎么放」的短语(不用方向 / 指向 / 范围 / 自身这类裸词)，距离 / 半径分开给并带单位「米」', () => {
+    expect(castKind({ type: 'direction', range: 7.5, width: 2 })).toBe('朝一个方向');
+    expect(castKind({ type: 'cone', range: 5.5, angle: 1 })).toBe('面前一片扇形');
+    expect(castKind({ type: 'position', range: 9, radius: 3 })).toBe('选一块地方');
+    expect(castKind({ type: 'target', range: 8 })).toBe('点一个敌人');
+    expect(castKind({ type: 'self', radius: 4.2 })).toBe('原地放');
+    expect(castReach({ type: 'cone', range: 5.5, angle: 1 })).toBe('距离 5.5 米');
+    expect(castReach({ type: 'self', radius: 4.2 })).toBe('半径 4.2 米');
     expect(castReach({ type: 'self', radius: 0 })).toBe('');
-    expect(castReach(SUMMONER_CAST.flash)).toBe(`距离 ${SUMMONER.flash.range}`);
+    expect(castReach(SUMMONER_CAST.flash)).toBe(`距离 ${SUMMONER.flash.range} 米`);
     expect(castReach(SUMMONER_CAST.recall)).toBe('');
+    expect(castLabel({ type: 'target', range: 8 })).toBe('点一个敌人 · 距离 8 米');
+    expect(castLabel({ type: 'self', radius: 0 })).toBe('原地放');
+  });
+});
+
+describe('播报与叫法', () => {
+  it('连杀称号是自拟的「星」母题三档；史诗野怪叫河道巨龙 / 星陨巨灵', () => {
+    expect(KILL_TITLES.killing_spree).toBe('星芒乍现');
+    expect(KILL_TITLES.unstoppable).toBe('星火燎原');
+    expect(KILL_TITLES.legendary).toBe('星陨传说');
+    expect(MONSTERS.abyss_drake.name).toBe('河道巨龙');
+    expect(MONSTERS.abyss_drake.alias).toBe('沉渊鳞龙');
+    expect(MONSTERS.star_colossus.name).toBe('星陨巨灵');
+    expect(buffDesc(buff('star_blessing'))).toContain('打掉星陨巨灵');
+    expect(buffDesc(buff('star_blessing'))).not.toContain('远古');
   });
 });
 

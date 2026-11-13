@@ -9,6 +9,7 @@ import type {
   AreaEffect, CastSpec, CoreUnit, GameState, HeroUnit, MapData, MonsterUnit, PlayerCommand, PlayerTeam, Projectile,
   SkillSlot, TowerUnit, Unit, Vec2,
 } from '../types';
+import type { BotTier } from './params';
 
 /** 敌方英雄最后一次被本队看到时的信息 */
 export interface LastSeen {

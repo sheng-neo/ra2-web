@@ -15,8 +15,8 @@ const S2 = HEROES.yeque.skills.s2;
 const ULT = HEROES.yeque.skills.ult;
 /** 帛卷：最长铺多远、全宽、铺开用时 */
 const SCROLL = { max: 8, width: 0.8, unroll: 0.3 };
-/** 旧帛的米黄 */
-const SILK_AGED = col(0xd9c9a3);
+/** 旧帛的米黄。贴花着色器会给底衬掺一成多 A 色(这里是偏紫的墨)的色相，所以取得比目标色(#d9c9a3)再暖一点 */
+const SILK_AGED = col(0xcdbf88);
 
 /** 风萧易水 from → to：一笔横扫的浓墨(边缘飞白) + 中心一线寒白；地面留下一道墨迹笔触，沿途甩出墨点和两三道淡白风线 */
 const s1Dash: FxHandler = (k, e, env) => {
@@ -111,7 +111,8 @@ const ultVanish: FxHandler = (k, e) => {
   const half = len / 2;
   k.decals
     .add(DECAL.scroll, x + dx * half, z + dz * half, half, life)
-    .rot(Math.atan2(dz, dx), (SCROLL.width * 0.5) / half)
+    // 四边形取帛宽的 1.8 倍：着色器里帛的中线会左右摆(见 DECAL.scroll)
+    .rot(Math.atan2(dz, dx), (SCROLL.width * 0.5 * 1.8) / half)
     .params(Math.min(SCROLL.unroll, vanish) / life, r.next() * TAU)
     .color(C.ink, 1)
     // 帛色取旧帛的米黄(不是近白)，铺在水面上再淡一档——否则像漂着一块白木板

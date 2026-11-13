@@ -138,7 +138,7 @@ export const MONSTER_RULES = {
   breathAngle: Math.PI / 3,
   breathTicks: 4,
   breathAdRatio: 3,
-  /** 远古巨灵：击杀方全队「巨灵buff(星陨祝福)」持续时间、伤害加成、每秒回复(最大生命比例)，并且期间己方小兵伤害/生命 +40% */
+  /** 星陨巨灵：击杀方全队「巨灵buff(星陨祝福)」持续时间、伤害加成、每秒回复(最大生命比例)，并且期间己方小兵伤害/生命 +40% */
   blessingDuration: 80,
   blessingDamage: 0.15,
   blessingRegen: 0.01,
@@ -148,11 +148,12 @@ export const MONSTER_RULES = {
 
 export interface MonsterDef {
   /**
-   * 显示名(头顶名牌、小地图、击杀流都用它)。增益怪与史诗野怪用品类通用叫法：蓝buff / 红buff / 河道巨龙 / 远古巨灵；
+   * 显示名(头顶名牌、小地图、击杀流都用它)。增益怪与河道巨龙用品类通用叫法：蓝buff / 红buff / 河道巨龙；
+   * 终局首领直接用自拟名「星陨巨灵」(口语简称「巨灵」)；
    * 小野怪没有专门的通用叫法，直接用自拟名(文案里统称「小野怪」)。
    */
   name: string;
-  /** 自拟副名(横幅、浮层、说明页写成「通用叫法 · 副名」，见 monsterFullName)。小野怪没有 */
+  /** 自拟副名(横幅、浮层、说明页写成「通用叫法 · 副名」，见 monsterFullName)。小野怪与星陨巨灵没有(后者的显示名本身就是自拟名) */
   alias?: string;
   /** 一句话击杀奖励(数值取自 MONSTER_RULES)。小野怪没有 */
   reward?: string;
@@ -185,20 +186,21 @@ export const MONSTERS: Record<MonsterType, MonsterDef> = {
     hp: 4200, hpPerMin: 280, ad: 110, adPerMin: 7, armor: 90, mr: 60, attackSpeed: 0.65, attackRange: 2.4, moveSpeed: 4.4, radius: 1.3, projectileSpeed: 0, gold: 97, xp: 138, epic: false,
   },
   abyss_drake: {
-    name: '河道巨龙', alias: '深渊鳞龙', reward: `打掉它：全队每人 +${MONSTER_RULES.drakeTeamGold} 金币、+${MONSTER_RULES.drakeTeamXp} 经验`,
+    name: '河道巨龙', alias: '沉渊鳞龙', reward: `打掉它：全队每人 +${MONSTER_RULES.drakeTeamGold} 金币、+${MONSTER_RULES.drakeTeamXp} 经验`,
     hp: 9000, hpPerMin: 600, ad: 190, adPerMin: 12, armor: 120, mr: 100, attackSpeed: 0.6, attackRange: 3.2, moveSpeed: 4.0, radius: 2.0, projectileSpeed: 0, gold: 80, xp: 120, epic: true,
   },
   star_colossus: {
-    name: '远古巨灵', alias: '星陨巨灵',
+    name: '星陨巨灵',
     reward: `打掉它：全队 ${MONSTER_RULES.blessingDuration} 秒内伤害 +${Math.round(MONSTER_RULES.blessingDamage * 100)}%、持续回血、小兵更强`,
     hp: 16000, hpPerMin: 900, ad: 260, adPerMin: 16, armor: 160, mr: 140, attackSpeed: 0.55, attackRange: 3.6, moveSpeed: 3.8, radius: 2.4, projectileSpeed: 0, gold: 120, xp: 180, epic: true,
   },
 };
 
-/** 「通用叫法 · 自拟名」，如「蓝buff · 霜晶巨鹿」「河道巨龙 · 深渊鳞龙」；小野怪写成「小野怪 · 苔背獾」 */
+/** 「通用叫法 · 自拟名」，如「蓝buff · 霜晶巨鹿」「河道巨龙 · 沉渊鳞龙」；星陨巨灵只有自拟名；小野怪写成「小野怪 · 苔背獾」 */
 export function monsterFullName(type: MonsterType): string {
   const def = MONSTERS[type];
-  return def.alias ? `${def.name} · ${def.alias}` : `小野怪 · ${def.name}`;
+  if (def.alias) return `${def.name} · ${def.alias}`;
+  return def.epic ? def.name : `小野怪 · ${def.name}`;
 }
 
 export const ECONOMY = {

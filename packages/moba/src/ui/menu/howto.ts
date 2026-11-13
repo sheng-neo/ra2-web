@@ -1,6 +1,6 @@
 /**
  * 操作说明对话框：键鼠 / 触控 两套操作图示，外加一页「怎么赢」——用一张示意地图讲清最少的规则：
- * 三条路、按顺序推塔、摧毁水晶、蓝buff / 红buff、河道巨龙与远古巨灵。示意图上的记号与对局里的小地图一致，顺带当图例用。
+ * 三条路、按顺序推塔、摧毁水晶、蓝buff / 红buff、河道巨龙与星陨巨灵。示意图上的记号与对局里的小地图一致，顺带当图例用。
  */
 import { ECONOMY, MONSTERS, MONSTER_RULES } from '../../core/data/units';
 import { createMap } from '../../core/map';
@@ -111,7 +111,7 @@ function keyboardPane(): HTMLElement {
     row('atk', '攻', '普攻', '<em>空格 / J</em> 自动选择目标；<em>左键或右键</em>点敌人指定攻击'),
     row('skill', '技', '技能', '<em>Q</em> 一技能 · <em>E</em> 二技能 · <em>R</em> 大招：按下显示指示器，松开朝鼠标位置施放；<em>Esc / 右键</em>取消'),
     row('sum', '通', '通用技能', '<em>F</em> 闪现(朝鼠标) · <em>G</em> 疗伤 · <em>B</em> 回城'),
-    row('ui', '界', '界面', '<em>Tab</em> 按住看记分板 · <em>P</em> 商店 · <em>Esc</em> 设置 / 暂停'),
+    row('ui', '界', '界面', '<em>Tab</em> 按住看战况 · <em>P</em> 商店 · <em>Esc</em> 设置 / 暂停'),
   );
   return h('div', 'sf-howto__pane', h('div', 'sf-howto__fig sf-inset', keys, mouse), list);
 }
@@ -131,7 +131,7 @@ function touchPane(): HTMLElement {
     '<path d="M30 68L68 30" stroke="#b9a2ff" stroke-width="1.400" opacity=".7"/>' +
     // 比分条
     '<rect x="150" y="18" width="100" height="16" rx="8" fill="rgba(150,178,235,.16)" stroke="rgba(150,178,235,.35)"/>' +
-    // 右上角：记分板 / 暂停
+    // 右上角：战况 / 暂停
     '<rect x="330" y="18" width="20" height="16" rx="4" fill="#b9a2ff" fill-opacity=".2" stroke="#b9a2ff" stroke-width="1.400"/>' +
     '<rect x="356" y="18" width="20" height="16" rx="4" fill="#b9a2ff" fill-opacity=".2" stroke="#b9a2ff" stroke-width="1.400"/>' +
     // 取消区：拖动瞄准时出现在技能区左上方
@@ -157,15 +157,15 @@ function touchPane(): HTMLElement {
     row('skill', '3', '技能', '<em>轻点</em> = 智能施法；<em>按住拖动</em> = 手动瞄准，松手施放；拖到<em>「取消」</em>区松手则取消；<em>原地长按</em>查看技能说明'),
     row('sum', '4', '通用技能', '闪现(可拖动选方向) · 疗伤 · 回城'),
     row('ui', '5', '小地图', '点按并拖动可观察战场，松手回到英雄'),
-    row('ui', '6', '商店', '随时购买装备；金币足够时会弹出推荐装备的快捷购买'),
-    row('ui', '7', '战况 / 暂停', '右上角按钮：记分板、暂停与设置'),
+    row('ui', '6', '商店', '金币够了会自动买推荐装备；想自己挑就点开商店(关掉自动出装后，钱够时这里会弹出一键购买)'),
+    row('ui', '7', '战况 / 暂停', '右上角两个按钮：看双方战况、暂停与设置'),
   );
   return h('div', 'sf-howto__pane', h('div', 'sf-howto__fig sf-inset', fig), list);
 }
 
 // ───────────────────────── 怎么赢 ─────────────────────────
 
-/** 图例颜色：与小地图(hud/minimap.ts)同一套——蓝buff 蓝点、红buff 红点、小野怪黄菱形、河道巨龙紫三角、远古巨灵金菱形 */
+/** 图例颜色：与小地图(hud/minimap.ts)同一套——蓝buff 蓝点、红buff 红点、小野怪黄菱形、河道巨龙紫三角、星陨巨灵金菱形 */
 const CAMP_COLOR: Record<MonsterType, string> = {
   mossback: '#e2cf7a',
   glimwing: '#e2cf7a',
@@ -178,7 +178,7 @@ const TEAM_FILL = ['#4da3ff', '#ff5d5d'] as const;
 const DARK = '#060a16';
 const n1 = (v: number): number => Math.round(v * 10) / 10;
 
-/** 营地记号(SVG 片段)：圆点 + 细环 / 三角 + 外环 / 菱形(远古巨灵是大菱形 + 双外环) */
+/** 营地记号(SVG 片段)：圆点 + 细环 / 三角 + 外环 / 菱形(星陨巨灵是大菱形 + 双外环) */
 function campGlyph(type: MonsterType, x: number, y: number, r: number): string {
   const c = CAMP_COLOR[type];
   const ring = (k: number, w: number): string => `<circle cx="${x}" cy="${y}" r="${n1(r * k)}" fill="none" stroke="${c}" stroke-width="${w}" opacity=".8"/>`;

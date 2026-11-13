@@ -54,8 +54,8 @@ export const HERO_RATINGS: Record<HeroId, Record<RatingKey, number>> = {
 };
 
 export const DIFFICULTY_META: Record<Difficulty, { label: string; desc: string }> = {
-  easy: { label: '简单', desc: 'AI 反应慢、技能不准、很少越线，适合熟悉英雄。' },
-  normal: { label: '普通', desc: 'AI 会补刀换血、游走抱团，接近普通玩家。' },
+  easy: { label: '简单', desc: '敌人反应慢、技能不准、很少越线；队友也不强，输赢看你。适合第一次玩。' },
+  normal: { label: '普通', desc: 'AI 会补兵换血、游走抱团，接近普通玩家。' },
   hard: { label: '困难', desc: 'AI 反应快，会集火、反蹲与连招收割。' },
 };
 export const DIFFICULTIES: Difficulty[] = ['easy', 'normal', 'hard'];
@@ -142,10 +142,10 @@ export function preloadPortraits(host: PortraitSource, heroIds: readonly HeroId[
   return Promise.all(jobs).then(() => undefined);
 }
 
-/** 上手难度星级（1~3 颗实心星） */
+/** 难度星级（1~3 颗实心星，星越多越难） */
 export function createStars(n: number, max = 3): HTMLSpanElement {
   const el = h('span', 'sf-stars');
-  el.setAttribute('aria-label', `上手难度 ${n} / ${max}`);
+  el.setAttribute('aria-label', `难度 ${n} / ${max}`);
   for (let i = 0; i < max; i++) el.appendChild(icon(uiIcon(i < n ? 'star' : 'star_empty'), i < n ? 'is-on' : ''));
   return el;
 }

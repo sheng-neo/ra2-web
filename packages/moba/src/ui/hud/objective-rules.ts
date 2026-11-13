@@ -3,8 +3,9 @@
  *
  * pickObjective：按优先级从上往下挑一条「现在该做什么」。只读 GameState 里玩家本来就看得到的东西：
  * 涉及敌方英雄 / 小兵位置时只用对我方可见的。
- * ObjectiveTracker：把每 0.5 秒评估一次的原始结果做防抖——新目标确认 1 秒、切换后至少停留 4 秒；
+ * ObjectiveTracker：把每 0.5 秒评估一次的原始结果做防抖——新目标确认 1 秒、切换后至少停留 4 秒(「集合」与「推塔」之间 8 秒)；
  * 警告类(优先级 1~3)立即切入，条件消失 1.5 秒后切走。
+ * 「小兵进塔了，快打塔」与兜底的「推掉这座塔」说的是同一座塔：两条共用一个键，只换文字，不算换目标。
  *
  * 距离类条件都带一点回差(上一次命中同一条规则时门槛放宽)，免得人站在门槛上时来回跳。
  */
@@ -47,16 +48,24 @@ export interface Objective {
 export interface ObjectiveMemory {
   /** 营地 id → 观察到它「活着」的起始时间 */
   epicSince: Map<number, number>;
+  /** 已经提示过「刷新了，别一个人去」的营地(每局每种只说一次；之后的刷新横幅会播，目标行不再跟着换) */
+  epicTold: Set<number>;
   lastId: ObjectiveId | null;
   lastKey: string;
   /** 兜底规则上一次说的是哪一路(被别的目标打断后也记着，回来接着说同一路) */
   pushLane: LaneId | null;
   /** 最近一次看到身边有敌方小兵的时间(补兵提示的停留用) */
   farmSeenAt: number;
+  /** 「队友在 X 路集合」上一次说的是哪一路，以及什么时候说的 */
+  groupLane: LaneId | null;
+  groupAt: number;
+  /** 想换成的另一路，以及它从什么时候起一直是最近的那一路(连续命中够久才换) */
+  groupCand: LaneId | null;
+  groupCandSince: number;
 }
 
 export function createObjectiveMemory(): ObjectiveMemory {
-  return { epicSince: new Map(), lastId: null, lastKey: '', pushLane: null, farmSeenAt: -Infinity };
+  return { epicSince: new Map(), epicTold: new Set(), lastId: null, lastKey: '', pushLane: null, farmSeenAt: -Infinity, groupLane: null, groupAt: -Infinity, groupCand: null, groupCandSince: 0 };
 }
 
 /**
@@ -72,12 +81,25 @@ export const OBJECTIVE_TUNE = {
   defendRecent: 3,
   defendRadius: 10,
   pushNowDist: [20, 24],
-  /** 史诗野怪刷新后多少秒内一直提示 */
-  epicFresh: 20,
+  /** 塔的射程外再多远之内才提示「塔在打你」：塔的锁定状态要过 3 秒才消，人早就跑出去了还在喊「先退出来」没有意义 */
+  aggroPad: [1, 2.5],
+  /**
+   * 史诗野怪第一次刷新后多少秒内提示一下「刷新了，别一个人去」(每局每种只说这一次)。设计稿是每次刷新提示 20 秒
+   * 外加「叫上队友一起打」，但玩家没有给队友发信号的手段，照做的新手一个人去必死：改成短提示，队友真的在打了再叫人过去。
+   */
+  epicFresh: 8,
+  /** 「队友在打」：史诗野怪掉了血，且营地这么多米内有我方别的英雄 */
+  epicMates: [14, 20],
+  /** 掉血到这个比例以下才算「在打」(野怪脱战会回满) */
+  epicHurt: 0.97,
   /** 之后只有人在坑边才提示。设计稿写 30 米，实测上路英雄站在自家一塔下就在 30 米内，会从 2:00 一直提示到龙死，收紧到 18 */
   epicNear: [18, 22],
   epicSoon: 15,
   groupDist: [25, 20],
+  /** 「队友在 X 路集合」换成另一路之前，新的那一路要连续是最近的这么多秒 */
+  groupSwitch: 3,
+  /** 上一次说的那一路过了这么久没再提，记忆作废 */
+  groupForget: 12,
   /** 离本路兵线(折线)多远算跑偏。设计稿按「离最前面的小兵 25 米」算，实测兵线刚被清掉、下一波还在路上时会把站在线上的人也判成跑偏 */
   backDist: [16, 12],
   farmDist: [14, 17],
@@ -134,10 +156,10 @@ export function nearestLane(state: GameState, p: Vec2): LaneId {
   return best;
 }
 
-/** 营地的叫法：增益怪与史诗野怪用通用叫法，小野怪统称「小野怪」 */
+/** 营地的叫法：增益怪与史诗野怪用显示名(蓝buff / 红buff / 河道巨龙 / 星陨巨灵)，小野怪统称「小野怪」 */
 export function campLabel(def: CampDef): string {
   const m = MONSTERS[def.monsterType];
-  return m.alias ? m.name : '小野怪';
+  return m.alias || m.epic ? m.name : '小野怪';
 }
 
 /** 一趟扫描收集到的局面(各条规则共用) */
@@ -181,6 +203,31 @@ export function minionsUnder(tower: Unit, myMinions: readonly MinionUnit[], pad 
   const r = tower.stats.attackRange + pad;
   const r2 = r * r;
   for (const m of myMinions) if (d2(m.pos, tower.pos) <= r2) return true;
+  return false;
+}
+
+/** 「推这座塔」的稳定键：规则 5(小兵进塔了，快打塔)与规则 14(兜底的推塔)说的是同一座塔时共用它 */
+const pushKey = (t: TowerUnit): string => `push_lane:${t.lane}:${t.tier}`;
+
+/** 人是不是还在这座塔(或水晶)的射程边上(pad：射程外再放宽多少米) */
+function inTowerReach(me: HeroUnit, tower: Unit, pad: number): boolean {
+  const r = tower.stats.attackRange + me.radius + pad;
+  return d2(tower.pos, me.pos) <= r * r;
+}
+
+/**
+ * 队友是不是正在打这个营地的史诗野怪：野怪对我方可见、血量掉到 hurt 比例以下，且营地 radius 米内有我方别的英雄。
+ * (野怪脱战会回满血，所以「掉了血」基本等于「正在打」；敌方在打而我方没人在场时不算。)
+ */
+function matesFighting(state: GameState, me: HeroUnit, def: CampDef, radius: number, hurt: number): boolean {
+  let fighting = false;
+  for (const u of state.units) {
+    if (u.kind !== 'monster' || u.campId !== def.id || !u.alive || !u.visible[me.team]) continue;
+    if (u.hp < u.stats.maxHp * hurt) fighting = true;
+  }
+  if (!fighting) return false;
+  const r2 = radius * radius;
+  for (const h of state.heroes) if (h.team === me.team && h.id !== me.id && h.alive && d2(h.pos, def.pos) <= r2) return true;
   return false;
 }
 
@@ -267,7 +314,10 @@ export function pickObjective(state: GameState, me: HeroUnit, mode: InputMode, m
         }
       }
       if (s.foeCore && d2(s.foeCore.pos, me.pos) < nd) near = s.foeCore;
-      if (near && !minionsUnder(near, s.myMinions)) return { id: 'tower_aggro', priority: 2, key: 'tower_aggro', tone: 'warn', text: '塔在打你，塔下没有小兵，先退出来' };
+      // 人还在塔的射程边上才提示：锁定状态会多挂几秒，跑出去以后就不必再喊了
+      if (near && inTowerReach(me, near, T.aggroPad[was === 'tower_aggro' ? 1 : 0]) && !minionsUnder(near, s.myMinions)) {
+        return { id: 'tower_aggro', priority: 2, key: 'tower_aggro', tone: 'warn', text: '塔在打你，塔下没有小兵，先退出来' };
+      }
     }
 
     // 3. 我方高地塔 / 水晶正在挨打，旁边有看得见的敌方英雄
@@ -319,40 +369,57 @@ export function pickObjective(state: GameState, me: HeroUnit, mode: InputMode, m
       return { id: 'end_it', priority: 4, key: `end_it:${lane ?? ''}`, tone: 'go', text: `${where}：跟着小兵去打水晶！`, pos: s.foeCore.pos };
     }
 
-    // 5. 小兵进塔了，人也在附近
-    {
-      const r = T.pushNowDist[was === 'push_now' ? 1 : 0];
-      const pad = was === 'push_now' ? 2 : 0;
-      for (const t of s.foeTowers) {
-        if (t.invulnerable || d2(t.pos, me.pos) > r * r) continue;
-        if (minionsUnder(t, s.myMinions, pad)) return { id: 'push_now', priority: 5, key: 'push_now', tone: 'go', text: '小兵进塔了，快打塔！' };
-      }
-    }
-
-    // 6. 敌方只剩一个人以内还活着
+    // 6. 敌方只剩一个人以内还活着。排在「小兵进塔了」前面判断：两条说的都是推塔，免得兵线进进出出时两句话来回换
     {
       let alive = 0;
       for (const h of state.heroes) if (h.team !== team && h.alive) alive++;
       if (alive <= 1) return { id: 'numbers', priority: 6, key: 'numbers', tone: 'go', text: '敌方大部分阵亡，抓紧推塔！' };
     }
 
-    // 7. 史诗野怪在场：刚刷新，或者人就在坑边
+    // 5. 小兵进塔了，人也在附近
+    {
+      const r = T.pushNowDist[was === 'push_now' ? 1 : 0];
+      const pad = was === 'push_now' ? 2 : 0;
+      for (const t of s.foeTowers) {
+        if (t.invulnerable || d2(t.pos, me.pos) > r * r) continue;
+        if (minionsUnder(t, s.myMinions, pad)) {
+          // 兵线被清掉后接着说的还是这座塔：记下这一路，键也与兜底那条相同(只换文字，不算换目标)
+          mem.pushLane = t.lane;
+          return { id: 'push_now', priority: 5, key: pushKey(t), tone: 'go', text: '小兵进塔了，快打塔！', pos: t.pos };
+        }
+      }
+    }
+
+    // 7. 史诗野怪在场：队友已经在打了(过去帮忙)；或者刚刷新 / 人就在坑边(提醒别一个人去)
     {
       let best: CampDef | null = null;
+      let bestHelp = false;
       let bd = Infinity;
       for (const def of map.camps) {
         const since = mem.epicSince.get(def.id);
         if (since === undefined) continue;
         const d = dist(def.pos, me.pos);
+        const wasHelp = was === 'epic_up' && mem.lastKey === `epic_up:${def.id}:help`;
+        const help = matesFighting(state, me, def, T.epicMates[wasHelp ? 1 : 0], wasHelp ? 1 : T.epicHurt);
         const nearR = T.epicNear[was === 'epic_up' && mem.lastKey === `epic_up:${def.id}` ? 1 : 0];
-        if (now - since < T.epicFresh || d <= nearR) {
-          if (d < bd) {
-            bd = d;
-            best = def;
-          }
+        // 「刚刷新」只在这只史诗野怪本局第一次出现时提示；显示过这一段(时间到了)就记下，之后的刷新不再提
+        const fresh = !mem.epicTold.has(def.id) && now - since < T.epicFresh;
+        if (!fresh && now - since >= T.epicFresh) mem.epicTold.add(def.id);
+        if (!help && !fresh && d > nearR) continue;
+        // 队友在打的那只优先，其次取近的
+        if ((help && !bestHelp) || (help === bestHelp && d < bd)) {
+          bd = d;
+          best = def;
+          bestHelp = help;
         }
       }
-      if (best) return { id: 'epic_up', priority: 7, key: `epic_up:${best.id}`, tone: 'info', text: `${MONSTERS[best.monsterType].name}已刷新(${riverSide(best.pos)})，叫上队友一起打`, pos: best.pos };
+      if (best) {
+        const name = MONSTERS[best.monsterType].name;
+        const side = riverSide(best.pos);
+        if (bestHelp) return { id: 'epic_up', priority: 7, key: `epic_up:${best.id}:help`, tone: 'go', text: `队友在打${name}(${side})，过去帮忙`, pos: best.pos };
+        // 不带位置：小地图不闪，免得把人往坑里引
+        return { id: 'epic_up', priority: 7, key: `epic_up:${best.id}`, tone: 'info', text: `${name}已刷新(${side})：一个人打不过，等队友去了再跟上` };
+      }
     }
 
     // 8. 史诗野怪快刷新了
@@ -441,11 +508,25 @@ export function pickObjective(state: GameState, me: HeroUnit, mode: InputMode, m
         const mid = { x: (a.pos.x + b.pos.x) / 2, y: (a.pos.y + b.pos.y) / 2 };
         if (dist(mid, me.pos) > T.groupDist[was === 'group' ? 1 : 0]) {
           let lane = nearestLane(state, mid);
-          // 两条路差不多近时沿用上一次说的那条
-          if (was === 'group') {
-            const prev = mem.lastKey.slice(6) as LaneId;
-            if (LANES.indexOf(prev) >= 0 && prev !== lane && distToPath(mid, map.lanes[prev]) - distToPath(mid, map.lanes[lane]) < 6) lane = prev;
-          }
+          const prev = mem.groupLane !== null && now - mem.groupAt <= T.groupForget ? mem.groupLane : null;
+          if (prev !== null && prev !== lane) {
+            // 队友在两条路之间走动时最近的那一路会来回变：两条路差不多近就沿用上一次说的；确实换了，也要连续 3 秒都是它才改口
+            if (distToPath(mid, map.lanes[prev]) - distToPath(mid, map.lanes[lane]) < 6) {
+              lane = prev;
+              mem.groupCand = null;
+            } else {
+              if (mem.groupCand !== lane) {
+                mem.groupCand = lane;
+                mem.groupCandSince = now;
+              }
+              if (now - mem.groupCandSince < T.groupSwitch) lane = prev;
+              else mem.groupCand = null;
+            }
+          } else mem.groupCand = null;
+          mem.groupLane = lane;
+          mem.groupAt = now;
+          // 走到队友身边后接着说的也是这一路(兜底的推塔沿用它)
+          if (frontFoeTower(s, lane)) mem.pushLane = lane;
           return { id: 'group', priority: 11, key: `group:${lane}`, tone: 'info', text: `队友在${LANE_NAME[lane]}集合，过去一起推`, pos: mid };
         }
       }
@@ -529,7 +610,7 @@ export function pickObjective(state: GameState, me: HeroUnit, mode: InputMode, m
       const t = lane ? frontFoeTower(s, lane) : null;
       if (lane && t) {
         mem.pushLane = lane;
-        return { id: 'push_lane', priority: 14, key: `push_lane:${lane}:${t.tier}`, tone: 'info', text: `跟着小兵，推掉敌方${towerName(lane, t.tier)}`, pos: t.pos };
+        return { id: 'push_lane', priority: 14, key: pushKey(t), tone: 'info', text: `跟着小兵，推掉敌方${towerName(lane, t.tier)}`, pos: t.pos };
       }
       // 塔都没了：水晶此时一定打得动，正常走不到这里
       return { id: 'push_lane', priority: 14, key: 'push_lane:core', tone: 'info', text: '跟着小兵，去打敌方水晶', pos: map.bases[foe].core };
@@ -548,9 +629,17 @@ export const OBJECTIVE_DEBOUNCE = {
   minHold: 4,
   /** 警告类条件消失后多久切走 */
   warnLinger: 1.5,
+  /** 「队友在 X 路集合」与「推塔」之间来回换时的最短停留(这两条最容易在抱团期互相打断) */
+  groupHold: 8,
 } as const;
 
 const isWarn = (o: Objective): boolean => o.priority <= 3;
+const isPush = (o: Objective): boolean => o.id === 'push_lane' || o.id === 'push_now';
+/** 从 cur 换到 cand 之前，cur 至少要停留多久 */
+function holdFor(cur: Objective, cand: Objective): number {
+  const D = OBJECTIVE_DEBOUNCE;
+  return (cur.id === 'group' && isPush(cand)) || (isPush(cur) && cand.id === 'group') ? D.groupHold : D.minHold;
+}
 
 /**
  * 把逐次评估的原始结果变成「屏幕上实际显示的那条」。时间用模拟时间(暂停时不走，加速调试时与对局同步)。
@@ -599,7 +688,7 @@ export class ObjectiveTracker {
       this.pendingKey = cand.key;
       this.pendingSince = now;
     }
-    if (now - this.pendingSince >= D.confirm - 1e-6 && now - this.since >= D.minHold - 1e-6) return this.adopt(cand, now);
+    if (now - this.pendingSince >= D.confirm - 1e-6 && now - this.since >= holdFor(cur, cand) - 1e-6) return this.adopt(cand, now);
     return false;
   }
 

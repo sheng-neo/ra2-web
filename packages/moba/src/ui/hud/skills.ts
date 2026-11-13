@@ -37,6 +37,17 @@ const LAYOUT: Record<ButtonId, { x: number; y: number }> = {
   heal: polar(138.5, R_OUT),
   flash: polar(117.5, R_OUT),
 };
+/**
+ * 竖屏下三个通用技能键的位置：外弧收到大招键的上方(85°~120°，半径略放大，给键下沿的名字留出位置)。
+ * 屏幕窄，横屏那组角度会把回城 / 疗伤键放进左半屏的摇杆热区、紧贴摇杆底盘(实测只隔 9px)，拇指稍偏就变成原地回城；
+ * 收拢后三个键的左缘都在屏宽 60% 以右(390 宽时最左的回城键左缘约 239px，摇杆热区到 218px 为止)。顺序不变：回城最靠左、闪现最靠上。
+ */
+const R_OUT_PORTRAIT = 2.75;
+const LAYOUT_PORTRAIT: Record<SummonerSlot, { x: number; y: number }> = {
+  recall: polar(120, R_OUT_PORTRAIT),
+  heal: polar(102.5, R_OUT_PORTRAIT),
+  flash: polar(85, R_OUT_PORTRAIT),
+};
 
 const CSS = sfCss(`
 .sf-hud__skills { position: absolute; right: var(--hud-r); bottom: calc(var(--hud-b) + var(--hud-lift)); z-index: 3; width: 0; height: 0; }
@@ -53,6 +64,11 @@ const CSS = sfCss(`
 .sf-hud__sk.is-sum { --d: calc(var(--hud-sk) * 0.74); }
 .sf-hud__sk.is-atk { --d: calc(var(--hud-sk) * 1.43); }
 .sf-hud__sk.is-down { transform: scale(0.93); }
+/* 竖屏：通用技能键换到大招键上方那组位置(见 LAYOUT_PORTRAIT)；右下技能区随之高出一截，中下的读条 / 提示条跟着上移 */
+@media (orientation: portrait) {
+  .sf-hud__sk.is-sum { right: calc(var(--hud-sk) * var(--xp, var(--x)) - var(--d) / 2); bottom: calc(var(--hud-sk) * var(--yp, var(--y)) - var(--d) / 2); }
+  .sf-hud { --hud-ch: calc(var(--hud-sk) * 4.1 + var(--hud-b)); }
+}
 
 /* 图标面：圆形裁切 + 双层描边（深色隔离线 + 金环） */
 .sf-hud__sk-face {
@@ -105,6 +121,14 @@ const CSS = sfCss(`
   transition: color 0.15s linear, box-shadow 0.15s linear, background 0.15s linear;
 }
 .sf-hud__sk-tag.is-ult { color: #2b1a04; background: var(--sf-grad-gold); box-shadow: 0 0 0 1px rgba(8, 13, 31, 0.9), 0 1px 3px rgba(0, 0, 0, 0.6); }
+/* 通用技能键的名字(闪现 / 疗伤 / 回城)：只在触控布局显示——键鼠有 F / G / B 键帽，文案也写「按 B 回城」；
+   触控的文案写的是「点『回城』」，键上得有这两个字才对得上。压在键的下沿，不挡图标中心的冷却秒数 */
+.sf-hud__sk-name {
+  position: absolute; left: 50%; bottom: calc(var(--d) * -0.14); z-index: 1; display: none; transform: translateX(-50%); padding: 0.18em 0.42em 0.2em; border-radius: 99px; pointer-events: none;
+  font-size: max(10px, calc(var(--d) * 0.24)); font-weight: 800; font-style: normal; line-height: 1; letter-spacing: 0.04em; white-space: nowrap;
+  color: #e9f2ff; background: rgba(6, 10, 24, 0.88); box-shadow: 0 0 0 1px rgba(150, 178, 235, 0.55), 0 1px 3px rgba(0, 0, 0, 0.6);
+}
+.sf-hud--touch .sf-hud__sk-name { display: block; }
 /* 未学会：角标一并变灰 */
 .sf-hud__sk.is-locked .sf-hud__sk-tag { color: #8b96b3; background: rgba(6, 10, 24, 0.88); box-shadow: 0 0 0 1px rgba(139, 150, 179, 0.5); }
 
@@ -228,6 +252,10 @@ export function createSkillBar(ctx: HudCtx): SkillBar {
   const place = (b: HTMLElement, id: ButtonId): void => {
     b.style.setProperty('--x', LAYOUT[id].x.toFixed(3));
     b.style.setProperty('--y', LAYOUT[id].y.toFixed(3));
+    if (id === 'recall' || id === 'heal' || id === 'flash') {
+      b.style.setProperty('--xp', LAYOUT_PORTRAIT[id].x.toFixed(3));
+      b.style.setProperty('--yp', LAYOUT_PORTRAIT[id].y.toFixed(3));
+    }
   };
 
   // ── 普攻键：字形跟着英雄的攻击方式走(剑 / 弓 / 星芒) ──
@@ -275,6 +303,7 @@ export function createSkillBar(ctx: HudCtx): SkillBar {
       pipsBox,
       h('span', 'sf-hud__key', KEY_LABEL[slot]),
       tagEl,
+      ability ? null : h('i', 'sf-hud__sk-name', SUMMONER[slot as SummonerSlot].name),
     );
     b.type = 'button';
     b.tabIndex = -1;

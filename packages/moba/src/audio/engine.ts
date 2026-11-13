@@ -68,7 +68,7 @@ const MON_VAR: Record<MonsterType, number> = {
   star_colossus: 4,
   glimwing: 5,
 };
-/** 史诗野怪的变体(epic_roar / epic_hit / epic_fall 的 v)：0 = 河道巨龙，1 = 远古巨灵 */
+/** 史诗野怪的变体(epic_roar / epic_hit / epic_fall 的 v)：0 = 河道巨龙，1 = 星陨巨灵 */
 const epicVar = (t: MonsterType): number => (t === 'star_colossus' ? 1 : 0);
 /** 同一批事件里多个播报只播最重要的，其余排队 */
 const ANN_RANK: Record<AnnounceKey, number> = {
@@ -727,7 +727,7 @@ export class Engine implements AudioEngine {
         if (e.unitId === undefined && me && Math.hypot(e.pos.x - me.pos.x, e.pos.y - me.pos.y) < 1) return;
         break;
       case 'gold_gain':
-        // 玩家自己的补刀由 gold 事件播更清脆的金币声
+        // 玩家自己的补兵由 gold 事件播更清脆的金币声
         if (e.unitId === pid || (e.unitId === undefined && playerCoin)) return;
         break;
       case 'hit_tower':

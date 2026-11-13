@@ -248,7 +248,7 @@ describe('樊哙 · S2 拥盾怒目', () => {
   });
 });
 
-describe('樊哙 · 大招 死且不避', () => {
+describe('樊哙 · 大招 跃盾砸阵', () => {
   it('跃起(霸体, leap 动画) → 落地物理伤害 + 击飞 1 秒 → 留下 3 秒减速裂隙', () => {
     const { sim, hero } = arena('panyue', 4);
     const a = enemyAt(sim, 'chijin', 6, 1);

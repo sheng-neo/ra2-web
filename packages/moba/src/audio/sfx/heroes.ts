@@ -49,7 +49,7 @@ export const HEROES_SFX = {
     drum(p, 0.12, 0.6, 0.82, 0.5);
     shield(p, A3, 0.125, 0.5, 1);
   }, CAST),
-  cast_panyue_ult: def('技能施放', '樊哙·死且不避', (p) => {
+  cast_panyue_ult: def('技能施放', '樊哙·跃盾砸阵', (p) => {
     // 三通鼓越擂越高，最后一下带起盾鸣
     drum(p, 0, 0.5, 0.9, 0.3);
     drum(p, 0.09, 0.55, 1.1, 0.3);
@@ -113,7 +113,7 @@ export const HEROES_SFX = {
     p.noise({ flt: 'bandpass', fc: 2200, fc1: 6800, q: 4, t: 0.01, a: 0.03, d: 0.07, g: 0.5 });
     p.ring(3300, DAGGER, { t: 0.05, a: 0.001, d: 0.2, g: 0.14 });
   }, { ...CAST, ...TUNED }),
-  cast_yeque_ult: def('技能施放', '荆轲·图穷匕见', (p) => {
+  cast_yeque_ult: def('技能施放', '荆轲·卷尽匕现', (p) => {
     // 两个下行的筑音，落在三全音上：不祥的预告
     zhu(p, D5, 0, 0.22, 0.8);
     zhu(p, mtof(68), 0.13, 0.5, 1);
@@ -360,7 +360,7 @@ export const HEROES_SFX = {
     zhu(p, D4, 0.02, 0.4, 0.5);
     p.osc({ f: 92, f1: 45, a: 0.004, d: 0.24, g: 0.5 });
   }, { ...FX, loud: -18, len: 0.6, rev: 0.24 }),
-  fx_yeque_ult_strike: def('技能特效', '荆轲·图穷匕见', (p) => {
+  fx_yeque_ult_strike: def('技能特效', '荆轲·卷尽匕现', (p) => {
     // 极短的留白，然后一声干脆的「嚓」+ 低音鼓
     const T = 0.045;
     const dr = p.drive(3, p.gain(0.6));
@@ -406,7 +406,7 @@ export const HEROES_SFX = {
     // 中频的一层：小喇叭上也听得见
     p.noise({ k: 'pink', flt: 'bandpass', fc: 420, q: 1, a: 0.2, h: hold, d: 0.6, g: 0.3, to: g });
   }, { ...BED, loud: -30, len: 4 }),
-  area_panyue_fissure: def('区域铺底', '死且不避·震裂的地面', (p) => {
+  area_panyue_fissure: def('区域铺底', '跃盾砸阵·震裂的地面', (p) => {
     const d = p.dur;
     const hold = Math.max(0.1, d - 0.7);
     const g = p.gain(1);

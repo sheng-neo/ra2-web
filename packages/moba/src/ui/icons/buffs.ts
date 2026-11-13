@@ -38,7 +38,7 @@ export const BUFF_META: Record<BuffId, { name: string; kind: BuffKind }> = {
   chijin_spin: { name: '抡圆了砍', kind: 'buff' },
   xingli_mark: { name: '余音', kind: 'debuff' },
   fengling_gale: { name: '连射', kind: 'buff' },
-  fengling_crit: { name: '应弦而倒', kind: 'buff' },
+  fengling_crit: { name: '下一箭必暴', kind: 'buff' },
   yeque_shadow: { name: '得手', kind: 'buff' },
   tower_focus: { name: '防御塔锁定', kind: 'debuff' },
 };

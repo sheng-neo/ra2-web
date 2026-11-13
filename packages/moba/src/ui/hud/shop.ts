@@ -10,6 +10,7 @@
  *
  * 商店外：自动出装关着时，金币够了弹「推荐 · 可购买」气泡(一点即买)；开着时不弹气泡，
  * 商店按钮外圈画攒钱进度环，自动买到手时在同一位置出一条不可点的提示条「已自动购买 ××」。
+ * 面板开着时小地图下方那个位置被面板挡住：提示条改停在面板上沿的正上方(那里放不下时不显示，面板顶部的小字与卡片标签照常提示)。
  *
  * 「下一件 / 实际花费 / 六张卡」全部取自 core/build.ts(经 rules.ts)，与模拟层的自动出装、Bot 同源。
  * 商店不暂停对局（随时随地可买），所以面板打开时仍在刷新可购买状态。
@@ -36,6 +37,7 @@ const CARD_COMPACT = `
   .sf-hud__card-price { grid-column: 2; grid-row: 2; margin: 0; padding: 0; font-size: var(--sf-fs-sm); }
   .sf-hud__card-tag { position: static; grid-column: 3; grid-row: 2; justify-self: end; }
   .sf-hud__card.is-done .sf-hud__card-tag { grid-column: 2 / span 2; justify-self: start; }
+  .sf-hud__card-tag-more { display: none; }
   .sf-hud__dt-brief { font-size: var(--sf-fs-sm); }
   .sf-hud__dt-stats { flex-direction: row; flex-wrap: wrap; gap: 2u 14u; margin-top: 5u; padding-top: 5u; }
   .sf-hud__dt-stat { justify-content: flex-start; gap: 5u; }
@@ -104,6 +106,10 @@ const CSS = sfCss(`
 .sf-hud__autobuy.is-warn .sf-hud__autobuy-ico { color: var(--sf-c-amber); background: rgba(255, 184, 77, 0.12); box-shadow: inset 0 0 0 1px rgba(255, 184, 77, 0.45); }
 @keyframes sf-hud-autobuy-out { to { opacity: 0; transform: translateY(-5u); } }
 
+/* 面板开着时提示条的停靠位：面板上沿的正上方、水平居中(top 由脚本按面板位置写入)；放不下就不显示 */
+.sf-hud__shop-dock { position: absolute; left: 0; right: 0; top: 0; z-index: 1; display: flex; justify-content: center; pointer-events: none; }
+.sf-hud__shop-dock.is-off { visibility: hidden; }
+
 /* ── 商店面板 ── */
 .sf-hud__shop { position: absolute; inset: 0; z-index: 7; display: none; place-items: center; pointer-events: auto;
   padding: max(10u, var(--sf-safe-t)) max(12u, var(--sf-safe-r)) max(10u, var(--sf-safe-b)) max(12u, var(--sf-safe-l)); background: rgba(3, 6, 16, 0.5); }
@@ -134,6 +140,9 @@ const CSS = sfCss(`
 .sf-hud__shop-steps { flex: none; display: flex; align-items: center; gap: 3u; }
 .sf-hud__shop-steps > i { width: 18u; height: max(4px, 5u); border-radius: 3u; background: rgba(4, 8, 22, 0.8); box-shadow: inset 0 0 0 1px var(--sf-c-line-strong); }
 .sf-hud__shop-steps > i.is-done { background: var(--sf-grad-gold); box-shadow: 0 0 6u rgba(255, 214, 130, 0.6); }
+/* 鞋那一格：草鞋已有、进阶鞋还没买 = 半格 */
+.sf-hud__shop-steps > i.is-half { background: linear-gradient(90deg, #f3cf85 0 50%, rgba(4, 8, 22, 0.8) 50% 100%); }
+.sf-hud__shop-prog-n > small { margin-left: 4u; font-size: var(--sf-fs-xs); color: var(--sf-c-text-3); }
 .sf-hud__shop-steps > i.is-next { background: var(--sf-c-cyan-400); box-shadow: 0 0 6u rgba(92, 214, 247, 0.7); animation: sf-hud-blink 1s steps(2, jump-none) infinite; }
 /* 桌面：3 列 2 行铺满(每页最多 6 件，不用滚动)；内容实在放不下时整列可滚 */
 .sf-hud__shop-grid { flex: 1 0 auto; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-rows: repeat(2, minmax(min-content, 1fr)); gap: 8u; }
@@ -173,6 +182,8 @@ const CSS = sfCss(`
 .sf-hud__card.is-sel.is-done, .sf-hud__card.is-sel.is-blocked { opacity: 0.9; }
 .sf-hud__card.is-sel.is-next { box-shadow: inset 0 0 0 max(2px, 2.5u) var(--sf-c-gold-100), 0 0 14u rgba(255, 214, 130, 0.5); }
 .sf-hud__card-tag.is-own { color: #0f2a1a; background: linear-gradient(180deg, #b8f5cf, #6fe3a1); }
+/* 鞋卡：草鞋已经在身上，升级排在后面——淡绿描边的说明标签，不抢「下一件」的风头 */
+.sf-hud__card-tag.is-have { color: #b9f5d2; background: rgba(12, 40, 26, 0.75); box-shadow: inset 0 0 0 1px rgba(111, 227, 161, 0.55); }
 .sf-hud__card-tag.is-next { color: #06222c; background: linear-gradient(180deg, #c9f6ff, #5cd6f7); }
 .sf-hud__card-tag.is-done, .sf-hud__card-tag.is-auto { color: #2b1a04; background: var(--sf-grad-gold); }
 .sf-hud__card-tag.is-step { color: var(--sf-c-text-2); background: rgba(4, 8, 22, 0.7); box-shadow: inset 0 0 0 1px var(--sf-c-line-strong); }
@@ -345,6 +356,8 @@ export interface Shop extends HudPart {
 }
 
 const statText = (def: ItemDef): string => def.brief ?? statSummary(def.stats, 2);
+/** 装备名去掉前面的功能词，只留器物名(「移速草鞋」→「草鞋」)：标签里地方小，玩家口头也这么叫 */
+const shortName = (id: ItemId): string => ITEMS[id].name.slice(-2);
 
 export function createShop(ctx: HudCtx): Shop {
   injectStyle('sf-hud-shop', CSS);
@@ -413,7 +426,24 @@ export function createShop(ctx: HudCtx): Shop {
     notice.classList.toggle('is-warn', n.warn);
     notice.classList.remove('is-out');
     replay(notice, 'is-on');
+    dockNotice();
     syncQuickVisible();
+  }
+  /**
+   * 提示条停在哪：面板关着 = 小地图下方(商店按钮右边)；面板开着 = 面板上沿的正上方。
+   * 面板几乎铺满屏幕(手机)时上面没有地方，就不显示——半截压在面板底下比不显示更糟，面板顶部的小字与卡片标签会说同一件事。
+   */
+  function dockNotice(): void {
+    if (!open) {
+      if (notice.parentElement !== shopbar) shopbar.appendChild(notice);
+      return;
+    }
+    if (notice.parentElement !== noticeDock) noticeDock.appendChild(notice);
+    // 面板上方的空带高度。用布局位置(offsetTop，相对遮罩层)：面板刚弹出时带缩放动画，量包围盒会偏大
+    const band = panel.offsetTop;
+    const height = notice.offsetHeight || 46;
+    noticeDock.style.top = `${Math.max(0, Math.round(band - height - 8))}px`;
+    noticeDock.classList.toggle('is-off', band < height + 12);
   }
   function pushNotice(n: Notice): void {
     noticeQueue.push(n);
@@ -449,6 +479,8 @@ export function createShop(ctx: HudCtx): Shop {
   }
 
   const shopbar = h('div', 'sf-hud__shopbar', shopBtn, quick, notice);
+  /** 面板开着时提示条挪到这里(面板上沿的正上方)，关掉再挪回小地图下面 */
+  const noticeDock = h('div', 'sf-hud__shop-dock');
 
   // ── 面板：顶部 ──
   const tabs = createTabs<ShopTab>({
@@ -494,7 +526,8 @@ export function createShop(ctx: HudCtx): Shop {
   // ── 面板：列表 / 详情 / 装备栏 ──
   const progN = h('b', 'sf-num');
   const progSteps = h('span', 'sf-hud__shop-steps');
-  const prog = h('div', 'sf-hud__shop-prog', h('span', 'sf-hud__shop-prog-who', h('b', null, heroFullName(ctx.me.heroId)), ' 的推荐出装'), h('span', 'sf-hud__shop-prog-n', '已买 ', progN), progSteps);
+  const progNote = h('small');
+  const prog = h('div', 'sf-hud__shop-prog', h('span', 'sf-hud__shop-prog-who', h('b', null, heroFullName(ctx.me.heroId)), ' 的推荐出装'), h('span', 'sf-hud__shop-prog-n', '已买 ', progN, progNote), progSteps);
   const grid = h('div', 'sf-hud__shop-grid');
   const list = h('div', 'sf-hud__shop-list sf-scroll', prog, grid);
   const detail = h('aside', 'sf-hud__shop-detail');
@@ -515,7 +548,7 @@ export function createShop(ctx: HudCtx): Shop {
   const panel = h('div', 'sf-hud__shop-panel sf-panel', head, h('div', 'sf-hud__shop-body', list, detail), inv);
   panel.setAttribute('role', 'dialog');
   panel.setAttribute('aria-label', '商店');
-  const scrim = h('div', 'sf-hud__shop', panel);
+  const scrim = h('div', 'sf-hud__shop', panel, noticeDock);
   scrim.addEventListener('pointerdown', (ev) => {
     if (ev.target === scrim) ctx.actions.setShop(false);
   });
@@ -605,7 +638,8 @@ export function createShop(ctx: HudCtx): Shop {
       const bc = bcs?.[sel.order - 1];
       if (!bc) return null;
       if (!bc.buyId) return { id: shownId(bc, me), kind: 'own', title: '已买', star: false, invIndex: -1 };
-      return { id: bc.buyId, kind: 'buy', title: bc.next ? '下一件' : `第 ${bc.order} 件`, star: bc.next, invIndex: -1 };
+      const later = bc.stage === 'base' && bc.baseId ? `已有${shortName(bc.baseId)} · 稍后升级` : `第 ${bc.order} 件`;
+      return { id: bc.buyId, kind: 'buy', title: bc.next ? (bc.stage === 'base' ? '下一件 · 升级' : '下一件') : later, star: bc.next, invIndex: -1 };
     }
     const isNext = nextRecommended(me) === sel.id;
     return { id: sel.id, kind: 'buy', title: isNext ? '下一件' : CATEGORY_TITLE[itemDef(sel.id).category], star: isNext, invIndex: -1 };
@@ -812,7 +846,9 @@ export function createShop(ctx: HudCtx): Shop {
       const isSel = sel?.kind === 'card' ? sel.order === card.order && card.order > 0 : sel?.kind === 'shop' && card.order === 0 && sel.id === card.id;
       const cl = card.el.classList;
       cl.toggle('is-afford', !!chk && chk.ok);
-      cl.toggle('is-poor', !!chk && chk.block === 'gold');
+      // 鞋卡的草鞋已经在身上、升级还没轮到：只是「以后的事」，价格不标成买不起的红色
+      const bootsLater = !!bc && bc.stage === 'base' && !bc.next;
+      cl.toggle('is-poor', !!chk && chk.block === 'gold' && !bootsLater);
       cl.toggle('is-blocked', blocked);
       cl.toggle('is-done', done);
       cl.toggle('is-next', !!bc && bc.next);
@@ -822,6 +858,8 @@ export function createShop(ctx: HudCtx): Shop {
 
       let tagText = '';
       let tagCls = '';
+      /** 标签的后半句(紧凑卡片里收起) */
+      let tagMore = '';
       const n = owned.get(card.id) ?? 0;
       if (card.autoUntil > 0 && (now >= card.autoUntil || !done)) card.autoUntil = 0;
       if (card.autoUntil > 0) {
@@ -829,12 +867,17 @@ export function createShop(ctx: HudCtx): Shop {
         pendingTag = pendingTag > 0 ? Math.min(pendingTag, card.autoUntil) : card.autoUntil;
       } else if (bc) {
         if (done) [tagText, tagCls] = ['✓ 已买', 'is-done'];
-        else if (bc.next) [tagText, tagCls] = ['下一件', 'is-next'];
+        else if (bc.next) [tagText, tagCls, tagMore] = ['下一件', 'is-next', bc.stage === 'base' ? ' · 升级' : ''];
+        // 鞋卡：开局自动买的草鞋已经在身上，这张卡现在是「以后升级」——写明白，免得「第 1 件没买却先买第 2 件」看不懂
+        else if (bc.stage === 'base' && bc.baseId) [tagText, tagCls, tagMore] = [`已有${shortName(bc.baseId)}`, 'is-have', ' · 稍后升级'];
         else if (blocked) [tagText, tagCls] = ['栏位已满', 'is-step'];
         else [tagText, tagCls] = [`第 ${bc.order} 件`, 'is-step'];
       } else if (n > 0) [tagText, tagCls] = [n > 1 ? `已有 ×${n}` : '已有', 'is-own'];
       else if (blocked && chk) [tagText, tagCls] = [BLOCK_TEXT[chk.block as 'full' | 'boots_owned' | 'boots_same'], 'is-step'];
-      if (card.tag.textContent !== tagText) card.tag.textContent = tagText;
+      if (card.tag.textContent !== tagText + tagMore) {
+        card.tag.textContent = tagText;
+        if (tagMore) card.tag.appendChild(h('span', 'sf-hud__card-tag-more', tagMore));
+      }
       const cls = `sf-hud__card-tag ${tagCls}`;
       if (card.tag.className !== cls) card.tag.className = cls;
     }
@@ -847,8 +890,11 @@ export function createShop(ctx: HudCtx): Shop {
       prog.hidden = !bcs;
       if (bcs) {
         progN.textContent = `${bcs.filter((c) => c.stage === 'done').length}/${bcs.length}`;
+        // 草鞋已经在身上但鞋这一件还没算买完：补一句，对得上开局那条「已自动购买 移速草鞋」
+        const half = bcs.find((c) => c.stage === 'base' && c.baseId);
+        progNote.textContent = half?.baseId ? `(${shortName(half.baseId)}已有)` : '';
         progSteps.textContent = '';
-        for (const c of bcs) progSteps.appendChild(h('i', c.stage === 'done' ? 'is-done' : c.next ? 'is-next' : ''));
+        for (const c of bcs) progSteps.appendChild(h('i', c.stage === 'done' ? 'is-done' : c.next ? 'is-next' : c.stage === 'base' ? 'is-half' : ''));
       }
     }
 
@@ -990,6 +1036,7 @@ export function createShop(ctx: HudCtx): Shop {
         lastItemsKey = ctx.me.items.join(',');
         rebuildList();
       }
+      dockNotice();
       syncOutside(ctx.me);
     },
     update(c) {

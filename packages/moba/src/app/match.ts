@@ -1,5 +1,7 @@
 /**
  * 一局对局的会话：加载(建世界 → 建场景 → 预热着色器 → 建 HUD) → 主循环 → 结束 / 中途退出 → 释放。
+ * 建场景与预热是加载里最重的两段：渲染层提供了分段版本(createGameRendererAsync / renderer.prewarmAsync，都是可选扩展)时
+ * 用它们，段与段之间让出主线程，加载页的进度条跟着走；没有提供时退回同步的老路(进度条只在几个节点上跳)。
  *
  * DOM 结构(都在 #app 里)：
  *   .app-match               本文件创建，自成一个层叠上下文(HUD 内部的 z-index 不会盖到加载页 / 结算页上面)
@@ -11,8 +13,8 @@ import type { AudioEngine } from '../audio/api';
 import type { GameEvent, GameState, MatchConfig, World } from '../core/types';
 import { TICK_DT } from '../core/types';
 import { createWorld } from '../core/world';
-import type { GameRenderer, Quality } from '../render/api';
-import { createGameRenderer } from '../render/index';
+import type { GameRenderer, Quality, RendererOptions } from '../render/api';
+import * as renderEntry from '../render/index';
 import type { HudHost, LoadingScreen, MatchChoice, MenuHost, Settings } from '../ui/api';
 import { createHud, preloadPortraits, showLoading } from '../ui/index';
 import type { HudHandle } from '../ui/index';
@@ -45,6 +47,14 @@ function thinEvents(batch: GameEvent[], tailStart: number): GameEvent[] {
   }
   return out;
 }
+
+/** 加载进度条上各阶段的起点：建世界 → 建场景 → 预热 → 建 HUD → 完成 */
+const PROGRESS = { world: 0.05, scene: 0.2, warm: 0.5, hud: 0.92 } as const;
+
+/** 渲染层的分段构建入口(可选扩展：没有这个导出的渲染层只有同步的 createGameRenderer) */
+type RendererFactoryAsync = (container: HTMLElement, state: GameState, opts: RendererOptions, onProgress?: (progress: number) => void) => Promise<GameRenderer>;
+const createGameRenderer = renderEntry.createGameRenderer;
+const createGameRendererAsync = (renderEntry as { createGameRendererAsync?: RendererFactoryAsync }).createGameRendererAsync;
 
 /** finished：对局分出胜负。endTime 是水晶被毁那一 tick 的模拟时间(= state.endTime；之后为了播结束演出，state.time 还会继续走) */
 export type MatchOutcome = { kind: 'finished'; state: GameState; endTime: number } | { kind: 'quit' };
@@ -181,7 +191,7 @@ export async function startMatch(env: MatchEnv, choice: MatchChoice, opts: Match
 
   try {
     // ── 1. 建世界 ──
-    loading.setProgress(0.05, '集结双方英雄…');
+    loading.setProgress(PROGRESS.world, '集结双方英雄…');
     await nextPaint();
     if (cancelled()) return null;
     // 自动出装的初值取玩家的设置(默认开)；对局中改设置由下面的 onSettings 转成命令
@@ -189,30 +199,44 @@ export async function startMatch(env: MatchEnv, choice: MatchChoice, opts: Match
     const world = createWorld(config);
     const state = world.state;
 
-    // ── 2. 建场景 ──(同步的重活：先让进度条画出来)
-    loading.setProgress(0.2, '铺展星陨高原…');
+    // ── 2. 建场景 ──(重活：先让进度条画出来)
+    loading.setProgress(PROGRESS.scene, '铺展星陨高原…');
     await nextPaint();
     if (cancelled()) return null;
     // 对局容器要先进文档，渲染器才量得到尺寸；放在最前面，加载页继续盖在上面
     app.insertBefore(matchEl, app.firstChild);
     const quality: Quality = env.getSettings().quality;
-    renderer = createGameRenderer(stage, state, { quality });
+    /** 把某一阶段内部的 0..1 进度映射到进度条上的一段 */
+    const span = (from: number, to: number) => (p: number): void => loading.setProgress(from + (to - from) * Math.max(0, Math.min(1, p)));
+    if (typeof createGameRendererAsync === 'function') {
+      // 分段构建：段间让出主线程，进度条在 20%~50% 之间连续推进
+      renderer = await createGameRendererAsync(stage, state, { quality }, span(PROGRESS.scene, PROGRESS.warm));
+      if (cancelled()) return null;
+    } else renderer = createGameRenderer(stage, state, { quality });
     renderer.setCameraShake?.(env.getSettings().cameraShake);
 
-    // ── 3. 预热着色器 ──(头两帧会编译全部用到的着色器并上传贴图，放在加载页后面做)
-    loading.setProgress(0.62, '点亮星辉与光影…');
+    // ── 3. 预热着色器 ──(编译全部用到的着色器并上传贴图，放在加载页后面做)
+    loading.setProgress(typeof createGameRendererAsync === 'function' ? PROGRESS.warm : 0.62, '点亮星辉与光影…');
     await nextPaint();
     if (cancelled()) return null;
     renderer.resize();
-    renderer.render(state, 1, 0);
-    loading.setProgress(0.82, '点亮星辉与光影…');
-    await nextPaint();
-    if (cancelled()) return null;
-    renderer.render(state, 1, 1 / 60);
+    if (typeof renderer.prewarmAsync === 'function') {
+      // 分步预热：几十个小段，进度条在 50%~90% 之间跟着走。期间不调 render()(契约约定，会被忽略)
+      await renderer.prewarmAsync(span(PROGRESS.warm, 0.9));
+      if (cancelled()) return null;
+      renderer.render(state, 1, 0);
+    } else {
+      // 老路：头两帧同步完成全部预热(第一次 render() 会自动做)，进度条只在两帧之间跳一次
+      renderer.render(state, 1, 0);
+      loading.setProgress(0.82, '点亮星辉与光影…');
+      await nextPaint();
+      if (cancelled()) return null;
+      renderer.render(state, 1, 1 / 60);
+    }
     renderer.snapCamera?.();
 
     // ── 4. 建 HUD ──
-    loading.setProgress(0.92, '布置战斗界面…');
+    loading.setProgress(PROGRESS.hud, '布置战斗界面…');
     // 头像先解码好：HUD 一建出来就是成品图，不会在加载页淡出时露出兜底的色块
     await Promise.race([preloadPortraits(env.menuHost, state.heroes.map((x) => x.heroId)), sleep(PORTRAIT_WAIT_MS)]);
     await nextPaint();

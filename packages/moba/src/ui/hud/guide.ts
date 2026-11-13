@@ -32,11 +32,11 @@ const CSS = sfCss(`
 .sf-hud__gcard-dots > i.is-done { background: #ffe7ad; box-shadow: 0 0 0 1px #6b4614, 0 0 5u rgba(255, 214, 130, 0.85); }
 .sf-hud__gcard-dots > i.is-cur { background: #5cd6f7; box-shadow: 0 0 0 max(2px, 2u) rgba(92, 214, 247, 0.32); }
 .sf-hud__gcard-skip {
-  position: relative; flex: none; margin: 0 0 0 4u; padding: 0 9u; height: max(22px, 24u); border: 0; border-radius: 99px; cursor: pointer;
+  position: relative; flex: none; margin: 0 0 0 4u; padding: 0 10u; min-width: 64px; height: max(32px, 30u); border: 0; border-radius: 99px; cursor: pointer;
   font: inherit; font-size: var(--sf-fs-xs); font-weight: 700; line-height: 1; color: var(--sf-c-text-2); background: rgba(150, 178, 235, 0.16); box-shadow: inset 0 0 0 1px rgba(150, 178, 235, 0.3);
 }
-/* 手指的落点比字大一圈 */
-.sf-hud__gcard-skip::after { content: ''; position: absolute; inset: -9px -6px; }
+/* 手指的落点比按钮再大一圈(上下左右各外扩 8px)；卡片其余部分仍不拦截指针 */
+.sf-hud__gcard-skip::after { content: ''; position: absolute; inset: -8px; }
 @media (hover: hover) { .sf-hud__gcard-skip:hover { color: var(--sf-c-text); background: rgba(150, 178, 235, 0.28); } }
 .sf-hud__gcard-skip:active { transform: scale(0.94); }
 .sf-hud__gcard-body { margin-top: 3u; font-size: var(--sf-fs-sm); font-weight: 600; line-height: 1.55; color: var(--sf-c-text); text-shadow: var(--hud-shadow-text); }
@@ -73,9 +73,9 @@ const CSS = sfCss(`
   .sf-hud__gcard.is-on { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; column-gap: 7px; }
   .sf-hud__gcard-head { display: contents; }
   .sf-hud__gcard-title, .sf-hud__gcard-dots { display: none; }
-  .sf-hud__gcard-badge { grid-column: 1; grid-row: 1; align-self: start; margin-top: 2px; }
+  .sf-hud__gcard-badge { grid-column: 1; grid-row: 1; align-self: center; }
   .sf-hud__gcard-body { grid-column: 2; grid-row: 1; margin-top: 0; line-height: 1.4; }
-  .sf-hud__gcard-skip { grid-column: 3; grid-row: 1; align-self: start; height: 20px; margin: 1px 0 0; }
+  .sf-hud__gcard-skip { grid-column: 3; grid-row: 1; align-self: center; height: 32px; margin: 0; }
 }
 `);
 

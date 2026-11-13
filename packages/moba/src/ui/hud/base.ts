@@ -46,7 +46,7 @@ const CSS = sfCss(`
 }
 .sf-hud--kbm .sf-hud__key { display: inline-grid; }
 
-/* 圆头像：击杀播报、记分板、死亡面板共用 */
+/* 圆头像：击杀播报、战况面板、阵亡面板共用 */
 .sf-hud__face { --sz: 28u; display: block; flex: none; width: var(--sz); height: var(--sz); border-radius: 50%; box-shadow: 0 0 0 max(1.5px, 2u) var(--ring, rgba(232, 199, 122, 0.7)), 0 2u 6u rgba(0, 0, 0, 0.55); }
 .sf-hud__face.is-blue { --ring: var(--sf-c-blue); }
 .sf-hud__face.is-red { --ring: var(--sf-c-red); }

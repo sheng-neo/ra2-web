@@ -542,30 +542,34 @@ void main() {
     // ── 帛卷：帛面(B 色)由近及远铺开，前沿是一根卷轴；卷面上是 A 色(墨)的边线与几道山水细纹。寿命末尾由噪声溶解 ──
     float u = p.x * 0.5 + 0.5;
     float front = min(1.0, t / max(p0, 0.01));
-    float ay = abs(p.y);
+    // 帛不是一把尺子：中线沿长度方向缓缓摆两道弯(四边形比帛宽 1.8 倍，留出摆动的余地)，两端收回到正中
+    float sway = 0.3 * sin(u * 5.4 + seed * 6.0) * smoothstep(0.0, 0.14, u) * smoothstep(1.0, 0.88, u);
+    float py = (p.y - sway) * 1.8;
+    float wz = vW.z;
+    float ay = abs(py);
     // 帛边不是直线：两个频率叠出来的起伏(软的织物铺在地上)
-    float wob = 0.83 + 0.05 * sin(u * vW.z * 2.6 + seed * 20.0) + 0.025 * sin(u * vW.z * 7.3 + seed * 31.0);
+    float wob = 0.83 + 0.05 * sin(u * wz * 2.6 + seed * 20.0) + 0.025 * sin(u * wz * 7.3 + seed * 31.0);
     // 近端不是一刀齐的直边：按噪声撕出毛边，再压一根轴头(与前沿那根卷轴成对)——整条读成「手卷」而不是一块木板
-    float tear = vnoise(vec2(p.y * 5.0 + seed * 9.0, seed * 3.0)) * 0.035 / max(vW.z, 0.3);
+    float tear = vnoise(vec2(py * 5.0 + seed * 9.0, seed * 3.0)) * 0.035 / max(wz, 0.3);
     float nearCut = smoothstep(0.0, 0.012, u - tear);
     float farCut = 1.0 - smoothstep(front - 0.006, front + 0.006, u);
     float cloth = (1.0 - smoothstep(wob - 0.07, wob, ay)) * nearCut * farCut;
-    float du = 0.07 / max(vW.z, 0.3);
+    float du = 0.07 / max(wz, 0.3);
     float roll = (1.0 - smoothstep(du * 0.55, du, abs(u - front + du * 0.4))) * (1.0 - smoothstep(0.93, 1.0, ay)) * step(0.02, front);
     float rod = (1.0 - smoothstep(du * 0.4, du * 0.75, abs(u - du * 0.55))) * (1.0 - smoothstep(0.93, 1.0, ay));
     float border = band(ay - (wob - 0.13), 0.028, 0.03) * 0.35;
     // 帛边外侧一圈淡墨的投影：帛铺在浅色石板上，靠它托出轮廓
     float shade = (1.0 - smoothstep(wob, 1.0, ay)) * smoothstep(wob - 0.05, wob, ay) * nearCut * farCut;
-    float xs = u * vW.z * 2.0;
+    float xs = u * wz * 2.0;
     // 帛面向两侧边缘略微压暗(A 色是墨，压多了整条帛会发灰：只留一点)
     float aged = smoothstep(wob - 0.4, wob - 0.03, ay) * 0.09;
     // 卷面的舆图：一道蜿蜒的河、疏密不等的山形折线、零星的墨点(城邑)
-    float river = band(p.y - 0.3 * sin(xs * 1.5 + p1) - 0.1 * sin(xs * 3.7 + p1 * 2.3), 0.05, 0.05);
+    float river = band(py - 0.3 * sin(xs * 1.5 + p1) - 0.1 * sin(xs * 3.7 + p1 * 2.3), 0.05, 0.05);
     float peak = abs(fract(xs * 0.55 + p1 * 0.3) - 0.5) * 2.0;
-    float hills = band(p.y + 0.38 - peak * 0.22, 0.04, 0.04) * step(0.25, fract(xs * 0.275 + 0.13));
+    float hills = band(py + 0.38 - peak * 0.22, 0.04, 0.04) * step(0.25, fract(xs * 0.275 + 0.13));
     float peak2 = abs(fract(xs * 0.9 + p1 * 0.7 + 0.31) - 0.5) * 2.0;
-    float hills2 = band(p.y - 0.46 + peak2 * 0.16, 0.035, 0.035) * step(0.45, fract(xs * 0.3 + 0.61));
-    float dots = smoothstep(0.8, 0.86, vnoise(vec2(xs * 3.1 + p1, p.y * 4.3 + seed * 11.0)));
+    float hills2 = band(py - 0.46 + peak2 * 0.16, 0.035, 0.035) * step(0.45, fract(xs * 0.3 + 0.61));
+    float dots = smoothstep(0.8, 0.86, vnoise(vec2(xs * 3.1 + p1, py * 4.3 + seed * 11.0)));
     float dis = vnoise(wp * 3.0 + seed * 7.0);
     float fade = 1.0 - smoothstep(0.62, 1.0, t + (dis - 0.5) * 0.35);
     cov = cloth * 0.92 * fade;

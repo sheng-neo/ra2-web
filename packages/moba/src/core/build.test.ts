@@ -89,10 +89,36 @@ describe('推荐出装：下一件', () => {
     expect(buildStatus(o)).toBe('saving');
     o.gold = ITEMS.starfall_blade.cost;
     expect(buildStatus(o)).toBe('ready');
-    // 前面的步骤还缺着、栏位又满：不会跳过去先换鞋(与 Bot 的推算一致)，整体暂停
+  });
+
+  it('栏位满、身上只有基础鞋：前面缺着的大件买不进来，先原地换进阶鞋，换完才暂停', () => {
+    // 基础鞋 + 5 件推荐之外的装备：轮到的吸血环首刀要占一格买不了，但进阶鞋是原地替换
     const stuck = owner('chijin', 'boots', 'sage_codex', 'sage_codex', 'void_crown', 'thorn_mail', 'undying_heart');
+    expect(nextBuildItem(stuck)).toBe('boots_guard');
+    expect(canAutoBuy(stuck, 'boots_guard')).toBe(true);
+    stuck.gold = UPGRADE - 1;
+    expect(buildStatus(stuck)).toBe('saving');
+    stuck.gold = UPGRADE;
+    expect(buildStatus(stuck)).toBe('ready');
+    // 推荐页上「下一件」落在鞋卡
+    expect(buildCards(stuck).filter((c) => c.next).map((c) => c.buyId)).toEqual(['boots_guard']);
+    put(stuck, 'boots_guard');
     expect(nextBuildItem(stuck)).toBeNull();
     expect(buildStatus(stuck)).toBe('paused');
+    // 腾出一格：回到出装表里最靠前的缺件
+    stuck.items[1] = null;
+    expect(nextBuildItem(stuck)).toBe('blood_scythe');
+  });
+
+  it('栏位满、鞋是别的进阶鞋或没有鞋：没有可原地换的，暂停', () => {
+    const other = owner('chijin', 'boots_fury', 'sage_codex', 'sage_codex', 'void_crown', 'thorn_mail', 'undying_heart');
+    expect(nextBuildItem(other)).toBeNull();
+    expect(buildStatus(other)).toBe('paused');
+    // 樊哙的出装表里基础鞋排第一：一双鞋都没有时仍然是「轮到基础鞋但买不进来」
+    const none = owner('panyue', 'sage_codex', 'sage_codex', 'void_crown', 'thorn_mail', 'undying_heart', 'astral_staff');
+    expect(nextBuildItem(none)).toBe('boots');
+    expect(canAutoBuy(none, 'boots')).toBe(false);
+    expect(buildStatus(none)).toBe('paused');
   });
 
   it('栏位满且一双鞋都没有：轮到的是基础鞋，但买不进来 → 暂停', () => {
@@ -219,7 +245,7 @@ describe('第二阶段数据表', () => {
 
   it('叫法：野怪用通用叫法 + 自拟副名，奖励说明里的数字取自 MONSTER_RULES；兵种用通用叫法', () => {
     const full = (Object.keys(MONSTERS) as MonsterType[]).map((t) => monsterFullName(t));
-    expect(full).toEqual(['小野怪 · 苔背獾', '小野怪 · 荧翅蛾', '蓝buff · 霜晶巨鹿', '红buff · 炽焰巨熊', '河道巨龙 · 深渊鳞龙', '远古巨灵 · 星陨巨灵']);
+    expect(full).toEqual(['小野怪 · 苔背獾', '小野怪 · 荧翅蛾', '蓝buff · 霜晶巨鹿', '红buff · 炽焰巨熊', '河道巨龙 · 沉渊鳞龙', '星陨巨灵']);
     expect(MONSTERS.frost_golem.reward).toContain(`${MONSTER_RULES.buffDuration} 秒`);
     expect(MONSTERS.abyss_drake.reward).toContain(`+${MONSTER_RULES.drakeTeamGold} 金币`);
     expect(MONSTERS.abyss_drake.reward).toContain(`+${MONSTER_RULES.drakeTeamXp} 经验`);

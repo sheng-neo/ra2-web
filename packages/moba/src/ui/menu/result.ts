@@ -13,7 +13,7 @@ import { createPortrait, fmtClock, fmtK, heroNameNode } from './shared';
 // ───────────────────────── 评分 ─────────────────────────
 
 export interface HeroScore {
-  /** 综合评分，约 3~16，越高越好 */
+  /** 综合评分的原始分(内部刻度约 3~16，越高越好；MVP 判定用它)。界面上显示的是 displayScore() 换算出的 10 分制 */
   score: number;
   /** 参团率 0..1 */
   participation: number;
@@ -22,15 +22,24 @@ export interface HeroScore {
 /**
  * 综合评分公式（每位英雄相对自己队伍计算占比）：
  *   3 基础分
- * + min(4, KDA × 0.8)             KDA = (击杀 + 0.6×助攻) / max(1, 死亡)
+ * + min(4, KDA × 0.8)             KDA = (击杀 + 0.6×助攻) / max(1, 阵亡)
  * + 参团率 × 2.5                   (击杀+助攻) / 队伍总击杀
  * + 对英雄伤害占比 × 6
  * + 承伤占比 × 3                   让前排的贡献被看见
  * + 推塔伤害占比 × 2.5
- * + min(1, 补刀 / (分钟×6))        发育
+ * + min(1, 补兵 / (分钟×6))        发育
  * + 获胜方 1 分
  * MVP = 胜方评分最高者；败方评分最高者标「败方最佳」。
  */
+const SCORE_MIN = 3;
+const SCORE_MAX = 16;
+
+/** 界面显示用的 10 分制评分(一位小数)：把原始分的 3~16 线性换算到 0~10。只改显示刻度，判定仍用原始分 */
+export function displayScore(score: number): string {
+  const v = ((score - SCORE_MIN) / (SCORE_MAX - SCORE_MIN)) * 10;
+  return Math.max(0, Math.min(10, v)).toFixed(1);
+}
+
 export function computeScores(state: GameState): Map<number, HeroScore> {
   const out = new Map<number, HeroScore>();
   // 对局时长按分出胜负那一刻算(state.endTime)：之后为播结束演出，state.time 还会多走几秒
@@ -54,7 +63,7 @@ export function computeScores(state: GameState): Map<number, HeroScore> {
         (x.dmgTower / tower) * 2.5 +
         Math.min(1, x.cs / (minutes * 6)) +
         (state.winner === team ? 1 : 0);
-      out.set(x.id, { score: Math.max(0, Math.min(16, score)), participation });
+      out.set(x.id, { score: Math.max(0, Math.min(SCORE_MAX, score)), participation });
     }
   }
   return out;
@@ -159,7 +168,7 @@ const CSS = sfCss(`
   .sf-rt__name .sf-heroname__role { display: none; }
 }
 
-/* ── 小横屏（如 667×375）：去掉补刀与推塔两列，保持一行一人 ── */
+/* ── 小横屏（如 667×375）：去掉补兵与推塔两列，保持一行一人 ── */
 @media (orientation: landscape) and (max-width: 780px) {
   .sf-rt { --cols: minmax(0, 1.5fr) 84u minmax(0, 0.8fr) minmax(0, 1fr) minmax(0, 0.9fr) auto 50u; }
   .sf-rt__cell[data-c='cs'], .sf-rt__cell[data-c='tower'], .sf-rt__head > [data-c='cs'], .sf-rt__head > [data-c='tower'] { display: none; }
@@ -277,8 +286,8 @@ export function showResult(root: HTMLElement, state: GameState, host: MenuHost, 
       'div',
       'sf-rt__head',
       h('span', null, '英雄'),
-      h('span', 'sf-rt__c', h('span', 'sf-rt__h-full', '击杀 / 死亡 / 助攻'), h('span', 'sf-rt__h-short', '战绩')),
-      headCell('补刀', 'cs'),
+      h('span', 'sf-rt__c', h('span', 'sf-rt__h-full', '击杀 / 阵亡 / 助攻'), h('span', 'sf-rt__h-short', '战绩')),
+      headCell('补兵', 'cs'),
       h('span', 'sf-rt__c', '经济'),
       h('span', 'sf-rt__c', '对英雄伤害'),
       h('span', 'sf-rt__c', '承受伤害'),
@@ -336,14 +345,14 @@ export function showResult(root: HTMLElement, state: GameState, host: MenuHost, 
         }
         items.appendChild(slot);
       }
-      const scoreCell = statCell('score', '评分', sc.toFixed(1));
+      const scoreCell = statCell('score', '评分', displayScore(sc));
       scoreCell.classList.add('sf-rt__score');
       const row = h(
         'div',
         `sf-rt__row${x.isPlayer ? ' is-me' : ''}${isMvp ? ' is-mvp' : ''}`,
         hero,
         kda,
-        statCell('cs', '补刀', String(x.cs)),
+        statCell('cs', '补兵', String(x.cs)),
         statCell('gold', '经济', fmtK(x.goldEarned), null, 'sf-rt__gold'),
         statCell('dmg', '伤害', fmtK(x.dmgDealt), bar(x.dmgDealt / maxDealt, 'sf-rt__bar--dealt')),
         statCell('taken', '承伤', fmtK(x.dmgTaken), bar(x.dmgTaken / maxTaken, 'sf-rt__bar--taken')),

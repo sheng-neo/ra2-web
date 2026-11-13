@@ -62,6 +62,11 @@ export interface SettingsPanelOptions {
    * 不给这个回调时，面板退而把 tutorial 开关「先关、0.7 秒后再开」一次——只认开关跳变的界面同样会重来。
    */
   onReplayTutorial?(): void;
+  /**
+   * 对局内「自动出装」那一行的临时说明：返回非空字符串时用它(警告色)替换平时的说明小字。
+   * 用于「卖了推荐装、本局已关闭」——此时开关显示的是本局实际状态(关)，要告诉玩家为什么关着、怎么打开。
+   */
+  autoBuyNote?(): string | null;
 }
 
 export interface SettingsPanel {
@@ -93,7 +98,15 @@ const CSS = sfCss(`
 /* 带说明小字的开关行：说明紧贴在行下面 */
 .sf-settings__row.has-hint { min-height: max(34px, 38u); }
 .sf-settings__row.has-hint + .sf-field__hint { margin: -1u 0 8u; }
-.sf-settings__replay { flex: none; padding: 4u 2u; font-size: var(--sf-fs-sm); white-space: nowrap; }
+.sf-settings .sf-field__hint.is-warn { color: var(--sf-c-amber); }
+/* 「重看」：做成带描边的小按钮(原来是贴在开关左边的一行灰色小字，像说明文字，手机上也不好点) */
+.sf-settings__replay {
+  flex: none; display: inline-grid; place-items: center; min-width: max(44px, 48u); min-height: max(32px, 34u); padding: 0 11u; border-radius: 99px;
+  font-size: var(--sf-fs-sm); font-weight: 700; line-height: 1; color: var(--sf-c-text); white-space: nowrap; text-decoration: none;
+  background: rgba(150, 178, 235, 0.12); box-shadow: inset 0 0 0 1px rgba(150, 178, 235, 0.55);
+}
+@media (hover: hover) { .sf-settings__replay:hover { color: var(--sf-c-text); background: rgba(150, 178, 235, 0.24); } }
+.sf-settings__replay:active { transform: scale(0.95); }
 .sf-settings__foot { display: flex; align-items: center; gap: 12u; width: 100%; }
 .sf-settings__foot > .sf-link { margin-right: auto; }
 .sf-dialog--settings .sf-dialog__foot { padding-top: 12u; padding-bottom: 14u; }
@@ -148,6 +161,7 @@ export function createSettingsPanel(o: SettingsPanelOptions): SettingsPanel {
         // 玩家亲手拨了引导开关：以这次为准，还没完成的「重看」脉冲作废
         if (key === 'tutorial') cancelReplay();
         o.update({ [key]: v });
+        if (key === 'autoBuy') syncAutoBuyNote();
       },
     });
     const row = h('div', `sf-field sf-settings__row${hint ? ' has-hint' : ''}`, h('span', 'sf-field__label', icon(iconSvg), label), h('span', 'sf-field__ctl', extra, toggle.el));
@@ -161,7 +175,14 @@ export function createSettingsPanel(o: SettingsPanelOptions): SettingsPanel {
 
   // ── 对战辅助 ──
   const replay = mode === 'match' ? h('button', 'sf-link sf-settings__replay', '重看') : null;
-  const autoBuy = toggleRow('自动出装', uiIcon('shop'), 'autoBuy', '金币够了自动购买推荐出装的下一件，阵亡时也会买。');
+  const AUTO_BUY_HINT = '金币够了自动购买推荐出装的下一件，阵亡时也会买。';
+  const autoBuy = toggleRow('自动出装', uiIcon('shop'), 'autoBuy', AUTO_BUY_HINT);
+  function syncAutoBuyNote(): void {
+    if (!autoBuy.hint) return;
+    const note = o.autoBuyNote?.() ?? null;
+    autoBuy.hint.textContent = note ?? AUTO_BUY_HINT;
+    autoBuy.hint.classList.toggle('is-warn', note !== null);
+  }
   const hints = toggleRow('当前目标提示', uiIcon('target'), 'objectiveHints', '在屏幕上方提示现在该做什么。');
   const tutorial = toggleRow('新手引导', uiIcon('info'), 'tutorial', '开局一步步教操作；打完一局后自动关闭。', replay);
   if (replay) {
@@ -235,6 +256,7 @@ export function createSettingsPanel(o: SettingsPanelOptions): SettingsPanel {
     fps.toggle.set(s.showFps);
     shake.toggle.set(s.cameraShake);
     autoBuy.toggle.set(s.autoBuy);
+    syncAutoBuyNote();
     hints.toggle.set(s.objectiveHints);
     // 「重看」的脉冲进行中(开关被临时关着)：界面上保持「开」
     tutorial.toggle.set(s.tutorial || replayTimer !== 0);

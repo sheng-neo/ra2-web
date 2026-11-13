@@ -15,6 +15,7 @@ import { itemTipHtml } from '../hud/itemtip';
 import { castKind, castReach } from '../hud/text';
 import { LANE_NAMES, itemIcon, laneIcon, roleIcon, skillIcon, summonerIcon, uiIcon } from '../icons';
 import type { HeroIconSlot } from '../icons';
+import { detectInputMode } from '../input/device';
 import { openSettingsDialog } from '../settings';
 import { attachTooltip, createBadge, createButton, createIconButton, createSegmented, createSlot, h, hasOpenDialog, icon, injectStyle, isButtonKeyFocused, sfCss } from '../theme';
 import {
@@ -376,10 +377,10 @@ export function createSelectScreen(o: SelectOptions): MenuScreen {
       h(
         'span',
         'sf-hcard__info',
-        // 主行「樊哙 · 坦克」；副行四字称号；再下一行只留分路与上手星级
+        // 主行「樊哙 · 坦克」；副行四字称号；再下一行只留分路与难度星级(星越多越难；雷达图的「上手」轴方向相反，所以这里不写「上手」)
         h('span', 'sf-hcard__name', heroNameNode(id)),
         h('span', 'sf-hcard__title', def.title),
-        h('span', 'sf-hcard__meta', h('span', null, icon(laneIcon(def.lane)), LANE_NAMES[def.lane]), h('span', null, '上手', createStars(def.difficulty))),
+        h('span', 'sf-hcard__meta', h('span', null, icon(laneIcon(def.lane)), LANE_NAMES[def.lane]), h('span', null, '难度', createStars(def.difficulty))),
       ),
     );
     card.type = 'button';
@@ -469,6 +470,7 @@ export function createSelectScreen(o: SelectOptions): MenuScreen {
    * 技能说明框，自上而下：技能名 + 键位 → 类型标签(含「大招」/「被动」)与施法方式 → 一句大白话(大一号)
    * → 冷却 / 消耗 / 距离 → 详细描述(全等级数值)。大白话永远排在数值前面。
    */
+  const showKeys = detectInputMode() === 'kbm';
   function skillDescNode(def: HeroDef, slot: HeroIconSlot): HTMLElement {
     const box = h('div', 'sf-skilldesc sf-inset');
     const head = h('div', 'sf-skilldesc__head');
@@ -477,7 +479,8 @@ export function createSelectScreen(o: SelectOptions): MenuScreen {
     const sk: SkillDef | null = slot === 'passive' ? null : def.skills[slot];
     const info = sk ?? def.passive;
     head.append(h('span', 'sf-skilldesc__name', info.name));
-    if (sk && slot !== 'passive') head.append(h('span', 'sf-kbd', SLOT_KEY[slot]));
+    // 键位只给键鼠玩家看：触控设备上没有 Q / E / R
+    if (sk && slot !== 'passive' && showKeys) head.append(h('span', 'sf-kbd', SLOT_KEY[slot]));
     head.append(h('span', 'sf-skilldesc__slot', SLOT_LABEL[slot]));
     tags.innerHTML = skillTagsHtml(slot, info.tags);
     if (sk) tags.append(h('span', 'sf-skilldesc__cast', castKind(sk.cast)));
@@ -532,7 +535,7 @@ export function createSelectScreen(o: SelectOptions): MenuScreen {
       createBadge(def.roleName, 'gold', roleIcon(def.role)),
       createBadge(LANE_NAMES[def.lane], 'cyan', laneIcon(def.lane)),
       createBadge(def.attackType === 'melee' ? '近战' : '远程', 'mute'),
-      h('span', 'sf-dim', '上手难度'),
+      h('span', 'sf-dim', '难度'),
       createStars(def.difficulty),
     );
     const roleBrief = h('p', 'sf-select__rolebrief', h('b', null, `${def.roleName}：`), ROLE_BRIEF[def.role]);

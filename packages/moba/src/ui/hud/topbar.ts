@@ -1,5 +1,5 @@
 /**
- * 顶部：中央比分牌（击杀比 / 计时 / 推塔数 / 下一波兵倒计时）与右上角的个人战绩、金币、记分板与设置按钮。
+ * 顶部：中央比分牌（击杀比 / 计时 / 推塔数 / 下一波兵倒计时）与右上角的个人战绩、金币、战况与设置按钮。
  */
 import { uiIcon } from '../icons';
 import { createIconButton, h, icon, injectStyle, sfCss } from '../theme';
@@ -59,7 +59,7 @@ const CSS = sfCss(`
 .sf-hud__tr .sf-hud__key { right: -4u; bottom: -8u; min-width: max(15px, 16u); height: max(14px, 15u); font-size: max(9px, 9.5u); }
 
 /* 横屏逐级收紧：屏越窄，比分牌与右上角越挤（按两位数击杀、五位数金币的最坏情况留位置） */
-/* ≤920px(主流手机横屏)：去掉队名与补刀 */
+/* ≤920px(主流手机横屏)：去掉队名与补兵 */
 @media (orientation: landscape) and (max-width: 920px) {
   .sf-hud__score-plate { width: 300u; padding: 0 20u; }
   .sf-hud__score-team { display: none; }
@@ -137,7 +137,7 @@ export function createTopBar(ctx: HudCtx): TopBar {
   const goldN = h('b', 'sf-num', '0');
   const gold = h('div', 'sf-hud__chip sf-hud__gold', icon(uiIcon('gold')), goldN);
   gold.title = '金币';
-  const sbBtn = createIconButton({ icon: uiIcon('scoreboard'), label: '记分板', onClick: () => ctx.actions.toggleScoreboard() });
+  const sbBtn = createIconButton({ icon: uiIcon('scoreboard'), label: '战况', onClick: () => ctx.actions.toggleScoreboard() });
   sbBtn.appendChild(h('span', 'sf-hud__key', 'Tab'));
   const setBtn = createIconButton({ icon: uiIcon('pause'), label: '暂停 / 设置', onClick: () => ctx.actions.openSettings() });
   setBtn.appendChild(h('span', 'sf-hud__key', 'Esc'));
@@ -193,7 +193,7 @@ export function createTopBar(ctx: HudCtx): TopBar {
       const gNow = Math.floor(me.gold);
       setGold(gNow);
       if (gNow !== lastGold) {
-        // 一次进账较多(补刀/击杀/推塔)才跳一下；每秒的自然增长不打扰
+        // 一次进账较多(补兵/击杀/推塔)才跳一下；每秒的自然增长不打扰
         if (lastGold >= 0 && gNow - lastGold >= 15) replay(gold, 'is-pop');
         lastGold = gNow;
       }

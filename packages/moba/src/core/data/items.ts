@@ -64,7 +64,7 @@ export const ITEMS: Record<ItemId, ItemDef> = {
     stats: { ap: 150, magicPen: 0.35 }, color: '#9b6bff',
   },
   winter_scepter: {
-    id: 'winter_scepter', name: '减速权杖', brief: '技能打中就减速，还加血', category: 'magic', tier: 2, cost: 2000,
+    id: 'winter_scepter', name: '减速权杖', brief: '技能打中就减速，自己更耐打', category: 'magic', tier: 2, cost: 2000,
     stats: { ap: 110, hp: 800 },
     passive: { id: 'spell_slow', name: '技能减速', desc: '技能造成伤害时使目标减速 20%，持续 1 秒。', value: 0.2, value2: 1 },
     color: '#8fe3ff',

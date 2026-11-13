@@ -11,7 +11,8 @@ import type { BotController, BotFactory, BotView } from './types';
 export type { BotController, BotFactory, BotView, LastSeen, PublicState } from './types';
 export { HeroBot } from './bot';
 export { FallbackBot } from './fallback';
-export { PROFILES, STYLES, TUNE } from './params';
+export { botTierFor, PROFILES, STYLES, TUNE } from './params';
+export type { BotTier } from './params';
 export { teamBrain, TeamBrain } from './team';
 
 const heroBot: BotFactory = (view) => new HeroBot(view);

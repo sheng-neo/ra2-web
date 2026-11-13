@@ -14,6 +14,7 @@ import { createWorld } from '../world';
 import { HeroBot } from './bot';
 import { inCone } from './geom';
 import { fallbackBotFactory, setDefaultBotFactory } from './index';
+import { botTierFor, PROFILES } from './params';
 import { buildCost, nextBuildItem } from './shop';
 import { teamBrain } from './team';
 
@@ -184,6 +185,22 @@ describe('Bot：整局', () => {
 });
 
 describe('Bot：难度', () => {
+  it('档位：简单 = 红方 novice + 队友 easy；普通 / 困难只改红方，队友固定 normal', () => {
+    expect([botTierFor('easy', 0), botTierFor('easy', 1)]).toEqual(['easy', 'novice']);
+    expect([botTierFor('normal', 0), botTierFor('normal', 1)]).toEqual(['normal', 'normal']);
+    expect([botTierFor('hard', 0), botTierFor('hard', 1)]).toEqual(['normal', 'hard']);
+    // novice 比 easy 更软：反应更慢、更不敢打、更爱发呆、更少配合
+    const n = PROFILES.novice;
+    const e = PROFILES.easy;
+    expect(n.reaction).toBeGreaterThan(e.reaction);
+    expect(n.aggression).toBeLessThan(e.aggression);
+    expect(n.idleRate).toBeGreaterThan(e.idleRate);
+    expect(n.teamwork).toBeLessThan(e.teamwork);
+    // 世界里每个英雄的视图拿到的就是这个档位(玩家英雄托管时用队友那一档)
+    const sim = createWorld({ seed: 9, playerHero: 'chijin', difficulty: 'easy', autoPlay: true });
+    for (const h of sim.heroes) expect(sim.botView(h.id)?.difficulty).toBe(h.team === 1 ? 'novice' : 'easy');
+  });
+
   it('同一局种子：简单难度的红方明显落后，困难难度的红方明显领先', () => {
     const lead = (difficulty: 'easy' | 'hard'): number => {
       let sum = 0;

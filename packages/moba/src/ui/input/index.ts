@@ -5,7 +5,7 @@
  *       技能键 轻点 = 智能施法 / 按住拖动 = 手动瞄准(松手施放，拖到「取消」区放弃) / 原地长按 = 看技能详情。
  * 键鼠：WASD/方向键移动；右键点地移动、点敌人攻击；左键点敌人攻击；空格/J 普攻；
  *       Q/E/R 按下瞄准(指示器跟随鼠标)、松开施放、Esc/右键取消；F 闪现(朝鼠标)、G 疗伤、B 回城；
- *       Tab 按住看记分板；P 商店；Esc 关面板/暂停。
+ *       Tab 按住看战况；P 商店；Esc 关面板/暂停。
  * 多点触控按 pointerId 各自追踪：一指摇杆、另一指技能互不干扰。
  * 布局(触控/键鼠)开局按设备特征识别，之后跟着最近一次「按下」的指针类型或游戏按键切换。
  */
@@ -51,6 +51,10 @@ const ATTACK_RESEND = 0.15;
 const DRAG_START_TOUCH = 12;
 const DRAG_START_MOUSE = 8;
 const MOVETO_RESEND = 0.09;
+/** 不可瞄准的键(回城 / 疗伤)：按下后拖出这么远(占键径的比例，且不小于拖动起步距离)就作废 */
+const VOID_DRAG_RATIO = 0.5;
+/** 拖动瞄准时，离屏幕边这么近(像素)就算拖到头了：真机的圆角与手势条会吃掉最外面几个像素 */
+const EDGE_PAD = 8;
 
 const KEY_SKILL: Record<string, SkillSlot> = { KeyQ: 's1', KeyE: 's2', KeyR: 'ult' };
 /** 按下这些键才算「在用键盘玩」（据此切到键鼠布局）；音量键、修饰键之类不算 */
@@ -301,6 +305,22 @@ export function createInput(ctx: HudCtx, deps: InputDeps): Input {
     return Math.hypot(x - cx, y - cy) <= (cancelRect.width / 2) * 1.2;
   }
 
+  /**
+   * 这次拖动「拖满」(= 最大射程)要拖多远(像素)：缺省 1.15 个键径；
+   * 但键贴着屏幕边(大招键离右边只有一个键径)时，朝屏幕边拖根本拖不到那么远——按这个方向上手指实际能拖的距离封顶，
+   * 朝哪个方向都拖得满。下限 0.45 个键径，免得贴边的键一碰就满幅。
+   */
+  function dragFull(p: Press): number {
+    const sk = skPx();
+    const rr = root.getBoundingClientRect();
+    let room = Infinity;
+    if (p.nx > 1e-3) room = Math.min(room, (rr.right - EDGE_PAD - p.x0) / p.nx);
+    else if (p.nx < -1e-3) room = Math.min(room, (p.x0 - rr.left - EDGE_PAD) / -p.nx);
+    if (p.ny > 1e-3) room = Math.min(room, (rr.bottom - EDGE_PAD - p.y0) / p.ny);
+    else if (p.ny < -1e-3) room = Math.min(room, (p.y0 - rr.top - EDGE_PAD) / -p.ny);
+    return Math.max(sk * 0.45, Math.min(sk * 1.15, room));
+  }
+
   /** 按最近的拖动向量重算指示器（拖动时、以及瞄准期间每帧：英雄和目标都可能在动） */
   function refreshPressAim(p: Press): void {
     if (p.btn === 'attack' || p.state !== 'aim') return;
@@ -390,8 +410,20 @@ export function createInput(ctx: HudCtx, deps: InputDeps): Input {
       if (p.state !== 'aim') {
         if (dist < (p.touch ? DRAG_START_TOUCH : DRAG_START_MOUSE)) return;
         const spec = castSpecOf(ctx.me, slot);
+        if (!isAimable(spec)) {
+          // 回城 / 疗伤没有可瞄准的东西：手指(或鼠标)按下后拖出了这个键，就当这次按错了——作废，松手不施放。
+          // 否则想推摇杆的拇指落在回城键上再一拖，就成了「原地回城、走不动」
+          if (dist >= Math.max(p.touch ? DRAG_START_TOUCH : DRAG_START_MOUSE, el.offsetWidth * VOID_DRAG_RATIO)) {
+            window.clearTimeout(p.timer);
+            if (isTooltipOpenFor(el)) dismissTooltip();
+            releaseAim(p.id);
+            p.state = 'void';
+            skills.setDown(slot, false);
+          }
+          return;
+        }
         const free = aimOwner === null || aimOwner === p.id;
-        if (!free || !isAimable(spec) || ctx.inputBlocked() || ctx.me.skills[slot].level <= 0) return;
+        if (!free || ctx.inputBlocked() || ctx.me.skills[slot].level <= 0) return;
         window.clearTimeout(p.timer);
         if (isTooltipOpenFor(el)) dismissTooltip();
         p.state = 'aim';
@@ -404,7 +436,7 @@ export function createInput(ctx: HudCtx, deps: InputDeps): Input {
         p.nx = dx / dist;
         p.ny = dy / dist;
       }
-      p.mag = dist / (skPx() * 1.15);
+      p.mag = dist / dragFull(p);
       p.cancel = overCancel(ev.clientX, ev.clientY);
       skills.setCancelHot(p.cancel);
       refreshPressAim(p);

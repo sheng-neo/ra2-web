@@ -3,7 +3,7 @@ import type { SimHero } from '../../core/internal';
 import { heroOf, place, quietWorld, spawnMinionAt, stepFor } from '../../core/testkit';
 import type { BuffId, CoreUnit, GameState, HeroUnit, TowerUnit } from '../../core/types';
 import { createWorld, type Sim } from '../../core/world';
-import { LANE_PHASE_END, LATE_PHASE_START, OBJECTIVE_DEBOUNCE, ObjectiveTracker, createObjectiveMemory, pickObjective, type Objective } from './objective-rules';
+import { LANE_PHASE_END, LATE_PHASE_START, OBJECTIVE_DEBOUNCE, OBJECTIVE_TUNE, ObjectiveTracker, createObjectiveMemory, pickObjective, type Objective } from './objective-rules';
 
 // 这些用例要推进真实模拟层，机器负载高时默认 5 秒不够
 vi.setConfig({ testTimeout: 60_000 });
@@ -92,6 +92,17 @@ describe('pickObjective：逐条规则', () => {
     const o = pick(sim);
     expect(o?.id).toBe('tower_aggro');
     expect(o?.text).toContain('塔下没有小兵');
+    // 锁定状态还挂着(要 3 秒才消)，人已经跑出塔的射程：不再喊「先退出来」；回差：上一次命中时放宽到射程外 2.5 米
+    const edge = t.stats.attackRange + me.radius;
+    const mem = createObjectiveMemory();
+    place(sim, me, t.pos.x, t.pos.y + edge + 0.8);
+    expect(pick(sim, mem)?.id).toBe('tower_aggro');
+    place(sim, me, t.pos.x, t.pos.y + edge + 2);
+    expect(pick(sim, mem)?.id).toBe('tower_aggro');
+    expect(pick(sim)?.id).not.toBe('tower_aggro');
+    place(sim, me, t.pos.x, t.pos.y + edge + 4);
+    expect(pick(sim, mem)?.id).not.toBe('tower_aggro');
+    place(sim, me, t.pos.x, t.pos.y + 5);
     spawnMinionAt(sim, 0, 'melee', t.pos.x + 2, t.pos.y + 3, 'top');
     expect(pick(sim)?.id).not.toBe('tower_aggro');
   });
@@ -138,7 +149,11 @@ describe('pickObjective：逐条规则', () => {
     expect(pick(sim)?.id).not.toBe('push_now');
     place(sim, me, t.pos.x - 15, t.pos.y);
     const mem = createObjectiveMemory();
-    expect(pick(sim, mem)?.id).toBe('push_now');
+    const now = pick(sim, mem);
+    expect(now?.id).toBe('push_now');
+    // 与兜底的「推掉这座塔」共用一个键：兵线被清掉后只换文字，不算换目标
+    expect(now?.key).toBe('push_lane:top:1');
+    expect(now?.pos).toEqual(t.pos);
     // 回差：退到 23 米仍然保持
     place(sim, me, t.pos.x - 23, t.pos.y);
     expect(pick(sim, mem)?.id).toBe('push_now');
@@ -155,7 +170,7 @@ describe('pickObjective：逐条规则', () => {
     expect(pick(sim)?.id).not.toBe('numbers');
   });
 
-  it('7 史诗野怪：刷新后 20 秒内一直提示，之后只有人在坑边才提示', () => {
+  it('7 史诗野怪：刷新后 8 秒内提醒别一个人去(小地图不闪)，之后只有人在坑边才提示；队友在打了才叫人过去', () => {
     const sim = laneStart();
     const me = player(sim);
     const def = sim.state.map.camps.find((c) => c.monsterType === 'abyss_drake');
@@ -168,16 +183,62 @@ describe('pickObjective：逐条规则', () => {
     place(sim, me, 40, 40);
     const o = pick(sim, mem);
     expect(o?.id).toBe('epic_up');
-    expect(o?.text).toBe('河道巨龙已刷新(左上河道)，叫上队友一起打');
-    expect(o?.pos).toEqual(def.pos);
-    (sim.state as GameState).time += 25;
+    expect(o?.text).toBe('河道巨龙已刷新(左上河道)：一个人打不过，等队友去了再跟上');
+    expect(o?.tone).toBe('info');
+    expect(o?.pos).toBeUndefined();
+    (sim.state as GameState).time += OBJECTIVE_TUNE.epicFresh + 1;
     expect(pick(sim, mem)?.id).not.toBe('epic_up');
     place(sim, me, def.pos.x + 10, def.pos.y);
     expect(pick(sim, mem)?.id).toBe('epic_up');
-    // 死了之后记忆清掉，下次刷新重新计 20 秒
+    place(sim, me, 40, 40);
+    expect(pick(sim, mem)?.id).not.toBe('epic_up');
+
+    // 队友在打：野怪掉了血、营地边上有我方别的英雄 → 过去帮忙(带位置，小地图会闪)
+    const proto = sim.state.units.find((u) => u.kind === 'tower');
+    if (!proto) throw new Error('no proto unit');
+    const drake = { ...proto, id: 99100, kind: 'monster', team: 2, monsterType: 'abyss_drake', campId: def.id, alive: true, pos: { x: def.pos.x, y: def.pos.y }, hp: 9000, stats: { ...proto.stats, maxHp: 9000 }, visible: [true, false] };
+    (sim.state.units as unknown[]).push(drake);
+    const mate = sim.heroes.filter((h) => h.team === 0 && h.id !== me.id)[0];
+    place(sim, mate, def.pos.x + 4, def.pos.y);
+    // 满血：没人在打，不算
+    expect(pick(sim, mem)?.id).not.toBe('epic_up');
+    drake.hp = 7000;
+    const help = pick(sim, mem);
+    expect(help?.key).toBe(`epic_up:${def.id}:help`);
+    expect(help?.text).toBe('队友在打河道巨龙(左上河道)，过去帮忙');
+    expect(help?.tone).toBe('go');
+    expect(help?.pos).toEqual(def.pos);
+    // 看不见(我方没有视野)或队友不在场：不算
+    drake.visible = [false, false];
+    expect(pick(sim, mem)?.id).not.toBe('epic_up');
+    drake.visible = [true, false];
+    expect(pick(sim, mem)?.key).toBe(`epic_up:${def.id}:help`);
+    place(sim, mate, def.pos.x + 30, def.pos.y);
+    expect(pick(sim, mem)?.id).not.toBe('epic_up');
+    place(sim, mate, def.pos.x + 4, def.pos.y);
+    (sim.state.units as unknown[]).pop();
+    // 死了之后刷新时刻清掉；再刷新时不再提示「刚刷新」(每局每种只说一次)，只有人在坑边 / 队友在打才提示
     cs.alive = false;
     pick(sim, mem);
     expect(mem.epicSince.size).toBe(0);
+    cs.alive = true;
+    place(sim, me, 40, 40);
+    expect(pick(sim, mem)?.id).not.toBe('epic_up');
+    expect(mem.epicSince.size).toBe(1);
+    place(sim, me, def.pos.x + 10, def.pos.y);
+    expect(pick(sim, mem)?.id).toBe('epic_up');
+  });
+
+  it('6 排在 5 前面：敌方只剩一人时，小兵进不进塔都说「抓紧推塔」', () => {
+    const sim = laneStart();
+    const me = player(sim);
+    const t = tower(sim, 1, 'top', 1);
+    spawnMinionAt(sim, 0, 'melee', t.pos.x - 3, t.pos.y, 'top');
+    place(sim, me, t.pos.x - 15, t.pos.y);
+    expect(pick(sim)?.id).toBe('push_now');
+    const foes = sim.heroes.filter((h) => h.team === 1);
+    for (let i = 0; i < 4; i++) foes[i].alive = false;
+    expect(pick(sim)?.id).toBe('numbers');
   });
 
   it('8 史诗野怪 15 秒内要刷新：倒计时，数字变化不换键', () => {
@@ -189,7 +250,7 @@ describe('pickObjective：逐条规则', () => {
     cs.respawnIn = 12.2;
     const a = pick(sim);
     expect(a?.id).toBe('epic_soon');
-    expect(a?.text).toBe('远古巨灵 13 秒后刷新(右下河道)');
+    expect(a?.text).toBe('星陨巨灵 13 秒后刷新(右下河道)');
     cs.respawnIn = 7;
     const b = pick(sim);
     expect(b?.text).toContain('7 秒后刷新');

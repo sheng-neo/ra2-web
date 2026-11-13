@@ -23,7 +23,9 @@ function ownedBoots(items: readonly (ItemId | null)[]): ItemId | null {
 }
 
 /**
- * 推荐出装里下一件该买的装备；全部买齐返回 null，格子已满(且下一件不是换鞋)也返回 null。
+ * 推荐出装里下一件该买的装备；全部买齐返回 null。
+ * 格子已满时：轮到的那件买不进来，但进阶鞋是原地替换、不占格子——身上只有基础鞋、出装表后面还排着进阶鞋，
+ * 就先返回进阶鞋(否则金币只能一直攒着)；除此之外返回 null(暂停，不代卖)。
  * 注意：返回值只表示「按顺序轮到它」，买不买得起看 buildCost，栏位够不够看 canAutoBuy。
  */
 export function nextBuildItem(hero: BuildOwner): ItemId | null {
@@ -33,11 +35,15 @@ export function nextBuildItem(hero: BuildOwner): ItemId | null {
   const full = owned.indexOf(null) < 0;
   // 同一件装备在出装表里可能出现多次：按件数核对
   const used: boolean[] = owned.map(() => false);
+  /** 前面已经有一件因为栏位满而买不进来 */
+  let blocked = false;
   for (const id of build) {
     const def = ITEMS[id];
     if (def.category === 'boots') {
       // 已有进阶鞋：所有鞋都算买过；只有基础鞋：基础鞋算买过
       if (boots && (ITEMS[boots].tier === 2 || def.tier === 1)) continue;
+      // 栏位满又一双鞋都没有：基础鞋同样要占一格，买不进来
+      if (blocked && !boots) return null;
       return id;
     }
     let found = false;
@@ -49,7 +55,8 @@ export function nextBuildItem(hero: BuildOwner): ItemId | null {
       }
     }
     if (found) continue;
-    return full ? null : id;
+    if (!full) return id;
+    blocked = true;
   }
   return null;
 }

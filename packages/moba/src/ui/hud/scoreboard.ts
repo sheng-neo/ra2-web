@@ -1,5 +1,5 @@
 /**
- * 记分板：双方 10 人的头像、等级、「名字 · 职业」、K/D/A、补刀、经济(累计金币)、装备与复活倒计时。
+ * 战况面板(代码里叫 scoreboard)：双方 10 人的头像、等级、「名字 · 职业」、击杀 / 阵亡 / 助攻、补兵、经济(累计金币)、装备与复活倒计时。
  * 英雄名：横屏写全称(职业小一号、职业色)；竖屏列窄，只写名字，职业换成名字前的一枚职业图标。
  * 按住 Tab 临时查看(不拦截操作)；点右上按钮则固定显示，点任意处或再点按钮关闭。
  * 打开时每秒刷新 4 次，不跟帧。
@@ -111,9 +111,9 @@ export function createScoreboard(ctx: HudCtx): Scoreboard {
 
   const timeN = h('span', 'sf-num', '00:00');
   const setTime = numSlot(timeN, fmtTime);
-  const closeBtn = createIconButton({ icon: uiIcon('close'), label: '关闭记分板', quiet: true, sound: 'back', cls: 'sf-hud__sb-close', onClick: () => ctx.actions.setScoreboard(false, false) });
+  const closeBtn = createIconButton({ icon: uiIcon('close'), label: '关闭战况', quiet: true, sound: 'back', cls: 'sf-hud__sb-close', onClick: () => ctx.actions.setScoreboard(false, false) });
   const head = h('header', 'sf-hud__sb-head', h('h2', 'sf-hud__sb-title sf-metal', '战况'), h('span', 'sf-hud__sb-time', icon(uiIcon('clock')), timeN), h('span', 'sf-hud__sb-hint', '松开 Tab 关闭'), closeBtn);
-  const body = h('div', 'sf-hud__sb-body sf-scroll', h('div', 'sf-hud__sb-cols', h('span', null, '英雄'), h('span', null, h('span', 'sf-hud__sb-long', '击杀 / 死亡 / 助攻'), h('span', 'sf-hud__sb-short', '杀 / 死 / 助')), h('span', null, '补刀'), h('span', null, '经济'), h('span', null, '装备')));
+  const body = h('div', 'sf-hud__sb-body sf-scroll', h('div', 'sf-hud__sb-cols', h('span', null, '英雄'), h('span', null, h('span', 'sf-hud__sb-long', '击杀 / 阵亡 / 助攻'), h('span', 'sf-hud__sb-short', '杀 / 亡 / 助')), h('span', null, '补兵'), h('span', null, '经济'), h('span', null, '装备')));
 
   const rows = new Map<number, Row>();
   const teamSetters: { kills: (n: number) => void; towers: (n: number) => void; gold: (s: string) => void }[] = [];

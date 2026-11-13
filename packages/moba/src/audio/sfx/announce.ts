@@ -128,9 +128,9 @@ export const ANNOUNCE = {
   ann_triple_kill: stingDef('triple_kill', '三杀', 1.5, -15, true),
   ann_quadra_kill: stingDef('quadra_kill', '四杀', 2.0, -14, true),
   ann_penta_kill: stingDef('penta_kill', '五杀', 3.0, -12, true),
-  ann_killing_spree: stingDef('killing_spree', '大杀特杀(连杀 3)', 1.3, -17, true),
-  ann_unstoppable: stingDef('unstoppable', '势不可挡(连杀 5)', 1.6, -15, true),
-  ann_legendary: stingDef('legendary', '超神(连杀 7+)', 2.6, -13, true),
+  ann_killing_spree: stingDef('killing_spree', '连杀 3', 1.3, -17, true),
+  ann_unstoppable: stingDef('unstoppable', '连杀 5', 1.6, -15, true),
+  ann_legendary: stingDef('legendary', '连杀 7+', 2.6, -13, true),
   ann_shutdown: stingDef('shutdown', '终结', 1.4, -16, true, (p) => {
     p.noise({ flt: 'bandpass', fc: 5000, fc1: 1200, q: 1.5, a: 0.004, d: 0.14, g: 0.4 });
   }),

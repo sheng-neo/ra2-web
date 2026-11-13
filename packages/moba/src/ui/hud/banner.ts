@@ -111,6 +111,9 @@ const CSS = sfCss(`
   .sf-hud__banner.is-t3 { padding-left: 70u; padding-right: 70u; }
   .sf-hud__banner.is-t4 { padding-left: 78u; padding-right: 78u; --fs: min(max(24px, 34u), 6.6vw); }
   .sf-hud__banner.is-t4 .sf-hud__banner-title { letter-spacing: 0.14em; margin-right: -0.14em; }
+  /* 副行长的横幅(史诗野怪刷新)：屏幕窄，两侧留白收到只让开左边的图标，副行小一号——奖励说明一行、提示一行，不再折成三行 */
+  .sf-hud__banner.is-wide { min-width: 96vw; padding-left: calc(var(--face) + 16u); padding-right: 12u; }
+  .sf-hud__banner.is-wide .sf-hud__banner-sub { font-size: max(11px, 11.5u); gap: 0 4u; letter-spacing: -0.01em; }
 }
 /* 横屏手机(屏高不足 480px)：横幅正下方紧挨着玩家英雄头顶的血条(英雄脚在屏高约 46% 处)。各档压矮一号并上提，别盖到自己头上 */
 @media (orientation: landscape) and (max-height: 480px) {
@@ -131,6 +134,8 @@ interface Item {
   slain: boolean;
   /** 这一条至少亮多久(秒)：带一句话说明的要给够阅读时间。缺省按强度取 DURATION */
   hold?: number;
+  /** 副行比较长(史诗野怪的奖励说明)：竖屏下收窄两侧留白、字号收一号，保证副行不超过两行 */
+  wide?: boolean;
 }
 
 // 横幅盖着屏幕上沿的战场(英雄以北约 11~14 米)：停留时间从紧
@@ -141,6 +146,8 @@ const MAX_QUEUE = 4;
 /** 带一句话说明的横幅(开局、出兵、史诗野怪刷新)多亮一会儿，读得完 */
 const HOLD_INFO = 2.4;
 const HOLD_EPIC = 3.4;
+/** 每种史诗野怪第一次刷新时副行多一句(位置 + 别一个人去)：再多亮一会儿 */
+const HOLD_EPIC_FIRST = 4.2;
 
 export interface Banner extends HudPart {
   el: HTMLElement;
@@ -189,7 +196,7 @@ export function createBanner(): Banner {
     const titleCls = 'sf-hud__banner-title sf-metal';
     const el = h(
       'div',
-      `sf-hud__banner is-t${item.tier} is-${item.tone}${item.left || item.right ? '' : ' is-noface'}`,
+      `sf-hud__banner is-t${item.tier} is-${item.tone}${item.left || item.right ? '' : ' is-noface'}${item.wide ? ' is-wide' : ''}`,
       h('i', 'sf-hud__banner-rays'),
       h('i', 'sf-hud__banner-spark'),
       h('i', 'sf-hud__banner-spark'),
@@ -259,10 +266,13 @@ export function createBanner(): Banner {
       case 'epic_spawn': {
         const name = epic ? MONSTERS[epic].name : '史诗野怪';
         // 一句话说明击杀奖励(数值取自 MONSTER_RULES)；每种第一次刷新时再说一句它在小地图的哪儿
-        const sub: Child[] = [(epic && MONSTERS[epic].reward) || '打掉它，全队都有奖励'];
-        if (epic && epicPos && !epicSeen.has(epic)) sub.push(h('span', 'is-dim', `(小地图${riverSide(epicPos)})`));
+        // 奖励那一句整段不折行(放不下时与后面的提示分成两行)
+        const sub: Child[] = [h('span', null, (epic && MONSTERS[epic].reward) || '打掉它，全队都有奖励')];
+        // 第一次：它在小地图的哪儿 + 别一个人去(新手照着「打掉它」单独去打必死；队友到场时目标行会叫人过去)
+        const first = !!epic && !epicSeen.has(epic);
+        if (first) sub.push(h('span', 'is-dim', epicPos ? `小地图${riverSide(epicPos)} · 别一个人去` : '别一个人去'));
         if (epic) epicSeen.add(epic);
-        return { ...base, title: `${name}已刷新`, sub, left: glyphFace(uiIcon('monster')), hold: HOLD_EPIC };
+        return { ...base, title: `${name}已刷新`, sub, left: glyphFace(uiIcon('monster')), hold: first ? HOLD_EPIC_FIRST : HOLD_EPIC, wide: true };
       }
       case 'epic_slain': {
         const name = epic ? MONSTERS[epic].name : '史诗野怪';
@@ -271,9 +281,10 @@ export function createBanner(): Banner {
         return { ...base, title: mine ? `我方击败${name}` : `敌方夺得${name}`, sub, left: actor ? heroFace(c.host, actor, c.team) : null, right: glyphFace(uiIcon('monster'), 'is-dead'), slain: true, hold: HOLD_EPIC };
       }
       case 'tower_destroyed': {
+        // 标题直接写是哪一座塔(「敌方上路一塔告破 / 我方上路一塔失守」)：比泛泛的「摧毁防御塔」信息量大
         const where = tower ? towerName(tower.lane, tower.tier) : '防御塔';
-        const sub: Child[] = mine ? (actor ? [who(actor, c), `拆除了敌方${where}`] : [`我方兵线拆除了敌方${where}`]) : [`我方${where}失守`];
-        return { ...base, title: mine ? '摧毁敌方防御塔' : '我方防御塔被摧毁', sub, left: actor ? heroFace(c.host, actor, c.team) : null, right: glyphFace(uiIcon('tower'), `${teamCls(mine ? (c.team === 0 ? 1 : 0) : c.team, c.team)} is-dead`), slain: true };
+        const sub: Child[] = mine ? (actor ? [who(actor, c), '拆掉了这座塔'] : ['我方小兵拆掉了这座塔']) : ['被敌方拆掉了，注意防守'];
+        return { ...base, title: mine ? `敌方${where}告破` : `我方${where}失守`, sub, left: actor ? heroFace(c.host, actor, c.team) : null, right: glyphFace(uiIcon('tower'), `${teamCls(mine ? (c.team === 0 ? 1 : 0) : c.team, c.team)} is-dead`), slain: true };
       }
       case 'ace':
         return { ...base, title: '团灭', sub: [mine ? '敌方全员阵亡，趁现在推塔！' : '我方全员阵亡，守住水晶！'] };

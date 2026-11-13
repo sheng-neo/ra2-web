@@ -1,7 +1,7 @@
 /**
  * 新手引导脚本（纯状态机：只读 GameState 与事件，不碰 DOM、不引用主题模块，可在 Node 里单测）。
  *
- * 六课九步：移动(动一动 → 去本路) → 普攻补兵(普攻 → 补刀) → 放技能 → 回城与出装(回城 → 商店) → 推塔 → 获胜。
+ * 六课九步：移动(动一动 → 去本路) → 普攻补兵(普攻 → 补兵) → 放技能 → 回城与出装(回城 → 商店) → 推塔 → 获胜。
  * 每一步三个阶段：
  *   wait  等触发，不出卡（这段时间顶部的指引位留给「当前目标」）；
  *   show  出卡，等玩家做到，或者超时；
@@ -16,7 +16,7 @@ import { HEROES } from '../../core/data/heroes';
 import { MONSTERS } from '../../core/data/units';
 import type { GameEvent, GameState, HeroUnit, MinionUnit, Unit, Vec2 } from '../../core/types';
 import type { InputMode } from './common';
-import { laneTowerSpot, minionsUnder, nearestBuffCamp } from './objective-rules';
+import { OBJECTIVE_TUNE, laneTowerSpot, minionsUnder, nearestBuffCamp } from './objective-rules';
 import { towerName } from './text';
 
 export type GuideStepId = 'move' | 'go' | 'attack' | 'lasthit' | 'skill' | 'recall' | 'shop' | 'push' | 'win';
@@ -493,7 +493,8 @@ export class GuideScript {
         }
       } else if (me.lane !== 'jungle') {
         this.target = laneTowerSpot(state, this.team, me.lane);
-        this.targetLabel = towerName(me.lane, 1);
+        // 第 5 课的箭头会指向敌方的同名塔：两处都写明是哪一方的
+        this.targetLabel = `我方${towerName(me.lane, 1)}`;
       }
     }
   }
@@ -689,7 +690,7 @@ export class GuideScript {
   private setTower(t: Unit): void {
     this.target = { x: t.pos.x, y: t.pos.y };
     this.targetId = t.id;
-    this.targetLabel = t.kind === 'tower' ? towerName(t.lane, t.tier) : '防御塔';
+    this.targetLabel = t.kind === 'tower' ? `敌方${towerName(t.lane, t.tier)}` : '敌方防御塔';
   }
 
   /** 我方小兵已经进了射程、人也离得不远的那座敌塔 */
@@ -775,6 +776,9 @@ export class GuideScript {
         if (b.id !== 'tower_focus') continue;
         const tower = state.units.find((u) => u.id === b.sourceId);
         if (!tower) continue;
+        // 锁定状态会多挂几秒：人已经跑出射程就不用再喊了(与目标行的同一条规则同口径)
+        const reach = tower.stats.attackRange + me.radius + OBJECTIVE_TUNE.aggroPad[0];
+        if (d2(tower.pos, me.pos) > reach * reach) break;
         const minions: MinionUnit[] = [];
         for (const m of state.units) if (m.kind === 'minion' && m.alive && m.team === this.team) minions.push(m);
         if (!minionsUnder(tower, minions)) this.queueTip('tip_tower', '塔在打你！塔下没有小兵别硬冲，越打越疼。', state, 3, true, true);

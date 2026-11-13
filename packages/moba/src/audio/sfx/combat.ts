@@ -1,7 +1,7 @@
 /**
  * 战斗基础音效：英雄普攻、小兵/野怪/塔、通用命中、技能弹道。
  * 每个配方都按「瞬态 + 主体 + 尾音」分层，主题音色随英雄：铜盾短剑 / 生铁大斧 / 琵琶 / 弓箭 / 匕首。
- * 野怪的挥击、命中用变体参数 v 区分体型与种类(见 engine.ts 的 MON_VAR)：0 苔背獾、1 霜晶巨鹿、2 炽焰巨熊、3 河道巨龙、4 远古巨灵、5 荧翅蛾。
+ * 野怪的挥击、命中用变体参数 v 区分体型与种类(见 engine.ts 的 MON_VAR)：0 苔背獾、1 霜晶巨鹿、2 炽焰巨熊、3 河道巨龙、4 星陨巨灵、5 荧翅蛾。
  */
 import { mtof } from '../synth';
 import { BLADE, CRYSTAL, DAGGER, METAL, def } from './defs';
@@ -168,14 +168,14 @@ export const COMBAT = {
         growl(q, 0, 0.26, 0.6, 70, 52, 300, 800);
       });
     } else {
-      // 远古巨灵：巨拳破风 + 陨铁关节的低鸣
+      // 星陨巨灵：巨拳破风 + 陨铁关节的低鸣
       p.sub(0.77, (q) => {
         whoosh(q, 0, 0.3, 0.5, 110, 520, 200, 0.9, 'brown');
         q.osc({ w: 'softsaw', f: 55, f1: 82, a: 0.12, d: 0.16, g: 0.3, to: q.filt('lowpass', 300, 1) });
         q.ring(310, METAL, { t: 0.02, a: 0.02, d: 0.2, g: 0.06 });
       });
     }
-  }, { loud: -27, len: 0.4, gap: 0.14, poly: 2, jitter: 0.08, variants: [{ label: '苔背獾', v: 0 }, { label: '霜晶巨鹿', v: 1 }, { label: '炽焰巨熊', v: 2 }, { label: '河道巨龙', v: 3 }, { label: '远古巨灵', v: 4 }] }),
+  }, { loud: -27, len: 0.4, gap: 0.14, poly: 2, jitter: 0.08, variants: [{ label: '苔背獾', v: 0 }, { label: '霜晶巨鹿', v: 1 }, { label: '炽焰巨熊', v: 2 }, { label: '河道巨龙', v: 3 }, { label: '星陨巨灵', v: 4 }] }),
   monster_hit: def('小兵与野怪', '野怪·命中', (p, v) => {
     if (v < 0.5) {
       // 苔背獾：两道爪痕
@@ -230,7 +230,7 @@ export const COMBAT = {
         q.noise({ flt: 'bandpass', fc: 3000, fc1: 1500, q: 0.9, t: 0.03, a: 0.02, d: 0.3, g: 0.35 });
       });
     } else {
-      // 远古巨灵的陨铁巨拳：更沉的一砸 + 陨铁的鸣响 + 崩落的碎石
+      // 星陨巨灵的陨铁巨拳：更沉的一砸 + 陨铁的鸣响 + 崩落的碎石
       p.sub(0.85, (q) => {
         const dr = q.drive(2.5, q.gain(0.55));
         q.osc({ f: 66, f1: 26, a: 0.003, d: 0.6, g: 0.8, to: dr });
@@ -242,7 +242,7 @@ export const COMBAT = {
         q.scatter(4, 0.06, 0.3, (at) => q.noise({ flt: 'bandpass', fc: q.rr(350, 1100), q: 2, t: at, a: 0.001, d: q.rr(0.04, 0.09), g: q.rr(0.2, 0.35) }));
       });
     }
-  }, { loud: -15, len: 0.8, gap: 0.15, poly: 2, rev: 0.22, variants: [{ label: '河道巨龙', v: 0 }, { label: '远古巨灵', v: 1 }] }),
+  }, { loud: -15, len: 0.8, gap: 0.15, poly: 2, rev: 0.22, variants: [{ label: '河道巨龙', v: 0 }, { label: '星陨巨灵', v: 1 }] }),
   monster_spawn: def('小兵与野怪', '野怪·刷新', (p, v) => {
     if (v < 0.5) {
       // 苔背獾：从地洞里钻出来——刨土声 + 两声嗅地

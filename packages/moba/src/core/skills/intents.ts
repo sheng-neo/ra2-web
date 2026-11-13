@@ -318,7 +318,7 @@ export const SKILL_INTENT_LIST: SkillIntent[] = HERO_IDS.flatMap((id) => [SKILL_
  * 推荐连招顺序（先手控制 → 伤害 → 收割）。Bot 可以按顺序放「已就绪且够得着」的技能。
  * 樊哙：大招或冲撞进场 → 拥盾怒目减速黏人；程咬金：半路杀出贴身 → 旋斧 → 拦腰一斧留人；
  * 王昭君：音环拉住 → 大招覆盖 → 一弦穿云补层数；李广：白羽没石减速 → 箭雨 → 飞将腾身留着走位；
- * 荆轲：掷匕减速 → 风萧易水贴脸 → 图穷匕见收割。
+ * 荆轲：掷匕减速 → 风萧易水贴脸 → 卷尽匕现收割。
  */
 export const COMBOS: Record<HeroId, AbilitySlot[]> = {
   panyue: ['ult', 's1', 's2'],

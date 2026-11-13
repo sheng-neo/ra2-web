@@ -130,9 +130,9 @@ describe('GuideScript：完整走一遍(键鼠，上路英雄)', () => {
     expect(r.view.card?.done).toBe(true);
     expect(r.script.debug().moved).toBeGreaterThanOrEqual(GUIDE_TUNE.moveDist);
     v = r.until('go', 3);
-    expect(v.card?.text).toBe('跟着箭头去**上路一塔**，小兵马上就到。');
+    expect(v.card?.text).toBe('跟着箭头去**我方上路一塔**，小兵马上就到。');
     const spot = tower(r.sim, 0, 'top', 1).pos;
-    expect(v.arrow).toEqual({ pos: spot, label: '上路一塔' });
+    expect(v.arrow).toEqual({ pos: spot, label: '我方上路一塔' });
     expect(v.minimap).toEqual(spot);
 
     // 1b 走到一塔 12 米内
@@ -211,7 +211,7 @@ describe('GuideScript：完整走一遍(键鼠，上路英雄)', () => {
     spawnMinionAt(r.sim, 0, 'melee', foeT1.pos.x - 4, foeT1.pos.y, 'top', 99999);
     v = r.until('push', 2);
     expect(v.card?.text).toContain('小兵进塔了！');
-    expect(v.arrow?.label).toBe('上路一塔');
+    expect(v.arrow?.label).toBe('敌方上路一塔');
     expect(v.arrow?.pos).toEqual(foeT1.pos);
     expect(v.minimap).toEqual(foeT1.pos);
     // 打到塔之后卡片再留 20 秒
@@ -497,7 +497,7 @@ describe('GuideScript：推塔的几种走法', () => {
     const v = r.until('push', 4);
     expect(r.script.debug().variant).toBe('late');
     expect(v.card?.text).toContain('等小兵进塔再上去打');
-    expect(v.arrow?.label).toBe('上路一塔');
+    expect(v.arrow?.label).toBe('敌方上路一塔');
     // 40 秒超时
     r.run(GUIDE_TUNE.pushTimeout + 0.5);
     expect(r.view.card?.id).toBe('win');
@@ -528,7 +528,7 @@ describe('GuideScript：推塔的几种走法', () => {
 });
 
 describe('GuideScript：打野英雄变体', () => {
-  it('去增益怪营地 → 野怪进 14 米教普攻 → 打死一只野怪算补刀', () => {
+  it('去增益怪营地 → 野怪进 14 米教普攻 → 打死一只野怪算补兵', () => {
     const r = rig('yeque', 'kbm');
     r.until('move');
     r.moveTo({ x: -45, y: 40 });
@@ -638,11 +638,18 @@ describe('GuideScript：情境小贴士', () => {
     const r = rig();
     r.until('move');
     r.run(5);
-    const t0 = r.script.debug().t;
     const t = tower(r.sim, 1, 'top', 1);
     addBuff(r.me, 'tower_focus', t.id);
+    // 锁定状态还挂着、人却不在塔的射程边上(已经跑出来了)：不提示
+    r.run(0.5);
+    expect(r.view.card?.id).toBe('move');
+    const t0 = r.script.debug().t;
+    const home = { x: r.me.pos.x, y: r.me.pos.y };
+    r.park(t.pos.x - 5, t.pos.y);
     const v = r.run(0.3);
     expect(v.card?.id).toBe('tip_tower');
+    // 贴士已经出来了：把人放回去(留在塔下会真的被打死)
+    r.park(home.x, home.y);
     expect(v.card?.warn).toBe(true);
     expect(v.card?.text).toBe('塔在打你！塔下没有小兵别硬冲，越打越疼。');
     r.run(3);
@@ -691,7 +698,7 @@ describe('GuideScript：跟着一局真实对局跑', () => {
         if (v.arrow) expect(Number.isFinite(v.arrow.pos.x) && v.arrow.label.length > 0).toBe(true);
       }
       const done = script.debug().done;
-      // Bot 会走路、普攻、补刀、放技能：前三课一定做得完
+      // Bot 会走路、普攻、补兵、放技能：前三课一定做得完
       expect(done, `${hero}: ${shown.join(' ')}`).toEqual(expect.arrayContaining(['move', 'go', 'attack', 'lasthit', 'skill']));
       expect(shown[0].startsWith('move') || shown[0].startsWith('go')).toBe(true);
     }

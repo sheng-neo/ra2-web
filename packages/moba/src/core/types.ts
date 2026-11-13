@@ -36,8 +36,8 @@ export type MonsterType =
   | 'glimwing' // 小野怪 · 荧翅蛾(成对)
   | 'frost_golem' // 蓝buff · 霜晶巨鹿：增益野怪(冷却/回蓝)
   | 'ember_golem' // 红buff · 炽焰巨熊：增益野怪(灼烧/减速)
-  | 'abyss_drake' // 河道巨龙 · 深渊鳞龙：河道史诗野怪 A(团队金币经验；会吐息)
-  | 'star_colossus'; // 远古巨灵 · 星陨巨灵：河道史诗野怪 B(团队增益)
+  | 'abyss_drake' // 河道巨龙 · 沉渊鳞龙：河道史诗野怪 A(团队金币经验；会吐息)
+  | 'star_colossus'; // 星陨巨灵(口语简称「巨灵」)：河道史诗野怪 B(团队增益)
 export type DamageType = 'physical' | 'magic' | 'true';
 export type AbilitySlot = 's1' | 's2' | 'ult';
 export type SummonerSlot = 'recall' | 'heal' | 'flash';
@@ -306,7 +306,7 @@ export interface Projectile {
 export type AreaVisual =
   | 'telegraph' // 通用预警圈（延迟技能落地前，敌我都可见）
   | 'panyue_s2_aura' // 拥盾怒目：跟随自身的护盾光环
-  | 'panyue_ult_fissure' // 死且不避落地后的震裂减速场
+  | 'panyue_ult_fissure' // 跃盾砸阵落地后的震裂减速场
   | 'chijin_ult_spin' // 抡圆了砍：跟随自身的斧影旋风
   | 'xingli_s2_well' // 回环收弦：延迟后收束
   | 'xingli_ult_storm' // 雁落平沙：雁影分波俯冲的区域
@@ -361,7 +361,7 @@ export type FxKey =
   | 'panyue_s1_dash' // 侧盾闯帐起步尘土 @pos, dir
   | 'panyue_s1_impact' // 冲撞终点震击 @pos, radius
   | 'panyue_s2_cast' // 拥盾怒目：盾影与震慑环 @unit, radius
-  | 'panyue_ult_leap' // 死且不避起跳 from → to
+  | 'panyue_ult_leap' // 跃盾砸阵起跳 from → to
   | 'panyue_ult_land' // 落地砸地 @pos, radius
   // 程咬金(chijin)
   | 'chijin_passive_hit' // 越砍越勇：强化重斧 @target
@@ -383,8 +383,8 @@ export type FxKey =
   // 荆轲(yeque)
   | 'yeque_s1_dash' // 风萧易水 from → to（墨痕）
   | 'yeque_s2_cast' // 引匕一掷：掷出匕首 @pos, dir
-  | 'yeque_ult_vanish' // 图穷匕见：隐去身形 @pos(原地墨渍)，targetId = 目标
-  | 'yeque_ult_strike'; // 背后一匕 @target, from → to
+  | 'yeque_ult_vanish' // 卷尽匕现：图卷遮住身形 @pos(原地墨渍)，targetId = 目标
+  | 'yeque_ult_strike'; // 贴身一匕 @target, from → to
 
 export type AnnounceKey =
   | 'match_start' // 「对战开始」
@@ -400,7 +400,7 @@ export type AnnounceKey =
   | 'shutdown' // 终结
   | 'ace' // 团灭
   | 'tower_destroyed'
-  | 'epic_spawn' // 史诗野怪(河道巨龙 / 远古巨灵)刷新
+  | 'epic_spawn' // 史诗野怪(河道巨龙 / 星陨巨灵)刷新
   | 'epic_slain' // 史诗野怪被击杀
   | 'super_minions' // 超级兵出击
   | 'victory'

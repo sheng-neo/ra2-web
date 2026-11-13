@@ -6,7 +6,7 @@
  *   结束：hud.dispose();
  *
  * 层级（HUD 内部，自下而上）：阵亡去色层/残血红边 → 输入层(战场点击、摇杆热区) → 摇杆 →
- * 常驻部件(小地图、比分、状态栏、技能区、击杀流) → 横幅/提示 → 记分板 → 商店 → 设置对话框 → 提示浮层。
+ * 常驻部件(小地图、比分、状态栏、技能区、击杀流) → 横幅/提示 → 战况面板 → 商店 → 设置对话框 → 提示浮层。
  * HUD 根节点自身不拦截指针，只有控件与输入层接收事件。
  */
 import { ITEMS } from '../../core/data/items';
@@ -199,8 +199,14 @@ export function createHud(root: HTMLElement, host: HudHost, state: GameState, op
       host.setPaused(true);
       settings = openSettingsDialog(el, {
         mode: 'match',
-        get: () => host.getSettings(),
-        update: (patch) => host.updateSettings(patch),
+        // 「自动出装」那一行显示本局的实际状态(卖了推荐装会让本局关闭，但玩家的偏好没变)，与商店顶部的开关一致
+        get: () => ({ ...host.getSettings(), autoBuy: ctx.me.autoBuy === true }),
+        update: (patch) => {
+          // 本局被「卖关」时偏好本来就是开：宿主未必会把一次没变化的设置转成命令，这里直接下
+          if (patch.autoBuy !== undefined && !ctx.state.over) host.command({ type: 'autoBuy', enabled: patch.autoBuy });
+          host.updateSettings(patch);
+        },
+        autoBuyNote: () => (host.getSettings().autoBuy && ctx.me.autoBuy !== true && !ctx.state.over ? '卖了推荐装，本局已关闭。点一下重新打开。' : null),
         audio: host.audio,
         // 暂停面板里「新手引导」行的「重看」：引导已经开着时从第 1 步重来
         onReplayTutorial: () => coach.restartGuide(),

@@ -5,12 +5,15 @@
 import { HEROES, heroFullName } from '../../core/data/heroes';
 import type { HeroId, PlayerTeam } from '../../core/types';
 import type { LoadingScreen, MatchChoice, MenuHost } from '../api';
+import type { InputMode } from '../hud/common';
 import { LANE_NAMES, laneIcon, roleIcon, uiIcon } from '../icons';
+import { detectInputMode } from '../input/device';
 import { createBadge, createProgress, ensureTheme, h, icon, injectStyle, sfCss } from '../theme';
 import { createBackdrop } from './backdrop';
 import { DIFFICULTY_META, HERO_ORDER, ROLE_COLOR, createPortrait } from './shared';
 
-const TIPS: string[] = [
+/** 不分输入方式的小贴士 */
+const TIPS_COMMON: string[] = [
   '摧毁敌方水晶才算胜利——别只顾着击杀，记得带兵线推塔。',
   '防御塔会优先攻击小兵：等己方兵线进塔，再去攻击塔下的敌人。',
   '每条路要按 一塔 → 二塔 → 高地塔 的顺序拆，前面的没破，后面的塔和水晶打不动。',
@@ -18,10 +21,9 @@ const TIPS: string[] = [
   '草丛可以隐藏身形，但在草里出手会暴露 1.5 秒。',
   '金币够了会自动购买推荐装备；想自己挑，随时打开商店。',
   '打掉蓝buff：技能冷却更短、回蓝更快；打掉红buff：普攻附带灼烧和减速。',
-  '河道巨龙给全队金币和经验；远古巨灵让全队变强、小兵也更猛。',
-  '残血别硬撑：回城引导 5 秒返回泉水，移动、攻击或受伤都会打断。',
+  '河道巨龙给全队金币和经验；星陨巨灵让全队变强、小兵也更猛。别一个人去打，等队友一起。',
+  '残血别硬撑：回城要原地站 5 秒才能回到泉水，移动、攻击或受伤都会打断。',
   '被防御塔连续命中，伤害会越打越高——及时退出攻击范围。',
-  '轻点技能键是智能施法；按住拖动可以手动瞄准，拖到取消区松手则取消。',
   '连杀会抬高你的赏金，被终结时对手将获得额外金币。',
   // 五位英雄各一条：告诉玩家对面(或队友)最要紧的一个特点
   '樊哙的大盾最扛打：让他先冲，其他人跟上。',
@@ -30,6 +32,29 @@ const TIPS: string[] = [
   '李广站着不动连续射击会越射越快，优先打断他。',
   '荆轲专挑残血下手：血量低于四成时离他远一点。',
 ];
+/** 只对某一种输入方式成立的小贴士：按开局时识别到的输入方式取其中一组，和通用的混在一起轮播 */
+const TIPS_BY_INPUT: Record<InputMode, string[]> = {
+  kbm: [
+    '按住 Q / E / R 能看到技能范围，松开施放；按住时点鼠标右键或按 Esc 取消。',
+    '鼠标右键点地面移动、点敌人攻击；按空格会自动打最合适的目标。',
+  ],
+  touch: [
+    '轻点技能键会自动瞄准；按住拖动可以自己瞄准，拖到「取消」圈里松手就不放。',
+    '原地按住技能键不动，可以看这个技能的说明。',
+  ],
+};
+
+/**
+ * 这一次加载要轮播的小贴士：通用的 + 当前输入方式专属的(专属的均匀插在通用的之间)。
+ * 键鼠玩家不会看到「轻点 / 拖到取消区」，触控玩家不会看到键位。
+ */
+export function loadingTips(mode: InputMode): string[] {
+  const out = TIPS_COMMON.slice();
+  const extra = TIPS_BY_INPUT[mode];
+  const step = Math.floor(out.length / (extra.length + 1));
+  extra.forEach((tip, i) => out.splice((i + 1) * step + i, 0, tip));
+  return out;
+}
 
 const CSS = sfCss(`
 .sf-loading { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; gap: 10u; padding: max(18u, var(--sf-safe-t)) max(36u, var(--sf-safe-r)) max(22u, var(--sf-safe-b)) max(36u, var(--sf-safe-l)); background: rgba(3, 6, 16, 0.5); }
@@ -192,7 +217,8 @@ export function showLoading(root: HTMLElement, choice: MatchChoice, host: MenuHo
   const backdrop = createBackdrop(shell, 'menu');
   root.appendChild(shell);
 
-  // 小贴士轮播：从与英雄相关的随机位置开始，避免每次都看到同一条
+  // 小贴士轮播：从与英雄相关的随机位置开始，避免每次都看到同一条。讲操作的那几条按输入方式取
+  const TIPS = loadingTips(detectInputMode());
   let tipIndex = (HERO_ORDER.indexOf(choice.heroId) * 5 + Math.floor(Math.random() * TIPS.length)) % TIPS.length;
   tipText.textContent = TIPS[tipIndex];
   let swapTimer = 0;

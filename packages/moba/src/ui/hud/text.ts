@@ -73,7 +73,7 @@ const BUFF_DESC: Record<BuffId, (b: Buff) => string> = {
   respawn_guard: () => '刚刚复活，短时间内免疫伤害。',
   frost_insight: () => `蓝buff：冷却缩减 +${pct(MONSTER_RULES.frostCdr)}(总上限 40%)，回蓝更快。打掉蓝buff 怪获得，持续 ${MONSTER_RULES.buffDuration} 秒。`,
   ember_might: () => `红buff：普攻附带灼烧，并让目标减速 ${pct(MONSTER_RULES.emberSlow)}。打掉红buff 怪获得，持续 ${MONSTER_RULES.buffDuration} 秒。`,
-  star_blessing: () => `巨灵buff(星陨祝福)：伤害 +${pct(MONSTER_RULES.blessingDamage)}，持续回血，我方小兵更强。打掉远古巨灵后全队获得，持续 ${MONSTER_RULES.blessingDuration} 秒。`,
+  star_blessing: () => `巨灵buff(星陨祝福)：伤害 +${pct(MONSTER_RULES.blessingDamage)}，持续回血，我方小兵更强。打掉星陨巨灵后全队获得，持续 ${MONSTER_RULES.blessingDuration} 秒。`,
   // 英雄专属状态(键名沿用第一阶段，名字与说明按新身份写；名字见 icons/buffs.ts 的 BUFF_META)
   panyue_passive: (b) => `盾击蓄势 ${b.stacks}/3：第三次普攻改用大盾砸地，附带额外伤害与减速。`,
   // 减速只在施放的一瞬间生效一次，持续期间只有护盾
@@ -93,42 +93,35 @@ export function buffDesc(b: Buff): string {
   return BUFF_DESC[b.id](b);
 }
 
-/** 施法方式标签：技能详情里的一行小字 */
+/** 施法方式标签：技能详情里的一行小字(「怎么放 · 多远」) */
 export function castLabel(c: CastSpec): string {
-  switch (c.type) {
-    case 'direction':
-      return `方向 · 距离 ${c.range}`;
-    case 'cone':
-      return `扇形 · 距离 ${c.range}`;
-    case 'position':
-      return `范围 · 距离 ${c.range}`;
-    case 'target':
-      return `指向 · 距离 ${c.range}`;
-    default:
-      return c.radius > 0 ? `自身 · 半径 ${c.radius}` : '自身';
-  }
+  const reach = castReach(c);
+  return reach ? `${castKind(c)} · ${reach}` : castKind(c);
 }
 
-/** 施法方式的一个词(技能浮层的标签行里用)：方向 / 扇形 / 范围 / 指向 / 自身 */
+/**
+ * 施法方式的一个短语(技能浮层的标签行里用)，说的是「怎么放」：朝一个方向 / 扇形横扫 / 选一块地方 / 点一个敌人 / 原地放。
+ * 不用「方向 / 指向 / 范围 / 自身」这类裸词：新手分不清它们的差别。
+ */
 export function castKind(c: CastSpec): string {
   switch (c.type) {
     case 'direction':
-      return '方向';
+      return '朝一个方向';
     case 'cone':
-      return '扇形';
+      return '面前一片扇形';
     case 'position':
-      return '范围';
+      return '选一块地方';
     case 'target':
-      return '指向';
+      return '点一个敌人';
     default:
-      return '自身';
+      return '原地放';
   }
 }
 
-/** 施法距离(自身类技能给作用半径)，技能浮层的数值行里用；没有可说的返回空串 */
+/** 施法距离(原地放的技能给作用半径)，带单位「米」(与引导箭头的「72 米」同一单位)；没有可说的返回空串 */
 export function castReach(c: CastSpec): string {
-  if (c.type === 'self') return c.radius > 0 ? `半径 ${c.radius}` : '';
-  return `距离 ${c.range}`;
+  if (c.type === 'self') return c.radius > 0 ? `半径 ${c.radius} 米` : '';
+  return `距离 ${c.range} 米`;
 }
 
 /** 通用技能(回城 / 疗伤 / 闪现)在界面上的施法方式（与模拟层的解析一致：闪现取方向，其余立即生效） */
@@ -233,8 +226,9 @@ export const KILL_TITLES: Partial<Record<AnnounceKey, string>> = {
   triple_kill: '三杀',
   quadra_kill: '四杀',
   penta_kill: '五杀·星陨降临',
-  killing_spree: '锋芒毕露',
-  unstoppable: '势不可挡',
+  // 连杀 3 / 5 / 7+ 三档都落在自己的「星」母题上(自拟词，不与别家的同档播报重合)
+  killing_spree: '星芒乍现',
+  unstoppable: '星火燎原',
   legendary: '星陨传说',
   shutdown: '终结',
 };

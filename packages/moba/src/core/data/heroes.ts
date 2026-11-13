@@ -74,10 +74,10 @@ export const HEROES: Record<HeroId, HeroDef> = {
       },
       ult: {
         slot: 'ult',
-        name: '死且不避',
+        name: '跃盾砸阵',
         brief: '跳进人堆砸地，击飞一大片',
         tags: ['control', 'slow'],
-        desc: '须发戟张，高高跃起连人带盾砸向目标区域，落地造成 {damage}(+{hpRatio%}最大生命) 点物理伤害并击飞 {knockup} 秒，随后留下持续 {zoneDur} 秒的震裂地面，使其中敌人减速 {slow%}。跃起期间免疫控制。',
+        desc: '大喝一声「死且不避」，须发戟张，高高跃起连人带盾砸向目标区域，落地造成 {damage}(+{hpRatio%}最大生命) 点物理伤害并击飞 {knockup} 秒，随后留下持续 {zoneDur} 秒的震裂地面，使其中敌人减速 {slow%}。跃起期间免疫控制。',
         maxLevel: 3,
         cooldown: [50, 45, 40],
         manaCost: [100, 110, 120],
@@ -305,6 +305,7 @@ export const HEROES: Record<HeroId, HeroDef> = {
 
   // ───────────────────────── 荆轲 · 刺客 ─────────────────────────
   // 出处：《史记·刺客列传》《战国策·燕策三》——「风萧萧兮易水寒，壮士一去兮不复还」「图穷而匕首见」「引其匕首以擿秦王」
+  // 大招名自拟为「卷尽匕现」(典故原文四字已有别的作品用作同名人物的技能名，避开)
   yeque: {
     id: 'yeque',
     name: '荆轲',
@@ -331,9 +332,9 @@ export const HEROES: Record<HeroId, HeroDef> = {
       s1: {
         slot: 's1',
         name: '风萧易水',
-        brief: '突刺穿过敌人，刺中英雄减冷却',
+        brief: '突刺穿过敌人，刺中英雄这招更快转好',
         tags: ['dash'],
-        desc: '像一阵寒风向指定方向疾刺穿过，对路径上的敌人造成 {damage}(+{adRatio%}物攻) 点物理伤害。若命中敌方英雄，返还 {refund%} 冷却。',
+        desc: '像一阵寒风向指定方向疾刺穿过，对路径上的敌人造成 {damage}(+{adRatio%}物攻) 点物理伤害。若命中敌方英雄，这一招的冷却立即返还 {refund%}。',
         maxLevel: 6,
         cooldown: [7, 6.7, 6.4, 6.1, 5.8, 5.5],
         manaCost: [40, 44, 48, 52, 56, 60],
@@ -356,10 +357,10 @@ export const HEROES: Record<HeroId, HeroDef> = {
       },
       ult: {
         slot: 'ult',
-        name: '图穷匕见',
-        brief: '隐身后闪到敌人背后给一刀',
+        name: '卷尽匕现',
+        brief: '抖开图卷欺近目标，卷尽一匕',
         tags: ['burst', 'dash'],
-        desc: '展开图卷隐去身形，图穷之时出现在目标敌方英雄身后一匕刺出：造成 {damage}(+{adRatio%}物攻) 外加目标 {missingRatio%} 已损生命的物理伤害。隐去身形期间不可被选中。',
+        desc: '抖开督亢图卷遮住身形(期间不可被选中)，卷尽时人已欺到目标敌方英雄身边，一匕刺出：造成 {damage}(+{adRatio%}物攻) 外加目标 {missingRatio%} 已损生命的物理伤害。',
         maxLevel: 3,
         cooldown: [40, 35, 30],
         manaCost: [100, 105, 110],
@@ -443,7 +444,7 @@ export function formatSkillDesc(def: SkillDef, level: number): string {
 
 /** 通用技能（所有英雄都有的 回城 / 疗伤 / 闪现；内部槽位名仍是 recall / heal / flash）。brief = 一句大白话 */
 export const SUMMONER = {
-  recall: { name: '回城', brief: '原地站 5 秒，回泉水补满', desc: '原地引导 5 秒后传送回泉水。移动、攻击或受到伤害会打断。', channel: 5, cooldown: 1 },
+  recall: { name: '回城', brief: '原地站 5 秒，回泉水补满', desc: '原地站 5 秒后传送回泉水。移动、攻击或受到伤害会打断。', channel: 5, cooldown: 1 },
   heal: { name: '疗伤', brief: '5 秒内回三成血和蓝', desc: '5 秒内持续回复共 30% 最大生命与 30% 最大法力。受到英雄或防御塔伤害会打断。', duration: 5, hpRatio: 0.3, manaRatio: 0.3, cooldown: 60 },
   flash: { name: '闪现', brief: '朝一个方向瞬移一小段', desc: '向指定方向瞬移一小段距离，可穿越薄墙。', range: 5, cooldown: 110 },
 } as const;
