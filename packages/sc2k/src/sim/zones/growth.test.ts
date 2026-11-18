@@ -168,7 +168,7 @@ describe('手感', () => {
   it('只划住宅：R 需求随房子出现而转负，C/I 需求饱和为正', () => {
     const { ctx, host, state } = city({ profile: 'optimistic' });
     zoneRect(ctx, ZoneCode.DenseR, 10, 10, 25, 25);
-    runDays(host, 6 * MONTH);
+    runDays(host, 12 * MONTH);                                   // 平滑 0.15（INT 平衡裁定）下需求转向比第一波的 0.25 慢，观察期 6 → 12 个月
     expect(state.census.res).toBeGreaterThan(0);
     expect(state.demand.r).toBeLessThan(0);
     expect(state.demand.c).toBeGreaterThan(1000);
@@ -182,10 +182,16 @@ describe('手感', () => {
       zoneRect(ctx, ZoneCode.DenseR, 10, 10 + k * 12, 29, 19 + k * 12); zoneRect(ctx, ZoneCode.DenseC, 32, 10 + k * 12, 51, 19 + k * 12); zoneRect(ctx, ZoneCode.DenseI, 54, 10 + k * 12, 73, 19 + k * 12);
       roadLine(ctx, 8, 9 + k * 12, 75, 9 + k * 12); roadLine(ctx, 8, 20 + k * 12, 75, 20 + k * 12);
     }
+    let prevPop = 0;
     for (let y = 0; y < years; y++) {
       runDays(host, 12 * MONTH);
       expect(Math.abs(state.demand.r)).toBeLessThanOrEqual(2000);
       expect(state.census.normalPop).toBeGreaterThanOrEqual(0);
+      // 不振荡（评审阻断项回归）：任一年末废弃楼格 ≤ 已建 + 废弃的 15%；人口年跌幅 ≤ 30%（第一波默认值下为 36% / 54%）
+      const built = countTiles(state, isBuiltZoneId), aband = countTiles(state, isAbandonedId);
+      expect(aband).toBeLessThanOrEqual(Math.ceil(0.15 * (built + aband)));
+      if (prevPop > 500) expect(state.census.normalPop).toBeGreaterThanOrEqual(Math.floor(prevPop * 0.7));
+      prevPop = state.census.normalPop;
     }
     expect(state.census.normalPop).toBeGreaterThan(1000);
     expect(countTiles(state, isBuiltZoneId)).toBeGreaterThan(100);

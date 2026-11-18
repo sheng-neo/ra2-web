@@ -6,7 +6,7 @@ import type { CityState } from '../../contracts/state';
 import type { System } from '../../contracts/system';
 import { createTestContext, nullSystem, runDays } from '../../testkit';
 import { createZonesSystem } from './index';
-import { CONNECTION_MARK, connectionTotals, edgeOfTile, natPopOf, recountConnections } from './neighbors';
+import { CONNECTION_MARK, connectionTotals, edgeOfTile, natPopOf, neighborPopCap, recountConnections } from './neighbors';
 import { DEFAULT_ZONES_TUNING } from './tuning';
 
 const T = DEFAULT_ZONES_TUNING;
@@ -82,6 +82,17 @@ describe('年度增长与连接', () => {
     expect(conn.neighbors[0]!.population).toBeGreaterThan(plain.neighbors[0]!.population);
     for (let k = 1; k < 4; k++) expect(conn.neighbors[k]!.population).toBe(plain.neighbors[k]!.population);
     for (let k = 0; k < 4; k++) expect(plain.neighbors[k]!.population).toBeGreaterThan(0);
+  });
+  it('邻城人口有上限（评审修复）：按 natPop(year) 缩放的上限夹住年度复利，满上限后不再增长；PRNG 消费不变', () => {
+    const T = DEFAULT_ZONES_TUNING;
+    expect(neighborPopCap(T, 1950)).toBe(Math.round((T.neighborPopCapFactor * T.neighborPopMax * natPopOf(T, 1950)) / T.neighborPopScale));
+    expect(neighborPopCap(T, 2050)).toBeGreaterThan(neighborPopCap(T, 1950));
+    const t = createTestContext({ systems: [createZonesSystem()], seed: 5 });
+    const cap = neighborPopCap(T, t.ctx.q.economy.year());
+    for (const nb of t.state.neighbors) nb.population = cap - 10;                 // 逼近上限
+    runDays(t.host, 301);                                                          // 跨过一次 neighborsAnnual
+    for (const nb of t.state.neighbors) expect(nb.population).toBeLessThanOrEqual(neighborPopCap(T, t.ctx.q.economy.year()));
+    expect(t.state.neighbors.some((nb) => nb.population === neighborPopCap(T, t.ctx.q.economy.year()))).toBe(true);
   });
   it('国家经济：每年 1 月 trend 在 0..2 内游走，population 按年份表', () => {
     const { host, state } = createTestContext({ systems: [createZonesSystem()], params: { startYear: 1900, difficulty: 2 } });

@@ -17,8 +17,10 @@ import type { ZonesTuning } from './tuning';
 export interface ZonesRuntime {
   quotaAge: number; growsToday: number; declinesToday: number;
   monthGrows: number; monthDeclines: number; monthVisits: number;
+  /** 施工中地块的终态人口（R 居民 / C、I 岗位），census 阶段与普查同时重算、同日 demand 阶段读取（由图层 + priv.pendingId 派生）。 */
+  pending: [number, number, number];
 }
-export const createRuntime = (): ZonesRuntime => ({ quotaAge: -1, growsToday: 0, declinesToday: 0, monthGrows: 0, monthDeclines: 0, monthVisits: 0 });
+export const createRuntime = (): ZonesRuntime => ({ quotaAge: -1, growsToday: 0, declinesToday: 0, monthGrows: 0, monthDeclines: 0, monthVisits: 0, pending: [0, 0, 0] });
 /** 系统闭包在每次调用时交给各子模块的绑定包。 */
 export interface ZonesCtx { T: ZonesTuning; tbl: ZoneTable; priv: ZonesPriv; rt: ZonesRuntime }
 

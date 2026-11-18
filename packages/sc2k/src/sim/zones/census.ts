@@ -14,7 +14,15 @@ export function tallyCensus(ctx: SimContext, Z: ZonesCtx): void {
   const { tbl, T } = Z;
   const s = ctx.state, L = s.layers, util = ctx.q.utilities;
   const pop = [0, 0, 0], tiles = [0, 0, 0];
+  const pending = Z.rt.pending;
+  pending[0] = 0; pending[1] = 0; pending[2] = 0;
   forEachAnchor(L, tbl, (i, b, cls) => {
+    if (cls === LotClass.Construct) {                                    // 施工中：终态建筑的人口只计入需求供给侧（rt.pending）
+      const pid = Z.priv.pendingId[i]!;
+      const pzi = tbl.zoneIdx[pid]!;
+      if (pid >= 0x70 && pzi < 3) pending[pzi]! += tbl.pop[pid]!;
+      return;
+    }
     if (cls !== LotClass.Built) return;
     const zi = tbl.zoneIdx[b]!, n = tbl.size[b]!;
     tiles[zi]! += n * n;

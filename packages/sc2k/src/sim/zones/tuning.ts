@@ -42,6 +42,11 @@ export interface ZonesTuning {
    * 关闭时严格按 spec:zones §2.5.6（整栋落入才可吞并）——但 2x2 铺满后 3x3 永远无法形成。
    */
   absorbPartial: boolean;
+  /**
+   * 部分吞并时落在新地块外的旧楼格变成什么（[设计]，INT 平衡裁定）：'empty' = 空分区地（默认；需求转正即可再长小楼），
+   * 'rubble' = 瓦砾（第一波口径；成熟城市里瓦砾逐年累积到分区的两成）。
+   */
+  partialLeftover: 'empty' | 'rubble';
   /** 人口汇总是否把断电建筑计入（原版：不计）。 */
   countUnpowered: boolean;
   /** 调试 / 测试用：非 null 时 demand 阶段直接写入该固定需求（不消费 PRNG）。 */
@@ -53,7 +58,18 @@ export interface ZonesTuning {
 
   // ---- 需求（§2.8） ----
   emptyCityBase: RciDemand;
+  /**
+   * 供需比增益与 1/N 平滑（§2.8.1 [低]，INT 平衡裁定）：原 1500 / 0.25 在施工滞后下产生剧烈超调（城市 2.5k↔6 万反复崩塌），
+   * 降到 1000 / 0.15 后（配合不对称衰退阈值）年度最大跌幅 ≤ 4%、废弃占比峰值 ≤ 9%（全真系统 6 带城镇，20 年，两个种子）。
+   */
   ratioGain: number; smoothing: number;
+  /** 施工中地块的终态人口按此比例计入需求的供给侧（[设计]）：消除 15–45 天施工期造成的需求超调；不进税基与普查。 */
+  pendingSupplyWeight: number;
+  /**
+   * 外生增长偏置（[设计]）：非空城时加到原始需求上。供需平衡（jobs == workforce）时主干为 0，
+   * 没有它城市在不降税、无邻城连接时会完全停滞；原版平衡城仍有温和正需求。
+   */
+  growthBias: RciDemand;
   /** 税率 0..20 → 需求修正（§2.8.3）。 */
   taxMod: readonly number[];
   taxSens: Readonly<Record<Difficulty, number>>;
@@ -86,6 +102,11 @@ export interface ZonesTuning {
   neighborPopMin: number; neighborPopMax: number; neighborPopScale: number;
   neighborValueMin: number; neighborValueMax: number; neighborFameMax: number;
   neighborGrowthRandom: number; neighborGrowthPerType: number;
+  /**
+   * 邻城人口上限 = 系数 × neighborPopMax × natPop(year) / neighborPopScale（[设计]，评审修复）：规格的年度复利 2%–10% 没有上限，
+   * 百年后可达初值上万倍，邻城市场项（marketC / marketI）会把 C / I 需求永久顶满。系数 3 时 1950 年上限 45 万、2050 年 270 万。
+   */
+  neighborPopCapFactor: number;
   /** 原创邻城名单（state.neighbors[k].index 为下标）。 */
   neighborNames: readonly string[];
   /** 邻城 edge 0..3 对应的地图边：S = y==127（左下）、W = x==0（左上）、N = y==0（右上）、E = x==127（右下）。 */
@@ -93,7 +114,9 @@ export interface ZonesTuning {
 }
 
 export const DEFAULT_ZONES_TUNING: ZonesTuning = {
-  growOffset: 2000, declineOffset: 2000,
+  // 衰退阈值不对称（INT 平衡裁定）：需求 < −1000 才开始衰退、最高 25%/访问；生长仍为 demand/4000。原 2000/2000 对称掷骰
+  // 让需求 −200 时每栋楼每年约 46% 整栋废弃。出行连续失败（pressure 0）时衰退概率 = (4000 − declineOffset) / 4000 = 25%。
+  growOffset: 2000, declineOffset: 3000,
   densityLandValue: [31, 95, 191],
   densityGateZones: ['R', 'C'],
   wealthShift: 6,
@@ -104,9 +127,10 @@ export const DEFAULT_ZONES_TUNING: ZonesTuning = {
   abandonToRubbleDays: 150,
   unpoweredGraceDays: 60,
   tripFailGraceMonths: 3,
-  maxGrowsPerDay: 48, maxDeclinesPerDay: 48,
+  maxGrowsPerDay: 48, maxDeclinesPerDay: 8,
   allowAbsorb: true,
   absorbPartial: true,
+  partialLeftover: 'empty',
   countUnpowered: false,
   fixedDemand: null,
 
@@ -114,7 +138,9 @@ export const DEFAULT_ZONES_TUNING: ZonesTuning = {
   arcoShare: { res: { num: 1, den: 6 }, com: { num: 1, den: 12 }, ind: { num: 1, den: 12 } },
 
   emptyCityBase: { r: 800, c: 300, i: 500 },
-  ratioGain: 1500, smoothing: 0.25,
+  ratioGain: 1000, smoothing: 0.15,
+  pendingSupplyWeight: 1,
+  growthBias: { r: 120, c: 40, i: 40 },
   taxMod: [400, 300, 240, 180, 120, 80, 40, 0, -40, -100, -180, -260, -360, -460, -560, -680, -800, -940, -1100, -1300, -1500],
   taxSens: { 1: 0.75, 2: 1.0, 3: 1.25 },
   econMod: [150, 0, -150],
@@ -140,6 +166,7 @@ export const DEFAULT_ZONES_TUNING: ZonesTuning = {
   neighborPopMin: 5000, neighborPopMax: 60000, neighborPopScale: 10000,
   neighborValueMin: 5, neighborValueMax: 15, neighborFameMax: 100,
   neighborGrowthRandom: 0.04, neighborGrowthPerType: 0.02,
+  neighborPopCapFactor: 3,
   neighborNames: [
     'Ashford Vale', 'Brightwater', 'Cinder Hollow', 'Dunmere', 'Elmsreach', 'Farrowgate', 'Glassport', 'Hollowbrook',
     'Ironleaf', 'Juniper Falls', 'Kestrel Bay', 'Larkspur', 'Mossbridge', 'Northwick', 'Oakhaven', 'Pinecrest'],

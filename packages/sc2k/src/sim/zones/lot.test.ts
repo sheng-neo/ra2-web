@@ -39,13 +39,13 @@ describe('吞并', () => {
     expect(p.tripFailMonths[a]).toBe(0); expect(p.phaseDays[a]).toBeLessThan(MONTH);
     expect(anchors(state)).toEqual([a]);
   });
-  it('部分重叠：严格模式拒绝；absorbPartial 时整栋拆除，地块外的格变瓦砾、不留孤儿', () => {
+  it('部分重叠：严格模式拒绝；absorbPartial + partialLeftover=rubble 时整栋拆除，地块外的格变瓦砾、不留孤儿', () => {
     const { ctx, state } = createTestContext({ profile: 'optimistic', systems: [createZonesSystem()] });
     zoneRect(ctx, ZoneCode.DenseR, 10, 10, 13, 13);
     const old = placeLot(ctx, 0x8c, 12, 12);                                       // 2x2 级 2 占 12..13 × 12..13
     const i = tileIndex(11, 10);                                                    // 任何含 (11,10) 的 3x3 都只盖住它一半
     expect(findLot(ctx, Zof(state, { absorbPartial: false }), i, 3, ZoneCode.DenseR, 4)).toBeNull();
-    const Z = Zof(state);
+    const Z = Zof(state, { partialLeftover: 'rubble' });
     const pick = findLot(ctx, Z, i, 3, ZoneCode.DenseR, 4);
     expect(pick).not.toBeNull();
     expect(pick!.partial.map((l) => l.anchor)).toEqual([old]);
@@ -66,6 +66,27 @@ describe('吞并', () => {
     expect(rubble).toBeGreaterThan(0);
     expect(lotAtAnchor(state.layers, TBL, privOf(state), old)).toBeNull();
     expect(anchors(state)).toEqual([pick!.anchor]);
+  });
+  it('部分重叠（默认 partialLeftover=empty）：地块外的旧楼格还原为空分区地，保留分区码、清角标与 Powerable，不留孤儿', () => {
+    const { ctx, state } = createTestContext({ profile: 'optimistic', systems: [createZonesSystem()] });
+    zoneRect(ctx, ZoneCode.DenseR, 10, 10, 13, 13);
+    const old = placeLot(ctx, 0x8c, 12, 12);
+    const Z = Zof(state);
+    expect(Z.T.partialLeftover).toBe('empty');
+    const pick = findLot(ctx, Z, tileIndex(11, 10), 3, ZoneCode.DenseR, 4)!;
+    expect(startConstruction(ctx, Z, pick.anchor, 3, 0, 4, 1, pick.partial)).toBe(true);
+    const { xbld, xzon, xbit } = state.layers;
+    const ax = pick.anchor >> 7, ay = pick.anchor & 127;
+    let outside = 0;
+    for (let x = 12; x <= 13; x++) for (let y = 12; y <= 13; y++) {
+      const j = tileIndex(x, y);
+      if (x >= ax && x < ax + 3 && y >= ay && y < ay + 3) continue;
+      outside++;
+      expect(xbld[j]).toBe(0); expect(xzon[j]! & 0xf0).toBe(0); expect(xzon[j]! & 0x0f).toBe(ZoneCode.DenseR); expect(xbit[j]! & XBit.Powerable).toBe(0);
+    }
+    expect(outside).toBeGreaterThan(0);
+    expect(lotAtAnchor(state.layers, TBL, privOf(state), old)).toBeNull();
+    expect(anchors(state)).toEqual([pick.anchor]);
   });
   it('整栋落入的 2x2 可被 3x3 吞并（对照）', () => {
     const { ctx, state } = createTestContext({ profile: 'optimistic', systems: [createZonesSystem()] });

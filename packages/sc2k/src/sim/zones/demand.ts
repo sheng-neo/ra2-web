@@ -1,6 +1,7 @@
 // ===== sim/zones/demand.ts =====
 // RCI 需求（spec:zones §2.8 / §3.2）：主干供需比（年代转移、邻城市场项、法令乘数）+ 税率修正（工业按 economy.industryTax 的比例加权平均、线性插值）
 // + 国家经济 / 难度修正 + cap 惩罚 + 噪声 → 1/4 平滑。PRNG：每月恰 3 次 range（R、C、I 噪声），诉求抽取时再 +1。
+// INT 平衡裁定：供给侧计入施工中终态人口（pendingSupplyWeight）、非空城加外生增长偏置 growthBias，见 tuning.ts 注释。
 // 同时产出 state.caps 与"市民诉求" citizenDemand 事件（每种每年最多一次，spec §2.8.6）。
 import { ZONE_MASK, tileIndex, zoneTypeOf } from '../../contracts/grid';
 import type { RciDemand } from '../../contracts/state';
@@ -96,10 +97,15 @@ export function computeDemand(ctx: SimContext, Z: ZonesCtx): void {
     if (nb.connections.rail + nb.connections.highway > 0) marketI += nb.population * T.marketI;
   }
   let base: RciDemand;
-  if (P.taxableRes === 0 && P.taxableCom === 0 && P.taxableInd === 0) {
+  const emptyCity = P.taxableRes === 0 && P.taxableCom === 0 && P.taxableInd === 0;
+  if (emptyCity) {
     base = { r: T.emptyCityBase.r, c: T.emptyCityBase.c, i: T.emptyCityBase.i };
   } else {
-    let tR = P.jobs / pct, tC = P.workforce * shareC + marketC, tI = P.workforce * (1 - shareC) + marketI;
+    // 供给侧 = 已建（税基口径）+ 施工中终态人口 × pendingSupplyWeight；岗位 / 劳动力随之推出（census 本身不含施工中人口）。
+    const w = T.pendingSupplyWeight, pend = Z.rt.pending;
+    const supR = P.taxableRes + Math.floor(pend[0] * w), supC = P.taxableCom + Math.floor(pend[1] * w), supI = P.taxableInd + Math.floor(pend[2] * w);
+    const jobs = supC + supI, workforce = Math.floor(supR * pct);
+    let tR = jobs / pct, tC = workforce * shareC + marketC, tI = workforce * (1 - shareC) + marketI;
     for (const o of ctx.catalogue.ORDINANCES) {
       if (!ctx.q.economy.ordinance(o.id)) continue;
       if (o.demand.r !== undefined) tR *= o.demand.r;
@@ -107,9 +113,9 @@ export function computeDemand(ctx: SimContext, Z: ZonesCtx): void {
       if (o.demand.i !== undefined) tI *= o.demand.i;
     }
     base = {
-      r: clampInt((tR / Math.max(P.taxableRes, 1) - 1) * T.ratioGain, DEMAND_MIN, DEMAND_MAX),
-      c: clampInt((tC / Math.max(P.taxableCom, 1) - 1) * T.ratioGain, DEMAND_MIN, DEMAND_MAX),
-      i: clampInt((tI / Math.max(P.taxableInd, 1) - 1) * T.ratioGain, DEMAND_MIN, DEMAND_MAX),
+      r: clampInt((tR / Math.max(supR, 1) - 1) * T.ratioGain + T.growthBias.r, DEMAND_MIN, DEMAND_MAX),
+      c: clampInt((tC / Math.max(supC, 1) - 1) * T.ratioGain + T.growthBias.c, DEMAND_MIN, DEMAND_MAX),
+      i: clampInt((tI / Math.max(supI, 1) - 1) * T.ratioGain + T.growthBias.i, DEMAND_MIN, DEMAND_MAX),
     };
   }
   const diff = difficultyOf(s.economy.difficulty), sens = T.taxSens[diff];

@@ -17,7 +17,12 @@ import { createZonesPriv } from './priv';
 import { DEFAULT_ZONES_TUNING, lerpTable } from './tuning';
 import type { ZonesTuning } from './tuning';
 
-const T = DEFAULT_ZONES_TUNING;
+/**
+ * 公式测试固定的参数口径（INT 平衡裁定后默认值改为 ratioGain 600 / smoothing 0.15 / growthBias / pendingSupplyWeight 1；
+ * 这里的用例检验的是 §3.2 合成公式的结构，故钉住第一波口径，新默认值另见文件末尾"INT 平衡默认值"一组）。
+ */
+const FORMULA: Partial<ZonesTuning> = { ratioGain: 1500, smoothing: 0.25, growthBias: { r: 0, c: 0, i: 0 }, pendingSupplyWeight: 0 };
+const T: ZonesTuning = { ...DEFAULT_ZONES_TUNING, ...FORMULA };
 /** 边缘连接格：网络瓦片（经 TileWriter）+ XTXT 0xFA（transport 的职责，测试直接写层）。 */
 function connect(ctx: SimContext, x: number, y: number, id: number): void {
   const i = tileIndex(x, y);
@@ -40,14 +45,14 @@ const once = (ctx: SimContext, z: ZonesCtx): { r: number; c: number; i: number }
 
 describe.each(['optimistic', 'pessimistic'] as const)('需求合成（%s）', (profile) => {
   it('空城特例：第一步 = base/4，反复后收敛到 {800, 300, 500}', () => {
-    const { ctx, state } = createTestContext({ profile, systems: [createZonesSystem()] });
+    const { ctx, state } = createTestContext({ profile, systems: [createZonesSystem()], tuning: { zones: FORMULA } });
     neutral(state);
     expect(once(ctx, Z(QUIET))).toEqual({ r: 200, c: 75, i: 125 });
     for (let k = 0; k < 40; k++) computeDemand(ctx, Z(QUIET));
     expect(state.demand).toEqual({ r: 800, c: 300, i: 500 });
   });
   it('固定需求（tuning.fixedDemand）直接写入且不消费 PRNG', () => {
-    const { ctx, state } = createTestContext({ profile, systems: [createZonesSystem()] });
+    const { ctx, state } = createTestContext({ profile, systems: [createZonesSystem()], tuning: { zones: FORMULA } });
     const before = ctx.prng.state();
     computeDemand(ctx, Z({ fixedDemand: { r: 1234, c: -5000, i: 0 } }));
     expect(state.demand).toEqual({ r: 1234, c: -2000, i: 0 });
@@ -61,7 +66,7 @@ describe('税率修正', () => {
     expect(taxModAt(T, 20)).toBe(-1500); expect(taxModAt(T, 25)).toBe(-1500); expect(taxModAt(T, -3)).toBe(400);
   });
   it('住宅税 13% 比 7% 需求低（>12% 明显下降），难度敏感度 easy 0.75 / hard 1.25', () => {
-    const { ctx, state } = createTestContext({ systems: [createZonesSystem()] });
+    const { ctx, state } = createTestContext({ systems: [createZonesSystem()], tuning: { zones: FORMULA } });
     neutral(state); smallTown(state);
     const base = once(ctx, Z(QUIET));
     state.demand.r = 0; state.economy.taxRate.r = 13;
@@ -73,7 +78,7 @@ describe('税率修正', () => {
     expect(Math.abs(base.r - once(ctx, Z(QUIET)).r - (460 * 1.25) / 4)).toBeLessThanOrEqual(1);
   });
   it('产业税率读 economy.industryTax：全部 15% 时工业需求下降 680/4；按 ratio 加权（ratio 全在产业 0 时只看 tax[0]）', () => {
-    const { ctx, state } = createTestContext({ systems: [createZonesSystem()] });
+    const { ctx, state } = createTestContext({ systems: [createZonesSystem()], tuning: { zones: FORMULA } });
     neutral(state); smallTown(state);
     const base = once(ctx, Z(QUIET));
     state.demand.i = 0; state.economy.industryTax.fill(15);
@@ -85,7 +90,7 @@ describe('税率修正', () => {
 
 describe('cap 与市场项', () => {
   it('cap 惩罚：R 人口 ≥ 2 × cap 时 −800（ratioGain = 0 隔离主干）', () => {
-    const { ctx, state } = createTestContext({ systems: [createZonesSystem()] });
+    const { ctx, state } = createTestContext({ systems: [createZonesSystem()], tuning: { zones: FORMULA } });
     neutral(state);
     setCensus(state, { res: 30000, taxableRes: 30000, workforce: 15000, jobs: 0 });
     expect(once(ctx, Z({ ...QUIET, ratioGain: 0 })).r).toBe(-200);
@@ -96,7 +101,7 @@ describe('cap 与市场项', () => {
     expect(state.caps).toEqual({ r: 10000, c: 10000, i: 10000 });
   });
   it('休闲建筑抬高 R cap；邻城道路连接抬高 C cap，铁路 / 高速抬高 I cap', () => {
-    const { ctx, state } = createTestContext({ systems: [createZonesSystem()] });
+    const { ctx, state } = createTestContext({ systems: [createZonesSystem()], tuning: { zones: FORMULA } });
     neutral(state);
     for (let k = 0; k < 3; k++) ctx.act.setXbld(100 + k, 0x0d);                       // 3 座小公园
     // S 边（邻城 0）：两条道路、一条铁路、一条双车道高速（demand 阶段先按 XTXT 0xFA 重算连接）
@@ -107,7 +112,7 @@ describe('cap 与市场项', () => {
     expect(state.caps).toEqual({ r: 13000, c: 14000, i: 30000 });
   });
   it('marketC 只计公路连接的邻城人口，marketI 只计铁路 / 高速', () => {
-    const { ctx, state } = createTestContext({ systems: [createZonesSystem()] });
+    const { ctx, state } = createTestContext({ systems: [createZonesSystem()], tuning: { zones: FORMULA } });
     neutral(state);
     setCensus(state, { res: 1000, com: 1000, ind: 1000, taxableRes: 1000, taxableCom: 1000, taxableInd: 1000, workforcePctUsed: 50, workforce: 500, jobs: 2000 });
     state.neighbors[1]!.population = 50000;
@@ -128,7 +133,7 @@ describe('cap 与市场项', () => {
     expect(lerpTable(T.commerceShare, 2100)).toBe(0.68); expect(lerpTable(T.commerceShare, 1912.5)).toBeCloseTo(0.325, 10);
   });
   it('法令乘数来自 CATALOGUE.ORDINANCES（City Beautification 使 targetR ×1.01）', () => {
-    const { ctx, state } = createTestContext({ systems: [createZonesSystem()] });
+    const { ctx, state } = createTestContext({ systems: [createZonesSystem()], tuning: { zones: FORMULA } });
     neutral(state);
     setCensus(state, { res: 1000, com: 500, ind: 500, taxableRes: 1000, taxableCom: 500, taxableInd: 500, workforcePctUsed: 50, workforce: 500, jobs: 1000 });
     const plain = once(ctx, Z(QUIET));
@@ -143,7 +148,7 @@ describe('cap 与市场项', () => {
 
 describe('阶段集成与诉求', () => {
   it('第 21 天 census → demand：空城需求从初值向 base 收敛，caps 写入 state', () => {
-    const { host, state } = createTestContext({ profile: 'optimistic', systems: [createZonesSystem()] });
+    const { host, state } = createTestContext({ profile: 'optimistic', systems: [createZonesSystem()], tuning: { zones: FORMULA } });
     expect(state.demand).toEqual({ r: 800, c: 300, i: 500 });
     runDays(host, 22);
     expect(state.demand.r).not.toBe(800);
@@ -151,7 +156,7 @@ describe('阶段集成与诉求', () => {
     expect(state.caps.r).toBe(10000);
   });
   it('市民诉求 citizenDemand：每种每年最多一次；公园类四选一', () => {
-    const { ctx, host, state } = createTestContext({ systems: [createZonesSystem()] });
+    const { ctx, host, state } = createTestContext({ systems: [createZonesSystem()], tuning: { zones: FORMULA } });
     neutral(state);
     setCensus(state, { res: 20000, taxableRes: 20000, workforce: 10000, jobs: 0, normalPop: 20000 });
     const z = Z(QUIET);
@@ -163,5 +168,38 @@ describe('阶段集成与诉求', () => {
     computeDemand(ctx, z);
     const next = host.drainEvents().filter((e) => e.type === 'citizenDemand');
     expect(next.length).toBeGreaterThan(0);
+  });
+});
+
+/** INT 平衡裁定后的默认值（ratioGain 1000 / smoothing 0.15 / growthBias / pendingSupplyWeight 1；tuning.ts 注释）。 */
+describe('INT 平衡默认值', () => {
+  const D = DEFAULT_ZONES_TUNING;
+  const ZD = (tuning: Partial<ZonesTuning> = {}): ZonesCtx => ({ T: { ...D, ...tuning }, tbl: zoneTableFor(CATALOGUE), priv: createZonesPriv(), rt: createRuntime() });
+  it('默认值：增益 1000、平滑 0.15、衰退阈值不对称（declineOffset 3000 > growOffset 2000）、每日衰退配额 8、部分吞并留空地', () => {
+    expect(D.ratioGain).toBe(1000); expect(D.smoothing).toBe(0.15);
+    expect(D.declineOffset).toBeGreaterThan(D.growOffset); expect(D.maxDeclinesPerDay).toBe(8);
+    expect(D.pendingSupplyWeight).toBe(1); expect(D.partialLeftover).toBe('empty');
+  });
+  it('施工中终态人口计入供给侧：同一普查下 rt.pending 的住宅越多，R 需求越低（消除施工期超调）', () => {
+    const { ctx, state } = createTestContext({ systems: [createZonesSystem()] });
+    neutral(state);
+    setCensus(state, { res: 1000, com: 500, ind: 0, taxableRes: 1000, taxableCom: 500, taxableInd: 0, workforcePctUsed: 50, workforce: 500, jobs: 500 });
+    const noPending = once(ctx, ZD({ noise: 0, smoothing: 1 }));
+    state.demand.r = 0;
+    const z = ZD({ noise: 0, smoothing: 1 }); z.rt.pending[0] = 1000;
+    const withPending = once(ctx, z);
+    expect(withPending.r).toBeLessThan(noPending.r);
+  });
+  it('外生增长偏置：非空城在供需平衡时需求为正（growthBias），关掉偏置则为 0；空城仍走 emptyCityBase', () => {
+    const { ctx, state } = createTestContext({ systems: [createZonesSystem()] });
+    neutral(state);
+    setCensus(state, { res: 1000, com: 500, ind: 0, taxableRes: 1000, taxableCom: 500, taxableInd: 0, workforcePctUsed: 50, workforce: 500, jobs: 500 });
+    const biased = once(ctx, ZD({ noise: 0, smoothing: 1 }));
+    expect(biased.r).toBe(D.growthBias.r);
+    state.demand.r = 0;
+    const flat = once(ctx, ZD({ noise: 0, smoothing: 1, growthBias: { r: 0, c: 0, i: 0 } }));
+    expect(flat.r).toBe(0);
+    neutral(state); setCensus(state, { res: 0, com: 0, ind: 0, taxableRes: 0, taxableCom: 0, taxableInd: 0, workforce: 0, jobs: 0 });
+    expect(once(ctx, ZD({ noise: 0, smoothing: 1 })).r).toBe(D.emptyCityBase.r);
   });
 });

@@ -36,7 +36,7 @@ export interface LotPick { anchor: number; partial: readonly LotView[] }
 
 /**
  * 施工开始：预掷终态建筑（pendingId）与施工变体，清掉被覆盖 lot 的列，整栋写施工瓦片 + 角标。消费 PRNG 恰 2 次。
- * partial 中的旧建筑落在新地块外的格变瓦砾（hash32 变体，不消费 PRNG），保证不留半栋。
+ * partial 中的旧建筑落在新地块外的格按 T.partialLeftover 还原为空分区地（默认）或变瓦砾（hash32 变体），均不消费 PRNG，保证不留半栋。
  */
 export function startConstruction(ctx: SimContext, Z: ZonesCtx, anchor: number, size: number, zoneIdx: number, level: number, tier: number, partial: readonly LotView[] = []): boolean {
   const { tbl, priv, rt } = Z;
@@ -50,8 +50,13 @@ export function startConstruction(ctx: SimContext, Z: ZonesCtx, anchor: number, 
       const x = tileX(j), y = tileY(j);
       clearLotColumns(priv, j);
       if (x >= ax && x < ax + size && y >= ay && y < ay + size) return;          // 新地块内的格随后被施工瓦片覆盖
-      ctx.act.setXbld(j, RUBBLE_IDS[hash32(s.clock.age, j) & 3]!);
-      ctx.act.setXzon(j, (L.xzon[j]! & ZONE_MASK) | Corner.All);
+      if (Z.T.partialLeftover === 'empty') {                                       // 地块外的旧楼格还原为空分区地（可立即再长小楼）
+        ctx.act.setXbld(j, 0);
+        ctx.act.setXzon(j, L.xzon[j]! & ZONE_MASK);
+      } else {
+        ctx.act.setXbld(j, RUBBLE_IDS[hash32(s.clock.age, j) & 3]!);
+        ctx.act.setXzon(j, (L.xzon[j]! & ZONE_MASK) | Corner.All);
+      }
       if ((L.xbit[j]! & RUBBLE_CLEAR_BITS) !== 0) ctx.act.setXbit(j, RUBBLE_CLEAR_BITS, false);
     });
   }

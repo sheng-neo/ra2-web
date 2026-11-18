@@ -57,14 +57,19 @@ export function initNeighbors(ctx: SimContext, Z: ZonesCtx, year: number): void 
   }
 }
 
-/** 每年 1 月：pop *= 1 + float(0, 0.04) + 0.02 × 已连接的网络种类数（道路 / 铁路 / 高速各 1）。 */
+/** 邻城人口上限（随国家人口增长）：neighborPopCapFactor × neighborPopMax × natPop(year) / neighborPopScale。 */
+export function neighborPopCap(T: ZonesTuning, year: number): number {
+  return Math.round((T.neighborPopCapFactor * T.neighborPopMax * natPopOf(T, year)) / T.neighborPopScale);
+}
+
+/** 每年 1 月：pop *= 1 + float(0, 0.04) + 0.02 × 已连接的网络种类数（道路 / 铁路 / 高速各 1），再夹到 neighborPopCap（每城恰 1 次 float）。 */
 export function neighborsAnnual(ctx: SimContext, Z: ZonesCtx): void {
-  const T = Z.T;
+  const T = Z.T, cap = neighborPopCap(T, ctx.q.economy.year());
   for (const nb of ctx.state.neighbors) {
     const c = nb.connections;
     const types = (c.road > 0 ? 1 : 0) + (c.rail > 0 ? 1 : 0) + (c.highway > 0 ? 1 : 0);
     const g = 1 + ctx.prng.float() * T.neighborGrowthRandom + T.neighborGrowthPerType * types;
-    nb.population = Math.round(nb.population * g);
+    nb.population = Math.min(cap, Math.round(nb.population * g));
   }
 }
 
