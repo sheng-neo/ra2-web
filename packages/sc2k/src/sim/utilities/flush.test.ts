@@ -1,7 +1,6 @@
 // ===== sim/utilities/flush.test.ts =====（WORKPLAN WP4：requestRescan 置脏 + endOfDay 即时重扫、挂起日延后、onTilesChanged 位规则与置脏）
 import { describe, expect, it } from 'vitest';
 import { XBit, tileIndex } from '../../contracts/grid';
-import { createPrng } from '../../contracts/prng';
 import type { System } from '../../contracts/system';
 import type { StubProfile } from '../../contracts/testkit';
 import { createTestContext, nullSystem, runDays } from '../../testkit';
@@ -46,15 +45,15 @@ describe.each(PROFILES)('日末 flush（%s 桩）', (profile) => {
     expect(Array.from(t.state.layers.xbit)).toEqual(Array.from(bits));
     expect(t.host.dirty.take().bulk.xbit).toBe(false);
   });
-  it('requestRescan 只置脏；endOfDay 才重扫（风车恰消费 1 次 PRNG）；仅水脏时零 PRNG', () => {
+  it('requestRescan 只置脏；endOfDay 才重扫（复用本月风 / 太阳能种子，零 PRNG）；仅水脏时零 PRNG', () => {
     const t = wiredHouse(profile);
     place(t.host, WIND, 40, 40); runDays(t.host, 1);
-    const before = t.ctx.prng.state();
+    const before = t.ctx.prng.state(), gen = t.state.utilities.power.generation;
     t.ctx.act.requestRescan('power');
     expect(privOf(t.state).dirtyPower).toBe(true); expect(t.ctx.prng.state()).toBe(before);
     runDays(t.host, 1);
-    const replay = createPrng(before); replay.next32();
-    expect(t.ctx.prng.state()).toBe(replay.state()); expect(privOf(t.state).dirtyPower).toBe(false);
+    expect(t.ctx.prng.state()).toBe(before); expect(privOf(t.state).dirtyPower).toBe(false);
+    expect(t.state.utilities.power.generation).toBe(gen);
     const mid = t.ctx.prng.state();
     t.ctx.act.requestRescan('water');
     runDays(t.host, 1);
@@ -123,5 +122,59 @@ describe('onTilesChanged：POWERABLE / PIPED 规则与置脏', () => {
     place(t.host, HOUSE, 60, 60);                                            // 规则自写 → 回声被过滤
     runDays(t.host, 1);
     expect(p.dirtyPower).toBe(false); expect(p.dirtyWater).toBe(false);
+  });
+});
+
+describe('onTilesChanged：只在会改变扫描结果时置脏（评审修复：建筑换建筑不重扫、电厂表按需同步）', () => {
+  const fanOut = (t: ReturnType<typeof mk>): void => { t.host.dispatch({ type: 'setView', x: 0, y: 0, zoom: 0, rotation: 0 }); };
+  it('同类建筑互换（施工 → 完工 / 房子换房子）不置脏；消费者口径 / 发电格 / 水设施变化才置脏', () => {
+    const t = wiredHouse('realistic');
+    const p = privOf(t.state), i = tileIndex(30, 30);
+    place(t.host, HOUSE, 30, 30);
+    expect(p.dirtyPower).toBe(true); expect(p.dirtyWater).toBe(true);           // 空地 → 建筑：拓扑 + 消费者变化
+    runDays(t.host, 1);
+    const prng = t.ctx.prng.state();
+    t.ctx.act.setXbld(i, HOUSE + 1); fanOut(t);                                 // 房子换房子（同为 ≥ 0x70、非特殊）
+    expect(p.dirtyPower).toBe(false); expect(p.dirtyWater).toBe(false);
+    t.ctx.act.setXbld(i, PUMP); fanOut(t);                                      // → 水泵：只影响供水
+    expect(p.dirtyPower).toBe(false); expect(p.dirtyWater).toBe(true);
+    runDays(t.host, 1);
+    t.ctx.act.setXbld(i, WIND); fanOut(t);                                      // → 发电格：电 + 水
+    expect(p.dirtyPower).toBe(true); expect(p.dirtyWater).toBe(true);
+    runDays(t.host, 1);
+    t.ctx.act.setXbld(i, 0x0e); fanOut(t);                                      // 风车 → 电线：拓扑不变但电厂没了 + 消费者口径变化
+    expect(p.dirtyPower).toBe(true);
+    expect(t.ctx.prng.state()).toBe(prng);
+  });
+  it('电厂表只在涉及到期型电厂格时整图同步：普通建筑扇出不碰电厂表', () => {
+    const t = wiredHouse('realistic');
+    const p = privOf(t.state);
+    expect(Array.from(p.plantAnchors)).toEqual([tileIndex(10, 10)]);
+    p.plantAnchors = new Int32Array([tileIndex(10, 10), tileIndex(90, 90)]);    // 人为制造一条陈旧记录（同步一次就会被删）
+    p.plantAges = new Uint8Array(2); p.plantLoads = new Uint8Array(2);
+    place(t.host, HOUSE, 40, 40);
+    expect(p.plantAnchors).toHaveLength(2);                                     // 未整图同步
+    place(t.host, COAL, 60, 60);                                                // 到期型电厂 → 同步
+    expect(Array.from(p.plantAnchors)).toEqual([tileIndex(10, 10), tileIndex(60, 60)]);
+  });
+});
+
+describe('电力事件：唯一电厂被毁后仍报 brownout / needPower；空城不报', () => {
+  const powerEvents = (host: ReturnType<typeof mk>['host']): string[] => host.drainEvents().filter((e) => e.type === 'brownout' || e.type === 'needPower').map((e) => e.type);
+  it('拆掉唯一煤电：下一次月度扫描 generation 0、断电建筑 > 0 → brownout + needPower', () => {
+    const t = wiredHouse('realistic');
+    runDays(t.host, 25);                                                        // 第 2 个月第 1 天：有电、利用率低 → 不报
+    expect(powerEvents(t.host)).toEqual([]);
+    const coal: number[] = [];
+    for (let dx = 0; dx < 4; dx++) for (let dy = 0; dy < 4; dy++) coal.push(tileIndex(10 + dx, 10 + dy));
+    bulldoze(t.host, ...coal);
+    runDays(t.host, 25);
+    expect(t.state.utilities.power).toMatchObject({ generation: 0, consumers: 0, unpoweredBuildingTiles: 1 });
+    expect(powerEvents(t.host)).toEqual(['brownout', 'needPower']);
+  });
+  it('空城（无建筑）：月度扫描不报', () => {
+    const t = mk('realistic');
+    runDays(t.host, 27);
+    expect(powerEvents(t.host)).toEqual([]);
   });
 });

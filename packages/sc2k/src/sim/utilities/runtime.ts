@@ -7,9 +7,9 @@ import type { SimContext } from '../../contracts/system';
 import { getTuning } from '../../contracts/system';
 import { XBLD_TREATMENT } from './defs';
 import type { PlantRec, UtilitiesPriv } from './priv';
-import { freshPriv, isUtilitiesPriv, mergePlants, readPlants, scanPlantAnchors, writePlants } from './priv';
-import type { PowerNetwork, PowerScanInput, PowerScanResult, ScanScratch, WaterNetwork, WaterScanInput, WaterScanResult } from './scan';
-import { createScratch, runPowerScan, runWaterScan } from './scan';
+import { freshPriv, isUtilitiesPriv, mergePlants, migratePriv, readPlants, scanPlantAnchors, writePlants } from './priv';
+import type { FormulaSeed, PowerNetwork, PowerScanInput, PowerScanResult, ScanScratch, WaterNetwork, WaterScanInput, WaterScanResult } from './scan';
+import { createScratch, noFormulaSeed, runPowerScan, runWaterScan } from './scan';
 import type { UtilitiesTuning } from './tuning';
 import { DEFAULT_UTILITIES_TUNING } from './tuning';
 
@@ -17,10 +17,12 @@ export interface Runtime {
   ctx: SimContext | null;                 // init / postLoad / 任一回调时绑定
   scratch: ScanScratch;
   selfBits: Uint8Array;                   // onTilesChanged 里自己 setXbit 过的格：过滤 'bit' 扇出回声
+  /** 上次扇出时的 XBLD（onTilesChanged 的 old 值来源；init / postLoad / 月度扫描整层同步）。只用于判定是否置脏，可由真源重建。 */
+  shadow: Uint8Array;
   powerNetworks: PowerNetwork[];          // 最近一次电力扫描的网络汇总（查询 / 调试）
   waterNetworks: WaterNetwork[];
 }
-export const createRuntime = (): Runtime => ({ ctx: null, scratch: createScratch(), selfBits: new Uint8Array(TILES), powerNetworks: [], waterNetworks: [] });
+export const createRuntime = (): Runtime => ({ ctx: null, scratch: createScratch(), selfBits: new Uint8Array(TILES), shadow: new Uint8Array(TILES), powerNetworks: [], waterNetworks: [] });
 
 /** 空城扫描的结果（spec §4 第 16 条：无电厂 / 水源时利用率定义为 100%；0 座净水厂且 watered == 0 视为充足）。 */
 export const EMPTY_POWER_REPORT: Readonly<PowerReport> = Object.freeze({ generation: 0, consumers: 0, supplied: 0, usagePct: 100, unpoweredBuildingTiles: 0 });
@@ -37,10 +39,11 @@ export function syncPlants(ctx: SimContext, p: UtilitiesPriv): boolean {
   return changed;
 }
 
-/** priv 访问器：缺失 / 形状或版本不符 → 丢弃并换成新鲜 priv（电厂表从 XBLD 重建，年龄归 0），记 diag。 */
+/** priv 访问器：v1 → 就地迁移；缺失 / 形状或版本不符 → 丢弃并换成新鲜 priv（电厂表从 XBLD 重建，年龄归 0），记 diag。 */
 export function privOf(ctx: SimContext): UtilitiesPriv {
   const p = ctx.state.priv.utilities;
   if (isUtilitiesPriv(p)) return p;
+  if (migratePriv(p) && isUtilitiesPriv(p)) return p;
   const fresh = freshPriv();
   ctx.state.priv.utilities = fresh;
   syncPlants(ctx, fresh);
@@ -50,13 +53,25 @@ export function privOf(ctx: SimContext): UtilitiesPriv {
 
 export const plantsOf = (p: UtilitiesPriv): PlantRec[] => readPlants(p);
 
-export function powerInput(ctx: SimContext, rt: Runtime, usePrng: boolean): PowerScanInput {
+/**
+ * 电力扫描的三种场合（决定风 / 太阳能种子从哪来）：
+ *  'monthly' = 第 1 天 powerScan：重新取种（有风 / 太阳能格时恰消费一次 PRNG），写回 priv.outSeed；
+ *  'rescan'  = 日末 flush（命令 / 生长 / 灾害置脏）：复用本月 priv.outSeed，零 PRNG；
+ *  'load'    = postLoad('sc2')：无种子（取分布中值），零 PRNG。
+ */
+export type PowerScanMode = 'monthly' | 'rescan' | 'load';
+function formulaFor(ctx: SimContext, mode: PowerScanMode): FormulaSeed {
+  if (mode === 'monthly') return { seed: -1, drawSeed: () => ctx.prng.next32() };
+  if (mode === 'rescan') return { seed: privOf(ctx).outSeed, drawSeed: null };
+  return noFormulaSeed();
+}
+export function powerInput(ctx: SimContext, rt: Runtime, mode: PowerScanMode): PowerScanInput {
   const s = ctx.state;
   return {
     xbld: s.layers.xbld, xbit: s.layers.xbit, alt: s.layers.alt,
     wind: s.weather.wind, humid: s.weather.humid,
     energyConservation: ctx.q.economy.ordinance(OrdinanceId.EnergyConservation),
-    rng: usePrng ? (n) => ctx.prng.int(n) : null,
+    formula: formulaFor(ctx, mode),
     tune: tuningOf(ctx), scratch: rt.scratch,
   };
 }
@@ -70,10 +85,11 @@ export function waterInput(ctx: SimContext, rt: Runtime): WaterScanInput {
   };
 }
 
-/** 跑一次电力扫描并写回 state.utilities.power（对象引用不变）。usePrng=false 用于读档重扫。 */
-export function scanPowerNow(ctx: SimContext, rt: Runtime, usePrng: boolean): PowerScanResult {
-  const r = runPowerScan(powerInput(ctx, rt, usePrng));
+/** 跑一次电力扫描并写回 state.utilities.power（对象引用不变）；'monthly' 另把本月种子写回 priv。 */
+export function scanPowerNow(ctx: SimContext, rt: Runtime, mode: PowerScanMode): PowerScanResult {
+  const r = runPowerScan(powerInput(ctx, rt, mode));
   Object.assign(ctx.state.utilities.power, r.report);
+  if (mode === 'monthly') privOf(ctx).outSeed = r.seed;
   rt.powerNetworks = r.networks;
   return r;
 }
@@ -85,11 +101,14 @@ export function scanWaterNow(ctx: SimContext, rt: Runtime): WaterScanResult {
   return r;
 }
 
-/** 日末 flush（END_OF_DAY_IO.utilities）：脏则立即重扫；电网变化连带重扫水（水泵依赖 POWERED）；无脏标志时零 PRNG 消费、不写层。 */
+/**
+ * 日末 flush（END_OF_DAY_IO.utilities）：脏则立即重扫；电网变化连带重扫水（水泵依赖 POWERED）。
+ * 重扫复用本月风 / 太阳能种子，任何情况下都不消费 PRNG；电厂表已由 onTilesChanged 按需同步，这里不再整图扫锚点。
+ */
 export function flushRescan(ctx: SimContext, rt: Runtime): boolean {
   const p = privOf(ctx);
   if (!p.dirtyPower && !p.dirtyWater) return false;
-  if (p.dirtyPower) { syncPlants(ctx, p); scanPowerNow(ctx, rt, true); p.dirtyPower = false; p.dirtyWater = true; }
+  if (p.dirtyPower) { scanPowerNow(ctx, rt, 'rescan'); p.dirtyPower = false; p.dirtyWater = true; }
   if (p.dirtyWater) { scanWaterNow(ctx, rt); p.dirtyWater = false; }
   ctx.act.layerChanged('xbit');
   return true;

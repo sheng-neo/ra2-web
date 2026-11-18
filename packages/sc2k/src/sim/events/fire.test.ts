@@ -1,12 +1,13 @@
 // WP13 验收：火灾（警局点火 → 蔓延受 XFIR 抑制 → 扑灭 → 标签与 XMIC 绑定不变；燃尽 → 瓦砾 + 角标清 + 分区保留；火不过路）。
 import { describe, expect, it } from 'vitest';
-import { Corner, DisasterKind, TileMarker, tileIndex } from '../../contracts/grid';
+import { Corner, DisasterKind, TileMarker, quarterOfTile, tileIndex } from '../../contracts/grid';
 import { createTestContext } from '../../testkit';
 import { labelBuilding, ofType, placeBuilding, runTicks, runUntil } from './fixtures';
+import { pickFireOrigin } from './fire';
 import { createEventsSystem } from './index';
 import { DEFAULT_EVENTS_TUNING } from './tuning';
 
-const HOUSE = 0x70, POLICE = 0xd2, R2 = 0x8c, ROAD_TB = 0x1e;
+const HOUSE = 0x70, POLICE = 0xd2, R2 = 0x8c, ROAD_TB = 0x1e, COAL = 0xcf;
 const fireTuning = (over: Partial<typeof DEFAULT_EVENTS_TUNING.fire>) => ({ events: { fire: { ...DEFAULT_EVENTS_TUNING.fire, ...over } } });
 
 describe('fire', () => {
@@ -42,6 +43,56 @@ describe('fire', () => {
     const none = burnedTiles(0), full = burnedTiles(255);
     expect(none).toBeGreaterThan(20);
     expect(full).toBeLessThan(none / 2);
+  });
+
+  it('§3.4 燃尽次序：本 tick 新点燃的格也扣一次燃料——1×1 房子从被引燃到烧毁恰 fuel − 1 个 tick', () => {
+    const { host, ctx, state } = createTestContext({ systems: [createEventsSystem()], seed: 4, tuning: fireTuning({ spreadBase: 1, extinguishPerCoverage: 0 }) });
+    placeBuilding(ctx, HOUSE, 20, 20); placeBuilding(ctx, HOUSE, 21, 20);
+    host.dispatch({ type: 'requestDisaster', kind: DisasterKind.Fire, x: 20, y: 20 });
+    const b = tileIndex(21, 20);
+    let ignitedAt = -1, destroyedAt = -1;
+    for (let k = 0; k < 40 && destroyedAt < 0; k++) {
+      runTicks(host, 1);
+      if (ignitedAt < 0 && host.q.disasters.marker(b) === TileMarker.Fire) ignitedAt = k;
+      if (state.layers.xbld[b] !== HOUSE) destroyedAt = k;
+    }
+    expect(ignitedAt).toBeGreaterThanOrEqual(0);
+    expect(destroyedAt - ignitedAt).toBe(DEFAULT_EVENTS_TUNING.fire.fuel.s1 - 1);
+  });
+
+  it('消防覆盖明显抑制（默认数值）：XFIR 200（满资金消防局 7 格内）烧到的格不到零覆盖的 1/10', () => {
+    const burned = (coverage: number, seed: number): number => {
+      const { host, ctx, state } = createTestContext({ systems: [createEventsSystem()], seed });
+      for (let x = 30; x < 46; x++) for (let y = 30; y < 46; y++) placeBuilding(ctx, HOUSE, x, y, 1);
+      state.maps.xfir.fill(coverage);
+      host.dispatch({ type: 'requestDisaster', kind: DisasterKind.Fire, x: 38, y: 38 });
+      const ever = new Set<number>();
+      for (let k = 0; k < 400 && (k === 0 || state.disaster.active); k++) { runTicks(host, 1); host.q.disasters.markers().forEach((m, i) => { if (m === TileMarker.Fire) ever.add(i); }); }
+      return ever.size;
+    };
+    let none = 0, covered = 0;
+    for (let seed = 1; seed <= 6; seed++) { none += burned(0, seed); covered += burned(200, seed); }
+    expect(none).toBeGreaterThan(6 * 200);
+    expect(covered).toBeLessThan(none / 10);
+  });
+
+  it('随机起火点按 XPOP 加权，但只给有人口的建筑加权：独占一个四分格的 4×4 煤电（XPOP 128）不再是最常见起火点', () => {
+    let plant = 0, houses = 0;
+    for (let seed = 1; seed <= 60; seed++) {
+      const { ctx, state } = createTestContext({ systems: [createEventsSystem()], seed });
+      placeBuilding(ctx, COAL, 40, 40);                                                     // 四分格 (10,10) 整格
+      for (let x = 48; x < 56; x++) placeBuilding(ctx, HOUSE, x, 41, 1);                     // 8 座房子：四分格 (12,10) / (13,10)
+      state.maps.xpop[quarterOfTile(tileIndex(40, 40))] = 128;                               // services：16 格 × 2 × 4
+      state.maps.xpop[quarterOfTile(tileIndex(48, 41))] = 16; state.maps.xpop[quarterOfTile(tileIndex(52, 41))] = 16;
+      const i = pickFireOrigin(ctx);
+      if (state.layers.xbld[i] === COAL) plant++; else if (state.layers.xbld[i] === HOUSE) houses++;
+    }
+    expect(plant + houses).toBe(60);
+    expect(plant).toBeLessThan(10);                                                          // 16 / (16 + 8 × 17) ≈ 10.5% 期望；照搬 XPOP 时 ≈ 94%
+    // 只有无人口建筑时仍可选中（等权）
+    const only = createTestContext({ systems: [createEventsSystem()], seed: 1 });
+    placeBuilding(only.ctx, COAL, 40, 40);
+    expect(only.state.layers.xbld[pickFireOrigin(only.ctx)]).toBe(COAL);
   });
 
   it('燃尽 → 整栋瓦砾 0x01..0x04 + 角标清 + 分区 nibble 保留 + 电水位清 + structureDestroyed(Fire)', () => {

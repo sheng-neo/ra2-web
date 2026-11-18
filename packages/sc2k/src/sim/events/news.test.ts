@@ -61,7 +61,7 @@ describe('news', () => {
     expect(ofType(ev, 'paper')).toEqual([{ type: 'paper', extra: false }]);
     expect(ofType(ev, 'modal').map((m) => m.id)).toEqual(['newspaper']);
     const paper = host.q.news.currentPaper()!;
-    expect(paper.extra).toBe(false); expect(paper.year).toBe(1900); expect(paper.month).toBe(2);
+    expect(paper.extra).toBe(false); expect(paper.year).toBe(1900); expect(paper.month).toBe(3);   // 3 月末组版，报头 4 月 1 日（spec §2.10）
     expect(paper.headline).toMatchObject({ type: NewsType.Growth, value: 5000, power: 45 });   // 90 − 3 × 15
     expect(paper.stories.map((s) => s.type)).toEqual([NewsType.Founding, NewsType.DemandPower, NewsType.HighCrime, NewsType.Weather]);
     expect(paper.stories.at(-1)!.value).toBe(state.weather.heat - 100);
@@ -73,7 +73,7 @@ describe('news', () => {
     while (state.clock.age < 174) host.advance(0, () => 0, { budgetMs: Infinity, maxDaysPerFrame: 1 });
     host.drainEvents();
     expect(host.advance(0, () => 0, { budgetMs: Infinity, maxDaysPerFrame: 1 }).suspended).toBe(true);
-    expect(host.q.news.currentPaper()!.month).toBe(6);
+    expect(host.q.news.currentPaper()!.month).toBe(7);                            // 8 月号
     expect(host.q.news.currentPaper()!.headline!.type).toBe(NewsType.Junk);     // 空池头条
     expect(ofType(host.drainEvents(), 'modal').map((m) => m.id)).toEqual(['newspaper']);
     host.modalClosed();

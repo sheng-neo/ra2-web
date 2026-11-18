@@ -21,6 +21,7 @@ export interface WeatherTuning {
 }
 /** 每种 NewsType 一行 [power, decay, cooldownMonths]；cooldown −1 = 一生只发一次（Founding），0 = 无冷却。 */
 export type NewsRow = readonly [power: number, decay: number, cooldown: number];
+/** paperMonths = 订阅版组版的月索引（该月第 24 天 news 阶段组版；报头日期为次日 = 下月 1 日：[2, 6] → 4 月 1 日 / 8 月 1 日）。 */
 export interface NewsTuning { rows: readonly NewsRow[]; maxPool: number; bodyStories: number; paperMonths: readonly number[] }
 
 export interface EventsTuning {

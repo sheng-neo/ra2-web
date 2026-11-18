@@ -3,8 +3,10 @@
 // 无头长跑：用 app/wire.ts 的 createWiredHost()（DOM-free 半边；tools/ 是允许 import app 的唯一地方）跑金城脚本 N 年，每年输出
 //   { year, hash, pop, funds, phaseMsP95, growthDayMsP95, runTrips }，不变量违规计入退出码；可选 CPU 合成缩略图（e2e 降级路径）。
 // 金城脚本假设全平地（GOLDEN_LAYOUT 的电线 / 道路不能落在坡面上）：与 longrun.test 一样在 newCity 后 flattenTerrain（hills 0 的生成器仍有两级起伏，spec:terrain §3）。
+// 随机灾害默认关闭（setOption noDisasters 入日志）：金城只有一座煤电、无消防局，一次随机地震 / 火灾毁掉电厂后无人重建，
+// 余下几十年人口为 0、只是空转，性能门禁与曲线评估都失真；需要灾害时加 --disasters（open-questions INT-A-1 / INT-A-3）。
 // 用法：tsx tools/headless.ts --years N [--script golden-mini-city] [--variant full|noPower|noRoad] [--seed S] [--out file.json]
-//                             [--thumbnail out.png] [--quiet] [--strict-wire]
+//                             [--thumbnail out.png] [--disasters] [--quiet] [--strict-wire]
 // 退出码：0 全部通过；1 不变量违规 / 缩略图单色；2 参数错误 / 严格接线检查失败（WIRE_STUB_ALLOWLIST 非空，open-questions #24）。
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
@@ -18,10 +20,10 @@ import { flattenTerrain, goldenMiniCity, isMonochrome, pngOf, runHeadless, simCo
 import type { YearRecord } from '../src/testkit';
 import { cpuCompositor } from '../src/render/cpu';   // 直接取纯函数层（不经 render/index 拉入 Pixi）
 
-interface Args { years: number; script: string; variant: GoldenMiniCityVariant; seed?: number; out?: string; thumbnail?: string; quiet: boolean; strictWire: boolean }
+interface Args { years: number; script: string; variant: GoldenMiniCityVariant; seed?: number; out?: string; thumbnail?: string; disasters: boolean; quiet: boolean; strictWire: boolean }
 
 export function parseArgs(argv: readonly string[]): Args {
-  const a: Args = { years: 3, script: 'golden-mini-city', variant: 'full', quiet: false, strictWire: process.env.SC2K_STRICT_WIRE === '1' };
+  const a: Args = { years: 3, script: 'golden-mini-city', variant: 'full', disasters: false, quiet: false, strictWire: process.env.SC2K_STRICT_WIRE === '1' };
   for (let k = 0; k < argv.length; k++) {
     const key = argv[k]!, next = (): string => { const v = argv[++k]; if (v === undefined) throw new Error(`参数 ${key} 缺少值`); return v; };
     switch (key) {
@@ -31,6 +33,7 @@ export function parseArgs(argv: readonly string[]): Args {
       case '--seed': a.seed = Number(next()) >>> 0; break;
       case '--out': a.out = next(); break;
       case '--thumbnail': a.thumbnail = next(); break;
+      case '--disasters': a.disasters = true; break;
       case '--quiet': a.quiet = true; break;
       case '--strict-wire': a.strictWire = true; break;
       case '--help': case '-h': printUsage(); process.exit(0); break;
@@ -42,7 +45,8 @@ export function parseArgs(argv: readonly string[]): Args {
   return a;
 }
 function printUsage(): void {
-  console.log('用法：tsx tools/headless.ts --years N [--script golden-mini-city] [--variant full|noPower|noRoad] [--seed S] [--out file.json] [--thumbnail out.png] [--quiet] [--strict-wire]');
+  console.log('用法：tsx tools/headless.ts --years N [--script golden-mini-city] [--variant full|noPower|noRoad] [--seed S] [--out file.json] [--thumbnail out.png] [--disasters] [--quiet] [--strict-wire]');
+  console.log('  --disasters  允许随机灾害（默认关闭：newCity 后派发 setOption noDisasters）');
 }
 
 const fmt = (n: number): string => n.toFixed(2).padStart(7);
@@ -78,9 +82,9 @@ function main(): number {
   const host = createWiredHost();
   const script = goldenMiniCity(args.variant);
   const stubs = host.systems.filter((s) => s.stub).map((s) => s.id);
-  if (!args.quiet) console.log(`headless: script ${args.script} variant ${args.variant} seed ${args.seed ?? script.params.seed} years ${args.years}; 桩系统：${stubs.length ? stubs.join(', ') : '无'}`);
+  if (!args.quiet) console.log(`headless: script ${args.script} variant ${args.variant} seed ${args.seed ?? script.params.seed} years ${args.years} 随机灾害 ${args.disasters ? '开' : '关'}; 桩系统：${stubs.length ? stubs.join(', ') : '无'}`);
   const t0 = performance.now();
-  const records = runHeadless(host, script, { years: args.years, seed: args.seed, now: () => performance.now(), onYear: args.quiet ? undefined : printYear, afterNewCity: (h) => flattenTerrain(h.state) });
+  const records = runHeadless(host, script, { years: args.years, seed: args.seed, disasters: args.disasters, now: () => performance.now(), onYear: args.quiet ? undefined : printYear, afterNewCity: (h) => flattenTerrain(h.state) });
   const elapsed = performance.now() - t0;
   const failures = records.flatMap((r) => r.invariants.map((v) => `year ${r.year}: ${v}`));
   const diag = simContextOf(host).diag.slice(-50);   // 最近 50 条诊断（core.countsMismatch / 桩忽略的模态回答等）
@@ -92,7 +96,7 @@ function main(): number {
     if (!args.quiet) console.log(`headless: 缩略图 → ${resolve(args.thumbnail)}（${thumb.png.length} B，${thumb.monochrome ? '单色!' : '非单色'}）`);
   }
   const report = {
-    meta: { script: args.script, variant: args.variant, seed: args.seed ?? script.params.seed, years: args.years, flat: true, stubs, elapsedMs: Math.round(elapsed), commandsDispatched: host.commandLog().length },
+    meta: { script: args.script, variant: args.variant, seed: args.seed ?? script.params.seed, years: args.years, disasters: args.disasters, flat: true, stubs, elapsedMs: Math.round(elapsed), commandsDispatched: host.commandLog().length },
     years: records.map((r) => ({ year: r.year, age: r.age, hash: r.hash, hashSc2: r.hashSc2, pop: r.pop, funds: r.funds, phaseMsP95: r.phaseMsP95, growthDayMsP95: r.growthDayMsP95, runTrips: r.runTrips })),
     invariantFailures: failures,
     thumbnailMonochrome: thumb?.monochrome ?? null,

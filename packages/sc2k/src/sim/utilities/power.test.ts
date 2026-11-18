@@ -11,7 +11,8 @@ import { createTestContext, runDays } from '../../testkit';
 import { POWER_PLANT_DEFS, POWER_PLANT_KINDS } from './defs';
 import { fakePlacementSystem, line, paintLot, paintWater, paintXbld, place } from './fixtures';
 import { createUtilitiesSystem } from './index';
-import { count3x3, createScratch, runPowerScan } from './scan';
+import type { UtilitiesPriv } from './priv';
+import { count3x3, createScratch, noFormulaSeed, runPowerScan } from './scan';
 import type { PowerScanInput } from './scan';
 import { DEFAULT_UTILITIES_TUNING } from './tuning';
 
@@ -21,7 +22,7 @@ const HOUSE = 0x70, COAL = 0xcf, GAS = 0xc9, WIND = 0xc8, SOLAR = 0xcc, STATUE =
 const powered = (xbit: Uint8Array, x: number, y: number): boolean => (xbit[tileIndex(x, y)]! & XBit.Powered) !== 0;
 const scanInput = (state: ReturnType<typeof mk>['state'], over: Partial<PowerScanInput> = {}): PowerScanInput => ({
   xbld: state.layers.xbld, xbit: state.layers.xbit, alt: state.layers.alt, wind: state.weather.wind, humid: state.weather.humid,
-  energyConservation: false, rng: null, tune: DEFAULT_UTILITIES_TUNING, scratch: createScratch(), ...over,
+  energyConservation: false, formula: noFormulaSeed(), tune: DEFAULT_UTILITIES_TUNING, scratch: createScratch(), ...over,
 });
 
 describe('T1 索引与掩码契约', () => {
@@ -162,20 +163,61 @@ describe.each(PROFILES)('电力扫描（%s 桩）', (profile) => {
   });
 });
 
-describe('风 / 太阳能抽样与确定性', () => {
-  it('第一遍遇到电厂格时抽样：风车 1 次、太阳能 16 次；两个同 seed 上下文位图与报告相同', () => {
+describe('风 / 太阳能抽样与确定性（每格每月一次：月度扫描取种，月内重扫复用）', () => {
+  const privOf = (t: ReturnType<typeof mk>): UtilitiesPriv => t.state.priv.utilities as UtilitiesPriv;
+  it('日末重扫零 PRNG（本月尚无种子 → 中值）；第 1 天月度扫描恰取种一次；两个同 seed 上下文位图与报告相同', () => {
     const a = mk('realistic', 99), b = mk('realistic', 99);
+    a.state.weather.wind = 48; b.state.weather.wind = 48;
     for (const t of [a, b]) { place(t.host, WIND, 0, 0); place(t.host, SOLAR, 10, 10); }
     const before = a.ctx.prng.state();
-    runDays(a.host, 1); runDays(b.host, 1);                     // 第 0 天日末 flush 重扫（消费 PRNG）
+    runDays(a.host, 1); runDays(b.host, 1);                     // 第 0 天日末 flush 重扫：不取种、不消费 PRNG
+    expect(a.ctx.prng.state()).toBe(before);
+    expect(privOf(a).outSeed).toBe(-1);
+    expect(a.state.utilities.power.generation).toBe(Math.floor((4 + 3) / 2) + 16 * (5 + 4));   // 风 gust 6 → 中值 3；太阳能 range 10 → 中值 4
+    runDays(a.host, 1); runDays(b.host, 1);                     // 第 1 天 powerScan：恰一次 next32 作本月种子
     const replay = createPrng(before);
-    for (let k = 0; k < 17; k++) replay.next32();
+    const seed = replay.next32() >>> 1;
     expect(a.ctx.prng.state()).toBe(replay.state());
+    expect(privOf(a).outSeed).toBe(seed);
     expect(a.ctx.prng.state()).toBe(b.ctx.prng.state());
     expect(Array.from(a.state.layers.xbit)).toEqual(Array.from(b.state.layers.xbit));
     expect(a.state.utilities.power).toEqual(b.state.utilities.power);
     const gen = a.state.utilities.power.generation;
-    expect(gen).toBeGreaterThanOrEqual(2 + 80); expect(gen).toBeLessThanOrEqual(2 + 224);
+    expect(gen).toBeGreaterThanOrEqual(2 + 80); expect(gen).toBeLessThanOrEqual(5 + 224);
+  });
+  it('月内重扫复用本月产量：生长 / 命令触发的日末重扫不重抽、不消费 PRNG，断电边界不漂移；下个月才重新取种', () => {
+    const t = mk('realistic', 7);
+    t.state.weather.wind = 120;                                 // gust 15：每格抽样区间 0..15，重抽必然会让边界抖动
+    for (let x = 0; x < 6; x++) place(t.host, WIND, x, 0);
+    for (let y = 1; y <= 60; y++) place(t.host, HOUSE, 0, y);
+    runDays(t.host, 2);                                         // 第 1 天月度扫描取种
+    const gen = t.state.utilities.power.generation, seed = privOf(t).outSeed;
+    const bits = t.state.layers.xbit.slice();
+    expect(seed).toBeGreaterThanOrEqual(0);
+    expect(t.state.utilities.power.unpoweredBuildingTiles).toBeGreaterThan(0);   // 有断电边界
+    const prng = t.ctx.prng.state();
+    for (let d = 0; d < 20; d++) {                              // 每天在远处新建一座房子 → 置脏 → 日末重扫
+      place(t.host, HOUSE, 100, 100 + d);
+      runDays(t.host, 1);
+      expect(t.state.utilities.power.generation, `day ${d}`).toBe(gen);
+      for (let y = 1; y <= 60; y++) expect((t.state.layers.xbit[tileIndex(0, y)]! & XBit.Powered) !== 0).toBe((bits[tileIndex(0, y)]! & XBit.Powered) !== 0);
+    }
+    expect(t.ctx.prng.state()).toBe(prng);
+    expect(privOf(t).outSeed).toBe(seed);
+    runDays(t.host, 25 - 22 + 2);                               // age 22 → 27：跨过下个月第 1 天（age 26）的 powerScan，重新取种（恰一次）
+    const replay = createPrng(prng);
+    expect(privOf(t).outSeed).toBe(replay.next32() >>> 1);
+  });
+  it('纯函数：有种子时同格同值、与扫描顺序无关；无种子取中值；惰性取种只调用一次', () => {
+    const s2 = mk().state;
+    paintLot(s2, SOLAR, 10, 10); paintLot(s2, WIND, 3, 3);
+    let draws = 0;
+    const formula = { seed: -1, drawSeed: () => { draws++; return 0x1234_5678; } };
+    const r1 = runPowerScan(scanInput(s2, { humid: 0, wind: 120, formula }));
+    expect(draws).toBe(1); expect(r1.seed).toBe(0x1234_5678 >>> 1);
+    const r2 = runPowerScan(scanInput(s2, { humid: 0, wind: 120, formula: { seed: 0x1234_5678 >>> 1, drawSeed: null } }));
+    expect(r2.report).toEqual(r1.report);
+    expect(runPowerScan(scanInput(s2, { humid: 0, wind: 120 })).seed).toBe(-1);
   });
   it('无 PRNG 模式取分布中值；风速 / 湿度影响区间', () => {
     const { state } = mk();
@@ -187,8 +229,8 @@ describe('风 / 太阳能抽样与确定性', () => {
     expect(runPowerScan(scanInput(s2, { humid: 0 })).report.generation).toBe(16 * (5 + 4));       // range 10 → 中值 4
     expect(runPowerScan(scanInput(s2, { humid: 95 })).report.generation).toBe(16 * 5);            // range 1 → 恒 5
     let draws = 0;
-    expect(runPowerScan(scanInput(s2, { humid: 95, rng: () => { draws++; return 0; } })).report.generation).toBe(80);
-    expect(draws).toBe(16);
+    expect(runPowerScan(scanInput(s2, { humid: 95, formula: { seed: -1, drawSeed: () => { draws++; return 0; } } })).report.generation).toBe(80);
+    expect(draws).toBe(1);                                                                          // 每次扫描至多取种一次
   });
   it('legacyTraceQueue=512 对小网络无影响', () => {
     const { state } = mk();
@@ -217,7 +259,7 @@ describe('查询与系统外形', () => {
   });
   it('系统外形：阶段 / 查询 / 动作键集合、privVersion、无命令、非桩', () => {
     const sys = createUtilitiesSystem();
-    expect(sys.id).toBe('utilities'); expect(sys.stub).toBeUndefined(); expect(sys.privVersion).toBe(1);
+    expect(sys.id).toBe('utilities'); expect(sys.stub).toBeUndefined(); expect(sys.privVersion).toBe(2);
     expect(Object.keys(sys.phases!).sort()).toEqual(['powerScan', 'utilitiesAnnual', 'waterScan']);
     expect(Object.keys(sys.queries!)).toEqual(['utilities']); expect(Object.keys(sys.actions!)).toEqual(['requestRescan']);
     expect(sys.commands).toBeUndefined();

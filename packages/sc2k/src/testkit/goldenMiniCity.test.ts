@@ -4,6 +4,7 @@ import { FOOTPRINT } from '../contracts/footprint';
 import { XBit, inMap, tileIndex, tileX, tileY } from '../contracts/grid';
 import type { RenderSnapshot, SceneItem } from '../contracts/render';
 import { mapCanvasSize } from '../contracts/render';
+import { createWiredHost } from '../app/wire';
 import { CATALOGUE } from '../data';
 import { sceneCompiler } from '../render';
 import {
@@ -48,17 +49,53 @@ describe('goldenMiniCity: 脚本形状', () => {
     box(L.coal, 4, 'coal'); box(L.pump, 1, 'pump'); box(L.hospital, 3, 'hospital'); box(L.railDepot, 2, 'depot');
     for (const z of L.zones) for (let x = z.x0; x <= z.x1; x++) for (let y = z.y0; y <= z.y1; y++) claim(tileIndex(x, y), `zone${z.zone}`);
   });
+  it('水泵与火车站占地 4 邻接电线（否则水源不启动、车站不发车；评审 Fix-A #14）', () => {
+    const wire = new Set<number>();
+    for (const s of GOLDEN_LAYOUT.wires) {
+      const [x0, y0] = s.from, [x1, y1] = s.to;
+      for (let x = Math.min(x0, x1); x <= Math.max(x0, x1); x++) for (let y = Math.min(y0, y1); y <= Math.max(y0, y1); y++) wire.add(tileIndex(x, y));
+    }
+    const touchesWire = (p: { x: number; y: number }, n: number): boolean => {
+      for (let dx = 0; dx < n; dx++) for (let dy = 0; dy < n; dy++) for (const [ox, oy] of [[0, -1], [-1, 0], [0, 1], [1, 0]] as const) if (wire.has(tileIndex(p.x + dx + ox, p.y + dy + oy))) return true;
+      return false;
+    };
+    expect(touchesWire(GOLDEN_LAYOUT.pump, 1)).toBe(true);
+    expect(touchesWire(GOLDEN_LAYOUT.railDepot, 2)).toBe(true);
+    expect(touchesWire(GOLDEN_LAYOUT.hospital, 3)).toBe(true);
+  });
   it('脚本在全桩上下文中可派发（全部 notImplemented、不抛错、日志为空），变体行数不同', () => {
     const tc = replayScript(goldenMiniCity('full'), 25);
     expect(tc.state.clock.age).toBe(25);
     expect(tc.host.commandLog()).toEqual([]);                                             // 城市模式下 terrainDone 被拒绝，其余归桩
-    expect(goldenMiniCity('noPower').commands.length).toBe(goldenMiniCity('full').commands.length - 3);
+    expect(goldenMiniCity('noPower').commands.length).toBe(goldenMiniCity('full').commands.length - GOLDEN_LAYOUT.wires.length);
     expect(goldenMiniCity('noRoad').commands.length).toBe(goldenMiniCity('full').commands.length - 2);
     // 从地形编辑模式开始：terrainDone 真正生效并入日志
     const fresh = createTestContext();
     fresh.state.clock.mode = 0;
     expect(runScript(fresh.host, goldenMiniCity().commands, 1)).toBe(goldenMiniCity().commands.length);
     expect(fresh.host.commandLog().map((l) => l.cmd.type)).toEqual(['terrainDone']);
+  });
+});
+
+describe('goldenMiniCity: 真系统（app/wire）', () => {
+  it('全部命令派发成功；水泵 / 火车站受电、供水 > 0；disasters:false 先派发 setOption noDisasters（入日志），默认不派发', () => {
+    const host = createWiredHost();
+    const script = goldenMiniCity('full');
+    runHeadless(host, script, { years: 1, disasters: false, invariants: false, afterNewCity: (h) => flattenTerrain(h.state) });
+    const log = host.commandLog();
+    expect(log.map((l) => l.cmd.type)).toEqual(['setOption', ...script.commands.map((c) => c.cmd.type)]);
+    expect(host.state.disaster.noDisasters).toBe(true);
+    const L = host.state.layers;
+    const bits = (p: { x: number; y: number }): number => L.xbit[tileIndex(p.x, p.y)]!;
+    expect(L.xbld[tileIndex(GOLDEN_LAYOUT.pump.x, GOLDEN_LAYOUT.pump.y)]).toBe(GOLDEN_IDS.pump);
+    expect(L.xbld[tileIndex(GOLDEN_LAYOUT.railDepot.x, GOLDEN_LAYOUT.railDepot.y)]).toBe(GOLDEN_IDS.railDepot);
+    expect(bits(GOLDEN_LAYOUT.pump) & XBit.Powered).toBe(XBit.Powered);
+    expect(bits(GOLDEN_LAYOUT.railDepot) & XBit.Powered).toBe(XBit.Powered);
+    expect(host.state.utilities.water.supply).toBeGreaterThan(0);
+    expect(host.state.utilities.water.watered).toBeGreaterThan(0);
+    const dflt = createWiredHost();
+    runHeadless(dflt, script, { years: 0, afterNewCity: (h) => flattenTerrain(h.state) });
+    expect(dflt.state.disaster.noDisasters).toBe(false);
   });
 });
 

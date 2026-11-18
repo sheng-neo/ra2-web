@@ -1,7 +1,7 @@
 // ===== sim/utilities/save.ts =====（spec:power-water §3.7 存档映射；ARCHITECTURE §4.3–§4.5）
 //  importFrom（IMPORT_ORDER 第 7 位）：剥 XBIT.MARK 脏位；从 XBLD 锚点重建电厂表，年龄 / 负载按 XTXT 标签 → XMIC 记录（+1 / +4..5）恢复，无链接者归 0。
 //  exportTo（EXPORT_ORDER 第 6 位）：导出 XBIT 不带 MARK；电厂年龄 / 负载写回已链接的 XMIC 记录。MISC 0x104C（净水厂充足标志 / "Go Disaster"，spec Q5 未定）按 open-questions #2 透传不写。
-//  postLoad('sc2')：按 §2.2 规则重算整层 POWERABLE / PIPED，再跑一次不消费 PRNG 的电 / 水重扫（风 / 太阳能取分布中值）；
+//  postLoad('sc2')：按 §2.2 规则重算整层 POWERABLE / PIPED，再跑一次不消费 PRNG 的电 / 水重扫（无本月种子：风 / 太阳能取分布中值）；
 //  postLoad('snapshot')：位与 priv 已完整，只重绑闭包、校验 priv（版本不符 → 丢弃重建），不重扫、不消费 PRNG、不改层。
 import { XBit } from '../../contracts/grid';
 import type { Sc2Document } from '../../contracts/io';
@@ -91,14 +91,15 @@ export function exportToDoc(ctx: SimContext, doc: Sc2Document, rt: Runtime): voi
 export function postLoadRt(ctx: SimContext, source: PostLoadSource, rt: Runtime): void {
   rt.ctx = ctx;
   rt.selfBits.fill(0);
+  rt.shadow.set(ctx.state.layers.xbld);
   rt.powerNetworks = []; rt.waterNetworks = [];
-  const p = privOf(ctx);                       // 版本不符 → 丢弃并从 XBLD 重建
+  const p = privOf(ctx);                       // v1 → 迁移；其余版本不符 → 丢弃并从 XBLD 重建
   syncPlants(ctx, p);                          // 快照路径下幂等（priv 已与层一致）
   if (source !== 'sc2') return;
   const L = ctx.state.layers;
   applyRuleToLayer(L.xbld, L.xund, L.xbit);
   stripMark(L.xbit);
-  scanPowerNow(ctx, rt, false);
+  scanPowerNow(ctx, rt, 'load');
   scanWaterNow(ctx, rt);
   p.dirtyPower = false; p.dirtyWater = false;
   ctx.act.layerChanged('xbit');

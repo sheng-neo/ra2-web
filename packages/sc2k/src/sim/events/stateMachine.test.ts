@@ -45,6 +45,23 @@ describe.each(['optimistic', 'pessimistic'] as const)('events 状态机（%s 桩
     expect(state.clock.modalPause).toBe(0);
   });
 
+  it('灾害模式中再次触发 Fire（菜单连点，无坐标）：叠加一处新火点、不重置已有火标记，disasterPoint 更新为新原点（spec §2.2.4）', () => {
+    const { host, ctx, state } = mk({ fire: { ...DEFAULT_EVENTS_TUNING.fire, spreadBase: 0, minSpread: 0, extinguishPerCoverage: 0 } });   // 不蔓延、不扑灭：只看点火
+    for (let x = 10; x < 60; x += 7) for (let y = 10; y < 60; y += 7) placeBuilding(ctx, HOUSE, x, y, 1);
+    host.dispatch({ type: 'requestDisaster', kind: DisasterKind.Fire, x: 10, y: 10 });
+    runTicks(host, 1);
+    const burning = (): number[] => [...host.q.disasters.markers()].flatMap((m, i) => (m === TileMarker.Fire ? [i] : []));
+    expect(burning()).toEqual([tileIndex(10, 10)]);
+    host.dispatch({ type: 'requestDisaster', kind: DisasterKind.Fire });
+    runTicks(host, 1);
+    const now = burning();
+    expect(now).toHaveLength(2);
+    expect(now).toContain(tileIndex(10, 10));
+    const added = now.find((i) => i !== tileIndex(10, 10))!;
+    expect({ x: state.disaster.pointX, y: state.disaster.pointY }).toEqual({ x: added >> 7, y: added & 127 });
+    expect(state.disaster.current).toBe(DisasterKind.Fire); expect(state.clock.mode).toBe(CityMode.Disaster);
+  });
+
   it('cheat / 其它系统只写 pending：下一 thingsTick 启动；灾害中再写 pending 叠加而不重置', () => {
     const { host, ctx, state } = mk();
     placeBuilding(ctx, HOUSE, 20, 20);

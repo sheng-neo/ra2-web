@@ -28,6 +28,12 @@ export interface HeadlessOptions {
   seed?: number;
   /** newCity 之后、派发之前的钩子（测试铺平地形等）。 */
   afterNewCity?: (host: SimHost) => void;
+  /**
+   * 是否允许随机灾害（默认 true = 与玩家开局一致）。false → newCity 后先派发 setOption noDisasters（入命令日志，重放同样生效）：
+   * 金城只有一座煤电、没有消防局，随机地震 / 火灾一旦毁掉电厂就无人重建，之后几十年只是空转（评审 Fix-A #15）；
+   * 性能门禁 / 长跑曲线评估用 false，tools/headless.ts 与 tools/hash-compare.ts 默认 false、`--disasters` 打开。玩家请求的灾害不受影响。
+   */
+  disasters?: boolean;
 }
 
 /** 包装 runTrip 计数；返回读数函数。 */
@@ -42,6 +48,7 @@ export function countRunTrips(host: SimHost): () => number {
 export function runHeadless(host: SimHost, script: GoldenMiniCity, opts: HeadlessOptions): YearRecord[] {
   const params = opts.seed !== undefined ? { ...script.params, seed: opts.seed } : script.params;
   host.newCity(params);
+  if (opts.disasters === false) host.dispatch({ type: 'setOption', key: 'noDisasters', value: true });
   opts.afterNewCity?.(host);
   const trips = countRunTrips(host);
   const records: YearRecord[] = [];
