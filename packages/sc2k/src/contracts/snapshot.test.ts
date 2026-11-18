@@ -119,6 +119,8 @@ describe('snapshot: SCALAR_FIELDS', () => {
       'clock.disasterTicks', 'totals.developedTiles', 'totals.centerX', 'totals.centerY',
       'traffic.total', 'traffic.graph', 'traffic.roadTiles', 'traffic.highwayTiles', 'traffic.bridgeTiles',
       'rewards.mayorApproval', 'disaster.pointX', 'disaster.pointY',
+      // 依赖当前降水量的供水显示值（.SC2 读档信任 WATERED 位、不重判；评审修复）
+      'utilities.water.supply', 'utilities.water.usagePct',
       ...Array.from({ length: 50 }, (_, k) => [`economy.bonds[${k}].issuedYear`, `economy.bonds[${k}].issuedMonth`]).flat(),
     ];
     expect(SCALAR_FIELDS.filter((f) => f.hash === 'full').map((f) => f.path).sort()).toEqual(FULL_ONLY.sort());

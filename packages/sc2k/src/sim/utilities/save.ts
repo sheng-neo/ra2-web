@@ -3,7 +3,8 @@
 //    读的是**活状态层**（core 拷贝后、events 已剥离灾害标记并按侧表 / XMIC 反查恢复了标签），不是原始 doc.xtxt：灾害中存档里电厂锚格的
 //    标签可能被 0xFB..0xFF 覆盖，直接读 doc 会断开链接、把年龄清零（fix-B）。
 //  exportTo（EXPORT_ORDER 第 6 位）：导出 XBIT 不带 MARK；电厂年龄 / 负载写回已链接的 XMIC 记录。MISC 0x104C（净水厂充足标志 / "Go Disaster"，spec Q5 未定）按 open-questions #2 透传不写。
-//  postLoad('sc2')：按 §2.2 规则重算整层 POWERABLE / PIPED，再跑一次不消费 PRNG 的电 / 水重扫（无本月种子：风 / 太阳能取分布中值）；
+//  postLoad('sc2')：按 §2.2 规则重算整层 POWERABLE / PIPED，再跑一次不消费 PRNG 的电力重扫（无本月种子：风 / 太阳能取分布中值）；
+//  供水不重判：存档里的 WATERED 位是上次 waterScan 按当时降水量的结果，只据此重算报告计数（评审修复：月中导出的 .SC2 往返）；
 //  postLoad('snapshot')：位与 priv 已完整，只重绑闭包、校验 priv（版本不符 → 丢弃重建），不重扫、不消费 PRNG、不改层。
 import { XBit } from '../../contracts/grid';
 import type { Sc2Document } from '../../contracts/io';
@@ -102,7 +103,7 @@ export function postLoadRt(ctx: SimContext, source: PostLoadSource, rt: Runtime)
   applyRuleToLayer(L.xbld, L.xund, L.xbit);
   stripMark(L.xbit);
   scanPowerNow(ctx, rt, 'load');
-  scanWaterNow(ctx, rt);
+  scanWaterNow(ctx, rt, true);                 // 供水位信任存档（上次扫描按当时降水量的结果），只重算报告计数；下个 waterScan 照常重判
   p.dirtyPower = false; p.dirtyWater = false;
   ctx.act.layerChanged('xbit');
 }

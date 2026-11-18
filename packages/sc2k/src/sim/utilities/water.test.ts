@@ -136,6 +136,20 @@ describe('T7 水源顺序、淡化与扫描前清位（直接驱动扫描器）'
     expect(r.networks.map((n) => n.tiles)).toEqual([2, 2]);
     expect(r.report).toMatchObject({ supply: 54, consumers: 2, watered: 2 });
   });
+  it('keepBits（.SC2 读档）：不改任何位；watered / unwatered 取自已有 WATERED 位，与当前降水量无关（评审修复：月中导出往返）', () => {
+    const { state } = mk();
+    const a = paintLot(state, PUMP, 3, 100);
+    const h1 = paintLot(state, HOUSE, 3, 101), h2 = paintLot(state, HOUSE, 3, 102);
+    state.layers.xbit[a] = state.layers.xbit[a]! | XBit.Powered;
+    runWaterScan(scanInput(state, { humid: 14, waterLevel: 4 }));                 // 正常扫描：两栋都供上
+    expect(state.layers.xbit[h1]! & XBit.Watered).not.toBe(0); expect(state.layers.xbit[h2]! & XBit.Watered).not.toBe(0);
+    state.layers.xbit[h2] = state.layers.xbit[h2]! & ~XBit.Watered;                  // 模拟存档里只有一栋有水
+    const before = state.layers.xbit.slice();
+    const r = runWaterScan(scanInput(state, { humid: 200, waterLevel: 4 }), true);   // 天气已变
+    expect(Array.from(state.layers.xbit)).toEqual(Array.from(before));
+    expect(r.report.watered).toBe(1); expect(r.report.consumers).toBe(2);
+    expect(r.report.unwateredBuildingTiles).toBe(1);
+  });
   it('海水淡化：四面环海 3×3 → 640；一侧中点被占 → 580；淡水湖旁 → 0', () => {
     const { state } = mk();
     const anchor = paintLot(state, DESAL, 30, 30);

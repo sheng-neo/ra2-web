@@ -93,7 +93,8 @@ export const SCALAR_FIELDS: readonly ScalarField[] = [
   // tech（invented / announced 为 TypedArray 条目；无标量）
   // utilities
   f('utilities.power.generation'), f('utilities.power.consumers'), f('utilities.power.supplied'), f('utilities.power.usagePct'), f('utilities.power.unpoweredBuildingTiles'),
-  f('utilities.water.supply'), f('utilities.water.consumers'), f('utilities.water.watered'), f('utilities.water.usagePct'), f('utilities.water.towerCapacity'),
+  // supply / usagePct 依赖当前降水量（读档不重判供水位，只按位重算计数），.SC2 读档后为显示值 → 只进 'full'（评审修复）
+  f('utilities.water.supply', 'full'), f('utilities.water.consumers'), f('utilities.water.watered'), f('utilities.water.usagePct', 'full'), f('utilities.water.towerCapacity'),
   f('utilities.water.towerCharged'), f('utilities.water.treatmentCapacity'), b('utilities.water.treatmentSufficient'), f('utilities.water.unwateredBuildingTiles'),
   // view（不入哈希）
   f('view.x', 'none'), f('view.y', 'none'), f('view.zoom', 'none'),

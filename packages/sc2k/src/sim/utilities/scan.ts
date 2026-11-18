@@ -140,14 +140,18 @@ export function runPowerScan(inp: PowerScanInput): PowerScanResult {
   return { report: { generation, consumers, supplied, usagePct, unpoweredBuildingTiles: unpowered }, networks, seed: inp.formula.seed };
 }
 
-/** 供水扫描：在电力扫描之后运行（水源需要本月 POWERED）；水塔格保留蓄水位，其余格清 WATERED。 */
-export function runWaterScan(inp: WaterScanInput): WaterScanResult {
+/**
+ * 供水扫描：在电力扫描之后运行（水源需要本月 POWERED）；水塔格保留蓄水位，其余格清 WATERED。
+ * keepBits = true（.SC2 读档用）：不改任何位，按存档里已有的 WATERED 位统计 watered / towerCharged / unwatered——
+ * 存档的供水位是上次扫描（按当时降水量）的结果，读档时按当前天气重判会在月中导出时多 / 少供几格（评审修复：.SC2 往返）。
+ */
+export function runWaterScan(inp: WaterScanInput, keepBits = false): WaterScanResult {
   const { xbld, xbit, tune, scratch } = inp;
   const mark = scratch.mark, order = scratch.order;
   const nb = neighborTable(tune);
   const limit = tune.legacyTraceQueue;
   const units = tune.towerUnitsPerCell;
-  for (let i = 0; i < TILES; i++) if (xbld[i] !== XBLD_TOWER) xbit[i] = xbit[i]! & ~XBit.Watered;
+  if (!keepBits) for (let i = 0; i < TILES; i++) if (xbld[i] !== XBLD_TOWER) xbit[i] = xbit[i]! & ~XBit.Watered;
   mark.fill(0);
   const base = Math.floor((inp.humid & 0xff) / tune.pumpRainDiv) + inp.waterLevel * tune.pumpWaterLevelMul;
   let supply = 0, consumers = 0, watered = 0, towerCapacity = 0, towerCharged = 0;
@@ -164,7 +168,7 @@ export function runWaterScan(inp: WaterScanInput): WaterScanResult {
         if (b === XBLD_PUMP) { if ((xbit[i]! & XBit.Powered) !== 0) netSupply += base + tune.pumpFreshBonus * count3x3(xbit, i, false); }
         else if (b === XBLD_TOWER) {
           towerCap += units;
-          if ((xbit[i]! & XBit.Watered) !== 0) { netSupply += units; xbit[i] = xbit[i]! & ~XBit.Watered; }
+          if ((xbit[i]! & XBit.Watered) !== 0) { netSupply += units; if (!keepBits) xbit[i] = xbit[i]! & ~XBit.Watered; }
         } else if (b === XBLD_DESAL) { if ((xbit[i]! & XBit.Powered) !== 0) netSupply += tune.desalSaltBonus * count3x3(xbit, i, true); }
         else if (b !== XBLD_TREATMENT) netConsumers++;
       }
@@ -177,11 +181,20 @@ export function runWaterScan(inp: WaterScanInput): WaterScanResult {
       }
       if (limit !== 0 && tail - head > limit) head = tail - limit;
     }
-    const served = Math.min(netSupply, netConsumers);
+    let served = Math.min(netSupply, netConsumers);
     let towersToFill = Math.floor((Math.min(netSupply - served, towerCap) + tune.towerRoundHalf) / units);
     let left = served, charged = 0;
+    if (keepBits) {                                                                // 只读统计：served / charged 取自已有位
+      served = 0;
+      for (let k = 0; k < tail; k++) {
+        const i = order[k]!, b = xbld[i]!, w = (xbit[i]! & XBit.Watered) !== 0;
+        if (b === XBLD_TOWER) { if (w) charged++; }
+        else if (b >= DEVELOPED_FIRST && b !== XBLD_PUMP && b !== XBLD_TREATMENT && b !== XBLD_DESAL && w) served++;
+      }
+      towersToFill = 0; left = 0;
+    }
     // 第二遍：按同一顺序重放
-    for (let k = 0; k < tail; k++) {
+    for (let k = 0; k < tail && !keepBits; k++) {
       const i = order[k]!, b = xbld[i]!;
       if (b < DEVELOPED_FIRST) { if (left !== 0) xbit[i] = xbit[i]! | XBit.Watered; }
       else if (b === XBLD_PUMP || b === XBLD_TREATMENT || b === XBLD_DESAL) { if ((xbit[i]! & XBit.Powered) !== 0) xbit[i] = xbit[i]! | XBit.Watered; }

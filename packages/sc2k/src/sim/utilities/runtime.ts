@@ -93,9 +93,9 @@ export function scanPowerNow(ctx: SimContext, rt: Runtime, mode: PowerScanMode):
   rt.powerNetworks = r.networks;
   return r;
 }
-/** 跑一次供水扫描并写回 state.utilities.water；不消费 PRNG。 */
-export function scanWaterNow(ctx: SimContext, rt: Runtime): WaterScanResult {
-  const r = runWaterScan(waterInput(ctx, rt));
+/** 跑一次供水扫描并写回 state.utilities.water；不消费 PRNG。keepBits：只按已有 WATERED 位统计（.SC2 读档）。 */
+export function scanWaterNow(ctx: SimContext, rt: Runtime, keepBits = false): WaterScanResult {
+  const r = runWaterScan(waterInput(ctx, rt), keepBits);
   Object.assign(ctx.state.utilities.water, r.report);
   rt.waterNetworks = r.networks;
   return r;
