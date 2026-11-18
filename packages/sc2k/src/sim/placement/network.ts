@@ -8,7 +8,7 @@
 //  - 道路 / 铁路 / 高速的新直线格落在边缘且垂直于边 → 返回 modal neighborConnect（UI 再派发 neighborConnection）。
 import type { Command, CommandResult, RejectReason } from '../../contracts/commands';
 import { FOOTPRINT, cornerBits } from '../../contracts/footprint';
-import { CityMode, Corner, TILES, XBit, neighbor, opposite, tileIndex, tileX, tileY } from '../../contracts/grid';
+import { CityMode, Corner, TILES, XBit, ZONE_MASK, neighbor, opposite, tileIndex, tileX, tileY } from '../../contracts/grid';
 import type { BridgeKind } from '../../contracts/net';
 import { NET_BASE, SLOPE_PIECE } from '../../contracts/net';
 import type { SimContext } from '../../contracts/system';
@@ -264,7 +264,9 @@ export function applyNetworkPlan(ctx: SimContext, kind: NetKind, plan: NetworkPl
     } else {
       act.setXbld(o.i, o.piece);
       const sz = FOOTPRINT[o.piece]!;
-      act.setXzon(o.i, sz > 1 ? cornerBits(sz, tileX(o.i) & 1, tileY(o.i) & 1) : Corner.All);   // 网络件：分区码清 0、角标全置
+      // 网络件角标全置；分区码：电线保留（spec:power-water §2.7"电线可放在空分区地上且保留分区码"——推掉电线后分区地照常生长），道路 / 铁路 / 高速清 0
+      const zone = kind === 'power' ? L.xzon[o.i]! & ZONE_MASK : 0;
+      act.setXzon(o.i, zone | (sz > 1 ? cornerBits(sz, tileX(o.i) & 1, tileY(o.i) & 1) : Corner.All));
       const flipped = o.op === 'bridge' && o.flip;
       if (((L.xbit[o.i]! & XBit.Flipped) !== 0) !== flipped) act.setXbit(o.i, XBit.Flipped, flipped);
     }

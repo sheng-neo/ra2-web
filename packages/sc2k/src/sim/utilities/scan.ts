@@ -1,9 +1,12 @@
 // ===== sim/utilities/scan.ts =====（spec:power-water §2.4 / §2.9 / §3.3：电 / 水的两遍洪水填充）
 // 纯函数：只读 XBLD / ALT / 天气标量，只写 XBIT 的 POWERED / WATERED 位；遍历顺序 = 线性索引升序（x 外层、y 内层），
 // 邻居顺序 = tune.neighborOrder（默认索引增量 −1, −128, +1, +128）。所有 (x, y) ↔ i 换算经 contracts/grid，禁止自算。
-// 与规格伪代码的唯一偏差：访问标记 scratch.mark 在整次扫描内不清零（它同时充当"已处理网络"标记），
-// 因此同一网络绝不会因容量不足导致电厂格未受电而被第二次遍历与重复计数。
+// 与规格伪代码的偏差：①访问标记 scratch.mark 在整次扫描内不清零（它同时充当"已处理网络"标记），
+// 因此同一网络绝不会因容量不足导致电厂格未受电而被第二次遍历与重复计数；
+// ②风 / 太阳能"每格每月抽一次"（§2.3.2 / §2.3.3）用本月种子 + hash32(种子, 格) 派生：月度扫描在第一遍遇到第一座风 / 太阳能格时
+// 恰消费一次 PRNG 取种，月内任何重扫（生长 / 命令触发的日末 flush）复用同一种子，同一格产量不变，断电边界不再每日漂移。
 import { DEVELOPED_FIRST, TILES, XBit, inMap, tileIndex, tileX, tileY } from '../../contracts/grid';
+import { hash32 } from '../../contracts/prng';
 import type { PowerReport, WaterReport } from '../../contracts/state';
 import { OUT_FIXED, OUT_NONE, OUT_SOLAR, OUT_WIND, PLANT_CELL_OUTPUT, PLANT_OUTPUT_MODE, XBLD_DESAL, XBLD_PUMP, XBLD_TOWER, XBLD_TREATMENT, isWaterSourceTile } from './defs';
 import type { UtilitiesTuning } from './tuning';
@@ -13,21 +16,31 @@ export interface ScanScratch { mark: Uint8Array; order: Int32Array }
 export const createScratch = (): ScanScratch => ({ mark: new Uint8Array(TILES), order: new Int32Array(TILES) });
 
 /**
- * 随机整数 [0, n)：模拟流 prng.int（每次恰消费一个 next32）。null = 无 PRNG 模式（读档后的重扫），
- * 取分布的中值 floor((n − 1) / 2)，使重扫确定且不触碰 PRNG。
+ * 风 / 太阳能的本月抽样源。seed = 本月种子（0..2³¹−1；−1 = 没有 → 取分布中值 floor((n − 1) / 2)：读档后的无 PRNG 重扫、
+ * 本月月度扫描时尚无风 / 太阳能格而月中新建的情形）；drawSeed = 惰性取种（只有月度 powerScan 提供：第一次需要时调用一次，
+ * 即恰消费一个 next32）。扫描结束后 seed 为本次实际使用的种子，调用方写回 priv。
  */
-export type RngInt = ((n: number) => number) | null;
-const drawInt = (rng: RngInt, n: number): number => (rng ? rng(n) : n > 0 ? (n - 1) >> 1 : 0);
+export interface FormulaSeed { seed: number; drawSeed: (() => number) | null }
+/** 无种子（读档重扫 / 纯函数测试）。 */
+export const noFormulaSeed = (): FormulaSeed => ({ seed: -1, drawSeed: null });
+
+/** 均匀整数 [0, n)：有种子时 = hash32(seed, i) mod n（同月同格恒定）；无种子取中值。 */
+function formulaInt(f: FormulaSeed, i: number, n: number): number {
+  if (f.seed < 0 && f.drawSeed) f.seed = f.drawSeed() >>> 1;                // 31 位非负（priv 只收 i32；−1 留作"无种子"）
+  if (n <= 0) return 0;
+  return f.seed < 0 ? (n - 1) >> 1 : hash32(f.seed, i) % n;
+}
 
 export interface PowerScanInput {
   xbld: Uint8Array; xbit: Uint8Array; alt: Uint8Array;
   wind: number; humid: number;                 // MISC.Wind / MISC.Humid（取低 8 位）
   energyConservation: boolean;                 // Energy Conservation 法令：容量 += floor(容量 / 12)
-  rng: RngInt; tune: UtilitiesTuning; scratch: ScanScratch;
+  formula: FormulaSeed; tune: UtilitiesTuning; scratch: ScanScratch;
 }
 /** 一张电网的汇总（调试 / 查询窗口 / 测试用）；start = 该网络第一座被遍历到的电厂格（索引最小）。 */
 export interface PowerNetwork { start: number; capacity: number; consumers: number; supplied: number; tiles: number }
-export interface PowerScanResult { report: PowerReport; networks: PowerNetwork[] }
+/** seed = 本次扫描结束时的风 / 太阳能种子（−1 = 未取种）。 */
+export interface PowerScanResult { report: PowerReport; networks: PowerNetwork[]; seed: number }
 
 export interface WaterScanInput {
   xbld: Uint8Array; xbit: Uint8Array;
@@ -59,18 +72,18 @@ export function count3x3(xbit: Uint8Array, i: number, salt: boolean): number {
   return n;
 }
 
-/** 电厂格 i（XBLD = b）的本月产量：固定表 / 风 / 太阳能抽样（spec §2.3.2 / §2.3.3）；在第一遍遇到该格时调用，顺序即 PRNG 消费顺序。 */
-export function plantCellOutput(inp: Pick<PowerScanInput, 'alt' | 'wind' | 'humid' | 'rng' | 'tune'>, b: number, i: number): number {
+/** 电厂格 i（XBLD = b）的本月产量：固定表 / 风 / 太阳能抽样（spec §2.3.2 / §2.3.3）；风 / 太阳能按本月种子逐格派生（见 FormulaSeed）。 */
+export function plantCellOutput(inp: Pick<PowerScanInput, 'alt' | 'wind' | 'humid' | 'formula' | 'tune'>, b: number, i: number): number {
   const mode = PLANT_OUTPUT_MODE[b]!;
   if (mode === OUT_FIXED) return PLANT_CELL_OUTPUT[b]!;
   if (mode === OUT_WIND) {
     const gust = Math.floor((inp.wind & 0xff) / inp.tune.windGustDiv);
-    const r = drawInt(inp.rng, gust + 1);                                    // rngInt(0, gust) 闭区间
+    const r = formulaInt(inp.formula, i, gust + 1);                          // rngInt(0, gust) 闭区间
     return Math.floor((inp.alt[i]! + r) / 2);
   }
   if (mode === OUT_SOLAR) {
     const range = Math.max(1, Math.floor((100 - (inp.humid & 0xff)) / inp.tune.solarRangeDiv));
-    return drawInt(inp.rng, range) + inp.tune.solarBase;                     // rngInt(0, range − 1) + 5
+    return formulaInt(inp.formula, i, range) + inp.tune.solarBase;           // rngInt(0, range − 1) + 5
   }
   return 0;
 }
@@ -124,7 +137,7 @@ export function runPowerScan(inp: PowerScanInput): PowerScanResult {
     if (xbld[i]! >= DEVELOPED_FIRST && (v & XBit.Powerable) !== 0 && (v & XBit.Powered) === 0) unpowered++;
   }
   const usagePct = generation > 0 ? Math.min(100, Math.floor((supplied * 100) / generation)) : 100;
-  return { report: { generation, consumers, supplied, usagePct, unpoweredBuildingTiles: unpowered }, networks };
+  return { report: { generation, consumers, supplied, usagePct, unpoweredBuildingTiles: unpowered }, networks, seed: inp.formula.seed };
 }
 
 /** 供水扫描：在电力扫描之后运行（水源需要本月 POWERED）；水塔格保留蓄水位，其余格清 WATERED。 */

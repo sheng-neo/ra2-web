@@ -2,6 +2,7 @@
 // 只保留"产量语义"（每格服务格 / 风 / 太阳能公式、是否到期、微模拟类型、灾害钩子、科技键）；造价与占地一律从 CATALOGUE 读
 // （ctx.catalogue.BUILDINGS[xbld].cost、contracts/footprint 的 FOOTPRINT），defs.test 对账两者一致。
 import type { TechKey } from '../../contracts/catalogue';
+import { DEVELOPED_FIRST } from '../../contracts/grid';
 
 export type PowerPlantKind = 'coal' | 'hydro' | 'oil' | 'gas' | 'nuclear' | 'wind' | 'solar' | 'microwave' | 'fusion';
 /** 每格产量：固定服务格数，或按月抽样的风 / 太阳能公式（spec §2.3.2 / §2.3.3）。 */
@@ -73,3 +74,24 @@ export const PLANT_KIND_BY_XBLD: ReadonlyArray<PowerPlantKind | null> = T.kind;
 export const PLANT_EXPIRES: Uint8Array = T.expires;
 export const isPlantTile = (xbld: number): boolean => PLANT_OUTPUT_MODE[xbld] !== OUT_NONE;
 export const isWaterSourceTile = (xbld: number): boolean => xbld === XBLD_PUMP || xbld === XBLD_DESAL;
+
+/**
+ * 扫描相关的瓦片类别位（onTilesChanged 判定"这次 XBLD 变化会不会改变电 / 水扫描结果"用）：
+ * CONSUMER = 已建建筑（≥ 0x70，电 / 水两边的消费者口径）；PLANT = 发电格（产量来源）；EXPIRES = 到期型电厂（进 priv 电厂表）；
+ * WATER = 水泵 / 水塔 / 净水厂 / 淡化（供水扫描对它们有特判）。两个 ID 之间只有这些位或 POWERABLE / PIPED 规则位不同，才需要重扫。
+ */
+export const CLS_CONSUMER = 1, CLS_PLANT = 2, CLS_EXPIRES = 4, CLS_WATER = 8;
+function buildClassTable(): Uint8Array {
+  const cls = new Uint8Array(256);
+  for (let id = 0; id < 256; id++) {
+    let c = 0;
+    if (id >= DEVELOPED_FIRST) c |= CLS_CONSUMER;
+    if (T.mode[id] !== OUT_NONE) c |= CLS_PLANT;
+    if (T.expires[id] !== 0) c |= CLS_EXPIRES;
+    if (id === XBLD_PUMP || id === XBLD_TOWER || id === XBLD_TREATMENT || id === XBLD_DESAL) c |= CLS_WATER;
+    cls[id] = c;
+  }
+  return cls;
+}
+/** UTIL_CLASS[xbld]：CLS_* 位的组合。 */
+export const UTIL_CLASS: Uint8Array = buildClassTable();

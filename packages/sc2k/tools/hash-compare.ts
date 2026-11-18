@@ -2,7 +2,8 @@
 // ===== tools/hash-compare.ts =====（ARCHITECTURE §10.1 确定性；WORKPLAN §7 第 5 条）
 // 双跑哈希比对：同 seed + 同脚本独立跑两次，逐年比较 hash('full') / hash('sc2')；可选第三跑 = 第一跑的命令日志重放（replayInto）；
 // 可选与 tools/headless.ts 的 JSON 基线逐年比对。任一不一致 → 退出码 1。
-// 用法：tsx tools/hash-compare.ts --years N [--seed S] [--variant full|noPower|noRoad] [--baseline file.json] [--no-replay] [--quiet]
+// 随机灾害默认关闭（与 tools/headless.ts 同口径，基线可直接比对）；--disasters 打开。
+// 用法：tsx tools/hash-compare.ts --years N [--seed S] [--variant full|noPower|noRoad] [--baseline file.json] [--disasters] [--no-replay] [--quiet]
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { performance } from 'node:perf_hooks';
@@ -12,11 +13,11 @@ import { replayInto } from '../src/sim/core';
 import { DAYS_PER_YEAR, flattenTerrain, goldenMiniCity, runHeadless } from '../src/testkit';
 import type { YearRecord } from '../src/testkit';
 
-interface Args { years: number; seed?: number; variant: GoldenMiniCityVariant; baseline?: string; replay: boolean; quiet: boolean }
+interface Args { years: number; seed?: number; variant: GoldenMiniCityVariant; baseline?: string; disasters: boolean; replay: boolean; quiet: boolean }
 interface BaselineYear { year: number; hash: number; hashSc2?: number }
 
 export function parseArgs(argv: readonly string[]): Args {
-  const a: Args = { years: 3, variant: 'full', replay: true, quiet: false };
+  const a: Args = { years: 3, variant: 'full', disasters: false, replay: true, quiet: false };
   for (let k = 0; k < argv.length; k++) {
     const key = argv[k]!, next = (): string => { const v = argv[++k]; if (v === undefined) throw new Error(`参数 ${key} 缺少值`); return v; };
     switch (key) {
@@ -24,9 +25,10 @@ export function parseArgs(argv: readonly string[]): Args {
       case '--seed': a.seed = Number(next()) >>> 0; break;
       case '--variant': { const v = next(); if (v !== 'full' && v !== 'noPower' && v !== 'noRoad') throw new Error(`未知 variant "${v}"`); a.variant = v; break; }
       case '--baseline': a.baseline = next(); break;
+      case '--disasters': a.disasters = true; break;
       case '--no-replay': a.replay = false; break;
       case '--quiet': a.quiet = true; break;
-      case '--help': case '-h': console.log('用法：tsx tools/hash-compare.ts --years N [--seed S] [--variant v] [--baseline file.json] [--no-replay] [--quiet]'); process.exit(0); break;
+      case '--help': case '-h': console.log('用法：tsx tools/hash-compare.ts --years N [--seed S] [--variant v] [--baseline file.json] [--disasters] [--no-replay] [--quiet]'); process.exit(0); break;
       default: throw new Error(`未知参数 "${key}"`);
     }
   }
@@ -56,7 +58,7 @@ function main(): number {
   const seed = args.seed ?? script.params.seed;
   const run = (): { host: ReturnType<typeof createWiredHost>; years: YearRecord[] } => {
     const host = createWiredHost();
-    const years = runHeadless(host, script, { years: args.years, seed, invariants: false, now: () => performance.now(), afterNewCity: (h) => flattenTerrain(h.state) });   // 与 tools/headless.ts 同样铺平
+    const years = runHeadless(host, script, { years: args.years, seed, disasters: args.disasters, invariants: false, now: () => performance.now(), afterNewCity: (h) => flattenTerrain(h.state) });   // 与 tools/headless.ts 同样铺平、同样的灾害开关
     return { host, years };
   };
   const t0 = performance.now();
@@ -73,16 +75,17 @@ function main(): number {
     problems.push(...diffYears('重放 vs A', years, A.years));
   }
   if (args.baseline) {
-    const raw = JSON.parse(readFileSync(resolve(args.baseline), 'utf8')) as { years?: BaselineYear[]; meta?: { seed?: number; variant?: string } };
+    const raw = JSON.parse(readFileSync(resolve(args.baseline), 'utf8')) as { years?: BaselineYear[]; meta?: { seed?: number; variant?: string; disasters?: boolean } };
     if (!raw.years) problems.push('基线文件没有 years 数组');
     else {
       if (raw.meta?.seed !== undefined && raw.meta.seed !== seed) problems.push(`基线 seed ${raw.meta.seed} ≠ 本次 ${seed}`);
       if (raw.meta?.variant !== undefined && raw.meta.variant !== args.variant) problems.push(`基线 variant ${raw.meta.variant} ≠ 本次 ${args.variant}`);
+      if (raw.meta?.disasters !== undefined && raw.meta.disasters !== args.disasters) problems.push(`基线随机灾害 ${String(raw.meta.disasters)} ≠ 本次 ${String(args.disasters)}（--disasters）`);
       problems.push(...diffYears('基线 vs A', raw.years.slice(0, A.years.length), A.years));
     }
   }
   if (!args.quiet) {
-    console.log(`hash-compare: variant ${args.variant} seed ${seed} years ${args.years}（${Math.round(performance.now() - t0)} ms）`);
+    console.log(`hash-compare: variant ${args.variant} seed ${seed} years ${args.years} 随机灾害 ${args.disasters ? '开' : '关'}（${Math.round(performance.now() - t0)} ms）`);
     for (const y of A.years) console.log(`  year ${String(y.year).padStart(3)}  full ${hex(y.hash)}  sc2 ${hex(y.hashSc2)}`);
   }
   if (problems.length > 0) { for (const p of problems) console.error(`hash-compare: ${p}`); return 1; }

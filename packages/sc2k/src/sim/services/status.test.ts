@@ -30,9 +30,26 @@ describe.each(['optimistic', 'pessimistic'] as const)('services.cityStatus（%s 
     expect(nextComplaint(host)).toBeNull();
     state.census.normalPop = 500;
     expect(nextComplaint(host)).toBe('complaint.road');
-    state.utilities.power.usagePct = 99;
+    state.utilities.power.generation = 704; state.utilities.power.usagePct = 99;   // 有发电时才按利用率判定
     expect(nextComplaint(host)).toBe('complaint.power');
     expect(log.filter((t) => t !== NewsType.Growth)).toEqual([NewsType.DemandTransit, NewsType.DemandPower]);
+  });
+
+  it('无发电（利用率按定义 100%）：空城不催电；有分区地 / 断电建筑才催电；军事区不算', () => {
+    const log: number[] = [];
+    const { host, state } = createTestContext({ profile, systems: [createServicesSystem(), spyEvents(profile, log)] });
+    Object.assign(state.utilities.power, { generation: 0, consumers: 0, supplied: 0, usagePct: 100, unpoweredBuildingTiles: 0 });   // utilities 的空城报告
+    expect(nextComplaint(host)).toBeNull();
+    expect(log.filter((t) => t === NewsType.DemandPower)).toEqual([]);
+    state.layers.xzon[tileIndex(60, 60)] = 7;                                   // 军事区：生长不查电
+    expect(nextComplaint(host)).toBeNull();
+    state.layers.xzon[tileIndex(61, 60)] = 1;                                   // 划了住宅区但没电厂
+    expect(nextComplaint(host)).toBe('complaint.power');
+    state.layers.xzon[tileIndex(61, 60)] = 0;
+    expect(nextComplaint(host)).toBeNull();
+    state.utilities.power.unpoweredBuildingTiles = 12;                          // 唯一电厂被毁：建筑全断电
+    expect(nextComplaint(host)).toBe('complaint.power');
+    expect(log.filter((t) => t === NewsType.DemandPower)).toHaveLength(2);
   });
 
   it('诉求链顺序：警 → 消 → (水) → 医院 → 学校 → 海港 / 连接 → 机场 → 休闲；满足一项后进入下一项', () => {

@@ -46,7 +46,7 @@ pnpm --filter sc2k lint           # 原创性黑名单扫描 + 数据表产物�
 pnpm --filter sc2k typecheck      # 两套 tsconfig（含无 DOM 的 sim 配置）
 pnpm test                         # 根 vitest，自动包含 packages/sc2k/src/**/*.test.ts
 pnpm --filter sc2k e2e            # Playwright 冒烟 / 浏览器与 Node 哈希一致性
-pnpm --filter sc2k headless -- --years 50 --script golden-mini-city   # 无头长跑
+pnpm --filter sc2k headless -- --years 50 --script golden-mini-city   # 无头长跑（默认无随机灾害；加 --disasters 打开）
 pnpm --filter sc2k hash:compare -- --years 20                          # 确定性双跑比对
 pnpm --filter sc2k art:sheet                                           # 原创精灵总览图
 ```

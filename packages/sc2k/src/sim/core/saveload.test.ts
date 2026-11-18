@@ -9,7 +9,7 @@ import type { SimHost } from '../../contracts/host';
 import type { PrivState } from '../../contracts/state';
 import type { System, SystemId } from '../../contracts/system';
 import { createWiredHost } from '../../app/wire';
-import { GOLDEN_PARAMS, checkInvariants, createTestContext, flattenTerrain, goldenMiniCity, nullSystem, runDays, runHeadless, simInternalsOf } from '../../testkit';
+import { GOLDEN_LAYOUT, GOLDEN_PARAMS, checkInvariants, createTestContext, flattenTerrain, goldenMiniCity, nullSystem, runDays, runHeadless, simInternalsOf } from '../../testkit';
 
 interface ServicesPriv extends PrivState { v: number; counter: number; marks: Uint8Array }
 
@@ -154,7 +154,7 @@ describe('saveload: 真系统（INT-A：金城 3 年 + 一张债券 + 一次火�
     runHeadless(host, goldenMiniCity('full'), { years: 1, invariants: false, afterNewCity: (h) => flattenTerrain(h.state) });
     expect(host.dispatch({ type: 'issueBond' }).ok).toBe(true);
     // 火灾原点放在火车站（周围是铁路 / 空地，烧完即灭，城区不受波及）；无消防局的金城若从住宅区起火会整片烧光
-    expect(host.dispatch({ type: 'requestDisaster', kind: DisasterKind.Fire, x: 88, y: 58 }).ok).toBe(true);
+    expect(host.dispatch({ type: 'requestDisaster', kind: DisasterKind.Fire, x: GOLDEN_LAYOUT.railDepot.x, y: GOLDEN_LAYOUT.railDepot.y }).ok).toBe(true);
     runDays(host, 2 * 300 + 10);
     return host;
   };

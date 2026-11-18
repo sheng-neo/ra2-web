@@ -27,6 +27,21 @@ describe.each(['optimistic', 'pessimistic'] as const)('network（%s 桩）', (pr
     expect(host.dispatch({ type: 'network', kind: 'road', from: T(5, 20), to: T(5, 5) }).ok).toBe(true);
     for (let y = 5; y <= 20; y++) expect(xb(state, 5, y)).toBe(ROAD_TB);
   });
+  it('电线铺在分区地上保留分区码（spec:power-water §2.7），推掉电线后分区地还原；道路仍清分区码；划区工具跳过电线格且不改其分区码', () => {
+    const { host, state } = mk(profile);
+    expect(host.dispatch({ type: 'zoneRect', zone: 1, x0: 10, y0: 10, x1: 20, y1: 12 }).ok).toBe(true);
+    expect(host.dispatch({ type: 'network', kind: 'power', from: T(10, 11), to: T(20, 11) }).ok).toBe(true);
+    for (let x = 10; x <= 20; x++) { expect(xb(state, x, 11)).toBe(POWER_LR); expect(state.layers.xzon[T(x, 11)]).toBe(0xf0 | 1); }
+    expect(host.dispatch({ type: 'network', kind: 'road', from: T(10, 12), to: T(20, 12) }).ok).toBe(true);
+    for (let x = 10; x <= 20; x++) expect(state.layers.xzon[T(x, 12)]).toBe(0xf0);
+    // 改划为商业：电线格被跳过（不收费、不改码），其余格改码
+    const r = host.dispatch({ type: 'zoneRect', zone: 3, x0: 10, y0: 10, x1: 20, y1: 11 });
+    expect(r).toMatchObject({ ok: true });
+    for (let x = 10; x <= 20; x++) { expect(state.layers.xzon[T(x, 10)]! & 0x0f).toBe(3); expect(state.layers.xzon[T(x, 11)]).toBe(0xf0 | 1); expect(xb(state, x, 11)).toBe(POWER_LR); }
+    // 推掉电线：分区码留在地上
+    expect(host.dispatch({ type: 'bulldoze', tiles: [T(15, 11)] }).ok).toBe(true);
+    expect(xb(state, 15, 11)).toBe(0); expect(state.layers.xzon[T(15, 11)]! & 0x0f).toBe(1);
+  });
   it('重复铺设免费；接入既有道路时邻格经 pieceFor 重选形（T 字 / 十字）', () => {
     const { host, state } = mk(profile);
     host.dispatch({ type: 'network', kind: 'road', from: T(10, 10), to: T(20, 10) });

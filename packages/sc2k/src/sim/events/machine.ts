@@ -45,14 +45,18 @@ export function newsTypeOfDisaster(kind: number): NewsType {
 /** 终止条件：无任何标记、无灾害物件、无余震、洪水阶段已归零。 */
 export const nothingActive = (P: EventsPriv): boolean => !anyMarker(P) && P.actors.length === 0 && P.quakeShake === 0 && P.floodPhase === FloodPhase.None;
 
-/** 原点选择 + 种子（STARTING 的核心）；返回 null 表示前置条件不满足（不进入灾害模式）。 */
-function seed(ctx: SimContext, T: EventsTuning, kind: DisasterKind, at: number): { x: number; y: number } | null {
+/**
+ * 原点选择 + 种子（STARTING 的核心）；返回 null 表示前置条件不满足（不进入灾害模式）。
+ * wasActive = 灾害模式中再次触发（菜单连点）：spec §2.2.4"下一 tick 叠加开始，不重置已有标记；disasterPoint 更新为新原点"——火灾照常另点一处。
+ * 只有"未进入灾害、但已有火标记"（电厂到期 destroyStructure(PLANT_EOL) 预点燃瓦砾后置的 pending）才沿用现有火场、不另选火点。
+ */
+function seed(ctx: SimContext, T: EventsTuning, kind: DisasterKind, at: number, wasActive: boolean): { x: number; y: number } | null {
   const P = privOf(ctx.state);
   const xy = (i: number): { x: number; y: number } => ({ x: tileX(i), y: tileY(i) });
   switch (kind) {
     case DisasterKind.Fire: {
-      if (countMarker(P, TileMarker.Fire) > 0 && at < 0) return centroidOf(P, TileMarker.Fire)!;   // 已在烧（电厂到期预点燃 / 叠加）
-      const origin = at >= 0 && flammableAt(ctx, at) ? at : pickFireOrigin(ctx);
+      if (!wasActive && at < 0 && countMarker(P, TileMarker.Fire) > 0) return centroidOf(P, TileMarker.Fire)!;   // 电厂到期预点燃
+      const origin = at >= 0 && flammableAt(ctx, at) ? at : pickFireOrigin(ctx, P.marker);
       if (origin < 0) return null;
       igniteTile(ctx, P, T.fire, origin);
       return xy(origin);
@@ -81,7 +85,7 @@ export function startDisaster(ctx: SimContext, T: EventsTuning, kind: DisasterKi
   }
   const wasActive = D.active;
   if (!wasActive) { P.idleTicks = 0; P.deaths = 0; P.destroyedTiles = 0; }
-  const point = seed(ctx, T, kind, at);
+  const point = seed(ctx, T, kind, at, wasActive);
   if (!point) {
     ctx.act.emit({ type: 'message', key: 'message.disasterUnavailable', args: { name: disasterNameKey(kind) }, level: 'alert' });
     return false;

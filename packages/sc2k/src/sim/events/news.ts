@@ -59,8 +59,9 @@ export function monthlyChecks(ctx: SimContext, t: NewsTuning): void {
 /**
  * 组版：头条 = 号外的触发故事 lead，否则池中最高分（空池 → Junk）；正文 = 其后 bodyStories 条（类型互异）+ 天气栏（value = heat − 100）。
  * consume = 把刊出的故事移出池（号外 / 订阅选项关闭时只组版不消费，故事留待下一份）。
+ * dateAge = 报头日期取哪一天（默认今天；订阅版在第 24 天组版、报头是次日 = 下月 1 日，见 subscriptionDateAge）。
  */
-export function composePaper(ctx: SimContext, t: NewsTuning, extra: boolean, consume: boolean, lead: StoryRec | null = null): PaperRec {
+export function composePaper(ctx: SimContext, t: NewsTuning, extra: boolean, consume: boolean, lead: StoryRec | null = null, dateAge = ctx.state.clock.age): PaperRec {
   const s = ctx.state, P = privOf(s), w = s.weather;
   const sorted = P.pool.slice().sort(byScore);
   const used: StoryRec[] = [];
@@ -76,7 +77,7 @@ export function composePaper(ctx: SimContext, t: NewsTuning, extra: boolean, con
   }
   body.push({ type: NewsType.Weather, value: w.heat - 100, score: 0, day: s.clock.age });
   if (consume && used.length > 0) P.pool = P.pool.filter((x) => !used.includes(x));
-  const d = dateOf(s.clock);
+  const d = dateOf({ ...s.clock, age: dateAge });
   const rec: PaperRec = {
     year: d.year, month: d.month, extra,
     headline: [{ ...headline }], stories: body.map((x) => ({ ...x })),
@@ -85,6 +86,12 @@ export function composePaper(ctx: SimContext, t: NewsTuning, extra: boolean, con
   P.paper = [rec];
   return rec;
 }
+
+/**
+ * 订阅版的报头日期（spec:disasters §2.10："每年 4 月 1 日和 8 月 1 日（月索引 3、7 的第 0 天）"）：
+ * 组版跑在 paperMonths（2 / 6）第 24 天的 news 阶段，即该月最后一天；报纸属于次日 = 下月 1 日，报头按次日打。
+ */
+export const subscriptionDateAge = (age: number): number => age + 1;
 
 const toView = (s: StoryRec): NewsStoryView => ({ type: s.type, value: s.value, power: s.score, monthIndex: Math.floor(s.day / DAYS_PER_MONTH) });
 

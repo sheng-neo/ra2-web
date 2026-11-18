@@ -1,14 +1,16 @@
 // ===== sim/utilities/priv.ts =====（ARCHITECTURE §3.3；spec:power-water §2.6 / §3.7）
 // 持久私有态：只放不可由真源层重建的东西——
 //  - 到期型（4×4）电厂的年龄与负载显示值（XBLD 推不出年龄；.SC2 侧落在 XMIC 记录 +1 / +4，由 save.ts 读写）；
-//  - requestRescan 置的脏标志（若只放闭包，快照在"命令之后、日末之前"保存再载入会丢掉重扫，续跑哈希与不中断不一致）。
+//  - requestRescan 置的脏标志（若只放闭包，快照在"命令之后、日末之前"保存再载入会丢掉重扫，续跑哈希与不中断不一致）；
+//  - 风 / 太阳能的本月种子 outSeed（月度 powerScan 取种，月内重扫复用；见 scan.ts FormulaSeed）。
 // 风 / 水电永不到期、无年龄，不进表；plantAt 对它们返回年龄 0。列式 TypedArray，1024 座上限时编码后 ≈ 6 KB（预算 16 KB）。
+// 版本 2 = 版本 1 + outSeed；v1 快照在 privOf 里就地迁移（outSeed = −1，电厂年龄保留）。
 import { ANCHOR_BIT, TILES, tileX, tileY } from '../../contracts/grid';
 import { FOOTPRINT, lotIsUniform } from '../../contracts/footprint';
 import type { PrivState } from '../../contracts/state';
 import { PLANT_EXPIRES } from './defs';
 
-export const PRIV_VERSION = 1;
+export const PRIV_VERSION = 2;
 
 export interface UtilitiesPriv extends PrivState {
   v: number;
@@ -17,19 +19,32 @@ export interface UtilitiesPriv extends PrivState {
   plantAnchors: Int32Array;     // 锚点（TL 格）索引升序
   plantAges: Uint8Array;        // 年龄（年）
   plantLoads: Uint8Array;       // 上次年度更新的负载显示值（usagePct + 抖动）
+  outSeed: number;              // 本月风 / 太阳能种子（0..2³¹−1，priv 只收 i32）；−1 = 本月未取种（重扫取分布中值）
 }
 export interface PlantRec { anchor: number; age: number; load: number }
 
 export function freshPriv(): UtilitiesPriv {
-  return { v: PRIV_VERSION, dirtyPower: false, dirtyWater: false, plantAnchors: new Int32Array(0), plantAges: new Uint8Array(0), plantLoads: new Uint8Array(0) };
+  return { v: PRIV_VERSION, dirtyPower: false, dirtyWater: false, plantAnchors: new Int32Array(0), plantAges: new Uint8Array(0), plantLoads: new Uint8Array(0), outSeed: -1 };
 }
 
-/** 形状校验：缺键 / 类型不符 / 版本不符 → false（调用方丢弃并从真源重建）。 */
-export function isUtilitiesPriv(p: PrivState | undefined): p is UtilitiesPriv {
-  if (!p || p.v !== PRIV_VERSION) return false;
+/** v1 / v2 共有部分的形状。 */
+function plantColumnsOk(p: PrivState): boolean {
   if (typeof p.dirtyPower !== 'boolean' || typeof p.dirtyWater !== 'boolean') return false;
   const a = p.plantAnchors, g = p.plantAges, l = p.plantLoads;
   return a instanceof Int32Array && g instanceof Uint8Array && l instanceof Uint8Array && a.length === g.length && a.length === l.length;
+}
+const seedOk = (v: unknown): boolean => typeof v === 'number' && Number.isInteger(v) && v >= -1 && v <= 0x7fffffff;
+
+/** 形状校验：缺键 / 类型不符 / 版本不符 → false（调用方先尝试 migratePriv，失败再丢弃并从真源重建）。 */
+export function isUtilitiesPriv(p: PrivState | undefined): p is UtilitiesPriv {
+  return !!p && p.v === PRIV_VERSION && plantColumnsOk(p) && seedOk(p.outSeed);
+}
+/** v1 → v2 就地迁移（补 outSeed = −1）；返回是否成功（形状不对 → false）。 */
+export function migratePriv(p: PrivState | undefined): boolean {
+  if (!p || p.v !== 1 || !plantColumnsOk(p)) return false;
+  p.outSeed = -1;
+  p.v = PRIV_VERSION;
+  return true;
 }
 
 export function readPlants(p: UtilitiesPriv): PlantRec[] {

@@ -32,7 +32,7 @@ describe('priv 形状与预算', () => {
   it('priv 只含 v / 两个脏标志 / 电厂三列（锚点、年龄、负载）；满表 1024 座仍在 PRIV_BUDGET_BYTES.utilities 内', () => {
     const t = town('realistic');
     const p = privOf(t.state);
-    expect(Object.keys(p).sort()).toEqual(['dirtyPower', 'dirtyWater', 'plantAges', 'plantAnchors', 'plantLoads', 'v']);
+    expect(Object.keys(p).sort()).toEqual(['dirtyPower', 'dirtyWater', 'outSeed', 'plantAges', 'plantAnchors', 'plantLoads', 'v']);
     expect(p.v).toBe(PRIV_VERSION); expect(Array.from(p.plantAnchors)).toEqual([tileIndex(10, 10)]); expect(Array.from(p.plantAges)).toEqual([0]);
     expect(privEncodedSize(p, 'utilities')).toBeLessThan(256);
     const full = freshPriv();

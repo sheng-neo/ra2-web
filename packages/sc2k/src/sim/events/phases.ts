@@ -7,7 +7,7 @@ import type { PhaseRunner, SimContext } from '../../contracts/system';
 import { privOf, tuningOf } from './common';
 import { hasFlammable } from './fire';
 import { floodOriginCandidates } from './flood';
-import { composePaper, decayPool, monthlyChecks, paperDeliveryOn } from './news';
+import { composePaper, decayPool, monthlyChecks, paperDeliveryOn, subscriptionDateAge } from './news';
 import { announceDue } from './tech';
 import { Trend } from './tuning';
 import type { EventsTuning } from './tuning';
@@ -55,7 +55,7 @@ export const news: PhaseRunner = (ctx) => {
   const month = dateOf(s.clock).month;
   if (!T.news.paperMonths.includes(month)) return 'done';
   const on = paperDeliveryOn(s);
-  composePaper(ctx, T.news, false, on);
+  composePaper(ctx, T.news, false, on, null, subscriptionDateAge(s.clock.age));   // 3 月 / 7 月末组版 → 报头 4 月 1 日 / 8 月 1 日
   ctx.act.emit({ type: 'paper', extra: false });
   if (!on) return 'done';
   ctx.act.emit({ type: 'modal', id: 'newspaper', payload: { extra: false } });

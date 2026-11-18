@@ -11,10 +11,17 @@ import { privOf, scanPowerNow, scanWaterNow, syncPlants, tuningOf } from './runt
 import { syncPlantRecords } from './save';
 import type { UtilitiesTuning } from './tuning';
 
-/** 电力事件：supplied < consumers → brownout；利用率 ≥ 阈值（无发电时改看 consumers > 0）→ needPower。报纸 / 顾问侧自行节流。 */
+/**
+ * 电力事件：supplied < consumers → brownout；利用率 ≥ 阈值 → needPower。报纸 / 顾问侧自行节流。
+ * 无发电（generation == 0）时 consumers 只统计"连着电厂的网络"，没有电厂就恒为 0——唯一电厂被毁后会既不报 brownout 也不报 needPower。
+ * spec §4 第 16 条的本意是"空城不刷提示"，因此无发电时改看全城的断电建筑格（unpoweredBuildingTiles > 0 即有用电需求）：
+ * 两个事件都发；真正的空城（无建筑）仍然安静。
+ */
 export function emitPowerEvents(ctx: SimContext, r: PowerReport, tune: UtilitiesTuning): void {
-  if (r.supplied < r.consumers) ctx.act.emit({ type: 'brownout', unpowered: r.unpoweredBuildingTiles });
-  if (r.generation > 0 ? r.usagePct >= tune.needThresholdPct : r.consumers > 0) ctx.act.emit({ type: 'needPower' });
+  const noGen = r.generation === 0;
+  const starved = noGen && r.unpoweredBuildingTiles > 0;
+  if (r.supplied < r.consumers || starved) ctx.act.emit({ type: 'brownout', unpowered: r.unpoweredBuildingTiles });
+  if (noGen ? r.consumers > 0 || starved : r.usagePct >= tune.needThresholdPct) ctx.act.emit({ type: 'needPower' });
 }
 export function emitWaterEvents(ctx: SimContext, r: WaterReport, tune: UtilitiesTuning): void {
   if (r.watered < r.consumers) ctx.act.emit({ type: 'waterShortage', unwatered: r.unwateredBuildingTiles });
@@ -69,7 +76,8 @@ export function makePhases(rt: Runtime): UtilityPhases {
     powerScan(ctx) {
       const p = privOf(ctx);
       syncPlants(ctx, p);
-      const r = scanPowerNow(ctx, rt, true);
+      rt.shadow.set(ctx.state.layers.xbld);         // 月度自愈：影子层与真源整层对齐（扇出遗漏的直接写层也在此收敛）
+      const r = scanPowerNow(ctx, rt, 'monthly');
       p.dirtyPower = false;
       ctx.act.layerChanged('xbit');
       emitPowerEvents(ctx, r.report, tuningOf(ctx));

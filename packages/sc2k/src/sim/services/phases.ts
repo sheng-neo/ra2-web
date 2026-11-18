@@ -3,7 +3,7 @@
 // facilityAnnual（1 月第 0 天年度微模拟更新）。dataMaps / trafficDecay 的本体在 dataMaps.ts / traffic.ts。
 // 规格：spec:services §2.6.2 / §2.7 / §2.8.1 / §2.10.4。
 import { NewsType } from '../../contracts/events';
-import { TILES } from '../../contracts/grid';
+import { TILES, ZONE_MASK, ZoneCode } from '../../contracts/grid';
 import { BudgetLine } from '../../contracts/state';
 import type { PhaseResult, SimContext } from '../../contracts/system';
 import { microsimTypeOf, popCap, recStat, recStat0, recTileId, setStat, setStat0 } from './microsim';
@@ -91,11 +91,26 @@ function hasAnyWater(ctx: SimContext): boolean {
   for (let i = 0; i < TILES; i++) if (ctx.q.terrain.isWater(i)) return true;
   return false;
 }
+/** 是否有需要供电的分区地（R / C / I、机场、海港；军事区生长不查电）。找到第一格即返回。 */
+function hasPoweredZone(ctx: SimContext): boolean {
+  const xzon = ctx.state.layers.xzon;
+  for (let i = 0; i < TILES; i++) { const z = xzon[i]! & ZONE_MASK; if (z !== ZoneCode.None && z !== ZoneCode.Military) return true; }
+  return false;
+}
+/**
+ * needpower：有发电时按 powerUsage ≥ 99%（§2.10.4）；无发电时利用率被定义为 100%（spec:power-water §4 第 16 条，防除零），
+ * 不能直接比——那会让空城每月催电。改为"有用电需求"：网内消费者、断电建筑格或待供电的分区地任一非零。
+ */
+function needsPower(ctx: SimContext, st: ServicesTuning['status']): boolean {
+  const p = ctx.q.utilities.lastPower();
+  if (p.generation > 0) return p.usagePct >= st.powerUsageNeed;
+  return p.consumers > 0 || p.unpoweredBuildingTiles > 0 || hasPoweredZone(ctx);
+}
 
 /** 第一条未满足诉求（顺序即优先级，spec:services §2.10.4）；空城不诉求。 */
 export function firstUnmetDemand(ctx: SimContext, t: ServicesTuning): Demand | null {
   const s = ctx.state, st = t.status, pop = s.census.normalPop, tile = s.counts.tile;
-  if (ctx.q.utilities.lastPower().usagePct >= st.powerUsageNeed) return D.power;
+  if (needsPower(ctx, st)) return D.power;
   if (pop <= 0) return null;
   const sc = structureCounts(s);
   const stations = tile[Xbld.SubwayStation]! + idiv(tile[Xbld.RailDepot]!, 4);

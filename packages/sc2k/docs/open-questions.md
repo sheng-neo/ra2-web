@@ -101,7 +101,7 @@
 | 32 | 预算模态：`autoBudget` 默认 false，真 economy 合入后每年 1 月第 0 天发 `modal budget` 并挂起，UI 必须 `dispatch(modalAnswer)` + `host.modalClosed()` 才能续跑；`gameOver` 同理 | 测试 / `runDays` 自动关模态；app 壳由 WP12 处理 | WP12 | `budgetWindow.test`、e2e 冒烟 24 个月 | 开放 |
 | 28 | 翻转族桥件（0x51–0x5C）"未翻转"精灵的轴向 | `PlacementTuning.bridgeSpriteAxis = 'TB'`：沿 L–R 铺桥时置 `XBit.Flipped`（键名 suspStartB/EndT 暗示默认竖向） | WP3 placement、WP9 art、WP10 render | art 出图后对照 | 待认可 |
 | 29 | 水电 0xC6 / 0xC7 哪个对应 T–B 流向 | `resolveHydroId`：T/B 邻格更高 → 0xC6（hydroA），否则 0xC7 | WP3、WP9 | 精灵朝向对照 | 开放 |
-| 30 | 网络件（0x0E–0x6F）的 XZON 高 nibble | placement 一律写 0xF0 并清分区码（与 spec:transport §2.8"高速段角标全置"一致；地下族不动 XZON） | WP3、WP5 角标重建、WP2 导入 | 原版存档对照 | 待认可 |
+| 30 | 网络件（0x0E–0x6F）的 XZON 高 nibble | placement 一律写 0xF0；道路 / 铁路 / 高速清分区码，**电线保留分区码**（spec:power-water §2.7，Fix-A #9；划区工具仍跳过电线格、不改其分区码）（与 spec:transport §2.8"高速段角标全置"一致；地下族不动 XZON） | WP3、WP5 角标重建、WP2 导入 | 原版存档对照 | 待认可 |
 | 31 | `rewards.stadiumTeams` 的编码 | 位掩码：`teamPick` 答案 k → `stadiumTeams \|= 1 << k` | WP3、WP7 services、WP12b | — | 待认可 |
 | 32 | 微模拟槽位满时是否拒绝放置 | `PlacementTuning.microsimFullRejects` 默认 false（桩恒 −1）；services 合入后 app 翻 true 即原版"140 座"限制 | WP3、WP7 | — | 待接线 |
 | 33 | 推土机拆建筑是否留瓦砾 | 留（spec:terrain §2.11.1 / spec:zones §2.2 表）：平地 → 0x01..0x04（每格 1×1 角标 0xF0、分区码保留），坡面 / 水面 → 空地；再推一次 $1 清空。开关 `rubbleOnDemolish` | WP3、WP5 | 原版实测 | 待认可 |
@@ -130,9 +130,9 @@
 
 | # | 问题 | 当前裁定（默认值 / 位置） | 归属 | 验证手段 | 状态 |
 |---|---|---|---|---|---|
-| INT-A-1 | 无头 50 年金城（seed 12345 / 777 / 2024）在第 11–30 年左右被一次随机地震（每格 `pQuake` 对 4×4 煤电的 16 格累加 ≈ 50% 命中）摧毁唯一电厂后全城失电 → 废弃 → 瓦砾，人口归 0 且无人重建 | 按 spec:disasters §2.6.5 的逐格概率实现，属"无玩家"下的预期结果，不改规则；曲线评估看首次灾害前的平台（约 2.1k–3.1k 人、资金 +2.5k/年） | events / 集成者 | `tools/headless.ts --years 50 --seed S`（INT-A 报告附三 seed 摘要） | 已裁定 |
+| INT-A-1 | 无头 50 年金城（seed 12345 / 777 / 2024）在第 11–30 年左右被一次随机地震（每格 `pQuake` 对 4×4 煤电的 16 格累加 ≈ 50% 命中）摧毁唯一电厂后全城失电 → 废弃 → 瓦砾，人口归 0 且无人重建 | 按 spec:disasters §2.6.5 的逐格概率实现，属"无玩家"下的预期结果，不改规则；曲线评估看首次灾害前的平台（约 2.1k–3.1k 人、资金 +2.5k/年）。Fix-A #15 起 `tools/headless.ts` / `tools/hash-compare.ts` 默认关闭随机灾害（newCity 后派发 `setOption noDisasters`，入日志），`--disasters` 打开 | events / 集成者 | `tools/headless.ts --years 50 --seed S [--disasters]`（INT-A 报告附三 seed 摘要） | 已裁定 |
 | INT-A-2 | `.SC2` 导入后约一个月内 `totals.developedTiles` 为 0（services 要到下个 `dataMaps` 才重算），图表 `graphCurrent` 的分母短暂偏小；zones 的 lot 计时器等 priv 也按规格归零——导入后续跑与导出方不逐位相同（快照路径无此问题） | 接受（`.SC2` 本就是有损格式）；若 UI 觉得图表跳变明显，可在 `postLoadServices('sc2')` 用 xbld / xzon 重数 developedTiles | services / UI | `saveload.test` 真系统用例只断言导入时 hash('sc2') 相同与续跑不变量 | 备忘 |
-| INT-A-3 | 金城无消防局：从住宅区起火会整片烧光（`saveload.test` 的火灾因此放在火车站）；`checkPopulation` 的第 20 年区间断言在随机灾害后不再成立 | `longrun.test` 的 50 年人口区间断言仅在 `SC2K_LONGRUN=1` 下启用，集成者评估长跑时以首次灾害前的平台为准，或用 `tuning.events.monthlyChance` 关闭随机灾害 | 集成者 | `SC2K_LONGRUN=1 pnpm vitest run packages/sc2k/src/sim/core/longrun.test.ts` | 备忘 |
+| INT-A-3 | 金城无消防局：从住宅区起火会整片烧光（`saveload.test` 的火灾因此放在火车站）；`checkPopulation` 的第 20 年区间断言在随机灾害后不再成立 | `longrun.test` 的 50 年人口区间断言仅在 `SC2K_LONGRUN=1` 下启用，集成者评估长跑时以首次灾害前的平台为准，或用 `tuning.events.monthlyChance` 关闭随机灾害。Fix-A：`runHeadless({ disasters: false })` / 无头工具默认无随机灾害；随机起火点不再偏向电厂（#12）；火车站已挪到 (85,55) 并接电（#14），`saveload.test` 的火灾原点改读 `GOLDEN_LAYOUT.railDepot` | 集成者 | `SC2K_LONGRUN=1 pnpm vitest run packages/sc2k/src/sim/core/longrun.test.ts` | 备忘 |
 | INT-A-4 | 浏览器主循环下随机灾害的启动时点现与测试驱动器一致（pending 置位日之后、下一日之前），但灾害进行中玩家派发的命令（调度 / 推土）在日志里只有 (age, 0) 游标，重放时会在灾害开始前派发 | v2：core 把 tick 计数写进日志条目（见 #28） | WP1 / WP13 [v2] | `disasterRun.test` 只覆盖无命令的灾害 | 开放 |
 
 ## INT-B（浏览器玩测 + 外壳打磨）发现
@@ -163,4 +163,15 @@
 | FB-3 | `XTHG` 原样透传而 `XTXT 0xC9..0xEF` 指针在导入时被清 | v1 不表示任何物件（XTHG 物件 v2）：导入清空记录 1..39（头部记录 0 保留，记 `events.thingsDropped`），导出同样清空物件槽 —— 与 spec:file-formats §3.4.3 第 4 步一致 | events | `saveRobust.test` | 已裁定 |
 | FB-4 | 灾害中 `.SC2` 往返 `hash('sc2')` 不变量的适用范围 | 只含火 / 洪水标记时成立（`saveRobust.test`）。已知有损：(a) 进行中的龙卷风 / 怪兽不写 XTHG（v2），读档后灾害在 postLoad 结束（导出记 `events.actorsNotSaved`）；(b) 灾害中毁掉电 / 水设施时 utilities 的重扫在日末才跑（灾害模式日历冻结），导出的 `XBIT` 供电位与 `utilities.*` 统计是旧值，读档重扫后不同。无损存档用 `.sc2kweb` | events / utilities | `saveRobust.test`（a 固定行为）；(b) 仅记录 | 备忘 |
 | FB-5 | 自动存档在 `budgetWindow` 挂起期间写入（yearClosed 发自该阶段），载入后 `modalPause = 1` 却无模态 → 城市卡住 | `session.autosave` 挂起期间只登记，下一个 `dayTick`（模态关闭、当天跑完）再写；economy `postLoad('snapshot')` 遇到恰挂起在 budgetWindow 之后的快照（含旧版自动存档）重发 `budget` 模态；"取消"用的打开时滑块值改存 `priv.economy.budgetOpen`（窗口关闭即删除）。其它阶段挂起型模态（报纸 / 灾害警报 / gameOver）的挂起态快照仍不会自动重开 | app / economy | `session.test`、`budgetWindow.test` | 部分处理 |
+## Fix-A（评审修复轮：模拟层正确性与性能）裁定与备忘
+
+| # | 问题 | 当前裁定（默认值 / 位置） | 归属 | 验证手段 | 状态 |
+|---|---|---|---|---|---|
+| FA-1 | 风 / 太阳能产量在月内被日末重扫（生长 / 命令置脏）反复重抽，断电边界每天漂移（spec:power-water §2.3.2 / §2.3.3 是"每月一次"） | 月度 powerScan 在第一遍遇到第一座风 / 太阳能格时恰消费一次 PRNG 取本月种子（31 位，存 `priv.utilities.outSeed`，PRIV_VERSION 1 → 2，v1 快照就地迁移），每格产量 = `hash32(种子, 格) mod 区间`；月内任何重扫复用种子、零 PRNG；无种子（`.SC2` 读档、月中新建且本月尚无种子）取分布中值。**PRNG 消费点变化**：月度扫描从"每个风 / 太阳能格一次"变为"有则一次"，日末重扫从"每格一次"变为 0；纯煤电城市不变。与 §3.7 第 5 条"第一遍按遍历顺序逐格抽"的字面不同，但每格每月独立、可重放 | utilities | `power.test`"月内重扫复用本月产量"、`priv.test` 快照续跑 | 已实现 |
+| FA-2 | 任何建筑格变化（含分区施工 → 完工）都把电 + 水整图重扫；每次建筑扇出还整图扫一遍电厂锚点 | onTilesChanged 用 XBLD 影子层取 old 值：只有 POWERABLE / PIPED 规则位、消费者口径（≥ 0x70）、发电格、水设施变化才置脏（电变连带水）；电厂表只在涉及到期型电厂格时同步；地下变化只在 PIPED 变了才置水脏；日末 flush 不再同步电厂表 | utilities | `flush.test`"只在会改变扫描结果时置脏" | 已实现 |
+| FA-4 | 唯一电厂被毁后 generation = consumers = 0，既不报 brownout 也不报 needPower | 无发电时以 `unpoweredBuildingTiles > 0` 作为"有用电需求"：两事件都发；空城（无建筑）仍安静 | utilities | `flush.test`"电力事件" | 已实现 |
+| FA-5 | 空城每月状态栏催电并推 DemandPower（无发电时 usagePct 按定义 100%） | services `needsPower`：有发电看利用率 ≥ 99%；无发电看网内消费者 / 断电建筑 / 待供电分区地（军事区除外）任一非零 | services | `status.test` | 已实现 |
+| FA-12 | 随机起火点按 XPOP 加权，services 的 popW 给非分区建筑每格 +2，独占四分格的煤电 XPOP 128：金城里煤电占全部起火权重 39–57% | 只有"有人口的建筑"（0x70..0xC5 分区建筑、0xFB..0xFE 巨型住区）按 XPOP + 1 加权，其余已开发格权重 1；仍恰一次 PRNG。spec §2.6.1 的"XPOP 加权"按"火从人多处起"理解 | events | `fire.test` 起火点用例 | 已实现（待 Lead 认可口径） |
+| FA-13 | 火势"过快"：零覆盖时 16×16 房子街区约 80 tick 全部引燃 | 蔓延 / 扑灭概率与 spec §2.6.1 / §3.4 逐项一致（[低] 数值未改）；修正了唯一偏差：燃尽阶段现对本 tick 新点燃的格也扣燃料（§3.4 第三个 tilesWithMarker）。实测（20×20 房子，20 种子均值）：XFIR 0 → 引燃 398 格、150 tick 熄灭；100 → 299；150 → 126；200 → 12；250 → 3——满资金消防局 7 格内（XFIR ≥ 200）基本扑灭在 1–3 栋。若设计上要更慢的火，调 `tuning.events.fire.spreadBase`（如 0.03），属设计决定 | events / Lead | `fire.test` 燃尽次序与覆盖抑制用例 | 已实现（数值待设计决定） |
+| FA-14 | 金城水泵 (44,58) 与火车站 (88,58) 不与任何受电格相邻，水源永不启动、车站不发车 | 南电线延到 x = 44，水泵挪到 (44,55)，火车站挪到 (85,55)（上邻电线末端、右邻铁路），仍无网络交叉、命令条数不变 | testkit | `goldenMiniCity.test` 邻接与真系统用例 | 已实现 |
 
