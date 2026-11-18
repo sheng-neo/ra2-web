@@ -379,7 +379,7 @@ test.describe('触控', () => {
     strict(info, v1.cx !== v0.cx || v1.cy !== v0.cy, `单指拖动平移（${JSON.stringify(v0)} → ${JSON.stringify(v1)}）`);
     // 长按 → Query 窗口（软件渲染下主线程偶尔忙 > 500 ms 判定窗，最多试 3 次）
     for (let attempt = 0; attempt < 3; attempt++) {
-      await touch('touchStart', [{ x: cx, y: cy }]); await sleep(800); await touch('touchEnd', []); await sleep(300);
+      await touch('touchStart', [{ x: cx, y: cy }]); await sleep(1200); await touch('touchEnd', []); await sleep(400);   // 并行负载下主线程忙，按住 1.2 s
       if (await page.getByTestId('window-query').count()) break;
     }
     await expect(page.getByTestId('window-query')).toBeVisible();
