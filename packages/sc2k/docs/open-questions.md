@@ -171,7 +171,15 @@
 | FA-2 | 任何建筑格变化（含分区施工 → 完工）都把电 + 水整图重扫；每次建筑扇出还整图扫一遍电厂锚点 | onTilesChanged 用 XBLD 影子层取 old 值：只有 POWERABLE / PIPED 规则位、消费者口径（≥ 0x70）、发电格、水设施变化才置脏（电变连带水）；电厂表只在涉及到期型电厂格时同步；地下变化只在 PIPED 变了才置水脏；日末 flush 不再同步电厂表 | utilities | `flush.test`"只在会改变扫描结果时置脏" | 已实现 |
 | FA-4 | 唯一电厂被毁后 generation = consumers = 0，既不报 brownout 也不报 needPower | 无发电时以 `unpoweredBuildingTiles > 0` 作为"有用电需求"：两事件都发；空城（无建筑）仍安静 | utilities | `flush.test`"电力事件" | 已实现 |
 | FA-5 | 空城每月状态栏催电并推 DemandPower（无发电时 usagePct 按定义 100%） | services `needsPower`：有发电看利用率 ≥ 99%；无发电看网内消费者 / 断电建筑 / 待供电分区地（军事区除外）任一非零 | services | `status.test` | 已实现 |
-| FA-12 | 随机起火点按 XPOP 加权，services 的 popW 给非分区建筑每格 +2，独占四分格的煤电 XPOP 128：金城里煤电占全部起火权重 39–57% | 只有"有人口的建筑"（0x70..0xC5 分区建筑、0xFB..0xFE 巨型住区）按 XPOP + 1 加权，其余已开发格权重 1；仍恰一次 PRNG。spec §2.6.1 的"XPOP 加权"按"火从人多处起"理解 | events | `fire.test` 起火点用例 | 已实现（待 Lead 认可口径） |
-| FA-13 | 火势"过快"：零覆盖时 16×16 房子街区约 80 tick 全部引燃 | 蔓延 / 扑灭概率与 spec §2.6.1 / §3.4 逐项一致（[低] 数值未改）；修正了唯一偏差：燃尽阶段现对本 tick 新点燃的格也扣燃料（§3.4 第三个 tilesWithMarker）。实测（20×20 房子，20 种子均值）：XFIR 0 → 引燃 398 格、150 tick 熄灭；100 → 299；150 → 126；200 → 12；250 → 3——满资金消防局 7 格内（XFIR ≥ 200）基本扑灭在 1–3 栋。若设计上要更慢的火，调 `tuning.events.fire.spreadBase`（如 0.03），属设计决定 | events / Lead | `fire.test` 燃尽次序与覆盖抑制用例 | 已实现（数值待设计决定） |
+| FA-12 | 随机起火点按 XPOP 加权，services 的 popW 给非分区建筑每格 +2，独占四分格的煤电 XPOP 128：金城里煤电占全部起火权重 39–57% | 只有"有人口的建筑"（0x70..0xC5 分区建筑、0xFB..0xFE 巨型住区）按 XPOP + 1 加权，其余已开发格权重 1；仍恰一次 PRNG。spec §2.6.1 的"XPOP 加权"按"火从人多处起"理解 | events | `fire.test` 起火点用例 | 已实现；Lead 认可（火从人多处起） |
+| FA-13 | 火势"过快"：零覆盖时 16×16 房子街区约 80 tick 全部引燃 | 蔓延 / 扑灭概率与 spec §2.6.1 / §3.4 逐项一致（[低] 数值未改）；修正了唯一偏差：燃尽阶段现对本 tick 新点燃的格也扣燃料（§3.4 第三个 tilesWithMarker）。实测（20×20 房子，20 种子均值）：XFIR 0 → 引燃 398 格、150 tick 熄灭；100 → 299；150 → 126；200 → 12；250 → 3——满资金消防局 7 格内（XFIR ≥ 200）基本扑灭在 1–3 栋。若设计上要更慢的火，调 `tuning.events.fire.spreadBase`（如 0.03），属设计决定 | events / Lead | `fire.test` 燃尽次序与覆盖抑制用例 | 已实现；Lead 裁定保持规格数值（满资金消防局已能把火压在 1–3 栋） |
 | FA-14 | 金城水泵 (44,58) 与火车站 (88,58) 不与任何受电格相邻，水源永不启动、车站不发车 | 南电线延到 x = 44，水泵挪到 (44,55)，火车站挪到 (85,55)（上邻电线末端、右邻铁路），仍无网络交叉、命令条数不变 | testkit | `goldenMiniCity.test` 邻接与真系统用例 | 已实现 |
 
+
+## 评审修复轮：分区需求振荡（Lead）
+
+| # | 问题 | 裁定 / 处理 | 模块 | 验证 | 状态 |
+|---|---|---|---|---|---|
+| RB-1 | 阻断：默认参数下城市在 1 千与 6 万人之间反复崩塌、大半分区变瓦砾。生长 / 衰退掷骰对称（demand/4000），需求 −200 时每栋楼每年约 46% 整栋废弃；增益 1500 + 平滑 0.25 + 施工期不计供给导致超调 | declineOffset 3000（需求 < −1000 才衰退，最高 25%/访问）、maxDeclinesPerDay 8、ratioGain 1000、smoothing 0.15、施工中终态人口计入供给（pendingSupplyWeight）、非空城外生增长偏置 growthBias {120,40,40}、部分吞并余格还原为空分区地（partialLeftover）。均为 [设计] 参数，偏离 spec:zones §2.5.3 / §2.8.1 的 [低] 数值 | zones | `demand.test`「INT 平衡默认值」、`growth.test` 长跑不振荡断言（50 年版通过）；全真 6 带城镇 20 年两种子：人口年度最大跌幅 54% → 4%，废弃占比峰值 36% → 9% | 已实现 |
+| RB-2 | 邻城人口年度复利无上限，市场项把 C/I 需求永久顶满 | 上限 = neighborPopCapFactor(3) × neighborPopMax × natPop(year) / neighborPopScale；PRNG 消费不变 | zones | `neighbors.test` 上限用例 | 已实现 |
+| RB-3 | 合并 Fix-A（金城水泵通电）后月中导出的 .SC2 往返 hash('sc2') 不一致：读档按当前天气重判供水 | utilities.postLoad('sc2') 信任存档 WATERED 位（runWaterScan keepBits）；utilities.water.supply / usagePct 改只进 'full' | utilities / contracts | `water.test` keepBits 用例、真系统 `saveload.test` | 已实现 |
