@@ -78,6 +78,25 @@ export function summarize(list: readonly Connection[]): ConnectionSummary {
 }
 export const connectionSummary = (state: CityState): ConnectionSummary => summarize(listConnections(state));
 
+/**
+ * .SC2 读档兜底（spec:disasters §2.5.1 第 4 条末"0xFA 由 transport 按几何重建"）：无侧表的灾害中存档（第三方 / compat 导出）里，
+ * 0xFA 被灾害标记覆盖后已被 events 剥离。covered(i) 为真（该格带灾害标记）且 xtxt == 0 的边缘格，若承载垂直于该边的直线路 / 轨 / 高速片段，
+ * 补回 0xFA；至多 budget 格（调用方给"存档记录的连接格数 − 现有连接格数"，保守：不凭空多送连接）。返回补回格数（调用方负责 layerChanged('xtxt')）。
+ */
+export function restoreCoveredConnections(state: CityState, covered: (i: number) => boolean, budget: number): number {
+  const { xbld, xtxt } = state.layers;
+  let n = 0;
+  for (const e of EDGES) {
+    for (let k = 0; k < 128 && n < budget; k++) {
+      const [x, y] = e.at(k);
+      const i = tileIndex(x, y);
+      if (xtxt[i] !== 0 || !covered(i) || connectionKindAt(xbld[i]!, e.axis) === null) continue;
+      xtxt[i] = CONNECTION_MARK; n++;
+    }
+  }
+  return n;
+}
+
 /** 该格若带 0xFA 但已不是任何网络格 → 清掉陈旧标记；返回是否改动（调用方负责 layerChanged('xtxt')）。 */
 export function clearStaleMark(state: CityState, i: number): boolean {
   const L = state.layers;

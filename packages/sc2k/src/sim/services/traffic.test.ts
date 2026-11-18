@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { halfIndex, tileIndex } from '../../contracts/grid';
 import { MISC, miscGet } from '../../contracts/io';
 import { createTestContext, runDays } from '../../testkit';
+import { createTransportSystem } from '../transport';
 import { createServicesSystem } from './index';
+import { countRoadTilesFromLayers } from './traffic';
 import { daysUntil, flush, roadLine } from './testFixtures';
 
 const sumOf = (a: Uint8Array): number => a.reduce((s, v) => s + v, 0);
@@ -79,5 +81,26 @@ describe('services.traffic（读档重建）', () => {
     expect(state.traffic.roadTiles).toBe(4);
     expect(state.traffic.graph).toBe(Math.trunc((day19Total + 6) / 5));
     expect(miscGet(state.rawMisc, MISC.trafficCount)).toBe(state.traffic.total);
+  });
+});
+
+describe('fix-B：读档重建的路网分母与第 19 天（transport.roadTileCounts）同口径', () => {
+  it('含高速 × 道路交叉件 0x4B / 0x4C、匝道、桥：countRoadTilesFromLayers == transport.roadTileCounts；读档后 graph 不变', () => {
+    const systems = () => [createServicesSystem(), createTransportSystem()];
+    const { ctx, host, state } = createTestContext({ systems: systems() });
+    roadLine(ctx, 20, 20, 25, 20);
+    const ids = [0x49, 0x4a, 0x4b, 0x4c, 0x4b, 0x5d, 0x51, 0x58, 0x6a];
+    ids.forEach((id, k) => ctx.act.setXbld(tileIndex(30 + k, 40), id));
+    flush(host);
+    expect(countRoadTilesFromLayers(state.layers.xbld)).toEqual(ctx.q.transport.roadTileCounts());
+    for (let k = 0; k < 9; k++) ctx.act.addTraffic(tileIndex(20, 20), 30);
+    runDays(host, daysUntil(host, 19) + 1);
+    const day19 = { ...state.traffic };
+    expect(day19.highwayTiles).toBeGreaterThan(0);
+    runDays(host, daysUntil(host, 0, true));                           // 第 19 天之后不再加流量：Σ XTRF 不变
+    const doc = host.exportSc2();
+    const b = createTestContext({ systems: systems() });
+    b.host.importSc2(doc);
+    expect(b.state.traffic).toEqual(day19);
   });
 });

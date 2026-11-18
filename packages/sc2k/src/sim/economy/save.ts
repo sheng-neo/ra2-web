@@ -1,8 +1,10 @@
 // ===== sim/economy/save.ts =====（spec:economy-budget §3.10 存档映射、spec:file-formats §2.3.3 27×i32 预算块；ARCHITECTURE §4.3 / §4.5）
 // exportTo：资金 / 债券 / 难度 / 法令位 / 自动预算 / 广告与名望计数 / 11 条产业税率 / 税线 ×3 / 法令块 / 债券块 / 11 条经费块。
-// importFrom：读回以上并由账本块近似重建 ytd；fedRateRaw 与 impeached 没有原版落点，借用税线块索引 2（"未明"槽，spec Q12）。
+// importFrom：读回以上并由账本块近似重建 ytd；fedRateRaw 与 impeached 没有原版落点，借用税线 R / C 块索引 2（"未明"槽，spec Q12；登记在 contracts/io
+//   的 MISC_BORROWED_SLOTS）：只有本项目存档（MISC 0x1054 ≠ 0）才这样解读，读后把 rawMisc 中的借用槽归零；compat 导出由 core 按 rawMisc 写回原值。
+//   其余块的索引 2（税线 I、法令块、经费块）原版"未明"、本项目不用 → 不写，随 rawMisc 原值透传（file-formats §4.22 导出无损性）。
 // 债券块在契约里只有 26 个 i32（0x0930..0x0997），写 [count, avgRateRaw, (count, avgRateRaw) × 12]，利率总和可由债券数组重算故省略。
-import { MISC, miscGet, miscSet } from '../../contracts/io';
+import { MISC, MISC_BORROWED_SLOTS, miscGet, miscSet } from '../../contracts/io';
 import type { Sc2Document } from '../../contracts/io';
 import { dateOf } from '../../contracts/state';
 import type { Diagnostic, SimContext } from '../../contracts/system';
@@ -26,9 +28,10 @@ export const industryTaxOffset = (k: number): number => MISC.industryGraph + 44 
 const svcOffset = (line: number): number => MISC.svcPolice + SVC_STRIDE * line;
 const taxOffsets: readonly number[] = [MISC.taxRes, MISC.taxCom, MISC.taxInd];
 
-/** 写一个 27×i32 块：[cur0, cur1, cur2, (a, b) × 12]，(a, b) 取自账本 hist 的 at(m)。 */
-function writeBlock(misc: Int32Array, off: number, cur: readonly [number, number, number], at: (m: number) => readonly [number, number]): void {
-  miscSet(misc, off, cur[0]); miscSet(misc, off + 4, cur[1]); miscSet(misc, off + 8, cur[2]);
+/** 写一个 27×i32 块：[cur0, cur1, cur2?, (a, b) × 12]，(a, b) 取自账本 hist 的 at(m)；cur2 缺省 = 不写（保留 doc 里 rawMisc 的原值）。 */
+function writeBlock(misc: Int32Array, off: number, cur: readonly [number, number, number?], at: (m: number) => readonly [number, number]): void {
+  miscSet(misc, off, cur[0]); miscSet(misc, off + 4, cur[1]);
+  if (cur[2] !== undefined) miscSet(misc, off + 8, cur[2]);
   for (let m = 0; m < 12; m++) { const [a, b] = at(m); miscSet(misc, off + 12 + m * 8, a); miscSet(misc, off + 16 + m * 8, b); }
 }
 function readBlockMonths(misc: Int32Array, off: number, into: (m: number, a: number, b: number) => void): void {
@@ -47,18 +50,18 @@ export function exportEconomy(ctx: SimContext, doc: Sc2Document): void {
   miscSet(misc, MISC.advertising, e.counters.advertising);
   miscSet(misc, MISC.fame, e.counters.fame);
   for (let k = 0; k < LINE_COUNT; k++) miscSet(misc, industryTaxOffset(k), e.industryTax[k]!);
-  const taxCur: readonly (readonly [number, number, number])[] = [
-    [inp.taxable.r, e.taxRate.r, e.fedRateRaw],
-    [inp.taxable.c, e.taxRate.c, e.impeached ? IMPEACHED_MAGIC : 0],
-    [inp.taxable.i, e.taxRate.i, 0],
+  const taxCur: readonly (readonly [number, number, number?])[] = [
+    [inp.taxable.r, e.taxRate.r, e.fedRateRaw],                     // 借用槽（MISC_BORROWED_SLOTS）
+    [inp.taxable.c, e.taxRate.c, e.impeached ? IMPEACHED_MAGIC : 0],  // 借用槽
+    [inp.taxable.i, e.taxRate.i],                                    // 索引 2 原版未明：透传
   ];
   for (let z = 0; z < 3; z++) writeBlock(misc, taxOffsets[z]!, taxCur[z]!, (m) => [h[histTax(z as 0 | 1 | 2, m)]!, h[histTax(z as 0 | 1 | 2, m) + 1]!]);
   const lastOrdNet = priv.ytd.length > 0 ? priv.ytd[priv.ytd.length - 1]![F_ORD_NET]! : 0;
-  writeBlock(misc, MISC.ordinanceBlock, [enactedCount(e.ordinances), lastOrdNet, 0], (m) => [h[histOrd(m)]!, h[histOrd(m) + 1]!]);
+  writeBlock(misc, MISC.ordinanceBlock, [enactedCount(e.ordinances), lastOrdNet], (m) => [h[histOrd(m)]!, h[histOrd(m) + 1]!]);
   const bs = bondStats(e);
   miscSet(misc, MISC.bondBlock, bs.count); miscSet(misc, MISC.bondBlock + 4, bs.avgRaw);
   for (let m = 0; m < 12; m++) { miscSet(misc, MISC.bondBlock + 8 + m * 8, h[histBond(m)]!); miscSet(misc, MISC.bondBlock + 12 + m * 8, h[histBond(m) + 1]!); }
-  for (let line = 0; line < LINE_COUNT; line++) writeBlock(misc, svcOffset(line), [inp.lineCount[line]!, e.funding[line]!, 0], (m) => [h[histLine(line, m)]!, h[histLine(line, m) + 1]!]);
+  for (let line = 0; line < LINE_COUNT; line++) writeBlock(misc, svcOffset(line), [inp.lineCount[line]!, e.funding[line]!], (m) => [h[histLine(line, m)]!, h[histLine(line, m) + 1]!]);
   // 设施数双账对账（spec §4.13）：services 的计数非零且与地块推出的不一致时记日志（以地块为准）。
   const svc = ctx.q.services.structureCounts(), tiles = structureCountsFromTiles(s);
   for (const key of ['police', 'prison', 'fire', 'hospital', 'school', 'college', 'busDepot'] as const) {
@@ -119,9 +122,12 @@ export function importEconomy(ctx: SimContext, doc: Sc2Document, diag: Diagnosti
   e.autoBudget = miscGet(misc, MISC.autoBudget) !== 0;
   e.counters.advertising = clampInt(miscGet(misc, MISC.advertising), 0, tune.advertisingCounterMax);
   e.counters.fame = miscGet(misc, MISC.fame);
-  e.impeached = miscGet(misc, MISC.taxCom + 8) === IMPEACHED_MAGIC;
+  // 借用槽只在本项目存档里有意义（第三方存档的这两个槽是原版"未明"值，不解读、随 rawMisc 透传）
+  const ours = miscGet(misc, MISC.prngMarker) !== 0;
+  e.impeached = ours && miscGet(misc, MISC.taxCom + 8) === IMPEACHED_MAGIC;
   // fedRateRaw：税线 R 块索引 2（本项目约定）→ XGRP Fed Rate 最近月值 × 10000 → 按 natTrend 初始化
-  const fedSlot = miscGet(misc, MISC.taxRes + 8);
+  const fedSlot = ours ? miscGet(misc, MISC.taxRes + 8) : 0;
+  if (ours) for (const off of MISC_BORROWED_SLOTS) s.rawMisc[off >> 2] = 0;   // 项目私有值已读进状态；不得经 compat 导出流到原版
   const fedGraph = graphLatest(s.xgrp, GraphSeries.FedRate, SEG_MONTH, SEG_MONTH_LEN) * 10000;
   if (fedSlot >= B.fedMinRaw && fedSlot <= B.fedMaxRaw) e.fedRateRaw = fedSlot;
   else if (fedGraph >= B.fedMinRaw && fedGraph <= B.fedMaxRaw) { e.fedRateRaw = fedGraph; diag.push({ level: 'info', code: 'economy.fedRateRebuilt', message: `联邦利率由 XGRP 重建为 ${fedGraph}` }); }

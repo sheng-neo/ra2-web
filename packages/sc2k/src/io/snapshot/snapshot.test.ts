@@ -89,6 +89,33 @@ describe('snapshot: 经 SimHost 的往返', () => {
     b.host.modalClosed();
     expect(b.state.clock.age).toBe(22);
   });
+  it('fix-B：头部 JSON 损坏 / 条目为 null → 受控 Error（非 SyntaxError），状态与运行期缓冲（事件 / 命令日志）都不变', () => {
+    const a = createTestContext({ seed: 3 });
+    runDays(a.host, 5);
+    const bytes = a.host.saveSnapshot();
+    const HEADER_AT = 8 + 2 + 4;                                                      // magic | u16 version | u32 headerLen | header JSON
+    expect(String.fromCharCode(bytes[HEADER_AT]!)).toBe('{');
+    const b = createTestContext({ seed: 9 });
+    runDays(b.host, 2);
+    expect(b.host.dispatch({ type: 'setSpeed', speed: 4 }).ok).toBe(true);
+    const before = b.host.hash('full'), log = b.host.commandLog().slice();
+    const broken = bytes.slice(); broken[HEADER_AT] = 0x78;                           // 'x{...' 不是合法 JSON
+    let thrown: unknown;
+    try { b.host.loadSnapshot(broken); } catch (err) { thrown = err; }
+    expect(thrown).toBeInstanceOf(Error);
+    expect(thrown).not.toBeInstanceOf(SyntaxError);
+    expect((thrown as Error).message).toMatch(/^snapshot: 头部 JSON 损坏/);
+    // 条目为 null：同样是受控错误
+    const json = utf8Decode(bytes.subarray(HEADER_AT, HEADER_AT + new DataView(bytes.buffer, bytes.byteOffset).getUint32(10, true)));
+    const start = json.indexOf('[') + 1, end = json.indexOf('}', start) + 1;            // 第一条条目对象 → 等长的 "null   "
+    const nulled = json.slice(0, start) + 'null'.padEnd(end - start, ' ') + json.slice(end);
+    expect(nulled.length).toBe(json.length); expect(() => JSON.parse(nulled) as unknown).not.toThrow();
+    const withNull = bytes.slice(); withNull.set(Array.from(nulled, (ch) => ch.charCodeAt(0)), HEADER_AT);
+    expect(() => b.host.loadSnapshot(withNull)).toThrow(/^snapshot: 头部/);
+    expect(b.host.hash('full')).toBe(before);
+    expect(b.host.commandLog()).toEqual(log);                                         // 失败的读档没有丢掉命令日志
+    expect(b.host.drainEvents().some((e) => e.type === 'dayTick')).toBe(true);        // 也没有清空待派发事件
+  });
 });
 
 describe('snapshot: priv 白名单与预算（编解码器层）', () => {

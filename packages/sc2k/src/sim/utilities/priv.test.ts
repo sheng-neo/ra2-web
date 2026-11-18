@@ -1,12 +1,14 @@
 // ===== sim/utilities/priv.test.ts =====（ARCHITECTURE §3.3 / §4.4 / §4.5：priv 只含不可重建部分、预算、快照与 .SC2 两条读档路径、年度更新）
 import { describe, expect, it } from 'vitest';
-import { XBit, tileIndex } from '../../contracts/grid';
+import { TileMarker, XBit, tileIndex } from '../../contracts/grid';
 import { PRIV_BUDGET_BYTES } from '../../contracts/snapshot';
 import type { PrivState } from '../../contracts/state';
 import type { StubProfile } from '../../contracts/testkit';
 import { privEncodedSize } from '../../io/snapshot';
 import { createTestContext, runDays } from '../../testkit';
 import { fakePlacementSystem, line, paintWater, place } from './fixtures';
+import { createEventsSystem } from '../events';
+import type { EventsPriv } from '../events/priv';
 import { createUtilitiesSystem } from './index';
 import { PRIV_VERSION, freshPriv, writePlants } from './priv';
 import type { UtilitiesPriv } from './priv';
@@ -161,5 +163,29 @@ describe.each(PROFILES)('年度更新 utilitiesAnnual（%s 桩）', (profile) =>
     expect(info.ageYears).toBe(1);
     expect(info.loadPct).toBeGreaterThanOrEqual(0); expect(info.loadPct).toBeLessThanOrEqual(7);
     expect(t.host.drainEvents().some((e) => e.type === 'plantAging' || e.type === 'plantExpired')).toBe(false);
+  });
+});
+
+describe('fix-B：灾害中 .SC2 往返时电厂年龄（XTXT 标签被灾害标记覆盖）', () => {
+  it('电厂占地被火覆盖：标签经 events 侧表恢复后再链接 XMIC，年龄 / 负载不归零', () => {
+    const sys = () => [createUtilitiesSystem(), fakePlacementSystem(), createEventsSystem()];
+    const a = createTestContext({ profile: 'optimistic', seed: 3, systems: sys() });
+    place(a.host, COAL, 10, 10); runDays(a.host, 21);
+    const anchor = tileIndex(10, 10);
+    privOf(a.state).plantAges[0] = 9; privOf(a.state).plantLoads[0] = 77;
+    for (let dx = 0; dx < 4; dx++) for (let dy = 0; dy < 4; dy++) a.state.layers.xtxt[tileIndex(10 + dx, 10 + dy)] = 0x3d;
+    a.state.layers.xmic[10 * 8] = COAL;                                     // 记录 10（0x3D − 0x33）
+    const P = a.state.priv.events as EventsPriv;
+    for (let dx = 0; dx < 4; dx++) for (let dy = 0; dy < 4; dy++) P.marker[tileIndex(10 + dx, 10 + dy)] = TileMarker.Fire;
+    const doc = a.host.exportSc2();
+    expect(doc.xtxt[anchor]).toBe(TileMarker.Fire);                         // 原始 doc 里锚格是灾害标记，不是标签
+    const b = createTestContext({ profile: 'optimistic', seed: 4, systems: sys() });
+    const diag = b.host.importSc2(doc);
+    expect(b.state.layers.xtxt[anchor]).toBe(0x3d);
+    expect(b.ctx.q.utilities.plantAt(anchor)).toMatchObject({ kind: 'coal', anchor, ageYears: 9, loadPct: 77 });
+    expect(diag.find((d) => d.code === 'utilities.plantsImported')?.message).toContain('1 座从 XMIC 恢复年龄');
+    // 再导出：XMIC 里的年龄 / 负载与第一次一致（不会被清零后写回）
+    const again = b.host.exportSc2();
+    expect(again.xmic[10 * 8 + 1]).toBe(9); expect(again.xmic[10 * 8 + 5]).toBe(77);
   });
 });

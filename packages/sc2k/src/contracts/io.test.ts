@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ChunkId, MiscKey } from './io';
-import { CHUNK_SIZES, COHORT_COUNT, COHORT_STRIDE, MISC, MISC_BYTES, MISC_ZERO_RANGES, UNCOMPRESSED, WRITE_ORDER, cohortOffset, miscGet, miscSet } from './io';
+import { CHUNK_SIZES, COHORT_COUNT, COHORT_STRIDE, MISC, MISC_BORROWED_SLOTS, MISC_BYTES, MISC_ZERO_RANGES, UNCOMPRESSED, WRITE_ORDER, cohortOffset, miscGet, miscSet } from './io';
 import { LAYER_LENGTHS } from './state';
 
 const MISC_SIZE = CHUNK_SIZES.MISC;
@@ -53,6 +53,13 @@ describe('io: MISC 偏移表', () => {
     for (const k of ['prngMarker', 'prngState', 'saveFormatVersion', 'viewZoom', 'xtxtShadow'] as const) expect(inZero(MISC[k], MISC_BYTES[k]), k).toBe(true);
     for (const [a, b] of MISC_ZERO_RANGES) { expect(a % 4).toBe(0); expect(b % 4).toBe(0); expect(b).toBeLessThanOrEqual(MISC_SIZE); expect(a).toBeLessThan(b); }
     expect(MISC.xtxtShadow + MISC_BYTES.xtxtShadow).toBe(0x12bc);
+  });
+  it('fix-B：借用的原版"未明"槽 4 字节对齐、在 4800 B 内、不在零区（零区 compat 时整体清零，借用槽另按 rawMisc 写回）', () => {
+    expect(MISC_BORROWED_SLOTS).toEqual([MISC.taxRes + 8, MISC.taxCom + 8]);
+    for (const off of MISC_BORROWED_SLOTS) {
+      expect(off % 4).toBe(0); expect(off + 4).toBeLessThanOrEqual(MISC_SIZE);
+      expect(MISC_ZERO_RANGES.some(([a, b]) => off >= a && off < b)).toBe(false);
+    }
   });
 });
 

@@ -1,14 +1,15 @@
 // ===== sim/economy/phases.ts =====（spec:economy-budget §2.3.1 第 0 / 21 / 22 天的 economy 阶段、§3.3 settleMonth、§3.4 closeYear / nationalAnnual / budgetWindow、§2.11 破产）
 // 归 economy 的阶段：settleMonth → closeYear → nationalAnnual.economy → budgetWindow（第 0 天）、graphs（第 21 天）、scenario / solvency（第 22 天）。
 // PRNG：只有 nationalAnnual.economy 消费一次 prng.int(Σ权重)；其余阶段不消费。可挂起：closeYear / solvency（gameOver）、budgetWindow（budget）。
+import { DAY_PHASES, phaseApplies } from '../../contracts/clock';
 import type { BudgetLine } from '../../contracts/state';
 import { dateOf } from '../../contracts/state';
-import type { PhaseResult, SimContext, System } from '../../contracts/system';
+import type { PhaseResult, PostLoadSource, SimContext, System } from '../../contracts/system';
 import { makeBudgetView } from './budget';
 import { pushGraphs } from './graphs';
 import {
   F_NET, F_ORD_NET, FLOW_LEN, LINE_COUNT, MONTHS_PER_YEAR, Y_CLOSING, Y_ISSUED, Y_MONTHS, Y_OPENING, Y_REPAID, Y_TOTALS, Y_YEAR, YEAR_LEN,
-  ensurePriv, histBond, histLine, histOrd, histTax, sumFlows, yearView,
+  budgetOpenOf, ensurePriv, histBond, histLine, histOrd, histTax, setBudgetOpen, sumFlows, yearView,
 } from './priv';
 import type { EconomyPriv } from './priv';
 import { takeBudgetSnapshot, tuningOf } from './runtime';
@@ -45,6 +46,8 @@ export function settleMonth(ctx: SimContext): PhaseResult {
   const s = ctx.state, e = s.economy;
   if (s.clock.age === 0) return 'done';
   const tune = tuningOf(ctx), priv = ensurePriv(s);
+  // 预算窗口若未经 modalAnswer 就被关闭（testkit runDays / 直接 modalClosed），残留的"取消"快照在下一次月结丢弃（在阶段里做：两条读档路径与不中断的一局一致）
+  setBudgetOpen(priv, null);
   const m = (dateOf(s.clock).month + 11) % 12;
   const inp = collectInputs(ctx, tune);
   const flow = computeFlow(e, inp, m, tune, ctx.catalogue.ORDINANCES);
@@ -108,24 +111,45 @@ export function nationalAnnualEconomy(ctx: SimContext): PhaseResult {
   return 'done';
 }
 
-/** 1 月第 0 天 budgetWindow（spec §3.4）：yearClosed 始终发出；非自动预算时打开模态窗并挂起。 */
-export function budgetWindow(ctx: SimContext, rt: EconomyRuntime): PhaseResult {
-  const s = ctx.state, e = s.economy, priv = ensurePriv(s), tune = tuningOf(ctx);
-  ctx.act.emit({ type: 'yearClosed', year: dateOf(s.clock).year - 1 });
-  if (e.autoBudget) return 'done';
-  rt.snapshot = takeBudgetSnapshot(ctx);
+/** 发出 budgetWindow + budget 模态（payload 由当前状态与 priv 现算：阶段内首次打开与挂起态快照载入后重开共用）。 */
+function emitBudgetModal(ctx: SimContext, priv: EconomyPriv, tune: EconomyTuning): void {
   const view = makeBudgetView(ctx, priv, tune);
   ctx.act.emit({ type: 'budgetWindow' });
   ctx.act.emit({ type: 'modal', id: 'budget', payload: { view: { ...view, funding: Array.from(view.funding) }, lastYear: yearView(priv.lastYear) } });
+}
+
+/** 1 月第 0 天 budgetWindow（spec §3.4）：yearClosed 始终发出；非自动预算时把打开时的滑块值存进 priv（"取消"用）、打开模态窗并挂起。 */
+export function budgetWindow(ctx: SimContext): PhaseResult {
+  const s = ctx.state, e = s.economy, priv = ensurePriv(s), tune = tuningOf(ctx);
+  ctx.act.emit({ type: 'yearClosed', year: dateOf(s.clock).year - 1 });
+  if (e.autoBudget) return 'done';
+  setBudgetOpen(priv, takeBudgetSnapshot(ctx));
+  emitBudgetModal(ctx, priv, tune);
   return 'suspend';
 }
 
-export function makePhases(rt: EconomyRuntime): NonNullable<System['phases']> {
+/** budgetWindow 阶段挂起时的 phaseCursor（DAY_PHASES[0] 中 budgetWindow 之后一格）。 */
+export const BUDGET_SUSPEND_CURSOR = DAY_PHASES[0]!.indexOf('budgetWindow') + 1;
+
+/**
+ * 任一读档之后（fix-B）：快照恰挂起在 budgetWindow 之后 → 重发 budget 模态（UI 据 'modal' 事件重开窗口，否则城市卡在 modalPause = 1 无从续跑），
+ * "取消"用 priv 里打开时的滑块值（旧快照没有则以载入时的值为准）。其余情况什么都不做（残留的 budgetOpen 由下一次 settleMonth 丢弃，
+ * postLoad 不改 priv，保证快照往返 hash('full') 不变）。不消费 PRNG、不改层。
+ */
+export function resumeBudgetWindow(ctx: SimContext, source: PostLoadSource): void {
+  const c = ctx.state.clock, priv = ensurePriv(ctx.state);
+  const suspendedHere = source === 'snapshot' && c.phaseCursor === BUDGET_SUSPEND_CURSOR && c.age % 25 === 0 && phaseApplies('budgetWindow', c.age, false);
+  if (!suspendedHere) return;
+  if (!budgetOpenOf(priv)) setBudgetOpen(priv, takeBudgetSnapshot(ctx));
+  emitBudgetModal(ctx, priv, tuningOf(ctx));
+}
+
+export function makePhases(_rt: EconomyRuntime): NonNullable<System['phases']> {
   return {
     settleMonth: (ctx) => settleMonth(ctx),
     closeYear: (ctx) => closeYear(ctx),
     'nationalAnnual.economy': (ctx) => nationalAnnualEconomy(ctx),
-    budgetWindow: (ctx) => budgetWindow(ctx, rt),
+    budgetWindow: (ctx) => budgetWindow(ctx),
     graphs: (ctx) => { pushGraphs(ctx, tuningOf(ctx)); return 'done'; },
     /** [v2] 情景评估（spec §2.16）：v1 无情景状态，空转。 */
     scenario: () => 'done',

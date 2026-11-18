@@ -1365,7 +1365,7 @@ export interface Sc2kDebugHandle { host: SimHost; renderer: RendererApi; shell: 
 
 ### 4. 加法导出（蓝本之外，供编解码器 / 测试使用）
 
-- `io.ts`：`MiscKey`；`MISC_BYTES`（每个 MISC 条目的字节长度，io.test 据此断言条目两两不重叠、全部落在 4800 B 内）；`MISC_ZERO_RANGES`（compat 导出清零区间）。`ReadResult` 的诊断类型改为 `import type { Diagnostic }`（蓝本为内联 `import('./system')`）。
+- `io.ts`：`MiscKey`；`MISC_BYTES`（每个 MISC 条目的字节长度，io.test 据此断言条目两两不重叠、全部落在 4800 B 内）；`MISC_ZERO_RANGES`（compat 导出清零区间）；`MISC_BORROWED_SLOTS`（fix-B 加法：本项目借用的原版"未明"槽——税线 R / C 块索引 2；compat 导出按 `rawMisc` 原值写回）。`ReadResult` 的诊断类型改为 `import type { Diagnostic }`（蓝本为内联 `import('./system')`）。
 - `snapshot.ts`：`HashTag`（`HashScope | 'none'`）与 `inHashScope(tag, scope)`；`parsePath(path)`（路径语法的唯一解析器，语法注释见文件头）；`ScalarField` 接口（`path / hash / bool?`，bool 字段编码 0/1）；`BOND_SLOTS = 50`、`NEIGHBOR_SLOTS = 4`；`STRING_FIELDS`（cityName、mayorName、neighbors[0..3].name）；`PRIV_BUDGET_TOTAL_MAX`。`SNAPSHOT_SCHEMA` 在 `rawMisc` 之后、`scalars` 之前多一组"小型定长 TypedArray"条目：`economy.industryTax / economy.funding / industry.ratio / industry.demand / demographics.cohorts / tech.invented / tech.announced`（这些字段因此不在 `SCALAR_FIELDS`）。
 - `dirty.ts`：`BULK_LAYERS`（固定顺序的整层键表）。
 - `render.ts`：`mapCanvasSize(z)`；`SPRITE_KINDS / SPRITE_KIND_CODE`（见 §5）。

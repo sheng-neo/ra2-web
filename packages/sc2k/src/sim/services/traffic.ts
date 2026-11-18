@@ -51,12 +51,16 @@ export function decayTraffic(ctx: SimContext, t: ServicesTuning): TrafficReport 
   return commitReport(ctx.state, sumTraffic(xtrf), ctx.q.transport.roadTileCounts());
 }
 
-/** 读档后按契约谓词（NET_FLAGS）直接数路网格：POSTLOAD_ORDER 里 services 先于 transport，不能依赖对方尚未重建的缓存。 */
+/**
+ * 读档后按契约谓词（NET_FLAGS）直接数路网格：POSTLOAD_ORDER 里 services 先于 transport，不能依赖对方尚未重建的缓存。
+ * 口径必须与 transport 的 roadTileCounts()（第 19 天 trafficDecay 的分母）一致：roadTiles = ROAD_SET ∖ HIGHWAY_SET
+ * （高速 × 道路交叉件 0x4B / 0x4C 只算高速格，spec:transport §2.12.6），否则读档后的 graph 与月度口径不同（fix-B）。
+ */
 export function countRoadTilesFromLayers(xbld: Uint8Array): RoadTileCounts {
   let roadTiles = 0, highwayTiles = 0, bridgeTiles = 0;
   for (let i = 0; i < TILES; i++) {
     const b = xbld[i]!;
-    if (isRoad(b)) roadTiles++;
+    if (isRoad(b) && !isHighway(b)) roadTiles++;
     if (isHighway(b)) highwayTiles++;
     if (isBridge(b)) bridgeTiles++;
   }

@@ -1,7 +1,7 @@
 // ===== sim/economy/save.test.ts =====（spec:economy-budget §3.10 存档映射：.SC2 导出 / 导入往返、ytd 由账本重建、fedRate / impeached 落点；快照 priv 往返与版本校验）
 import { describe, expect, it } from 'vitest';
 import { tileIndex } from '../../contracts/grid';
-import { MISC, miscGet, miscSet } from '../../contracts/io';
+import { MISC, MISC_BORROWED_SLOTS, miscGet, miscSet } from '../../contracts/io';
 import { OrdinanceId } from '../../contracts/state';
 import type { CityState } from '../../contracts/state';
 import type { TestContextOptions } from '../../contracts/testkit';
@@ -108,6 +108,43 @@ describe.each(['optimistic', 'pessimistic'] as const)('.SC2 往返（%s 桩）',
     const c = mk({ profile });
     c.host.importSc2(doc);
     expect(c.state.economy.fedRateRaw).toBe(30000 + 10000 * c.state.national.trend);
+  });
+});
+
+describe('fix-B：借用的原版"未明"槽（MISC_BORROWED_SLOTS）', () => {
+  const PASSTHROUGH = [MISC.taxInd + 8, MISC.ordinanceBlock + 8, MISC.svcPolice + 8, MISC.svcTunnel + 8];
+  it('非 compat 写 fed / 弹劾；其余块的索引 2 不写（rawMisc 原值透传）；compat 导出借用槽按 rawMisc 原值写回', () => {
+    const a = busyCity('optimistic');
+    a.state.economy.impeached = true;
+    for (const [k, off] of PASSTHROUGH.entries()) a.state.rawMisc[off >> 2] = 900 + k;
+    const doc = a.host.exportSc2();
+    expect(miscGet(doc.misc, MISC.taxRes + 8)).toBe(a.state.economy.fedRateRaw);
+    expect(miscGet(doc.misc, MISC.taxCom + 8)).not.toBe(0);
+    for (const [k, off] of PASSTHROUGH.entries()) expect(miscGet(doc.misc, off)).toBe(900 + k);
+    const compat = a.host.exportSc2({ compat: true });
+    for (const off of MISC_BORROWED_SLOTS) expect(miscGet(compat.misc, off)).toBe(0);   // 新城：rawMisc 中借用槽为 0
+    for (const [k, off] of PASSTHROUGH.entries()) expect(miscGet(compat.misc, off)).toBe(900 + k);
+    // 导入本项目存档：照常读回，并把 rawMisc 的借用槽归零 → 再 compat 导出也不带私有值
+    const b = mk();
+    b.host.importSc2(doc);
+    expect(b.state.economy.impeached).toBe(true); expect(b.state.economy.fedRateRaw).toBe(a.state.economy.fedRateRaw);
+    for (const off of MISC_BORROWED_SLOTS) expect(b.state.rawMisc[off >> 2]).toBe(0);
+    for (const off of MISC_BORROWED_SLOTS) expect(miscGet(b.host.exportSc2({ compat: true }).misc, off)).toBe(0);
+  });
+  it('第三方存档（MISC 0x1054 = 0）：借用槽里的原版值不解读为 fed / 弹劾，原样保留并在 compat 导出时写回', () => {
+    const a = busyCity('optimistic');
+    const doc = a.host.exportSc2();
+    miscSet(doc.misc, MISC.prngMarker, 0);                        // 模拟原版存档
+    miscSet(doc.misc, MISC.taxRes + 8, 60000);                    // 恰在 fed 合法区间内的"未明"值
+    miscSet(doc.misc, MISC.taxCom + 8, 0x494d50);                 // 恰为弹劾魔数
+    const b = mk();
+    const diag = b.host.importSc2(doc);
+    expect(b.state.economy.impeached).toBe(false);
+    expect(b.state.economy.fedRateRaw).toBe(40000);               // 由 XGRP 重建（月值 4 × 10000），不是 60000
+    expect(diag.some((d) => d.code === 'economy.fedRateRebuilt')).toBe(true);
+    expect(b.state.rawMisc[(MISC.taxRes + 8) >> 2]).toBe(60000);
+    const compat = b.host.exportSc2({ compat: true });
+    expect(miscGet(compat.misc, MISC.taxRes + 8)).toBe(60000); expect(miscGet(compat.misc, MISC.taxCom + 8)).toBe(0x494d50);
   });
 });
 
