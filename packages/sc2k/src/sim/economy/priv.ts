@@ -1,6 +1,7 @@
 // ===== sim/economy/priv.ts =====（ARCHITECTURE §3.3；spec:economy-budget §3.1 BudgetHistory / MonthlyFlow / YearReport、§3.10）
 // 持久私有态：12 个月环形账本（与 MISC 27×4B 块一一对应）、本年已结月份 ytd、去年年报摘要、年内计数器与事件去重位。
-// 全部用 Int32Array 紧凑编码（PRIV_BUDGET_BYTES.economy = 16 KB，满载 ≈ 5 KB）。运行缓存（预算窗口的取消快照）放闭包。
+// 全部用 Int32Array 紧凑编码（PRIV_BUDGET_BYTES.economy = 16 KB，满载 ≈ 5 KB）。
+// 预算窗口打开期间另有可选键 budgetOpen（打开时的滑块值，"取消"恢复用）：随快照保存，挂起态快照载入后"取消"仍有效（fix-B）；modalAnswer 时删除（未经作答直接 modalClosed 的残留由下一次 settleMonth 丢弃），平时不占字节。
 import type { CityState, PrivState } from '../../contracts/state';
 
 export const ECONOMY_PRIV_VERSION = 1;
@@ -40,6 +41,24 @@ export interface EconomyPriv extends PrivState {
   taxGripe: boolean;           // 本年已报过 taxGripe
 }
 
+/** 预算窗口打开时的滑块值。类型别名（非 interface）以便隐式索引签名满足 PrivValue。tax = [r, c, i]。 */
+export type BudgetOpenRec = { tax: Int32Array; industryTax: Int32Array; funding: Uint8Array; autoBudget: boolean };
+const BUDGET_OPEN_KEY = 'budgetOpen';
+const isBudgetOpen = (v: unknown): v is BudgetOpenRec => {
+  if (v === null || typeof v !== 'object' || Array.isArray(v)) return false;
+  const o = v as Record<string, unknown>;
+  return o.tax instanceof Int32Array && o.tax.length === 3 && o.industryTax instanceof Int32Array && o.industryTax.length === LINE_COUNT
+    && o.funding instanceof Uint8Array && o.funding.length === LINE_COUNT && typeof o.autoBudget === 'boolean';
+};
+/** 当前打开的预算窗口快照；无 / 形状不符 → null。 */
+export function budgetOpenOf(p: EconomyPriv): BudgetOpenRec | null {
+  const v = p[BUDGET_OPEN_KEY];
+  return isBudgetOpen(v) ? v : null;
+}
+export function setBudgetOpen(p: EconomyPriv, rec: BudgetOpenRec | null): void {
+  if (rec) p[BUDGET_OPEN_KEY] = rec; else delete (p as Record<string, unknown>)[BUDGET_OPEN_KEY];
+}
+
 export function freshPriv(): EconomyPriv {
   return { v: ECONOMY_PRIV_VERSION, hist: new Int32Array(HIST_LEN), ytd: [], lastYear: new Int32Array(0), issued: 0, repaid: 0, negYears: 0, underfunded: 0, taxGripe: false };
 }
@@ -63,7 +82,10 @@ export function isValidPriv(p: unknown): p is EconomyPriv {
 /** 取当前 priv；缺失 / 版本不符 / 形状损坏 → 丢弃并换成空账本（不抛错，ARCHITECTURE §3.3）。 */
 export function ensurePriv(state: CityState): EconomyPriv {
   const p = state.priv.economy;
-  if (isValidPriv(p)) return p;
+  if (isValidPriv(p)) {
+    if (p[BUDGET_OPEN_KEY] !== undefined && !isBudgetOpen(p[BUDGET_OPEN_KEY])) setBudgetOpen(p, null);   // 损坏的可选键只丢它自己，不丢账本
+    return p;
+  }
   const fresh = freshPriv();
   state.priv.economy = fresh;
   return fresh;

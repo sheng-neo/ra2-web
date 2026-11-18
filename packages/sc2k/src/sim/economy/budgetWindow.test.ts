@@ -121,6 +121,49 @@ describe.each(['optimistic', 'pessimistic'] as const)('budgetWindow（%s 桩）'
   });
 });
 
+describe('fix-B：挂起在预算窗口时存的快照', () => {
+  it('"取消"快照随 priv 保存：载入挂起态快照 → 重发 budget 模态 → 取消恢复打开窗口时的值；与不中断的一局 hash(full) 相同', () => {
+    const a = mk();
+    expect(advanceUntil(a.host, 301)).toBe(true);
+    expect(a.state.clock.phaseCursor).toBe(BUDGET_CURSOR);
+    a.host.drainEvents();
+    a.host.dispatch({ type: 'setTax', rates: { r: 15, c: 15, i: 15 } });
+    a.host.dispatch({ type: 'setFunding', line: 0, pct: 10 });
+    const bytes = a.host.saveSnapshot();                             // 例如自动存档：窗口开着、滑块已动
+    const b = mk({ seed: 77 });
+    b.host.loadSnapshot(bytes);
+    expect(b.state.clock.modalPause).toBe(1);
+    const reopened = ofType(b.host.drainEvents(), 'modal');
+    expect(reopened.map((m) => m.id)).toEqual(['budget']);           // UI 据此重开窗口（否则卡在 modalPause = 1）
+    for (const h of [a.host, b.host]) {
+      h.dispatch({ type: 'modalAnswer', dialog: 'budget', answer: BUDGET_ANSWER_CANCEL });
+      h.modalClosed();
+    }
+    expect(b.state.economy.taxRate).toEqual({ r: 7, c: 7, i: 7 });   // 闭包快照时代：载入后取消无效，仍是 15
+    expect(b.state.economy.funding[0]).toBe(100);
+    expect(b.state.clock.age).toBe(301);
+    expect(b.host.hash('full')).toBe(a.host.hash('full'));
+    expect(Object.keys(privOf(b.state))).not.toContain('budgetOpen'); // 窗口关闭即删除
+  });
+  it('旧版挂起态快照（priv 无 budgetOpen）：仍重发模态，"取消"以载入时的值为准；不在预算窗口挂起的快照不重发', () => {
+    const a = mk();
+    expect(advanceUntil(a.host, 301)).toBe(true);
+    a.host.dispatch({ type: 'setTax', rates: { r: 11, c: 11, i: 11 } });
+    delete (a.state.priv.economy as Record<string, unknown>).budgetOpen;
+    const b = mk({ seed: 5 });
+    b.host.loadSnapshot(a.host.saveSnapshot());
+    expect(ofType(b.host.drainEvents(), 'modal').map((m) => m.id)).toEqual(['budget']);
+    b.host.dispatch({ type: 'modalAnswer', dialog: 'budget', answer: BUDGET_ANSWER_CANCEL });
+    b.host.modalClosed();
+    expect(b.state.economy.taxRate).toEqual({ r: 11, c: 11, i: 11 });
+    // 平常日子的快照：不发模态
+    const c = mk({ seed: 6 });
+    c.host.loadSnapshot(b.host.saveSnapshot());
+    expect(ofType(c.host.drainEvents(), 'modal')).toEqual([]);
+    expect(c.state.clock.modalPause).toBe(0);
+  });
+});
+
 describe('solvency：破产 / 弹劾最小版', () => {
   it('closeYear 时 funds < impeachFundsThreshold → impeached 事件 + gameOver 模态并挂起；此后 charge / canAfford 拒绝、债券命令锁定', () => {
     const { host, state, ctx } = mk({ tuning: { economy: { impeachFundsThreshold: -1000 } } });

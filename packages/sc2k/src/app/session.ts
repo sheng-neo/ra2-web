@@ -41,7 +41,10 @@ export interface Session {
   deleteSave(id: number): Promise<void>;
   /** 浏览器下载（返回实际使用的扩展名）。 */
   downloadCity(kind?: SaveKind): string;
-  /** 每游戏年：写单条自动存档（.sc2kweb）。 */
+  /**
+   * 写单条自动存档（.sc2kweb）。每游戏年由 yearClosed 触发；该事件发自 budgetWindow 阶段（模态挂起中），
+   * 因此挂起期间（phaseCursor > 0 / modalPause > 0）只登记、等模态关闭且当天跑完（下一个 dayTick）再写（fix-B）。
+   */
   autosave(): Promise<void>;
   /** 读档 / 新城后视图复位（居中 + 默认档）。 */
   resetView(): void;
@@ -73,7 +76,13 @@ export function createSession(d: SessionDeps): Session {
 
   // 导入的原版美术就绪 → 热切换（null = 回到程序化）
   if (d.importer) offs.push(d.importer.onProviderReady((p) => { if (p) renderer.setProvider(p, d.procedural); else renderer.setProvider(d.procedural, null); }));
-  if (d.bus) offs.push(d.bus.on('yearClosed', () => { void autosave(); }));
+  // 自动存档不得在阶段挂起中写：那样存下的是"模态开着"的快照（phaseCursor > 0），载入后需要重开模态才能续跑
+  let autosavePending = false, autosaveBusy = false;
+  const suspended = (): boolean => host.state.clock.phaseCursor > 0 || host.state.clock.modalPause > 0;
+  if (d.bus) {
+    offs.push(d.bus.on('yearClosed', () => { autosavePending = true; void autosave(); }));
+    offs.push(d.bus.on('dayTick', () => { if (autosavePending) void autosave(); }));
+  }
 
   const resetView = (): void => {
     const v = renderer.getView();
@@ -135,11 +144,17 @@ export function createSession(d: SessionDeps): Session {
     return ext;
   }
   async function autosave(): Promise<void> {
+    autosavePending = true;
+    if (autosaveBusy || suspended()) return;                       // 挂起中：等下一个 dayTick；写入中：写完后由下一个 dayTick 补
+    autosaveBusy = true;
     try {
       const list = await store.listSaves();
+      if (suspended()) return;                                     // await 期间又进入挂起（例如另一个模态）：继续等
+      autosavePending = false;
+      const bytes = snapshotBytes();                               // 与判定同步取字节：此刻 phaseCursor == 0
       const prev = list.find((m) => m.name === AUTOSAVE_NAME && m.kind === 'sc2kweb');
-      await store.putSave({ ...(prev ? { id: prev.id } : {}), kind: 'sc2kweb', name: AUTOSAVE_NAME, ...meta(), savedAt: now(), thumbnail: null, bytes: snapshotBytes().slice().buffer });
-    } catch (err) { console.warn('[sc2k] autosave failed', err); }
+      await store.putSave({ ...(prev ? { id: prev.id } : {}), kind: 'sc2kweb', name: AUTOSAVE_NAME, ...meta(), savedAt: now(), thumbnail: null, bytes: bytes.slice().buffer });
+    } catch (err) { console.warn('[sc2k] autosave failed', err); } finally { autosaveBusy = false; }
   }
   return {
     newCity, importSc2Bytes, loadSnapshotBytes, loadBytes,

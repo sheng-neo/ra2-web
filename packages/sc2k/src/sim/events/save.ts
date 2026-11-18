@@ -1,6 +1,7 @@
 // ===== sim/events/save.ts =====（spec:disasters §2.5.1 XTXT 合成 / 剥离与侧表 xtxtShadow、§3.10 存档映射）
-// exportTo：天气 / 灾害 / 发明年写 MISC；marker 合成进 doc.xtxt，被覆盖的微模拟标签 / 标牌进 MISC 0x10BC..0x12BB 的侧表（'XSHD' v1，≤ 168 条）。
-// importFrom：XTXT ≥ 0xFB → marker、0xC9..0xEF 指针清 0；侧表 → 占地补全 → 共享标签按类型 → XMIC 反查；MISC 恢复状态机；运行时计时器按默认值重建。
+// exportTo：天气 / 灾害 / 发明年写 MISC；marker 合成进 doc.xtxt，被覆盖的微模拟标签 / 标牌 / 邻城连接 0xFA 进 MISC 0x10BC..0x12BB 的侧表（'XSHD' v1，≤ 168 条）；XTHG 物件槽清 0（v1 无物件）。
+// importFrom：XTXT ≥ 0xFB → marker、0xC9..0xEF 指针与 XTHG 物件记录清 0；侧表（只收三类合法标签）→ 占地补全 → 共享标签按类型 → XMIC 反查；
+//   MISC 恢复状态机（0x1040 pending 只信任本项目存档）；运行时计时器按默认值重建。
 // postLoad：绑定 ctx、校验 priv 版本、对齐模式。运行时从不写 XTXT（唯一例外是建筑被毁时清掉它自己的标签，见 destroy.ts）。
 import { FOOTPRINT, forEachLotTile, isAnchorTile } from '../../contracts/footprint';
 import { CityMode, DisasterKind, TILES, TileMarker, tileIndex, tileX, tileY } from '../../contracts/grid';
@@ -35,22 +36,39 @@ const isSign = (l: number): boolean => l >= 0x01 && l <= 0x32;
 const isIndepLabel = (l: number): boolean => l >= 0x3d && l <= 0xc8;
 const isSharedLabel = (l: number): boolean => l >= 0x34 && l <= 0x3c;
 const isPointer = (l: number): boolean => l >= 0xc9 && l <= 0xef;
+/** 邻城连接点（spec:file-formats §2.2.7）：被标记覆盖时也进侧表（transport 不重写 0xFA，见 fix-B）。 */
+export const XTXT_CONNECTION = 0xfa;
+/** 侧表允许恢复的标签：只有 composeXtxt 会写入的三类；其余（0x00、共享标签、物件指针、0xFB..0xFF 灾害标记…）一律拒绝。 */
+export const isShadowLabel = (l: number): boolean => isSign(l) || isIndepLabel(l) || l === XTXT_CONNECTION;
+/** XTHG：40 条 × 12 B，记录 0 为头部，记录 1..39 为物件（spec:file-formats §2.2.10）。 */
+export const XTHG_RECORD_BYTES = 12, XTHG_RECORDS = 40;
 const LABEL_BASE = 0x33, XMIC_STRIDE = 8, XMIC_RECORDS = 150, FIRST_INDEP_RECORD = 10;
 
 export interface ShadowEntry { tile: number; label: number }
 
-/** 把 marker 合成进 out（= xtxt 拷贝），返回需要侧表的条目（微模拟在前、标牌在后，同类按 tile 升序）。 */
+/** 把 marker 合成进 out（= xtxt 拷贝），返回需要侧表的条目（微模拟在前、标牌其次、邻城连接 0xFA 最后，同类按 tile 升序）。 */
 export function composeXtxt(xtxt: Uint8Array, marker: Uint8Array, out: Uint8Array): ShadowEntry[] {
-  const micro: ShadowEntry[] = [], signs: ShadowEntry[] = [];
+  const micro: ShadowEntry[] = [], signs: ShadowEntry[] = [], conns: ShadowEntry[] = [];
   for (let i = 0; i < TILES; i++) {
     const m = marker[i]!;
     if (m === 0) continue;
     const l = xtxt[i]!;
     if (isIndepLabel(l)) micro.push({ tile: i, label: l });
     else if (isSign(l)) signs.push({ tile: i, label: l });
+    else if (l === XTXT_CONNECTION) conns.push({ tile: i, label: l });
     out[i] = m;
   }
-  return micro.concat(signs);
+  return micro.concat(signs, conns);
+}
+/** v1 不表示任何 XTHG 物件（物件 v2）：记录 1..39 清 0、记录 0（头部）原样；返回清掉的非空记录数。 */
+export function clearThingRecords(xthg: Uint8Array): number {
+  let dropped = 0;
+  for (let r = 1; r < XTHG_RECORDS; r++) {
+    let any = false;
+    for (let k = r * XTHG_RECORD_BYTES; k < (r + 1) * XTHG_RECORD_BYTES; k++) if (xthg[k] !== 0) { any = true; xthg[k] = 0; }
+    if (any) dropped++;
+  }
+  return dropped;
 }
 export function writeShadow(m: Int32Array, entries: readonly ShadowEntry[]): boolean {
   for (let k = 0; k < SHADOW_BYTES; k++) setByte(m, SHADOW_BASE + k, 0);
@@ -168,23 +186,36 @@ export function exportEvents(ctx: SimContext, doc: Sc2Document): void {
   for (let i = 0; i <= TECH_ACTIVE_SLOTS; i++) miscSet(m, MISC.techYears + i * 4, s.tech.announced[i] !== 0 && i < TECH_ACTIVE_SLOTS ? 0 : s.tech.invented[i]!);
   const entries = composeXtxt(s.layers.xtxt, P.marker, doc.xtxt);
   if (writeShadow(m, entries)) ctx.diag.push({ level: 'warn', code: 'events.xtxtShadowTruncated', message: `侧表容量 ${SHADOW_CAPACITY}，${entries.length - SHADOW_CAPACITY} 条标签未能记录（读档时靠 XMIC 反查）` });
+  // XTHG 与 XTXT 指针一致（spec:file-formats §3.4.3 第 4 步）：v1 不写物件，也从不合成 0xC9..0xEF 指针 → 物件槽全部清 0
+  clearThingRecords(doc.xthg);
+  if (P.actors.length > 0) ctx.diag.push({ level: 'warn', code: 'events.actorsNotSaved', message: `进行中的龙卷风 / 怪兽（${P.actors.length} 个）v1 不写入 .SC2（XTHG 物件 v2）：读档后该灾害按无物件结束；需要无损请用 .sc2kweb` });
 }
 
 export function importEvents(rt: EventsRuntime, ctx: SimContext, doc: Sc2Document, diag: Diagnostic[]): void {
   rt.ctx = ctx;
   const s = ctx.state, L = s.layers, m = doc.misc, T = tuningOf(ctx);
+  const ours = miscGet(m, MISC.prngMarker) !== 0;            // 本项目的非 compat 存档（与 core 读 PRNG 状态同口径）：零区扩展可信
   const P = createEventsPriv();
   s.priv.events = P;
-  // 1. 剥离标记与物件指针（物件 v2 由 XTHG 重建）
+  // 1. 剥离标记与物件指针；XTHG 物件记录 v1 不复活（物件 v2）→ 一并清掉，保持"无指针 ⇔ 无物件"（spec:file-formats §3.4.3 第 4 步）
   for (let i = 0; i < TILES; i++) {
     const v = L.xtxt[i]!;
     if (v >= 0xfb) { P.marker[i] = v; L.xtxt[i] = 0; } else if (isPointer(v)) L.xtxt[i] = 0;
   }
+  const dropped = clearThingRecords(L.xthg);
+  if (dropped > 0) {
+    ctx.act.layerChanged('xthg');
+    diag.push({ level: 'info', code: 'events.thingsDropped', message: `XTHG 中 ${dropped} 条物件记录 v1 不支持（物件 v2），已丢弃（XTXT 物件指针同步清除）` });
+  }
   // 2. 侧表 → 3. 占地补全 → 4. 共享标签 → 5. XMIC 反查
   const shadow = readShadow(m);
   if (shadow) {
-    let restored = 0;
-    for (const e of shadow.entries) if (P.marker[e.tile] !== 0 && L.xtxt[e.tile] === 0) { L.xtxt[e.tile] = e.label; restored++; }
+    let restored = 0, invalid = 0;
+    for (const e of shadow.entries) {
+      if (!isShadowLabel(e.label)) { invalid++; continue; }      // 伪造 / 损坏的侧表不得把灾害标记、物件指针等写回 XTXT
+      if (P.marker[e.tile] !== 0 && L.xtxt[e.tile] === 0) { L.xtxt[e.tile] = e.label; restored++; }
+    }
+    if (invalid > 0) diag.push({ level: 'warn', code: 'events.xtxtShadowInvalid', message: `侧表含 ${invalid} 条非法标签（只接受标牌 0x01–0x32 / 独立微模拟 0x3D–0xC8 / 邻城连接 0xFA），已忽略` });
     if (shadow.truncated) diag.push({ level: 'info', code: 'events.xtxtShadowTruncated', message: `侧表曾被截断（已恢复 ${restored} 条），其余靠占地补全 / XMIC 反查` });
   }
   for (let k = 0; k < SHADOW_BYTES >> 2; k++) s.rawMisc[(SHADOW_BASE >> 2) + k] = 0;   // 侧表只在写档时重新生成
@@ -192,7 +223,8 @@ export function importEvents(rt: EventsRuntime, ctx: SimContext, doc: Sc2Documen
     fillFootprintLabels(L, P.marker);
     restoreSharedLabels(ctx, P.marker);
     restoreByXmic(ctx, P.marker, diag);
-    if (!shadow) diag.push({ level: 'info', code: 'events.signLost', message: '第三方灾害中存档：被标记覆盖的标牌索引无法恢复（文本仍在 XLAB）' });
+    // 本项目非 compat 存档只要有标签被覆盖就一定写侧表：无侧表 = 没有可丢的标签
+    if (!shadow && !ours) diag.push({ level: 'info', code: 'events.signLost', message: '无侧表的灾害中存档（第三方或 compat 导出）：被标记覆盖的标牌索引无法恢复（文本仍在 XLAB）' });
   }
   ctx.act.layerChanged('xtxt');
   // 6. MISC 标量
@@ -201,7 +233,10 @@ export function importEvents(rt: EventsRuntime, ctx: SimContext, doc: Sc2Documen
   w.trend = clampInt(miscGet(m, MISC.weather), 0, TREND_COUNT - 1);
   w.season = (T.weather.seasonOfMonth[Math.floor((s.clock.age % 300) / 25)] ?? 0) as 0 | 1 | 2 | 3;
   const D = s.disaster;
-  const cur = miscGet(m, MISC.disaster), pend = miscGet(m, MISC.pendingDisaster);
+  const cur = miscGet(m, MISC.disaster), pendRaw = miscGet(m, MISC.pendingDisaster);
+  // 0x1040 在原版里"未明"（file-formats §2.3.1；disasters Q1 只是推测为 pending）：只信任本项目自己写的值，第三方存档不据此一读档就起灾害
+  const pend = ours ? pendRaw : DisasterKind.None;
+  if (!ours && pendRaw !== 0) diag.push({ level: 'info', code: 'events.pendingIgnored', message: `MISC 0x1040 = ${pendRaw}（原版语义未明）不当作待触发灾害` });
   D.current = cur >= 0 && cur <= DisasterKind.PlaneCrash ? cur : DisasterKind.None;
   D.pending = pend >= 0 && pend <= DisasterKind.PlaneCrash ? pend : DisasterKind.None;
   D.active = miscGet(m, MISC.disasterActive) !== 0;
@@ -213,11 +248,18 @@ export function importEvents(rt: EventsRuntime, ctx: SimContext, doc: Sc2Documen
   silentCatchUp(s);
   // 7. 运行时计时器按类型默认值重建（spec §2.8 第 4 条）
   let floodAlt = -1, floodN = 0;
+  const unsupported = new Map<number, number>();            // 标记值 → 格数（聚合成一条诊断，不逐格刷屏）
   for (let i = 0; i < TILES; i++) {
     const mk = P.marker[i]!;
     if (mk === TileMarker.Fire) P.fuel[i] = fuelFor(T.fire, L.xbld[i]!);
     else if (mk === TileMarker.Flood) { floodN++; floodAlt = Math.max(floodAlt, ctx.q.terrain.alt(i)); }
-    else if (mk !== 0) { P.marker[i] = 0; diag.push({ level: 'info', code: 'events.markerUnsupported', message: `XTXT 标记 0x${mk.toString(16)}（暴乱 / 毒云）v1 不支持，已清除`, at: `tile ${i}` }); }
+    else if (mk !== 0) { P.marker[i] = 0; unsupported.set(mk, (unsupported.get(mk) ?? 0) + 1); }
+  }
+  if (unsupported.size > 0) {
+    let total = 0;
+    const parts: string[] = [];
+    for (const [mk, n] of [...unsupported].sort((a, b) => a[0] - b[0])) { total += n; parts.push(`0x${mk.toString(16)} × ${n}`); }
+    diag.push({ level: 'info', code: 'events.markerUnsupported', message: `XTXT 标记（暴乱 / 毒云）v1 不支持，已清除 ${total} 格（${parts.join('，')}）` });
   }
   if (floodN > 0) {
     const c = centroidOf(P, TileMarker.Flood)!;

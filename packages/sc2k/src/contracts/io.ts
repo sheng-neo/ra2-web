@@ -61,6 +61,11 @@ export const MISC_BYTES: Readonly<Record<MiscKey, number>> = {
 };
 /** MISC 零区范围（compat 导出时清零）：[start, endExclusive)。 */
 export const MISC_ZERO_RANGES: ReadonlyArray<readonly [number, number]> = [[0x1054, 0x10b8], [0x10bc, 0x12bc]];
+/**
+ * 本项目借用的原版"未明"槽（非 compat 导出写项目私有值；compat 导出由 core 按 rawMisc 原值写回，导入本项目存档后 owner 把 rawMisc 中的这些槽归零）。
+ * 税线 R / C 块索引 2 = economy 的 fedRateRaw / 弹劾魔数（open-questions #31，fix-B 加法）。
+ */
+export const MISC_BORROWED_SLOTS: readonly number[] = [MISC.taxRes + 8, MISC.taxCom + 8];
 export const miscGet = (m: Int32Array, off: number): number => m[off >> 2]!;
 export const miscSet = (m: Int32Array, off: number, v: number): void => { m[off >> 2] = v | 0; };
 export const COHORT_COUNT = 20, COHORT_STRIDE = 12;

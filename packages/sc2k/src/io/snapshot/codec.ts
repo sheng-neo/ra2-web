@@ -336,13 +336,18 @@ function parseFile(bytes: Uint8Array): { parsed: Parsed; version: number } {
   for (let k = 0; k < MAGIC_BYTES.length; k++) if (magic[k] !== MAGIC_BYTES[k]) throw new Error('snapshot: 魔数不匹配，不是 .sc2kweb 快照');
   const version = r.u16();
   const headerLen = r.u32();
-  const header = JSON.parse(utf8Decode(r.bytes(headerLen))) as Header;
-  if (!header || !Array.isArray(header.entries)) throw new Error('snapshot: 头部损坏');
+  // 头部 JSON 损坏 → 受控错误（不把 SyntaxError 原样抛给 UI）；本函数在任何写入之前运行，抛错时调用方状态不变。
+  let raw: unknown;
+  try { raw = JSON.parse(utf8Decode(r.bytes(headerLen))); } catch (err) {
+    throw new Error(`snapshot: 头部 JSON 损坏（${err instanceof Error ? err.message : String(err)}）`);
+  }
+  const header = raw as Header;
+  if (raw === null || typeof raw !== 'object' || !Array.isArray(header.entries)) throw new Error('snapshot: 头部损坏');
   const payloadOffset = r.pos;
   const offsets = new Map<string, { entry: HeaderEntry; offset: number }>();
   let off = payloadOffset;
-  for (const he of header.entries) {
-    if (typeof he.path !== 'string' || typeof he.bytes !== 'number' || he.bytes < 0) throw new Error('snapshot: 头部条目损坏');
+  for (const he of header.entries as unknown[] as HeaderEntry[]) {
+    if (he === null || typeof he !== 'object' || typeof he.path !== 'string' || !Number.isSafeInteger(he.bytes) || he.bytes < 0) throw new Error('snapshot: 头部条目损坏');
     offsets.set(he.path, { entry: he, offset: off });
     off += he.bytes;
   }

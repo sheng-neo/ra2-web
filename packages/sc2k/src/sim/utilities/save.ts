@@ -1,5 +1,7 @@
 // ===== sim/utilities/save.ts =====（spec:power-water §3.7 存档映射；ARCHITECTURE §4.3–§4.5）
 //  importFrom（IMPORT_ORDER 第 7 位）：剥 XBIT.MARK 脏位；从 XBLD 锚点重建电厂表，年龄 / 负载按 XTXT 标签 → XMIC 记录（+1 / +4..5）恢复，无链接者归 0。
+//    读的是**活状态层**（core 拷贝后、events 已剥离灾害标记并按侧表 / XMIC 反查恢复了标签），不是原始 doc.xtxt：灾害中存档里电厂锚格的
+//    标签可能被 0xFB..0xFF 覆盖，直接读 doc 会断开链接、把年龄清零（fix-B）。
 //  exportTo（EXPORT_ORDER 第 6 位）：导出 XBIT 不带 MARK；电厂年龄 / 负载写回已链接的 XMIC 记录。MISC 0x104C（净水厂充足标志 / "Go Disaster"，spec Q5 未定）按 open-questions #2 透传不写。
 //  postLoad('sc2')：按 §2.2 规则重算整层 POWERABLE / PIPED，再跑一次不消费 PRNG 的电 / 水重扫（风 / 太阳能取分布中值）；
 //  postLoad('snapshot')：位与 priv 已完整，只重绑闭包、校验 priv（版本不符 → 丢弃重建），不重扫、不消费 PRNG、不改层。
@@ -33,7 +35,7 @@ function stripMark(xbit: Uint8Array): number {
   return n;
 }
 
-export function importFromDoc(ctx: SimContext, doc: Sc2Document, diag: Diagnostic[], rt: Runtime): void {
+export function importFromDoc(ctx: SimContext, _doc: Sc2Document, diag: Diagnostic[], rt: Runtime): void {
   rt.ctx = ctx;
   const L = ctx.state.layers;
   const marks = stripMark(L.xbit);
@@ -44,8 +46,8 @@ export function importFromDoc(ctx: SimContext, doc: Sc2Document, diag: Diagnosti
   let linked = 0;
   for (const a of anchors) {
     if (recs.length >= max) { diag.push({ level: 'warn', code: 'utilities.plantsTruncated', message: `到期型电厂超过 ${max} 座，其余不跟踪年龄` }); break; }
-    const off = linkedRecordOffset(doc.xtxt, doc.xmic, a, L.xbld[a]!);
-    if (off >= 0) { linked++; recs.push({ anchor: a, age: doc.xmic[off + 1]!, load: Math.min(255, ((doc.xmic[off + 4]! << 8) | doc.xmic[off + 5]!)) }); }
+    const off = linkedRecordOffset(L.xtxt, L.xmic, a, L.xbld[a]!);
+    if (off >= 0) { linked++; recs.push({ anchor: a, age: L.xmic[off + 1]!, load: Math.min(255, ((L.xmic[off + 4]! << 8) | L.xmic[off + 5]!)) }); }
     else recs.push({ anchor: a, age: 0, load: 0 });
   }
   const p = freshPriv();

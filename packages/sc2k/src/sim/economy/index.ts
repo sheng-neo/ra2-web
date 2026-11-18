@@ -8,8 +8,8 @@ import type { SimEntries } from '../../contracts/entrypoints';
 import type { Actions } from '../../contracts/actions';
 import type { NewCityParams, SimContext, System } from '../../contracts/system';
 import { makeCommands } from './commands';
-import { makePhases } from './phases';
-import { ECONOMY_PRIV_VERSION, ensurePriv, freshPriv } from './priv';
+import { makePhases, resumeBudgetWindow } from './phases';
+import { ECONOMY_PRIV_VERSION, budgetOpenOf, ensurePriv, freshPriv, setBudgetOpen } from './priv';
 import { makeQueries } from './queries';
 import { createRuntime, restoreBudgetSnapshot, tuningOf } from './runtime';
 import type { EconomyRuntime } from './runtime';
@@ -64,11 +64,11 @@ export const createEconomySystem = ((): System => {
     commands: makeCommands(rt),
     queries: { economy: makeQueries(rt) },
     actions: { charge: makeCharge(rt) },
-    init(ctx, p) { rt.bound = ctx; rt.snapshot = null; initEconomy(ctx, p); },
-    importFrom(ctx, doc, diag) { rt.bound = ctx; rt.snapshot = null; importEconomy(ctx, doc, diag); },
+    init(ctx, p) { rt.bound = ctx; initEconomy(ctx, p); },
+    importFrom(ctx, doc, diag) { rt.bound = ctx; importEconomy(ctx, doc, diag); },
     exportTo(ctx, doc) { exportEconomy(ctx, doc); },
-    /** 任一读档后：重新绑定 ctx、校验 priv（版本不符 → 空账本重建）；不消费 PRNG、不改真源层。 */
-    postLoad(ctx) { rt.bound = ctx; rt.snapshot = null; ensurePriv(ctx.state); },
+    /** 任一读档后：重新绑定 ctx、校验 priv（版本不符 → 空账本重建）；挂起在预算窗口的快照重发 budget 模态；不消费 PRNG、不改真源层。 */
+    postLoad(ctx, source) { rt.bound = ctx; ensurePriv(ctx.state); resumeBudgetWindow(ctx, source); },
     /**
      * 模态回答（与 contract-rfc WP12b 第 4 行的约定一致：外壳默认 answer(0) 必须是安全选项）：
      *  budget：0 = 关闭 / 确认（保留当前滑块），1 = 取消（恢复打开窗口时的滑块值）。
@@ -76,8 +76,9 @@ export const createEconomySystem = ((): System => {
      */
     onModalAnswer(ctx, dialog, answer) {
       if (dialog === 'budget') {
-        if (answer === BUDGET_ANSWER_CANCEL && rt.snapshot) restoreBudgetSnapshot(ctx, rt.snapshot);
-        rt.snapshot = null;
+        const priv = ensurePriv(ctx.state), snap = budgetOpenOf(priv);
+        if (answer === BUDGET_ANSWER_CANCEL && snap) restoreBudgetSnapshot(ctx, snap);
+        setBudgetOpen(priv, null);
       }
     },
   };

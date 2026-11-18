@@ -97,7 +97,7 @@
 | 28 | `nationalAnnual.economy` 在建城日（age 0）也生效（契约 `phaseApplies` 只看 `month === 0`），联邦利率开局即随机游走一次并消费 1 次 PRNG；spec:economy §2.3.2 的年初序列只写了 `age > 0` | 按契约实现（economy 不自行加 `age > 0` 条件，避免与 zones 的 `nationalAnnual.zones` 口径不一致） | WP1 / WP5 / WP8 | `settle.test` 以 age 1 为 PRNG 基线 | 待裁定 |
 | 29 | 信用评级分母下限：`EconomyTuning.bonds.ratingTaxFloor = 10000`、`ratingValueFloor = 100000`（[设计]）；不加下限时新城（税收 / 价值为 0）第一张债券即 F，Hard 开局永远无法借款 | 下限为可调参数；评级公式本身即 spec Q5 的 [低] 建议式 | WP8 | `bonds.test` | 开放 |
 | 30 | 经费线"数量"以 `counts.tile ÷ 占地²` 推出为准（spec:economy §4.13"不等时以 tileCounts 为准"），`q.services.structureCounts()` 只在 `exportTo` 对账并记 `economy.structureCountMismatch` 诊断 | economy 不依赖 services 的计数真伪 | WP7 / WP8 | `settle.test`（经费）、`save.test` | 开放 |
-| 31 | `fedRateRaw`、`impeached` 没有原版 `MISC` 落点：借用税线 R / C 块的索引 2（"未明"槽，spec:economy Q12）；导入原版存档时该槽若非法（超出 `fedMin..fedMax` / 非魔数）则回退 XGRP / 初值 | 自洽往返；若要完全不碰原版未明槽，需把两字段翻成 `hash:'full'` | WP8 / WP2 | `save.test` | 开放 |
+| 31 | `fedRateRaw`、`impeached` 没有原版 `MISC` 落点：借用税线 R / C 块的索引 2（"未明"槽，spec:economy Q12）；导入原版存档时该槽若非法（超出 `fedMin..fedMax` / 非魔数）则回退 XGRP / 初值 | 自洽往返；若要完全不碰原版未明槽，需把两字段翻成 `hash:'full'`。**fix-B**：两槽登记为 `contracts/io` 的 `MISC_BORROWED_SLOTS`；只有本项目存档（`MISC 0x1054 ≠ 0`）才解读，读后把 `rawMisc` 中这两槽归零；第三方存档不解读、原值随 `rawMisc` 透传；`exportSc2({compat:true})` 由 core 按 `rawMisc` 原值写回（新城为 0），原版读不到项目私有值。税线 I / 法令块 / 经费块的索引 2 不再写 0，改为透传 | WP8 / WP2 | `save.test`（fix-B 两例） | 开放（compat 已收口） |
 | 32 | 预算模态：`autoBudget` 默认 false，真 economy 合入后每年 1 月第 0 天发 `modal budget` 并挂起，UI 必须 `dispatch(modalAnswer)` + `host.modalClosed()` 才能续跑；`gameOver` 同理 | 测试 / `runDays` 自动关模态；app 壳由 WP12 处理 | WP12 | `budgetWindow.test`、e2e 冒烟 24 个月 | 开放 |
 | 28 | 翻转族桥件（0x51–0x5C）"未翻转"精灵的轴向 | `PlacementTuning.bridgeSpriteAxis = 'TB'`：沿 L–R 铺桥时置 `XBit.Flipped`（键名 suspStartB/EndT 暗示默认竖向） | WP3 placement、WP9 art、WP10 render | art 出图后对照 | 待认可 |
 | 29 | 水电 0xC6 / 0xC7 哪个对应 T–B 流向 | `resolveHydroId`：T/B 邻格更高 → 0xC6（hydroA），否则 0xC7 | WP3、WP9 | 精灵朝向对照 | 开放 |
@@ -153,3 +153,14 @@
 | B11 | 菜单栏同样的问题：打开的菜单每 100 ms 被 `refresh()` 整体重建，菜单项点击经常落空（Playwright 记录 "element was detached from the DOM" 32 次） | `render()` 按项签名（kind / label / checked / disabled / hint）判断，只有变化时才重建；新增 `menubar.test` | ui（INT-B 已修） | 单测 + e2e Windows 菜单真点击 | 已修 |
 | B12 | 跑年后 `census.citySize` / `normalPop` 为 0 而分区建筑已生长（smoke 26 个月） | 记为 e2e `needs-real-sim` annotation；归 zones / services 的人口口径 | sim | e2e annotation | 待 sim 确认 |
 | B10 | `.SC2` 导出 → 导入后 `hash('sc2')` 是否保持 | 由 contract-rfc WP7-3 / WP8-5 / WP13-4 的 `'sc2'` 标注字段决定；`smoke.spec` 以 `needs-real-sim` annotation 记录而不硬断言 | sim | e2e annotation | 待 sim 收口 |
+
+## fix-B（存档 / 导入 / 读档健壮性评审修复）裁定与备忘
+
+| # | 问题 | 处理 / 当前裁定 | 归属 | 验证手段 | 状态 |
+|---|---|---|---|---|---|
+| FB-1 | `MISC 0x1040`（file-formats 标"未明"，disasters Q1 推测为 pending）在第三方存档里非 0 时一读档就起灾害 | 只有本项目存档（`MISC 0x1054 ≠ 0`）才读作 `disaster.pending`；第三方 / compat 存档忽略并记 `events.pendingIgnored`（原值仍在 `rawMisc`）。导出仍按本项目约定写 `pending` | events | `saveRobust.test` | 已裁定 |
+| FB-2 | 邻城连接 `XTXT 0xFA` 被灾害标记覆盖后写档丢失（spec:disasters §2.5.1 说"由 transport 重建"，但 transport 从不写 0xFA） | 本项目存档：0xFA 也进 `xtxtShadow` 侧表（排在微模拟、标牌之后）；无侧表的第三方 / compat 存档：transport `importFrom` 对"带灾害标记、承载垂直于该边的直线路 / 轨 / 高速"的边缘格补回 0xFA，上限 = 存档 `MISC 0x1024` − 现有连接格数 | events / transport | `saveRobust.test` | 已裁定 |
+| FB-3 | `XTHG` 原样透传而 `XTXT 0xC9..0xEF` 指针在导入时被清 | v1 不表示任何物件（XTHG 物件 v2）：导入清空记录 1..39（头部记录 0 保留，记 `events.thingsDropped`），导出同样清空物件槽 —— 与 spec:file-formats §3.4.3 第 4 步一致 | events | `saveRobust.test` | 已裁定 |
+| FB-4 | 灾害中 `.SC2` 往返 `hash('sc2')` 不变量的适用范围 | 只含火 / 洪水标记时成立（`saveRobust.test`）。已知有损：(a) 进行中的龙卷风 / 怪兽不写 XTHG（v2），读档后灾害在 postLoad 结束（导出记 `events.actorsNotSaved`）；(b) 灾害中毁掉电 / 水设施时 utilities 的重扫在日末才跑（灾害模式日历冻结），导出的 `XBIT` 供电位与 `utilities.*` 统计是旧值，读档重扫后不同。无损存档用 `.sc2kweb` | events / utilities | `saveRobust.test`（a 固定行为）；(b) 仅记录 | 备忘 |
+| FB-5 | 自动存档在 `budgetWindow` 挂起期间写入（yearClosed 发自该阶段），载入后 `modalPause = 1` 却无模态 → 城市卡住 | `session.autosave` 挂起期间只登记，下一个 `dayTick`（模态关闭、当天跑完）再写；economy `postLoad('snapshot')` 遇到恰挂起在 budgetWindow 之后的快照（含旧版自动存档）重发 `budget` 模态；"取消"用的打开时滑块值改存 `priv.economy.budgetOpen`（窗口关闭即删除）。其它阶段挂起型模态（报纸 / 灾害警报 / gameOver）的挂起态快照仍不会自动重开 | app / economy | `session.test`、`budgetWindow.test` | 部分处理 |
+

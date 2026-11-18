@@ -1,14 +1,14 @@
 // ===== sim/core/saveload.ts =====
 // 读档 / 存档编排（ARCHITECTURE §4.3–§4.5、CONTRACTS §R）：
 //  - importCity(doc)：就地重置 → 按 IMPORT_ORDER 调 importFrom → counts 全量对账 → 按 POSTLOAD_ORDER 调 postLoad('sc2')；诊断只记录、不拒绝。
-//  - exportCity(opts)：phaseCursor > 0 抛错 → counts 对账 → 按 EXPORT_ORDER 调 exportTo → compat 时清零 MISC 零区（不写 PRNG 标志 / 侧表）。
+//  - exportCity(opts)：phaseCursor > 0 抛错 → counts 对账 → 按 EXPORT_ORDER 调 exportTo → compat 时清零 MISC 零区（不写 PRNG 标志 / 侧表）、借用槽写回 rawMisc 原值。
 //  - loadSnapshotInto(bytes)：经注入的 SnapshotCodec 就地解码 → 挂起态归一（phaseCursor > 0 ⇒ modalPause = 1，否则 0；accumMs 清零）→ postLoad('snapshot')。
 //  - saveSnapshotOf()：编码当前状态（挂起态允许，phaseCursor 一并编码）。
 // 本文件不 import io/**：编解码器来自 CreateSimOptions.snapshot。
 import type { CatalogueApi } from '../../contracts/catalogue';
 import { EXPORT_ORDER, IMPORT_ORDER, POSTLOAD_ORDER } from '../../contracts/clock';
 import type { Sc2Document, Sc2ExportOptions } from '../../contracts/io';
-import { MISC_ZERO_RANGES } from '../../contracts/io';
+import { MISC_BORROWED_SLOTS, MISC_ZERO_RANGES } from '../../contracts/io';
 import type { SnapshotCodec } from '../../contracts/snapshot';
 import type { CityState } from '../../contracts/state';
 import type { Diagnostic, PostLoadSource, SimContext, System, SystemId } from '../../contracts/system';
@@ -66,9 +66,10 @@ export function importCity(deps: SaveLoadDeps, doc: Sc2Document): Diagnostic[] {
   return diag;
 }
 
-/** 零区清零（compat 导出）：不写 PRNG 标志 / 状态 / 版本 / 侧表。 */
-export function applyCompat(doc: Sc2Document): void {
+/** 零区清零（compat 导出）：不写 PRNG 标志 / 状态 / 版本 / 侧表；借用的原版"未明"槽按 rawMisc 原值写回（不让原版读到项目私有值；新城为 0）。 */
+export function applyCompat(doc: Sc2Document, rawMisc?: Int32Array): void {
   for (const [lo, hi] of MISC_ZERO_RANGES) doc.misc.fill(0, lo >> 2, hi >> 2);
+  for (const off of MISC_BORROWED_SLOTS) doc.misc[off >> 2] = rawMisc ? rawMisc[off >> 2]! : 0;
 }
 
 /** CityState → .SC2 文档（各系统 exportTo 按 EXPORT_ORDER；events 最后合成 XTXT / 写 XTHG）。 */
@@ -81,14 +82,15 @@ export function exportCity(deps: SaveLoadDeps, opts?: Sc2ExportOptions): Sc2Docu
     const s = deps.byId.get(id);
     if (s && typeof s.exportTo === 'function') deps.inside(-1, () => s.exportTo!(deps.ctx, doc));
   }
-  if (opts?.compat) applyCompat(doc);
+  if (opts?.compat) applyCompat(doc, deps.state.rawMisc);
   return doc;
 }
 
 /** 快照 → CityState（就地解码）；挂起态归一后 postLoad('snapshot')（不得重扫、不得消费 PRNG）。 */
 export function loadSnapshotInto(deps: SaveLoadDeps, bytes: Uint8Array): Diagnostic[] {
-  deps.resetRuntime();
+  // 先解码再丢运行期缓冲：文件级损坏（魔数 / 头部 JSON / 截断）在任何写入之前抛错，此时状态与运行期缓冲（事件 / 命令日志 / 脏区）都保持原样。
   const diag = deps.codec.decode(bytes, deps.state);
+  deps.resetRuntime();
   const c = deps.state.clock;
   c.accumMs = 0;
   if (c.phaseCursor > 0) {

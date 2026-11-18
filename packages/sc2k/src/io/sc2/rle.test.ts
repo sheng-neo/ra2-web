@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import { createPrng } from '../../contracts/prng';
 import type { Diagnostic } from '../../contracts/system';
-import { RLE_MAX_LITERAL, RLE_MAX_RUN, rleDecode, rleEncode } from './rle';
+import { RLE_BAD_CONTROL_DIAG_MAX, RLE_MAX_LITERAL, RLE_MAX_RUN, rleDecode, rleEncode } from './rle';
 
 const prng = createPrng(0x5c2b);
 const randomBytes = (n: number): Uint8Array => { const a = new Uint8Array(n); for (let k = 0; k < n; k++) a[k] = prng.int(256); return a; };
@@ -80,4 +80,29 @@ describe('io/sc2 rle：容错', () => {
     expect(rleDecode(new Uint8Array(0), 3, d)).toEqual(new Uint8Array(3));
   });
   it('空输入编码为空', () => { expect(rleEncode(new Uint8Array(0))).toEqual(new Uint8Array(0)); });
+  it('fix-B：expected 给出时只分配 expected 字节——恶意重复码（每 2 B 展开 128 B）不扩容，超出部分只计数并告警', () => {
+    const evil = new Uint8Array(200_000);
+    for (let k = 0; k < evil.length; k += 2) { evil[k] = 0xff; evil[k + 1] = 0x5a; }            // 逻辑长度 1280 万字节
+    const d: Diagnostic[] = [];
+    const out = rleDecode(evil, 4096, d, 'XPLT');
+    expect(out.length).toBe(4096);
+    expect(out.buffer.byteLength).toBe(4096);                                                        // 没有中间扩容缓冲
+    expect(out.every((v) => v === 0x5a)).toBe(true);
+    const len = d.filter((x) => x.code === 'sc2.rleLength');
+    expect(len).toHaveLength(1);
+    expect(len[0]!.message).toContain(String(100_000 * 128));
+    // 字面量越界同样只写到 expected
+    const lit = rleDecode(Uint8Array.from([0x03, 1, 2, 3, 0x03, 4, 5, 6]), 4);
+    expect(Array.from(lit)).toEqual([1, 2, 3, 4]);
+    expect(lit.buffer.byteLength).toBe(4);
+  });
+  it('fix-B：大量非法控制字节只逐条记录前 RLE_BAD_CONTROL_DIAG_MAX 条，其余并入一条计数告警', () => {
+    const d: Diagnostic[] = [];
+    const src = new Uint8Array(5000);                                                               // 全是 0x00
+    src[4998] = 0x01; src[4999] = 0x2a;
+    expect(Array.from(rleDecode(src, 1, d, 'XBLD'))).toEqual([0x2a]);
+    const bad = d.filter((x) => x.code === 'sc2.badRleControl');
+    expect(bad).toHaveLength(RLE_BAD_CONTROL_DIAG_MAX + 1);
+    expect(bad.at(-1)!.message).toContain(String(4998 - RLE_BAD_CONTROL_DIAG_MAX));
+  });
 });

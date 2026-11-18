@@ -254,9 +254,10 @@ shadow = []
 for i in 0..16383: if marker[i]:
     L = xtxtOut[i]
     if (0x01 <= L <= 0x32) || (0x3D <= L <= 0xC8): shadow.push({ tile: i, label: L })   // 需要侧表才能恢复的
-    // 0x34..0x3C（共享标签）、0xFA（邻城连接）、0xC9..0xEF（物件指针）可按类型 / 几何 / XTHG 重建，不入表
+    elif L == 0xFA: shadow.push({ tile: i, label: L })        // 邻城连接（fix-B：transport 不重写 0xFA，故也入表，排在标牌之后）
+    // 0x34..0x3C（共享标签）、0xC9..0xEF（物件指针）可按类型 / XTHG 重建，不入表
     xtxtOut[i] = marker[i]
-shadow.sort(微模拟标签 0x3D..0xC8 在前，其后标牌；同类按 tile 升序)
+shadow.sort(微模拟标签 0x3D..0xC8 在前，其后标牌，0xFA 最后；同类按 tile 升序)
 写 xtxtShadow := MISC[0x10BC..0x12BB]（512 B，dfloer 在全部样本城市中观察为全零 [高]，原版读入后不使用 [中]）：
     'X''S''H''D'（4 B 魔数）, ver = 1 (u8), flags (u8, bit0 = 被截断), count (u16 BE), 然后 count × 3 B：tile (u16 BE), label (u8)
     容量 floor((512 − 8) / 3) = 168 条；超出部分丢弃并置 flags.bit0、记诊断 `xtxtShadowTruncated`
@@ -280,7 +281,8 @@ restoreByXmic():         // 第三方存档 / 侧表截断的兜底
         elif cands.length > 1: 取第一个未被占用的候选绑定；记诊断 `xtxtRestoreAmbiguous(r)`（名字可能错配）
         else: 记诊断 `xmicOrphan(r)`；记录保留，由 services 决定是否回收
 标牌 0x01..0x32 若侧表缺失则无法恢复：文本仍在 XLAB，记诊断 `signLost(label)`
-0xFA 由 transport 的 recountConnections() 重建（地图边缘的路 / 轨 / 高速格）
+0xFA：本项目存档经侧表恢复；无侧表时由 transport 按几何补回（带标记的边缘直线路 / 轨 / 高速格，上限 = MISC 0x1024 − 现有连接格数；fix-B）
+侧表条目的 label 只接受 0x01..0x32 / 0x3D..0xC8 / 0xFA，其余丢弃并记 xtxtShadowInvalid（fix-B）
 ```
 
 5. 第三方存档（原版或 sc2kfix 写出的灾害中存档）天然无侧表：恢复率 = `fillFootprintLabels + restoreSharedLabels + restoreByXmic` 能覆盖的部分；诊断列表交给导入对话框显示，不阻止导入。
