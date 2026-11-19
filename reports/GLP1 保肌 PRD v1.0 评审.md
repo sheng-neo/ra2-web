@@ -1,4 +1,4 @@
-# GLP-1 保肌与周期管理 AI Agent · PRD v1.0 评审意见（第 2 版：已并入 2,562 条真实评论）
+# GLP-1 保肌与周期管理 AI Agent · PRD v1.0 评审意见（第 3 版：已并入 2,562 条评论和 12 个竞品的界面截图）
 
 评审日期：2026-11-19
 评审依据：PRD v1.0（4 页），以及 4 份材料，都在 `research_notes/GLP1 保肌 PRD 评审/` 下：
@@ -17,16 +17,34 @@
 
 ## 一、总体结论
 
-**方向是对的，但这版 PRD 还不能直接进开发；真实评论还暴露出一个定位上的风险。**
+**第 3 版的结论：这版 PRD 的核心卖点已经有人做了，"保肌"在今天既拉不来新用户，也算不上差异化。不建议按原定位开发。**
 
-**对的地方：**"训练强度随用药周期和副作用联动"是真实空白。没有一个竞品会按"今天是打针后第几天、恶不恶心、睡得好不好"来调当天的训练。
+> **更正**：第 1、2 版说"没有竞品会按打针后第几天来调整训练"，**这是错的**。那个判断来自搜索摘要，竞品界面截图推翻了它（见第二节末的"竞品界面图集"）。
+> - **Preserve 已经在做**："Train around shot day — Dose-aware strength plans adapt to appetite, energy, and recovery"。
+> - 首页显示"Day 1 post-dose · Often the toughest day. Keep effort moderate"。
+> - 训练可以"Make easier / Keep base / Make harder"，按组记录重量和次数，另有低食欲餐单"Easy on the stomach"和教练 Tab。
+> - 这几乎就是 PRD 第 2.2、2.4、3.3 节的核心设计。
 
-**评论揭示的定位风险：**
+**定位风险（评论和截图一起看）：**
+- **至少 3 个 App 打出了和我们一样的口号**：Preserve "Lose the fat. Keep the muscle."、FreeWell（店内名 Dr.GLP-1）"LOSE FAT KEEP MUSCLE · AI Smart Coach"、GLPro "Lose fat without losing muscle on GLP-1s"。三家都没有起量：评分人数分别是 0、332、1。
+- **起量的头部靠的是别的**：Shotsy（3.5 万人评分）、MeAgain（4.1 万人评分）。
 - **用户很少主动要"保肌"。**在 GLP-1 专用 App 的评论里，直接要力量训练指导的只有十几条，而且多数是好评里顺带一提；明确表示"愿意为保肌、力量、体成分付费"的信号也很弱（H15 只有 10 条命中，多为泛泛的"值得付费"）。
-- **直接竞品还没跑通获客。**Preserve 的定位句几乎和我们一样（"Don't lose your muscle with it"），上线 5 个月，美区仍是 0 评分、0 评论。
 - **竞品的 AI 已经会出训练计划。**MeAgain（4.79 分，4.1 万评分）的 AI 伙伴已经能给用户生成训练："Cappy even made me a short workout that fits into my lunch break"。
+- **PRD 的其他亮点也几乎都有人做了**：
+  - 周期分期：Glapp
+  - 药物水平 × HRV：JellyPal
+  - AI 教练问答：GLPro、MeAgain
+  - 医生 PDF：Ember、Shotsy
+  - AI 识餐：Pep、FreeWell 等
+  - 详见第二节末的对照表。
 
-**结论：**"保肌"适合作为**差异化和留存、加价点**，但未必能单独当**获客钩子**。获客应先用用户已经在找、在夸的东西：打针记录、免费的药物水平曲线、副作用记录、提醒和小组件、给医生的报告，以及**数据不丢**。
+**结论：靠功能做差异化这条路基本走不通了。**剩下的机会不在"再做一个功能更全的 GLP-1 App"，而在下面三个方向。需要先验证，再选一个：
+1. **没人专门做的人群或阶段。**
+   - 停药后的维持期：只有 Shotsy 有一个简单的模式，评论里也出现了最强的单条付费信号。
+   - 65 岁以上的 Medicare 新用户。
+   - 每天吃口服药的用户。
+2. **把头部做砸的地方做好**：计费透明、数据不丢、运行稳定。这是赢得口碑的必要条件，但很难单独成为卖点。
+3. **渠道**：功能趋同以后，谁有分发能力谁赢。可以走创作者内容，或者与远程医疗、诊所合作（B2B2C）。
 
 **用户最痛的 3 件事**（评论命中最多、差评比例最高）：
 1. **计费：试用扣费、取消难、退款难。**H9 命中 273 条，84% 是 1–3 星。原话："clicked the 7 day free trial… Went to cancel this is all in the same day. Was already charged for the full year"（Shotsy，1 星）。
@@ -86,6 +104,31 @@
 - **库存和续药、多药物**（55 条）："add an inventory section to keep up with the amount of meds you have"。
 - **客服响应决定口碑**（130 条）：修好 bug 后用户会撤回差评；没人回应时，评论就变成"scam"。
 - **迁移窗口。**Shotsy 10 月那次更新后，集中出现"免费版不可用 + 丢数据"的差评。如果能做 Shotsy 和 Apple Health 数据导入，或截图导入，这是一个现成的获客窗口。
+
+### 竞品界面图集：PRD 的功能在哪里已经出现过（第 3 版新增）
+
+来源：12 个 App 的美区 App Store 官方宣传截图（2026-11-19 拉取），存放在 `research_notes/GLP1 保肌 PRD 评审/E_ui_gallery/`。注意：宣传截图展示的是厂商想让你看到的东西，实际功能可能更浅。
+
+| PRD 的设计 | 已经有谁在做 | 这些 App 的评分人数 |
+|---|---|---|
+| 按打针后第几天调整训练强度、调难度、按组记录重量和次数 | **Preserve**（"Train around shot day""Make easier / Keep base / Make harder"） | 0 |
+| "减脂不减肌"作为主张，AI 提示瘦体重下降 | Preserve、**FreeWell**（"AI Muscle Guard"：瘦体重 76% 的环形图，提示"Lean Muscle level is trending down"）、**GLPro**（"Muscle Protection 75%"） | 0 / 332 / 1 |
+| 峰值期、平台期这类周期分期 | **Glapp**（6 个阶段，如 "Cruise phase"，推送 "Expect low food noise today"） | 1,103 |
+| 药物水平和 HRV 对照 | **JellyPal**（同一张图里显示药物水平和 Apple Health 的 HRV） | 14 |
+| 药物水平曲线 | Shotsy、Glapp、Pep、JellyPal、FreeWell、GLPro、GLPTracker-C2M | — |
+| 低食欲餐单 | Preserve（"Easy on the stomach"）、GLPro（"Nausea-friendly""Low appetite"） | — |
+| AI 教练问答 | GLPro（Handle cravings / Ease side effects / Ask my doctor）、MeAgain（Capy 聊天） | 1 / 41,365 |
+| AI 拍照识餐 | Pep、FreeWell、DreamMe、MeAgain | — |
+| 给医生的 PDF 报告 | Ember（付费功能）、Shotsy | — |
+| 引用指南的蛋白最低线 | Ember（引用 ESPEN 指南） | 0 |
+| 库存、到期提醒 | Glapp | — |
+| 口服药、30 种以上药物 | Shotsy、FreeWell（含 Wegovy 片和 Foundayo）、JellyPal | — |
+| **截图里没看到的** | 红旗症状分诊、"加量周"状态、定期力量自测、数据安全承诺、透明计费 | — |
+
+**设计风格上的一个现象：**
+- 起量的头部都走温暖、陪伴型的设计：MeAgain 的水豚、DreamMe 的鱼、Glapp 的紫色，以及 Shotsy 可换主题。
+- PRD 设想的"专业深色仪表盘，不要宠物和游戏化"，最接近的是 Preserve，它是 12 个 App 里唯一的黑底，目前也没有起量。
+- 这只是相关，不能证明因果（Preserve 上线才 5 个月）。但主力用户是 40–64 岁女性，这个风格选择需要重新验证。
 
 ---
 
@@ -323,7 +366,11 @@ PRD 3.2 写"系统推送每天 ≤2 条"，但没有写打针提醒。评论里�
 2. **补 Reddit 的维持期和保肌讨论。**需要用户本人用浏览器打开，或使用 Reddit API 凭证；重点是 r/Zepbound 和 r/Mounjaro。
 3. **用户访谈 15–20 人**，优先 40–64 岁女性，覆盖针剂、西林瓶、口服三类。**最重要的问题：会不会因为"保肌"而换 App 或付费？**
 4. **假门测试**：
-   - **商店页文案**：用 App Store 的商品页面优化（Product Page Optimization）做 A/B 测试，对比"GLP-1 tracker that never loses your data"和"Don't lose muscle on GLP-1"两种主卖点的转化率。
+   - **主卖点**：用落地页加小额投放（App 上线后可改用 App Store 的 Product Page Optimization），对比四种主卖点的转化率：
+     - A："靠谱、一站式的 GLP-1 记录"
+     - B："用 GLP-1 不掉肌肉"（已知很拥挤，作为对照组）
+     - C："停药以后不反弹"
+     - D："为 65 岁以上 Medicare 用户设计"
    - **定价**：测试 $49.99 / $59.99 / $69.99 三档。
 5. **法务和临床顾问审核**：曲线和分诊的监管边界、1.4.1 和 1.4.2 的审核预案、分诊阈值、蛋白和饮水公式。
 

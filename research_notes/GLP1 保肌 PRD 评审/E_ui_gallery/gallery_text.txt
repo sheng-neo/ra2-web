@@ -1,0 +1,39 @@
+GLP-1 竞品界面图集（12 个 App） 
+GLP-1 竞品界面图集 
+来源：美区 App Store 官方宣传截图，2026-11-19 拉取。每家 6 张拼成一张长图（从左到右为截图顺序）。评分人数为当日值。Preserve / Ember 当日无文字评论。 
+Shotsy 
+4.83★，35,124人。深青色。主界面 Summary：'It's shot day! Today at 3pm'，Estimated Medication Levels 曲线、Shot History。分界面：按剂量看减重结果（-61磅、BMI 24.9）、日历页（针剂/体重/卡路里/蛋白/副作用/备注）、换主题（Classic/Ocean/Drizzle/Galaxy/Petal/Sunset）、Shots 列表。支持30+种药物，含 Wegovy 口服。 
+[IMG #0 alt='Shotsy 界面截图']
+Preserve 
+0条文字评论，刚上架。黑底+荧光绿，唯一黑底、唯一把保肌做成主线。主界面 'Good afternoon, Maya. Day 1 post-dose'，体重 196.2磅（-14.1）、蛋白环 100g/115g。底部5 Tab：Home/Train/Eat/Coach/You。Train 按周排训练（Full Body B 与 Recovery 日交替），可调难度 Make easier/Keep base/Make harder；训练页按组记组数次数重量；Eat 是蛋白目标100g+推荐餐（Chicken rice bowl 32g、Greek yogurt bowl 36g、Protein coffee 32g），另有 'Easy on the stomach' 低食欲餐单。 
+[IMG #1 alt='Preserve 界面截图']
+MeAgain 
+4.79★，41,365人。白底紫色，水豚宠物 Capy。主界面药物浓度 0.125mg + 蛋白环 87/160g、纤维 23g、水 500ml。分界面：'One plan, built for you'（目标体重127磅、5月15日达成）、Shot Day 清单（Take Shot + 打卡 streak）、Capy 聊天（蛋白/水/纤维/活动四条进度）。 
+[IMG #2 alt='MeAgain 界面截图']
+Glapp 
+4.76★，1,103人。紫色。唯一做了'分期'和'库存'。主界面 Health control center：下针时间、药物浓度 6.49mg（91%）、体重 -45磅、周均 -2.7磅，Peak Effect 圆环（Shot phase 3 of 6，距下针4天19小时）。分界面：药物浓度曲线、库存（Vials/Pens/KwikPens，剩5针、33天后过期）、Shot phases（Cruise phase，2天11小时）。 
+[IMG #3 alt='Glapp 界面截图']
+Pep 
+4.68★，980人。白底彩色药盒磁贴。主界面 Medication Overview：已打12针、上针10mg、当前体内9.28mg，体重210.4磅、饮水72oz、营养1450/2000大卡、蛋白145/180g、步数8420，距下针3天11小时。分界面：药物浓度锯齿曲线、AI拍照识餐（Chicken bowl 525大卡、35g蛋白，2秒识别）、+号菜单（Medication/Drink/Meal/Progress/Side Effect/Note）、前后对比照（233.6→210.4磅）。 
+[IMG #4 alt='Pep 界面截图']
+DreamMe 
+4.71★，3,574人。宠物鱼养成，彩色卡通。主界面是戴墨镜的鱼 Sushi（Lvl 5），蛋白/水/活动/纤维四条进度。分界面：My Journey（101天、体重曲线上标剂量2.5→15mg）、Scan Food（458大卡、蛋白18g）、Results（进度28%、BMI 25.8、副作用 Abdominal Pain 轻度、Nausea 中重度）。 
+[IMG #5 alt='DreamMe 界面截图']
+Ember 
+0条文字评论。橄榄绿+米白，极简风，拿过 App Store 推荐。主界面 'Good afternoon'，Daily Protein 240g minimum（引用 ESPEN 指南），Quick Log 一键记针/蛋白/症状/体重。分界面：Track 菜单（Log Injection、Weight、Protein、Water、Calories、Side effects、Non-scale Win）、日历、Me 页（Mounjaro 15mg、Day Streak、Doctor Report 可导出 PDF、Women's Health）。 
+[IMG #6 alt='Ember 界面截图']
+JellyPal 
+4.71★，14人。深蓝紫+水母吉祥物。主界面距下针6天倒计时、Food Noise Very Low、体重194.9磅。分界面：Know your loss rate（27次称重算健康减重速度）、Food Noise 评分趋势、药物浓度'已测 vs 预测'曲线、药物浓度 vs HRV（Apple Health 心率变异性）同图对比。 
+[IMG #7 alt='JellyPal 界面截图']
+FreeWell 
+4.69★，332人，店内名 Dr.GLP-1。蓝色。卖点是 'AI Muscle Guard'。主界面：Medication Level 曲线、Side Effects（Constipation/Nausea/Diarrhea 各2-6/10）、Weight Change。分界面：AI Muscle Guard（'Lean Muscle level is trending down. Increase protein intake and activity level to protect muscle.'，配 BMI 23.2/体脂24%/瘦体重76% 三个环）、前后对比照（28.4磅）、Shot Log（距下针3天19小时、注射部位人体图）、蛋白110/160g + 纤维24/30g、AI Food Scan（Grilled Chicken Quinoa Bowl，452大卡、38g蛋白）。 
+[IMG #8 alt='FreeWell 界面截图']
+GLPro 
+5.0★，1人，未正式上线。浅绿底，最像'教练'。主界面 'Welcome back, Jordan'，30天 streak、步数7200、营养1560大卡、本周打卡。分界面：Nutrition（蛋白150g/碳水111g/脂肪53g 三个环、Meal Plan）、Injections（距下针5天、体内药物8.17mg曲线、注射历史）、Your Coach（问答入口：Handle cravings / Am I on track? / Hit my protein / Ease side effects / Low appetite / Weight stalled / Ask my doctor / Meal ideas）、Today's Signals（Consistency 100%、Muscle Protection 75%、Dose Rhythm 36%）。 
+[IMG #9 alt='GLPro 界面截图']
+GLPTracker-C2M 
+4.57★，277人。浅绿底，最老派，最像 Shotsy 早期版。主界面 Summary：已打针数、上针时间、体内药物浓度曲线、Next Shot。分界面：Results（体重变化-0.8kg、BMI 29.1、卡路里均值）、Shots（下针信息、注射部位 Thigh-Left、Medication Effect in Body 曲线）、Calendar（2025年12月日历、每天可补录）、Medication 设置（目标体重65kg、BMI 23.9）、Add Shot 表单（日期/时间/药物/剂量/注射部位/疼痛等级2/备注）。 
+[IMG #10 alt='GLPTracker-C2M 界面截图']
+GLP-1-Tracker-Superbrandnew 
+3.86★，7人。紫色，最简单也最旧。主界面是当天状态卡（Ozempic 2.00mg、上针5月25日、距今7天、左腹、体重154磅、目标130磅、64%）。分界面只有三件事：选注射部位（Right/Left Abdomen/Thigh）、Food Noise 等级0-5（0-No Food Noise 到 5-Incessant, Deafening Food Noise）、每天感受滑块（食欲、能量、恶心、便秘、腹泻）。 
+[IMG #11 alt='GLP-1-Tracker-Superbrandnew 界面截图']
