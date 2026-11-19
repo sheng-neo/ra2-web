@@ -180,6 +180,9 @@
 
 | # | 问题 | 裁定 / 处理 | 模块 | 验证 | 状态 |
 |---|---|---|---|---|---|
-| RB-1 | 阻断：默认参数下城市在 1 千与 6 万人之间反复崩塌、大半分区变瓦砾。生长 / 衰退掷骰对称（demand/4000），需求 −200 时每栋楼每年约 46% 整栋废弃；增益 1500 + 平滑 0.25 + 施工期不计供给导致超调 | declineOffset 3000（需求 < −1000 才衰退，最高 25%/访问）、maxDeclinesPerDay 8、ratioGain 1000、smoothing 0.15、施工中终态人口计入供给（pendingSupplyWeight）、非空城外生增长偏置 growthBias {120,40,40}、部分吞并余格还原为空分区地（partialLeftover）。均为 [设计] 参数，偏离 spec:zones §2.5.3 / §2.8.1 的 [低] 数值 | zones | `demand.test`「INT 平衡默认值」、`growth.test` 长跑不振荡断言（50 年版通过）；全真 6 带城镇 20 年两种子：人口年度最大跌幅 54% → 4%，废弃占比峰值 36% → 9% | 已实现 |
+| RB-1 | 阻断：默认参数下城市在 1 千与 6 万人之间反复崩塌、大半分区变瓦砾。生长 / 衰退掷骰对称（demand/4000），需求 −200 时每栋楼每年约 46% 整栋废弃；增益 1500 + 平滑 0.25 + 施工期不计供给导致超调 | declineOffset 3000（需求 < −1000 才衰退，最高 25%/访问）、ratioGain 1000、smoothing 0.15、施工中终态人口计入供给（pendingSupplyWeight）、非空城外生增长偏置 growthBias {120,40,40}、部分吞并余格还原为空分区地（partialLeftover）。均为 [设计] 参数，偏离 spec:zones §2.5.3 / §2.8.1 的 [低] 数值 | zones | `demand.test`「INT 平衡默认值」、`growth.test` 长跑不振荡断言（50 年版通过）；全真 6 带城镇 20 年两种子：人口年度最大跌幅 54% → 4%，废弃占比峰值 36% → 9% | 已实现 |
 | RB-2 | 邻城人口年度复利无上限，市场项把 C/I 需求永久顶满 | 上限 = neighborPopCapFactor(3) × neighborPopMax × natPop(year) / neighborPopScale；PRNG 消费不变 | zones | `neighbors.test` 上限用例 | 已实现 |
 | RB-3 | 合并 Fix-A（金城水泵通电）后月中导出的 .SC2 往返 hash('sc2') 不一致：读档按当前天气重判供水 | utilities.postLoad('sc2') 信任存档 WATERED 位（runWaterScan keepBits）；utilities.water.supply / usagePct 改只进 'full' | utilities / contracts | `water.test` keepBits 用例、真系统 `saveload.test` | 已实现 |
+| RB-4 | 复核：每日衰退配额 8 时名额按扫描顺序先到先得，西侧地块先衰退 | 恢复 maxDeclinesPerDay 48（不对称阈值下正常游戏不触顶；6 带城镇 20 年两种子结果与 8 逐位相同） | zones | `demand.test` 默认值 | 已实现 |
+| RB-5 | 复核：桥件轴向约定 art（未翻转 = L–R）与 placement / transport（未翻转 = T–B）相反，桥画成与行进方向垂直；整桥坍塌按邻居定轴，相邻平行竖桥只塌一格并误伤旁桥 | 契约 bridgeAlongX（Flipped 清零 = L–R）为唯一口径；bridgeRunTiles 轴取自 Flipped、同族、2×2 高速桥带搭档格，transport 衰败与 placement 推土共用 | contracts / transport / placement | `decay.test`、`piece.test`、`network.test` | 已实现 |
+| RB-6 | 复核：本项目存档侧表溢出时 0xFA 被截掉、transport 只对无侧表存档几何补回 | 几何补回只看 MISC 0x1024 与现有连接格数的差额，不再区分存档来源 | transport | `saveRobust.test` 溢出用例 | 已实现 |

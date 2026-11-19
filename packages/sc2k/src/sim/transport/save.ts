@@ -20,8 +20,8 @@ export function postLoad(rt: Runtime, ctx: SimContext, _source: PostLoadSource):
 }
 
 /**
- * .SC2 导入（IMPORT_ORDER 在 core、events 之后）：清理非网络格上的 0xFA；无侧表的存档（第三方 / compat，MISC 0x1054 = 0）里被灾害标记覆盖的
- * 边缘连接格按几何补回 0xFA（上限 = 存档 MISC 0x1024 连接格数 − 现有）；本项目存档的 0xFA 由 events 的侧表精确恢复。缓存由随后的 postLoad('sc2') 重建。
+ * .SC2 导入（IMPORT_ORDER 在 core、events 之后）：清理非网络格上的 0xFA；被灾害标记覆盖、侧表又没有恢复的边缘连接格
+ * （第三方 / compat 存档无侧表，或本项目存档侧表溢出被截）按几何补回 0xFA（上限 = 存档 MISC 0x1024 连接格数 − 现有）。缓存由随后的 postLoad('sc2') 重建。
  */
 export function importFrom(rt: Runtime, ctx: SimContext, doc: Sc2Document, diag: Diagnostic[]): void {
   bind(rt, ctx);
@@ -29,12 +29,12 @@ export function importFrom(rt: Runtime, ctx: SimContext, doc: Sc2Document, diag:
   let cleared = 0;
   for (let i = 0; i < L.xtxt.length; i++) if (clearStaleMark(ctx.state, i)) cleared++;
   if (cleared > 0) diag.push({ level: 'info', code: 'transport.staleConnectionMark', message: `清除了 ${cleared} 个不在网络格上的邻城连接标记（XTXT 0xFA）` });
+  // 几何兜底只看差额：存档记录的连接格数（MISC 0x1024）多于现有时补回，侧表已精确恢复则差额为 0、不介入。
+  // 不再限定"无侧表"：本项目存档的侧表溢出（> 168 条）时 0xFA 排在最后会被截掉（复核修复）。
   let restored = 0;
-  if (miscGet(doc.misc, MISC.prngMarker) === 0) {
-    const budget = miscGet(doc.misc, MISC.connectionTiles) - connectionSummary(ctx.state).total;
-    if (budget > 0) restored = restoreCoveredConnections(ctx.state, (i) => ctx.q.disasters.marker(i) !== 0, budget);
-    if (restored > 0) diag.push({ level: 'info', code: 'transport.connectionRestored', message: `按地图边缘几何补回 ${restored} 个被灾害标记覆盖的邻城连接标记（XTXT 0xFA）` });
-  }
+  const budget = miscGet(doc.misc, MISC.connectionTiles) - connectionSummary(ctx.state).total;
+  if (budget > 0) restored = restoreCoveredConnections(ctx.state, (i) => ctx.q.disasters.marker(i) !== 0, budget);
+  if (restored > 0) diag.push({ level: 'info', code: 'transport.connectionRestored', message: `按地图边缘几何补回 ${restored} 个被灾害标记覆盖的邻城连接标记（XTXT 0xFA）` });
   if (cleared > 0 || restored > 0) ctx.act.layerChanged('xtxt');
   migratePriv(ctx.state);
 }

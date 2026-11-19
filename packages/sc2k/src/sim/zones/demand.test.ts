@@ -175,9 +175,9 @@ describe('阶段集成与诉求', () => {
 describe('INT 平衡默认值', () => {
   const D = DEFAULT_ZONES_TUNING;
   const ZD = (tuning: Partial<ZonesTuning> = {}): ZonesCtx => ({ T: { ...D, ...tuning }, tbl: zoneTableFor(CATALOGUE), priv: createZonesPriv(), rt: createRuntime() });
-  it('默认值：增益 1000、平滑 0.15、衰退阈值不对称（declineOffset 3000 > growOffset 2000）、每日衰退配额 8、部分吞并留空地', () => {
+  it('默认值：增益 1000、平滑 0.15、衰退阈值不对称（declineOffset 3000 > growOffset 2000）、每日衰退配额 48、部分吞并留空地', () => {
     expect(D.ratioGain).toBe(1000); expect(D.smoothing).toBe(0.15);
-    expect(D.declineOffset).toBeGreaterThan(D.growOffset); expect(D.maxDeclinesPerDay).toBe(8);
+    expect(D.declineOffset).toBeGreaterThan(D.growOffset); expect(D.maxDeclinesPerDay).toBe(48);
     expect(D.pendingSupplyWeight).toBe(1); expect(D.partialLeftover).toBe('empty');
   });
   it('施工中终态人口计入供给侧：同一普查下 rt.pending 的住宅越多，R 需求越低（消除施工期超调）', () => {

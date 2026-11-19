@@ -127,7 +127,7 @@ export const DEFAULT_ZONES_TUNING: ZonesTuning = {
   abandonToRubbleDays: 150,
   unpoweredGraceDays: 60,
   tripFailGraceMonths: 3,
-  maxGrowsPerDay: 48, maxDeclinesPerDay: 8,
+  maxGrowsPerDay: 48, maxDeclinesPerDay: 48,   // 衰退阈值不对称后正常游戏中配额不触顶；配额过小时名额按扫描顺序先到先得、偏向西侧地块（复核修复）
   allowAbsorb: true,
   absorbPartial: true,
   partialLeftover: 'empty',

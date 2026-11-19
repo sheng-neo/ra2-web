@@ -167,6 +167,17 @@ describe('fix-B：被灾害标记覆盖的邻城连接 0xFA', () => {
     (b.state.priv.events as EventsPriv).marker[tileIndex(10, 0)] = 0;                 // 退水
     expect(b.host.q.transport.connections().total).toBe(1);
   });
+  it('本项目存档侧表溢出（0xFA 排在最后被截掉）：transport 仍按 MISC 0x1024 差额用几何补回（复核修复）', () => {
+    const a = floodedConnection();
+    const doc = a.host.exportSc2();
+    expect(miscGet(doc.misc, MISC.prngMarker)).not.toBe(0);
+    writeShadow(doc.misc, []);                                                        // 模拟溢出：侧表里没有这条 0xFA
+    const b = withTransport(5);
+    const diag = b.host.importSc2(doc);
+    expect(b.state.layers.xtxt[tileIndex(10, 0)]).toBe(XTXT_CONNECTION);
+    expect(b.host.q.transport.connections().total).toBe(1);
+    expect(diag.filter((d) => d.code === 'transport.connectionRestored')).toHaveLength(1);
+  });
   it('compat / 第三方存档（无侧表）：transport 按边缘几何补回 0xFA，以 MISC 0x1024 为上限', () => {
     const a = floodedConnection();
     const compat = a.host.exportSc2({ compat: true });
