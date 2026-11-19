@@ -6,7 +6,7 @@
 // 隧道衰败留 v2（tunnelLevels 没有写入 action）。写入一律经 act.set*，缓存由 onTilesChanged 的扇出同步。
 import { Corner, DX, DY, XBit, inMap, tileIndex, tileX, tileY } from '../../contracts/grid';
 import { NewsType } from '../../contracts/events';
-import { isBridge, isHighway, isOnramp, isRail, isRoad } from '../../contracts/net';
+import { bridgeRunTiles, isBridge, isHighway, isOnramp, isRail, isRoad } from '../../contracts/net';
 import { BudgetLine } from '../../contracts/state';
 import { familyPieceIdx, rubbleIdFor, undWithoutSubway } from './model';
 import type { SurfaceFamily } from './model';
@@ -54,23 +54,9 @@ function refreshNeighbors(rt: Runtime, t: number): void {
   }
 }
 
-/** 同一座桥沿其轴向的连续桥件（与 placement 推土的 bridgeRun 同口径：左 / 右邻是桥件 → 沿 x，否则沿 y）。 */
+/** 同一座桥的全部格：契约 bridgeRunTiles（行进轴取自 Flipped 位、只走同族桥件、加固高速桥带上 2×2 搭档格；与 placement 推土同一函数）。 */
 function bridgeRun(rt: Runtime, i: number): number[] {
-  const xbld = rt.state.layers.xbld;
-  const isB = (j: number): boolean => isBridge(xbld[j]!);
-  const x = tileX(i), y = tileY(i);
-  const lr = (x > 0 && isB(tileIndex(x - 1, y))) || (x < 127 && isB(tileIndex(x + 1, y)));
-  const run = [i];
-  for (let step = -1; step <= 1; step += 2) {
-    for (let k = 1; ; k++) {
-      const nx = lr ? x + k * step : x, ny = lr ? y : y + k * step;
-      if (!inMap(nx, ny)) break;
-      const j = tileIndex(nx, ny);
-      if (!isB(j)) break;
-      run.push(j);
-    }
-  }
-  return run;
+  return bridgeRunTiles(rt.state.layers.xbld, rt.state.layers.xbit, i);
 }
 
 /** 桥梁坍塌：整座桥（spec §4.18：不要只清一格）→ 清空，一次 bridgeCollapse + 居中 + 报纸；两岸引道重新选片。 */

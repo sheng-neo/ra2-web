@@ -149,6 +149,10 @@ describe('T7 水源顺序、淡化与扫描前清位（直接驱动扫描器）'
     expect(Array.from(state.layers.xbit)).toEqual(Array.from(before));
     expect(r.report.watered).toBe(1); expect(r.report.consumers).toBe(2);
     expect(r.report.unwateredBuildingTiles).toBe(1);
+    // 降水量下降后读档：supply 变小、存档里的供水位不变 → usagePct 夹在 100（复核修复）
+    runWaterScan(scanInput(state, { humid: 200, waterLevel: 4 }));
+    const dry = runWaterScan(scanInput(state, { humid: 0, waterLevel: 0 }), true);
+    expect(dry.report.usagePct).toBeLessThanOrEqual(100);
   });
   it('海水淡化：四面环海 3×3 → 640；一侧中点被占 → 580；淡水湖旁 → 0', () => {
     const { state } = mk();

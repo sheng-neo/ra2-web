@@ -6,7 +6,7 @@
 //  - saveSnapshotOf()：编码当前状态（挂起态允许，phaseCursor 一并编码）。
 // 本文件不 import io/**：编解码器来自 CreateSimOptions.snapshot。
 import type { CatalogueApi } from '../../contracts/catalogue';
-import { EXPORT_ORDER, IMPORT_ORDER, POSTLOAD_ORDER } from '../../contracts/clock';
+import { DAY_PHASES, EXPORT_ORDER, IMPORT_ORDER, POSTLOAD_ORDER } from '../../contracts/clock';
 import type { Sc2Document, Sc2ExportOptions } from '../../contracts/io';
 import { MISC_BORROWED_SLOTS, MISC_ZERO_RANGES } from '../../contracts/io';
 import type { SnapshotCodec } from '../../contracts/snapshot';
@@ -86,13 +86,27 @@ export function exportCity(deps: SaveLoadDeps, opts?: Sc2ExportOptions): Sc2Docu
   return doc;
 }
 
-/** 快照 → CityState（就地解码）；挂起态归一后 postLoad('snapshot')（不得重扫、不得消费 PRNG）。 */
+/**
+ * 时钟标量的合法性兜底（复核修复）：payload 里的标量损坏不会被编解码器发现，越界的 phaseCursor（例如改坏一个字节成负数）
+ * 会让 advanceDay 从 −2^31 循环、主线程卡死。越界一律夹回合法值并记 warn 诊断。
+ */
+function sanitizeClock(c: CityState['clock'], diag: Diagnostic[]): void {
+  const warn = (field: string, from: number, to: number): void => { diag.push({ level: 'warn', code: 'snapshot.clockRepaired', message: `快照时钟字段 ${field} 越界（${from}），已改为 ${to}` }); };
+  if (!Number.isInteger(c.age) || c.age < 0) { warn('age', c.age, 0); c.age = 0; }
+  const phases = DAY_PHASES[c.age % 25]?.length ?? 0;
+  if (!Number.isInteger(c.phaseCursor) || c.phaseCursor < 0 || c.phaseCursor > phases) { warn('phaseCursor', c.phaseCursor, 0); c.phaseCursor = 0; }
+  if (!Number.isInteger(c.mode) || c.mode < 0 || c.mode > 2) { warn('mode', c.mode, 1); c.mode = 1; }
+  if (!Number.isInteger(c.speed) || c.speed < 1 || c.speed > 5) { warn('speed', c.speed, 1); c.speed = 1; }
+}
+
+/** 快照 → CityState（就地解码）；时钟标量兜底 → 挂起态归一后 postLoad('snapshot')（不得重扫、不得消费 PRNG）。 */
 export function loadSnapshotInto(deps: SaveLoadDeps, bytes: Uint8Array): Diagnostic[] {
   // 先解码再丢运行期缓冲：文件级损坏（魔数 / 头部 JSON / 截断）在任何写入之前抛错，此时状态与运行期缓冲（事件 / 命令日志 / 脏区）都保持原样。
   const diag = deps.codec.decode(bytes, deps.state);
   deps.resetRuntime();
   const c = deps.state.clock;
   c.accumMs = 0;
+  sanitizeClock(c, diag);
   if (c.phaseCursor > 0) {
     // 挂起态存档：载入后处于同一挂起态，等待 UI 调 modalClosed()（恰好一层；原模态的 payload 不在快照里，UI 需按 phaseCursor 自行决定是否重开）
     if (c.modalPause !== 1) { c.modalPause = 1; }

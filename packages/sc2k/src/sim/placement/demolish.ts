@@ -5,7 +5,7 @@
 import type { Command, RejectReason } from '../../contracts/commands';
 import { FOOTPRINT, anchorOf, forEachLotTile } from '../../contracts/footprint';
 import { CityMode, Corner, DEVELOPED_FIRST, TILES, XBit, XterClass, ZONE_MASK, tileIndex, tileX, tileY } from '../../contracts/grid';
-import { isBridge, isPipeUnd, isPowerCarrier } from '../../contracts/net';
+import { bridgeRunTiles, isBridge, isPipeUnd, isPowerCarrier } from '../../contracts/net';
 import type { SimContext } from '../../contracts/system';
 import type { TileVerdict } from './check';
 import { refreshSurface, refreshUnderground } from './network';
@@ -75,20 +75,7 @@ export interface BulldozePlan { ok: boolean; reason?: RejectReason; cost: number
 /** 同一座桥沿其轴向的连续桥件（含高架电线）。 */
 function bridgeRun(ctx: SimContext, i: number): number[] {
   const L = ctx.state.layers;
-  const isB = (j: number): boolean => j >= 0 && (isBridge(L.xbld[j]!) || L.xbld[j] === ELEVATED_WIRE);
-  const x = tileX(i), y = tileY(i);
-  const lr = (x > 0 && isB(tileIndex(x - 1, y))) || (x < 127 && isB(tileIndex(x + 1, y)));
-  const run = [i];
-  for (const step of [-1, 1]) {
-    for (let d = 1; ; d++) {
-      const nx = lr ? x + d * step : x, ny = lr ? y : y + d * step;
-      if (nx < 0 || ny < 0 || nx > 127 || ny > 127) break;
-      const j = tileIndex(nx, ny);
-      if (!isB(j)) break;
-      run.push(j);
-    }
-  }
-  return run;
+  return bridgeRunTiles(L.xbld, L.xbit, i);              // 契约共享：行进轴取自 Flipped、只走同族、加固高速桥 2×2（与 transport 衰败坍塌同一函数）
 }
 
 export function planBulldoze(ctx: SimContext, tuning: PlacementTuning, tiles: readonly number[]): BulldozePlan {

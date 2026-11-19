@@ -39,6 +39,6 @@ export const DEFAULT_PLACEMENT_TUNING: PlacementTuning = {
   rubbleOnDemolish: true,
   requireAdjacency: true,
   microsimFullRejects: false,
-  bridgeSpriteAxis: 'TB',
+  bridgeSpriteAxis: 'LR',                         // 与契约 bridgeAlongX / art 一致（评审修复：原 'TB' 使桥被画成与行进方向垂直）
   undergroundUnderWater: false,
 };

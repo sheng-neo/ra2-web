@@ -93,15 +93,15 @@ describe.each(['optimistic', 'pessimistic'] as const)('network（%s 桩）', (pr
     expect(r).toMatchObject({ ok: true, cost: 6 * 10 + 3 * 25 });
     expect([13, 14, 15].map((x) => xb(state, x, 10))).toEqual([0x58, 0x57, 0x58]);
     for (const x of [10, 11, 12, 16, 17, 18]) expect(xb(state, x, 10)).toBe(ROAD_LR);
-    for (const x of [13, 14, 15]) expect(state.layers.xbit[T(x, 10)]! & XBit.Flipped).toBe(XBit.Flipped);   // 精灵默认 T–B，L–R 铺设翻转
+    for (const x of [13, 14, 15]) expect(state.layers.xbit[T(x, 10)]! & XBit.Flipped).toBe(0);              // 契约 bridgeAlongX：精灵默认 L–R，L–R 铺设不翻转
     expect(state.layers.xbit[T(14, 10)]! & XBit.Water).toBe(XBit.Water);
     // 再次拖过同一座桥：既有桥免费、不弹模态
     expect(host.dispatch({ type: 'network', kind: 'road', from: T(10, 10), to: T(18, 10) })).toMatchObject({ ok: true, cost: 0 });
-    // T–B 方向的桥不翻转；铁路桥 0x5B/0x5A
+    // T–B 方向的桥翻转；铁路桥 0x5B/0x5A
     for (const y of [30, 31]) setWater(state, T(40, y));
     expect(host.dispatch({ type: 'network', kind: 'rail', from: T(40, 28), to: T(40, 33), bridge: BridgeKind.Rail })).toMatchObject({ ok: true, cost: 4 * 25 + 2 * 75 });
     expect([30, 31].map((y) => xb(state, 40, y))).toEqual([0x5b, 0x5a]);
-    expect(state.layers.xbit[T(40, 30)]! & XBit.Flipped).toBe(0);
+    expect(state.layers.xbit[T(40, 30)]! & XBit.Flipped).toBe(XBit.Flipped);
     // 电线：高架 0x5C；桥型不在 options → water
     for (const x of [50, 51]) setWater(state, T(x, 50));
     expect(host.dispatch({ type: 'network', kind: 'power', from: T(48, 50), to: T(53, 50), bridge: BridgeKind.Wire }).ok).toBe(true);

@@ -176,7 +176,7 @@ export const createSim: CreateSimFn = (opts: CreateSimOptions): SimHost => {
     const c = state.clock;
     const d = c.age % 25;
     const phases = DAY_PHASES[d] ?? [];
-    for (let k = c.phaseCursor; k < phases.length; k++) {
+    for (let k = Math.max(0, c.phaseCursor | 0); k < phases.length; k++) {   // 防御：读档已兜底，这里再保证不从负数起跑
       const id = phases[k]!;
       c.phaseCursor = k + 1;
       if (!phaseApplies(id, c.age, impeachMonthly)) continue;

@@ -147,6 +147,23 @@ describe('saveload: .SC2 往返', () => {
   });
 });
 
+describe('saveload: 快照时钟兜底（复核修复）', () => {
+  it('越界的 phaseCursor / mode / speed / age 读档时被夹回合法值并记 warn；之后能正常推进（原先负游标让 advanceDay 死循环）', () => {
+    const { host } = createTestContext();
+    runDays(host, 3);
+    const s = host.state as { clock: { phaseCursor: number; mode: number; speed: number } };
+    s.clock.phaseCursor = -2147483648; s.clock.mode = 9; s.clock.speed = 0;
+    const bytes = host.saveSnapshot();
+    const b = createTestContext().host;
+    const diag = b.loadSnapshot(bytes);
+    expect(diag.filter((d) => d.code === 'snapshot.clockRepaired').map((d) => d.message.split(' ')[0])).toHaveLength(3);
+    expect(b.state.clock.phaseCursor).toBe(0); expect(b.state.clock.mode).toBe(CityMode.City); expect(b.state.clock.speed).toBe(1);
+    const age = b.state.clock.age;
+    runDays(b, 2);
+    expect(b.state.clock.age).toBe(age + 2);
+  });
+});
+
 describe('saveload: 真系统（INT-A：金城 3 年 + 一张债券 + 一次火灾 + 月中导出）', () => {
   /** app/wire 装配的真系统：金城 1 年 → 发债 + 请求火灾 → 再跑 2 年零 10 天（跨过灾害、月中导出）。 */
   const build = (): SimHost => {

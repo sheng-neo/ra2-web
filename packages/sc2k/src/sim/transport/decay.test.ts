@@ -1,7 +1,7 @@
 // ===== sim/transport/decay.test.ts =====（spec:transport §2.15 预算衰败：funding 100 不掷骰、funding 0 变废墟、桥梁随风坍塌、地铁塌陷、总开关）
 import { describe, expect, it } from 'vitest';
 import { XBit, tileIndex } from '../../contracts/grid';
-import { NET_BASE } from '../../contracts/net';
+import { NET_BASE, bridgeRunTiles } from '../../contracts/net';
 import { BudgetLine } from '../../contracts/state';
 import { createTestContext, runDays } from '../../testkit';
 import { flush, lay, layLine, setFunding } from './fixtures';
@@ -48,7 +48,7 @@ describe.each(['optimistic', 'pessimistic'] as const)('预算衰败（%s 桩）'
     setFunding(state, 100);
     state.economy.funding[BudgetLine.Bridges] = 99;
     state.weather.wind = 120;
-    lay(ctx, 20, 20, 0x58); lay(ctx, 21, 20, 0x57); lay(ctx, 22, 20, 0x5b); lay(ctx, 23, 20, 0x5c);   // 沿 x 连成一段（与推土机 bridgeRun 同口径）
+    lay(ctx, 20, 20, 0x58); lay(ctx, 21, 20, 0x57); lay(ctx, 22, 20, 0x58); lay(ctx, 23, 20, 0x57);   // 沿 x 的同族 4 格堤道（契约 bridgeRunTiles）
     for (let y = 40; y <= 45; y++) lay(ctx, 60, y, y % 2 === 0 ? 0x58 : 0x57);                       // 另一座 6 格堤道（沿 y）
     flush(host);
     runDays(host, 25);
@@ -64,6 +64,27 @@ describe.each(['optimistic', 'pessimistic'] as const)('预算衰败（%s 桩）'
     lay(ctx, 20, 20, 0x58); flush(host);
     runDays(host, 25);
     expect(state.layers.xbld[tileIndex(20, 20)]).toBe(0x58);
+  });
+  it('整桥坍塌只走同一座桥（复核修复）：两座相邻的平行竖桥（公路堤道 x=40 + 铁路桥 x=41）只塌掷到的那座、全段清空，另一座完好', () => {
+    const { ctx, host, state } = createTestContext({ profile, systems: [createTransportSystem()] });
+    setFunding(state, 100);
+    for (let y = 20; y <= 25; y++) {
+      lay(ctx, 40, y, y % 2 === 0 ? 0x58 : 0x57); lay(ctx, 41, y, y % 2 === 0 ? 0x5b : 0x5a);
+      ctx.act.setXbit(tileIndex(40, y), XBit.Flipped, true); ctx.act.setXbit(tileIndex(41, y), XBit.Flipped, true);   // 沿 y 铺设 = 翻转
+    }
+    flush(host);
+    const before = ctx.q.transport.roadTileCounts().bridgeTiles;
+    expect(bridgeRunTiles(state.layers.xbld, state.layers.xbit, tileIndex(40, 22)).sort((a, b) => a - b)).toEqual([20, 21, 22, 23, 24, 25].map((y) => tileIndex(40, y)));
+    expect(bridgeRunTiles(state.layers.xbld, state.layers.xbit, tileIndex(41, 22))).toHaveLength(6);
+    // 第三方存档翻转位口径相反时按邻接回退：清掉翻转位仍找到沿 y 的整座桥
+    for (let y = 20; y <= 25; y++) state.layers.xbit[tileIndex(40, y)] = state.layers.xbit[tileIndex(40, y)]! & ~XBit.Flipped;
+    expect(bridgeRunTiles(state.layers.xbld, state.layers.xbit, tileIndex(40, 22))).toHaveLength(6);
+    expect(before).toBe(12);
+  });
+  it('加固高速桥 2×2 块（.SC2 导入可见）：整座桥带上块内搭档行', () => {
+    const { ctx, state } = createTestContext({ profile, systems: [createTransportSystem()] });
+    for (let x = 30; x < 38; x++) for (let y = 50; y <= 51; y++) lay(ctx, x, y, (x & 1) === 0 ? 0x6a : 0x6b);   // 沿 x 的 4 块
+    expect(bridgeRunTiles(state.layers.xbld, state.layers.xbit, tileIndex(33, 50))).toHaveLength(16);
   });
   it('高速 2×2 块在偶数锚点一次掷骰、整块变废墟；匝道按 Highways 单格；subwayDecays=false 保留地铁；budgetDecay=false 关闭全部衰败', () => {
     const a = createTestContext({ profile, systems: [createTransportSystem()] });

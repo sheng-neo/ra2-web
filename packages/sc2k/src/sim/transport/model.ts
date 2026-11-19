@@ -1,8 +1,8 @@
 // ===== sim/transport/model.ts =====（spec:transport §2.1–§2.3、§3.1、§3.6）
 // 交通域的纯常量与纯函数：出行模式、方向掩码、各网络族在某个瓦片上的"可连通方向"、交叉件对照表、车站种类。
 // 不持有状态；所有集合谓词沿用 contracts/net 的 NET_FLAGS，不另抄区间。
-import { Dir, XBit, dirBit } from '../../contracts/grid';
-import { NET_BASE, StationKind } from '../../contracts/net';
+import { Dir, dirBit } from '../../contracts/grid';
+import { NET_BASE, StationKind, bridgeAlongX } from '../../contracts/net';
 import type { NetFamily } from '../../contracts/net';
 import { onrampWorldOrient } from '../../contracts/rotation';
 
@@ -37,9 +37,9 @@ export const SLOPE_LOW_END: Readonly<Record<number, Dir>> = { 2: Dir.B, 3: Dir.L
 /** 坡面码 1..4 所在的轴（1 / 3 = T-B；2 / 4 = L-R）。 */
 export const slopeAxis = (s: number): number => (s === 1 || s === 3 ? MASK_TB : MASK_LR);
 
-/** 翻转族（桥件 / 高架电线）的行进轴：Flipped 清零 = T–B（与吊桥"起始段 B / 末端段 T"的命名一致），置位 = L–R。 */
-export const BRIDGE_UNFLIPPED_AXIS = MASK_TB;
-export const bridgeAxis = (xbit: number): number => ((xbit & XBit.Flipped) !== 0 ? MASK_LR : MASK_TB);
+/** 翻转族（桥件 / 高架电线）的行进轴：契约 bridgeAlongX 唯一口径——Flipped 清零 = L–R（与 art 精灵一致），置位 = T–B。 */
+export const BRIDGE_UNFLIPPED_AXIS = MASK_LR;
+export const bridgeAxis = (xbit: number): number => (bridgeAlongX(xbit) ? MASK_LR : MASK_TB);
 
 /** 隧道口朝向：0x3F T / 0x40 R / 0x41 B / 0x42 L → 轴。 */
 export const portalAxis = (id: number): number => (id === 0x3f || id === 0x41 ? MASK_TB : MASK_LR);

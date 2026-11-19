@@ -12,7 +12,7 @@ import { POWER_PLANT_DEFS, POWER_PLANT_KINDS } from './defs';
 import { fakePlacementSystem, line, paintLot, paintWater, paintXbld, place } from './fixtures';
 import { createUtilitiesSystem } from './index';
 import type { UtilitiesPriv } from './priv';
-import { count3x3, createScratch, noFormulaSeed, runPowerScan } from './scan';
+import { count3x3, createScratch, noFormulaSeed, plantCellOutput, runPowerScan } from './scan';
 import type { PowerScanInput } from './scan';
 import { DEFAULT_UTILITIES_TUNING } from './tuning';
 
@@ -265,5 +265,21 @@ describe('查询与系统外形', () => {
     expect(sys.commands).toBeUndefined();
     expect(typeof sys.endOfDay).toBe('function'); expect(typeof sys.onTilesChanged).toBe('function');
     expect(typeof sys.importFrom).toBe('function'); expect(typeof sys.exportTo).toBe('function'); expect(typeof sys.postLoad).toBe('function');
+  });
+});
+
+describe('风 / 太阳能逐格产量的独立性（复核修复：FNV 低位不含 x & 1）', () => {
+  it('区间为 2 的幂时，相邻两列同值的比例接近 1/n 而不是 1（200 个种子 × 64 对）', () => {
+    const alt = new Uint8Array(MAP * MAP).fill(4);
+    let same = 0, pairs = 0;
+    for (let seed = 1; seed <= 200; seed++) {
+      const inp = { alt, wind: 4 * 8 * DEFAULT_UTILITIES_TUNING.windGustDiv - 1, humid: 0, formula: { seed, drawSeed: null }, tune: DEFAULT_UTILITIES_TUNING };
+      for (let k = 0; k < 64; k++) {
+        const y = 10 + (k % 32), x = 2 * (5 + (k >> 5));
+        if (plantCellOutput(inp, 0xc8, tileIndex(x, y)) === plantCellOutput(inp, 0xc8, tileIndex(x + 1, y))) same++;
+        pairs++;
+      }
+    }
+    expect(same / pairs).toBeLessThan(0.35);
   });
 });

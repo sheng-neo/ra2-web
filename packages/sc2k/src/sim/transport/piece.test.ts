@@ -128,14 +128,14 @@ describe('pieceFor：交叉件', () => {
     state.layers.xbit[below] = state.layers.xbit[below]! | XBit.Flipped;    // 镜像后道路侧朝 T = 本格
     expect(T.pieceFor('road', ci)).toBe(NET_BASE.road + 1);
     state.layers.xbit[below] = state.layers.xbit[below]! & ~XBit.Flipped;
-    lay(ctx, C.x, C.y + 1, 0x58); flush(host);                              // 堤道桥面：未翻转 = T–B 轴
-    expect(T.pieceFor('road', ci)).toBe(NET_BASE.road + 1);
-    state.layers.xbit[below] = state.layers.xbit[below]! | XBit.Flipped;
+    lay(ctx, C.x, C.y + 1, 0x58); flush(host);                              // 堤道桥面：未翻转 = L–R 轴（契约 bridgeAlongX）
     expect(T.pieceFor('road', ci)).toBe(NET_BASE.road + 0);
-    state.layers.xbit[below] = state.layers.xbit[below]! & ~XBit.Flipped;
-    lay(ctx, C.x, C.y + 1, 0x5b); flush(host);                              // 铁路桥：铁路族
+    state.layers.xbit[below] = state.layers.xbit[below]! | XBit.Flipped;    // 翻转 = T–B 轴：朝本格
+    expect(T.pieceFor('road', ci)).toBe(NET_BASE.road + 1);
+    lay(ctx, C.x, C.y + 1, 0x5b); flush(host);                              // 铁路桥：铁路族（仍为翻转 = T–B）
     expect(T.pieceFor('rail', ci)).toBe(NET_BASE.rail + 1);
     expect(T.pieceFor('road', ci)).toBe(NET_BASE.road + 0);
+    state.layers.xbit[below] = state.layers.xbit[below]! & ~XBit.Flipped;
     lay(ctx, C.x, C.y + 1, 0x3f); flush(host);                              // 隧道口朝 T：轴 TB
     expect(T.pieceFor('road', ci)).toBe(NET_BASE.road + 1);
     lay(ctx, C.x, C.y + 1, 0x40); flush(host);                              // 朝 R：轴 LR

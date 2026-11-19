@@ -24,11 +24,20 @@ export interface FormulaSeed { seed: number; drawSeed: (() => number) | null }
 /** 无种子（读档重扫 / 纯函数测试）。 */
 export const noFormulaSeed = (): FormulaSeed => ({ seed: -1, drawSeed: null });
 
-/** 均匀整数 [0, n)：有种子时 = hash32(seed, i) mod n（同月同格恒定）；无种子取中值。 */
+/**
+ * murmur3 的 32 位终混：FNV-1a 的低位只依赖各输入字节的低位（i = x·128 + y 的低位看不到 x & 1），
+ * 直接取模时相邻两列在 2 的幂区间上恒同值（复核修复：风 / 太阳能逐格产量强相关）。
+ */
+function fmix32(h: number): number {
+  h ^= h >>> 16; h = Math.imul(h, 0x85ebca6b); h ^= h >>> 13; h = Math.imul(h, 0xc2b2ae35); h ^= h >>> 16;
+  return h;
+}
+
+/** 均匀整数 [0, n)：有种子时 = fmix32(hash32(seed, i)) mod n（同月同格恒定、格间近似独立）；无种子取中值。 */
 function formulaInt(f: FormulaSeed, i: number, n: number): number {
   if (f.seed < 0 && f.drawSeed) f.seed = f.drawSeed() >>> 1;                // 31 位非负（priv 只收 i32；−1 留作"无种子"）
   if (n <= 0) return 0;
-  return f.seed < 0 ? (n - 1) >> 1 : hash32(f.seed, i) % n;
+  return f.seed < 0 ? (n - 1) >> 1 : (fmix32(hash32(f.seed, i)) >>> 0) % n;
 }
 
 export interface PowerScanInput {
@@ -205,7 +214,7 @@ export function runWaterScan(inp: WaterScanInput, keepBits = false): WaterScanRe
     supply += netSupply; consumers += netConsumers; watered += served; towerCapacity += towerCap; towerCharged += charged;
     networks.push({ start, supply: netSupply, consumers: netConsumers, served, towerCapacity: towerCap, towersCharged: charged, tiles: tail });
   }
-  const usagePct = supply > 0 ? Math.floor((watered * 100) / supply) : 100;
+  const usagePct = supply > 0 ? Math.min(100, Math.floor((watered * 100) / supply)) : 100;   // keepBits 读档时 watered 来自旧降水量下的位，可能 > supply
   const treatmentCapacity = Math.floor(inp.treatmentCells / tune.treatmentCellsPerPlant) * tune.treatmentTilesPerPlant;
   const treatmentSufficient = watered <= treatmentCapacity;
   let unwatered = 0;

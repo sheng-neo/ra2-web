@@ -1,6 +1,6 @@
 // ===== net.ts =====（spec:transport §2.1 / §2.3 / §2.11、spec:power-water §3.5）
 // 网络族片段、瓦片集合、可达偏移（CONTRACTS §D）。
-import { Dir } from './grid';
+import { Dir, XBit, inMap, tileIndex, tileX, tileY } from './grid';
 /** 15 片段：idx → 连接掩码（bit0=T bit1=R bit2=B bit3=L）。0–5 直线（含 4 个坡面件），6–9 弯 BR BL TL TR，10–13 三岔，14 十字。 */
 export const PIECE_MASK: readonly number[] = [0b1010, 0b0101, 0b0101, 0b1010, 0b0101, 0b1010, 0b0110, 0b1100, 0b1001, 0b0011, 0b0111, 0b1110, 0b1101, 0b1011, 0b1111];
 /** 坡面件：XTER 0x01..0x04 → idx 2..5。 */
@@ -42,6 +42,43 @@ export const isRoadSurface = (id: number): boolean => isRoad(id) && !(id >= 0x5d
 export const isRail = (id: number): boolean => (NET_FLAGS[id]! & NetFlag.Rail) !== 0;
 export const isHighway = (id: number): boolean => (NET_FLAGS[id]! & NetFlag.Highway) !== 0;
 export const isBridge = (id: number): boolean => (NET_FLAGS[id]! & NetFlag.Bridge) !== 0;
+/**
+ * 翻转族桥件的行进轴约定（全仓库唯一口径，与 art 的精灵一致：未翻转的桥件画成沿 x）：XBit.Flipped 清零 = L–R（沿 x），置位 = T–B（沿 y）。
+ * placement 铺桥据此置位，transport 据此判邻接，bridgeRunTiles 据此找整座桥（评审修复：原先 placement / transport 取 T–B、art 取 L–R，桥被画成与行进方向垂直）。
+ */
+export const bridgeAlongX = (xbit: number): boolean => (xbit & XBit.Flipped) === 0;
+/** 桥件所属族（同族才算同一座桥）：0 非桥；1 公路桥 0x51–0x59；2 铁路桥 0x5A/0x5B；3 高架电线 0x5C；4 加固高速桥 0x6A/0x6B（2×2 块）。 */
+export const bridgeFamilyOf = (id: number): 0 | 1 | 2 | 3 | 4 =>
+  id >= 0x51 && id <= 0x59 ? 1 : id === 0x5a || id === 0x5b ? 2 : id === 0x5c ? 3 : id === 0x6a || id === 0x6b ? 4 : 0;
+/**
+ * 同一座桥的全部格（整桥推土 / 整桥坍塌共用，spec:transport §4 第 18 条）：从 i 出发沿行进轴走同族桥件。
+ * 行进轴取自 XBit.Flipped（bridgeAlongX）；若该轴两侧都没有同族桥件而另一轴有（第三方存档的翻转位口径不同），改用另一轴。
+ * 加固高速桥是偶数对齐的 2×2 块：每格再带上块内垂直方向的搭档格（x^1 或 y^1）。纯函数，不读写状态。
+ */
+export function bridgeRunTiles(xbld: Uint8Array, xbit: Uint8Array, i: number): number[] {
+  const fam = bridgeFamilyOf(xbld[i]!);
+  if (fam === 0) return [i];
+  const x0 = tileX(i), y0 = tileY(i);
+  const same = (x: number, y: number): boolean => inMap(x, y) && bridgeFamilyOf(xbld[tileIndex(x, y)]!) === fam;
+  let alongX = bridgeAlongX(xbit[i]!);
+  const has = (ax: boolean): boolean => (ax ? same(x0 - 1, y0) || same(x0 + 1, y0) : same(x0, y0 - 1) || same(x0, y0 + 1));
+  if (!has(alongX) && has(!alongX)) alongX = !alongX;
+  const run: number[] = [i];
+  for (const step of [-1, 1]) {
+    for (let k = 1; ; k++) {
+      const x = alongX ? x0 + k * step : x0, y = alongX ? y0 : y0 + k * step;
+      if (!same(x, y)) break;
+      run.push(tileIndex(x, y));
+    }
+  }
+  if (fam !== 4) return run;
+  const out = [...run];
+  for (const t of run) {
+    const px = alongX ? tileX(t) : tileX(t) ^ 1, py = alongX ? tileY(t) ^ 1 : tileY(t);
+    if (same(px, py)) { const j = tileIndex(px, py); if (!out.includes(j)) out.push(j); }
+  }
+  return out;
+}
 export const isPortal = (id: number): boolean => (NET_FLAGS[id]! & NetFlag.Portal) !== 0;
 export const isOnramp = (id: number): boolean => (NET_FLAGS[id]! & NetFlag.Onramp) !== 0;
 export const isPowerCarrier = (id: number): boolean => (NET_FLAGS[id]! & NetFlag.Power) !== 0;
