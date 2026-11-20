@@ -44,6 +44,11 @@ export function Today({ profile, d, now, onOpenTrends, onOpenMe }: { profile: Pr
               开始练
             </button>
           )}
+          {d.advice.kind === 'triage' && (
+            <button className="btn danger" onClick={() => d.advice.kind === 'triage' && setUi({ triage: { hits: [d.advice.hit], rowId: d.openTriage?.rowId ?? null } })}>
+              再看一次提醒
+            </button>
+          )}
           {d.advice.kind === 'dose_day' && (
             <button className="btn primary" onClick={() => setUi({ sheet: 'dose' })}>
               {oral ? '记吃药' : '记一针'}

@@ -19,7 +19,7 @@ export function adviceText(a: Advice, protein: ProteinTarget, opts: { oral: bool
   const proteinLine = floor ? `先保住 ${floor} 克蛋白，分 3–4 次吃。` : '';
   switch (a.kind) {
     case 'triage':
-      return { title: '先处理身体的情况', body: '你刚才记录的情况可能需要看医生，详情见上面的提醒。今天的训练和饮食建议先暂停。', tone: 'alert' };
+      return { title: '今天先照顾身体', body: '你今天记录的情况可能需要看医生。今天的训练和饮食建议先暂停，能喝就小口喝水。', tone: 'alert' };
     case 'dose_day':
       if (a.status === 'overdue') return { title: '是不是忘了记？', body: opts.oral ? '到了吃药时间还没有记录。吃过了就补记一下；漏吃了，按说明书或问医生。' : '到了打针时间还没有记录。打过了就补记一下；漏打了怎么办，以说明书为准，拿不准就问医生。', tone: 'warn' };
       return { title: opts.oral ? '今天记得吃药' : '今天是打针日', body: opts.oral ? '按时吃，吃完记一下。' : `打完记一下，部位换一换。打针后的一两天如果胃口差，${proteinLine || '先少量多餐。'}`, tone: 'calm' };

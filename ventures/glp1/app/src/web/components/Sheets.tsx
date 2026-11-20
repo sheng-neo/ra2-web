@@ -64,14 +64,12 @@ export function DoseForm({ profile, d, draft, onDone }: { profile: Profile; d: D
       <p className="muted">{drugLabel(drug, profile.region)}</p>
       <label>
         剂量
-        <div className="row">
-          <input inputMode="decimal" value={amount} onChange={(e) => (setAmount(e.target.value), setOverMax(false))} aria-label="剂量" />
-          <Chips
-            options={(['mg', 'units', 'mL', 'clicks'] as DoseUnit[]).map((u) => ({ value: u, label: u === 'clicks' ? '格' : u }))}
-            value={unit}
-            onChange={(u) => (setUnit(u), setOverMax(false))}
-          />
-        </div>
+        <input inputMode="decimal" value={amount} onChange={(e) => (setAmount(e.target.value), setOverMax(false))} aria-label="剂量" />
+        <Chips
+          options={(['mg', 'units', 'mL', 'clicks'] as DoseUnit[]).map((u) => ({ value: u, label: u === 'clicks' ? '格' : u }))}
+          value={unit}
+          onChange={(u) => (setUnit(u), setOverMax(false))}
+        />
       </label>
       {unit !== 'mg' && <p className="fine">只记录你填的数，不做单位换算。药物水平曲线只用 mg 的记录来算。</p>}
       {!oral && (

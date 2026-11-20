@@ -529,8 +529,9 @@ label.check input {
   position: fixed;
   left: 50%;
   transform: translateX(-50%);
-  bottom: calc(200px + env(safe-area-inset-bottom));
+  top: calc(10px + env(safe-area-inset-top));
   background: var(--ink);
+  white-space: nowrap;
   color: var(--bg);
   border-radius: 999px;
   padding: 8px 8px 8px 16px;
@@ -540,6 +541,10 @@ label.check input {
   z-index: 30;
   max-width: calc(100% - 32px);
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2);
+}
+.toast span {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .toast button {
   background: var(--accent);

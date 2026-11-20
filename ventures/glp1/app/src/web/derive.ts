@@ -7,8 +7,8 @@ import { proteinTarget, type ProteinTarget } from '../core/protein';
 import { dueStatus, intervalHours, nextDueMs, suggestSite, type DueStatus, type Site } from '../core/schedule';
 import { highSymptomDays, type HighDayResult } from '../core/symptoms';
 import { todayAdvice, type Advice } from '../core/today';
-import type { TriageHit } from '../core/triage';
-import { dayKey } from '../core/tz';
+import { triageCard, type TriageHit } from '../core/triage';
+import { dayDiff, dayKey } from '../core/tz';
 import type { DoseEvent, FoodLog, Profile, WeightLog, WorkoutLog } from '../core/types';
 import { fastLoss, regainStatus, rollingAverages, type DailyAvg, type RegainStatus } from '../core/weight';
 import type { SymptomRow } from './db';
@@ -103,6 +103,9 @@ export function derive(profile: Profile, rec: Records, nowMs: number, tz: string
   const todaySymptoms = symptoms.filter((s) => inToday(s.occurredAt));
   const openRow = [...todaySymptoms].reverse().find((s) => s.triageId && s.triageLevel && !s.ack) ?? null;
   const openTriage = openRow ? { hit: { id: openRow.triageId!, level: openRow.triageLevel! }, rowId: openRow.id } : null;
+  // 需要暂停的分诊（如脱水、剧烈腹痛）：点了"我知道了"之后，当天的训练和饮食建议仍然暂停，提醒保持置顶。
+  const pausedRow = [...todaySymptoms].reverse().find((s) => s.triageId && s.triageLevel && triageCard({ id: s.triageId, level: s.triageLevel }, profile.region).pauseCoaching) ?? null;
+  const pausedTriage = pausedRow ? { id: pausedRow.triageId!, level: pausedRow.triageLevel! } : null;
   const workoutDays = [...new Set(workouts.map((w) => dayKey(w.occurredAt, tz, ds)))];
   const floor = protein.kind === 'auto' || protein.kind === 'manual' ? protein.floorG : null;
 
@@ -118,7 +121,7 @@ export function derive(profile: Profile, rec: Records, nowMs: number, tz: string
     highDays,
     proteinFloorG: floor,
     proteinByDay: Object.fromEntries(Object.entries(proteinByDay).filter(([k]) => k !== today)),
-    openTriage: openTriage?.hit ?? null,
+    openTriage: openTriage?.hit ?? pausedTriage,
     workoutDays,
     stoppedAt: reg?.stoppedAt ?? null,
   });
@@ -150,7 +153,7 @@ export function derive(profile: Profile, rec: Records, nowMs: number, tz: string
     lastDose,
     nextDue,
     dueStatus: status,
-    daysSinceDose: lastDose ? Math.floor((nowMs - lastDose.occurredAt) / 86_400_000) : null,
+    daysSinceDose: lastDose ? Math.max(0, dayDiff(dayKey(lastDose.occurredAt, tz, ds), today)) : null,
     escalation,
     highDays,
     latestWeightKg,

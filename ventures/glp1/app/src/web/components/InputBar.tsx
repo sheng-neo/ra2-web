@@ -1,15 +1,16 @@
 import { useRef, useState } from 'react';
-import { drugById, drugLabel } from '../../core/catalog';
+import { drugById, drugLabel, needsDoseConfirm } from '../../core/catalog';
 import { foodById } from '../../core/foods';
 import { parseLocal } from '../../core/localParse';
 import { SITES, type Site } from '../../core/schedule';
 import type { Profile } from '../../core/types';
-import { addFood, addQuestion, addSymptom, addWeight, checkTextTriage, updateProfile } from '../actions';
+import { addDose, addFood, addQuestion, addSymptom, addWeight, checkTextTriage, updateProfile } from '../actions';
 import { AiUnavailable, compressImage, parseRemote, type AiEvent } from '../api';
-import { symptomLabel } from '../content/labels';
+import { SITE_LABEL, symptomLabel } from '../content/labels';
 import type { Derived } from '../derive';
 import { setUi } from '../store';
 import { DoseForm, type DoseDraft } from './Sheets';
+import { fmtWhen } from './ui';
 
 type Pending =
   | { key: string; kind: 'dose'; draft: Partial<DoseDraft> }
@@ -165,15 +166,7 @@ function topFoods(d: Derived) {
 function PendingCard({ p, profile, d, onClose, onConsent }: { p: Pending; profile: Profile; d: Derived; onClose: () => void; onConsent: (yes: boolean) => void }) {
   switch (p.kind) {
     case 'dose':
-      return (
-        <div className="pcard">
-          <div className="pcard-head">
-            <b>确认这条用药记录</b>
-            <button className="icon-btn" onClick={onClose} aria-label="不记">✕</button>
-          </div>
-          {profile.regimen ? <DoseForm profile={profile} d={d} draft={p.draft} onDone={onClose} /> : <p>先在"我的"里设置你用的药。</p>}
-        </div>
-      );
+      return <DoseConfirm profile={profile} d={d} draft={p.draft} onClose={onClose} />;
     case 'food': {
       const save = (f: number) => {
         void addFood({ text: p.ev.label, proteinG: Math.round(p.ev.proteinG * f), lowG: p.ev.lowG * f, highG: p.ev.highG * f, kcal: p.ev.kcal }, 'text');
@@ -257,4 +250,57 @@ function PendingCard({ p, profile, d, onClose, onConsent }: { p: Pending; profil
         </div>
       );
   }
+}
+
+/** 一句话记针的确认卡（PRD 2.1）：一行摘要，必须点"确认"才入库；超过最高剂量再确认一次。 */
+function DoseConfirm({ profile, d, draft, onClose }: { profile: Profile; d: Derived; draft: Partial<DoseDraft>; onClose: () => void }) {
+  const [editing, setEditing] = useState(false);
+  const [overMax, setOverMax] = useState(false);
+  const reg = profile.regimen;
+  if (!reg) {
+    return (
+      <div className="pcard">
+        <p>先在"我的"里设置你用的药，再记针。</p>
+        <button className="btn" onClick={onClose}>好</button>
+      </div>
+    );
+  }
+  const drug = drugById(reg.drugId);
+  const name = drug.brands[profile.region]?.[0] ?? drug.generic.hans;
+  const amount = draft.amount ?? reg.doseAmount ?? 0;
+  const unit = draft.unit ?? reg.doseUnit;
+  const at = draft.occurredAt ?? Date.now();
+  const site = draft.site ?? null;
+  if (editing) {
+    return (
+      <div className="pcard">
+        <div className="pcard-head">
+          <b>改一下这条用药记录</b>
+          <button className="icon-btn" onClick={onClose} aria-label="不记">✕</button>
+        </div>
+        <DoseForm profile={profile} d={d} draft={draft} onDone={onClose} />
+      </div>
+    );
+  }
+  const confirm = async () => {
+    if (!overMax && needsDoseConfirm(drug, amount, unit)) return setOverMax(true);
+    await addDose(profile, { drugId: reg.drugId, amount, unit, site, occurredAt: at, source: 'text' });
+    onClose();
+  };
+  return (
+    <div className="pcard">
+      <div className="pcard-head">
+        <b>确认用药记录</b>
+        <button className="icon-btn" onClick={onClose} aria-label="不记">✕</button>
+      </div>
+      <p className="dose-line">
+        {name} <b>{amount} {unit === 'clicks' ? '格' : unit}</b> · {drug.route === 'oral' ? '口服' : site ? SITE_LABEL[site] : `没说部位（建议${SITE_LABEL[d.nextSite]}）`} · {fmtWhen(at, d.tz, Date.now())}
+      </p>
+      {overMax && <p className="warn">超过了这个药常见的最高剂量（{drug.maxMg} mg）。是不是多打了一位数？确认无误再点一次。</p>}
+      <div className="row">
+        <button className="btn primary" onClick={() => void confirm()}>{overMax ? '确认无误，记下' : '确认'}</button>
+        <button className="btn" onClick={() => setEditing(true)}>改一下</button>
+      </div>
+    </div>
+  );
 }

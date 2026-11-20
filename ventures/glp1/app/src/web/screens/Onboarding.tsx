@@ -142,10 +142,8 @@ export function Onboarding({ existing }: { existing: Profile | null }) {
             onChange={setStatus}
           />
           <h3>剂量</h3>
-          <div className="row">
-            <input inputMode="decimal" placeholder={drug.ladderMg.length ? `比如 ${drug.ladderMg[0]}` : '剂量'} value={amount} onChange={(e) => setAmount(e.target.value)} aria-label="剂量" />
-            <Chips options={(['mg', 'units', 'mL'] as DoseUnit[]).map((u) => ({ value: u, label: u }))} value={doseUnit} onChange={setDoseUnit} />
-          </div>
+          <input inputMode="decimal" placeholder={drug.ladderMg.length ? `比如 ${drug.ladderMg[0]}` : '剂量'} value={amount} onChange={(e) => setAmount(e.target.value)} aria-label="剂量" />
+          <Chips options={(['mg', 'units', 'mL'] as DoseUnit[]).map((u) => ({ value: u, label: u }))} value={doseUnit} onChange={setDoseUnit} />
           {status !== 'stopped' && (
             <>
               <h3>多久一次</h3>
