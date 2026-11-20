@@ -17,7 +17,7 @@
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme='light']) {
     --bg: #1d1a17;
     --card: #27231f;
     --ink: #f1ebe4;
@@ -33,6 +33,22 @@
     --chip: #332d27;
     color-scheme: dark;
   }
+}
+:root[data-theme='dark'] {
+  --bg: #1d1a17;
+  --card: #27231f;
+  --ink: #f1ebe4;
+  --muted: #b3a89d;
+  --line: #3a342e;
+  --brand: #6fb8a3;
+  --brand-ink: #10241e;
+  --accent: #e0a46a;
+  --warn-bg: #3a2c16;
+  --warn-ink: #f3c98b;
+  --alert: #ff8a80;
+  --alert-bg: #3b1d1b;
+  --chip: #332d27;
+  color-scheme: dark;
 }
 :root.large {
   font-size: 20px;

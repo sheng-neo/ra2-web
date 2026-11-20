@@ -8,6 +8,7 @@ import { updateProfile } from '../actions';
 import { Card, Chips } from '../components/ui';
 import { DISCLAIMER, STATUS_LABEL, WEEKDAY_LABEL } from '../content/labels';
 import { db } from '../db';
+import { cloudState, wipeCloud } from '../cloud';
 import type { Derived } from '../derive';
 import { buildBackup, buildCsv, download, importBackup } from '../exportData';
 import { toast } from '../store';
@@ -125,7 +126,11 @@ export function Me({ profile, d, onRedoSetup }: { profile: Profile; d: Derived; 
 
       <Card className="backup">
         <h3>备份和导出</h3>
-        <p className="warn">现在数据只存在这台手机的浏览器里。换手机、清理浏览器、或者很久不打开，都可能丢。邮箱同步在做，之前请定期导出。</p>
+        {cloudState() === 'on' ? (
+          <p className="muted">记录已保存在你的 Claude 账号里（只有你能看到），换手机登录同一个账号也能看到。也可以随时导出一份。</p>
+        ) : (
+          <p className="warn">现在数据只存在这台手机的浏览器里。换手机、清理浏览器、或者很久不打开，都可能丢。请定期导出。</p>
+        )}
         <div className="row wrap">
           <button className="btn primary" onClick={() => void buildBackup().then((b) => download(`稳瘦备份-${today}.json`, JSON.stringify(b), 'application/json'))}>
             导出备份
@@ -168,11 +173,12 @@ export function Me({ profile, d, onRedoSetup }: { profile: Profile; d: Derived; 
           className="btn danger"
           onClick={async () => {
             if (confirmWipe < 1) return setConfirmWipe(1);
+            await wipeCloud();
             await db.delete();
             location.reload();
           }}
         >
-          {confirmWipe ? '再点一次，永久删除这台设备上的全部记录' : '删除全部数据'}
+          {confirmWipe ? '再点一次，永久删除全部记录' : '删除全部数据'}
         </button>
       </Card>
     </div>

@@ -7,7 +7,7 @@ export default defineConfig({
     port: 5180,
     proxy: { '/api': 'http://localhost:8787' },
   },
-  build: { outDir: 'dist', sourcemap: true },
+  build: { outDir: process.env.ARTIFACT ? 'dist-artifact' : 'dist', sourcemap: !process.env.ARTIFACT },
   test: {
     include: ['src/**/*.test.ts', 'server/**/*.test.ts'],
   },

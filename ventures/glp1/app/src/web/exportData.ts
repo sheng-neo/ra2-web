@@ -5,6 +5,7 @@ import { drugById } from '../core/catalog';
 import type { Profile } from '../core/types';
 import { zonedParts } from '../core/tz';
 import { db, RECORD_TABLES, type RecordTable } from './db';
+import { saveViaClaude } from './cloud';
 import { SITE_LABEL, symptomLabel } from './content/labels';
 
 export interface Backup {
@@ -46,7 +47,8 @@ export async function buildCsv(): Promise<string> {
   return '﻿' + rows.map((r) => r.map(csvCell).join(',')).join('\n');
 }
 
-export function download(name: string, content: string, type: string): void {
+export async function download(name: string, content: string, type: string): Promise<void> {
+  if (await saveViaClaude(name, content, type).catch(() => false)) return;
   const url = URL.createObjectURL(new Blob([content], { type }));
   const a = document.createElement('a');
   a.href = url;
