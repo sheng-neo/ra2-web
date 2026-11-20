@@ -4,20 +4,14 @@ import type { Schedule } from '../../core/schedule';
 import type { CourseStatus, Profile, Safety } from '../../core/types';
 import { toKg, unitLabel, type WeightUnit } from '../../core/units';
 import { base, db, deviceTz } from '../db';
+import { regionFromTz } from '../../core/triage';
 import { REGION_LABEL, WEEKDAY_LABEL } from '../content/labels';
 import { Chips, fromLocalInput, toLocalInput } from '../components/ui';
 
 const NO_SAFETY: Safety = { kidneyOrLiver: false, pregnancy: false, insulinOrSU: false, eatingDisorder: false, under18: false };
 
 function guessRegion(): Region {
-  const tz = deviceTz();
-  if (tz === 'Asia/Shanghai' || tz === 'Asia/Chongqing' || tz === 'Asia/Urumqi') return 'CN';
-  if (tz === 'Asia/Taipei') return 'TW';
-  if (tz === 'Asia/Hong_Kong' || tz === 'Asia/Macau') return 'HK';
-  if (tz === 'Asia/Singapore') return 'SG';
-  if (tz === 'Asia/Kuala_Lumpur') return 'MY';
-  if (tz.startsWith('America/')) return 'US';
-  return 'OTHER';
+  return regionFromTz(deviceTz()) ?? 'OTHER';
 }
 
 export function Onboarding({ existing }: { existing: Profile | null }) {

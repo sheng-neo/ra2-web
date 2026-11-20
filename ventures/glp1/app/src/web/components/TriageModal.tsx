@@ -1,4 +1,5 @@
-import { EMERGENCY_NUMBER, triageCard } from '../../core/triage';
+import { EMERGENCY_NUMBER, emergencyRegion, triageCard } from '../../core/triage';
+import { deviceTz } from '../db';
 import type { Profile } from '../../core/types';
 import { ackTriage } from '../actions';
 import { useUi } from '../store';
@@ -7,9 +8,10 @@ import { useUi } from '../store';
 export function TriageModal({ profile }: { profile: Profile }) {
   const { triage } = useUi();
   if (!triage) return null;
-  const cards = triage.hits.map((h) => ({ hit: h, card: triageCard(h, profile.region) }));
+  const where = emergencyRegion(deviceTz(), profile.region);
+  const cards = triage.hits.map((h) => ({ hit: h, card: triageCard(h, where) }));
   const emergency = cards.some((c) => c.card.showEmergency);
-  const num = EMERGENCY_NUMBER[profile.region];
+  const num = EMERGENCY_NUMBER[where];
   return (
     <div className="triage-backdrop" role="alertdialog" aria-label="身体情况提醒">
       <div className={`triage ${cards[0].hit.level}`}>

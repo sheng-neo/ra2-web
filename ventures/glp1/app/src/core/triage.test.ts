@@ -64,3 +64,12 @@ describe('triage — context', () => {
     expect(triageCard({ id: 'crisis', level: 'crisis' }, 'US').body).toContain('988');
   });
 });
+
+describe('emergency number follows where the phone is', () => {
+  it('a Hong Kong user in Los Angeles gets 911; unknown zones fall back to the chosen region', async () => {
+    const { emergencyRegion, EMERGENCY_NUMBER } = await import('./triage');
+    expect(EMERGENCY_NUMBER[emergencyRegion('America/Los_Angeles', 'HK')]).toBe('911');
+    expect(EMERGENCY_NUMBER[emergencyRegion('Asia/Hong_Kong', 'US')]).toBe('999');
+    expect(EMERGENCY_NUMBER[emergencyRegion('Europe/London', 'TW')]).toBe('119');
+  });
+});

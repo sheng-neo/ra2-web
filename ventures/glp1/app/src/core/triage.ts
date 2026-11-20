@@ -208,6 +208,24 @@ export function triageSymptom(kind: SymptomKind, grade: number, ctx: TriageConte
   return [];
 }
 
+/**
+ * 急救电话按"人现在在哪"决定，而不是按引导时选的地区（在美国的香港用户要打 911）。
+ * 由手机时区推断；推断不出来时用用户选的地区。
+ */
+export function regionFromTz(tz: string): Region | null {
+  if (tz === 'Asia/Shanghai' || tz === 'Asia/Chongqing' || tz === 'Asia/Urumqi' || tz === 'Asia/Harbin') return 'CN';
+  if (tz === 'Asia/Taipei') return 'TW';
+  if (tz === 'Asia/Hong_Kong' || tz === 'Asia/Macau') return 'HK';
+  if (tz === 'Asia/Singapore') return 'SG';
+  if (tz === 'Asia/Kuala_Lumpur' || tz === 'Asia/Kuching') return 'MY';
+  if (tz.startsWith('America/') || tz.startsWith('US/') || tz === 'Pacific/Honolulu') return 'US';
+  return null;
+}
+
+export function emergencyRegion(tz: string, chosen: Region): Region {
+  return regionFromTz(tz) ?? chosen;
+}
+
 /** 急救电话（【待核实】）。 */
 export const EMERGENCY_NUMBER: Record<Region, string> = {
   CN: '120',
