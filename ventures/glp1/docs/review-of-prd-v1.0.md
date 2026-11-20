@@ -1,11 +1,11 @@
 # GLP-1 保肌与周期管理 AI Agent · PRD v1.0 评审意见（第 3 版：已并入 2,562 条评论和 12 个竞品的界面截图）
 
 评审日期：2026-11-19
-评审依据：PRD v1.0（4 页），以及 4 份材料，都在 `research_notes/GLP1 保肌 PRD 评审/` 下：
-- `A_competitors_reviews.md`：竞品功能与口碑（基于搜索摘要）
-- `B_clinical_user_needs.md`：临床证据与用户需求
-- `C_business_compliance.md`：商业与合规
-- `D_muse_reviews/`：**2,562 条美区 App Store 和 Google Play 评论原文**，覆盖 Shotsy、MeAgain、Pep、Glapp、Cal AI、Noom、DreamMe、Oura、Lose It!、MyFitnessPal 等 14 个 App；另有一份 summary.md
+评审依据：PRD v1.0（4 页），以及 4 份材料，都在 `ventures/glp1/research/` 下：
+- `a-competitors-search.md`：竞品功能与口碑（基于搜索摘要）
+- `b-clinical-user-needs.md`：临床证据与用户需求
+- `c-business-compliance.md`：商业与合规
+- `store-reviews/`：**2,562 条美区 App Store 和 Google Play 评论原文**，覆盖 Shotsy、MeAgain、Pep、Glapp、Cal AI、Noom、DreamMe、Oura、Lose It!、MyFitnessPal 等 14 个 App；另有一份 summary.md
 
 > **证据说明**
 > - **第 2 版改了什么**：第 1 版的"用户口碑"部分只有搜索摘要。第 2 版把它全部换成了真实评论统计，并修正了第 1 版的几处判断，见第二节。
@@ -107,7 +107,7 @@
 
 ### 竞品界面图集：PRD 的功能在哪里已经出现过（第 3 版新增）
 
-来源：12 个 App 的美区 App Store 官方宣传截图（2026-11-19 拉取），存放在 `research_notes/GLP1 保肌 PRD 评审/E_ui_gallery/`。注意：宣传截图展示的是厂商想让你看到的东西，实际功能可能更浅。
+来源：12 个 App 的美区 App Store 官方宣传截图（2026-11-19 拉取），存放在 `ventures/glp1/research/ui-gallery/`。注意：宣传截图展示的是厂商想让你看到的东西，实际功能可能更浅。
 
 | PRD 的设计 | 已经有谁在做 | 这些 App 的评分人数 |
 |---|---|---|
@@ -362,7 +362,7 @@ PRD 3.2 写"系统推送每天 ≤2 条"，但没有写打针提醒。评论里�
 
 ## 六、开发前还要做的验证
 
-1. ~~导出竞品差评~~ **已完成**：2,562 条，见 `D_muse_reviews/`。
+1. ~~导出竞品差评~~ **已完成**：2,562 条，见 `store-reviews/`。
 2. **补 Reddit 的维持期和保肌讨论。**需要用户本人用浏览器打开，或使用 Reddit API 凭证；重点是 r/Zepbound 和 r/Mounjaro。
 3. **用户访谈 15–20 人**，优先 40–64 岁女性，覆盖针剂、西林瓶、口服三类。**最重要的问题：会不会因为"保肌"而换 App 或付费？**
 4. **假门测试**：
@@ -378,7 +378,7 @@ PRD 3.2 写"系统推送每天 ≤2 条"，但没有写打针提醒。评论里�
 
 ## 附：关键数据出处
 
-- **评论统计和原文**：`D_muse_reviews/summary.md` 和 `reviews.csv`。每条引用都带商店链接和 review_id。
+- **评论统计和原文**：`store-reviews/summary.md` 和 `reviews.csv`。每条引用都带商店链接和 review_id。
 - **竞品功能和价格**：A 笔记，以及 summary.md 第 1 节（2026-11-19 的 App Store 内购列表）。
 - **瘦体重**：STEP 1、SURMOUNT-1、*Diabetes Obes Metab* 2026 meta 分析、T-REx（*Nature Medicine* 2026-11-09）、EASO 2026 共识。见 B 笔记 Q1。
 - **蛋白摄入**：JISSN 2025、意大利 App 研究 2026。见 B 笔记 Q2。

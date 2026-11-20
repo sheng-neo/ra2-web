@@ -6,8 +6,8 @@ _编写日期：2026-11-19。范围：美国为主，附中国简述。_
 - 用了 45 次网页搜索（WebSearch，结果是摘要），直接抓取了 1 个页面：Apple App Review Guidelines 原文（developer.apple.com，2026-11-19 抓取成功）。其他发布方页面没有抓取。
 - 数字多来自搜索摘要转述，出现冲突时在行内注明。只有单一来源或来源偏弱的条目标 **(unverified)**。
 - 订阅基准优先引用已有笔记，避免重复搜索：
-  - `research_notes/美国 App 榜单 AI 重构机会/03_health_fitness_lifestyle.md`（下称 **N03**）
-  - `research_notes/美国 App 榜单 AI 重构机会/07_ai_native_winners_risks.md`（下称 **N07**）
+  - `ventures/us-app-store-research/notes/03_health_fitness_lifestyle.md`（下称 **N03**）
+  - `ventures/us-app-store-research/notes/07_ai_native_winners_risks.md`（下称 **N07**）
 - 标注「推算」的数字是本文自己算的，不是来源原文。
 
 ---
