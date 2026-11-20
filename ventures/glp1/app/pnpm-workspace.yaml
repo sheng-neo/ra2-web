@@ -1,0 +1,5 @@
+# 独立的 pnpm 根目录：不加入外层红警游戏的 workspace。
+allowBuilds:
+  esbuild: true
+minimumReleaseAgeExclude:
+  - '@anthropic-ai/sdk@1.11.0'
