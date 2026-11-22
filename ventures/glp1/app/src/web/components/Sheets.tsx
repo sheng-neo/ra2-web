@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { doseUnitLabel, drugById, needsDoseConfirm, regimenLabel, type DoseUnit } from '../../core/catalog';
+import { doseUnitLabel, drugById, regimenLabel, type DoseUnit } from '../../core/catalog';
+import { doseCheckApplies, fastingMinutes } from '../../core/features';
 import { FOODS, foodName, foodUnit } from '../../core/foods';
 import { siteLabel, SITES, type Site } from '../../core/schedule';
 import { gradeLabel, SYMPTOM_ORDER, symptomLabel } from '../../core/symptoms';
@@ -10,6 +11,7 @@ import { addDose, addFood, addSymptom, addWeight, addWorkout } from '../actions'
 import { copingById, copingFor } from '../content/coping';
 import { ROUTINE_IDS, routineExercises, routineTitle, type Routine } from '../content/workouts';
 import type { Derived } from '../derive';
+import { features } from '../features';
 import { bold, useT } from '../i18n';
 import { setUi, useUi } from '../store';
 import { Chips, fromLocalInput, Sheet, toLocalInput } from './ui';
@@ -23,9 +25,10 @@ export function Sheets({ profile, d }: { profile: Profile; d: Derived }) {
       {sheet === 'dose' && <DoseSheet profile={profile} d={d} />}
       {sheet === 'weight' && <WeightSheet profile={profile} d={d} />}
       {sheet === 'symptom' && <SymptomSheet profile={profile} />}
-      {sheet === 'food' && <FoodSheet />}
-      {sheet === 'workout' && <WorkoutSheet />}
-      {coping && <CopingSheet id={coping} />}
+      {/* The switch comes first in each line, so a build without the feature has no way to open its sheet. */}
+      {features.foodAndProtein && sheet === 'food' && <FoodSheet />}
+      {features.workouts && sheet === 'workout' && <WorkoutSheet />}
+      {features.copingCards && coping && <CopingSheet id={coping} />}
     </>
   );
 }
@@ -51,10 +54,12 @@ export function DoseForm({ profile, d, draft, onDone }: { profile: Profile; d: D
   const [overMax, setOverMax] = useState(false);
   const n = Number(amount);
   const valid = amount !== '' && n > 0 && n < 1000;
+  const fasting = fastingMinutes(drug, features);
 
   const save = async () => {
     if (!valid) return;
-    if (!overMax && needsDoseConfirm(drug, n, unit)) {
+    // The check names the catalog's highest dose, so it runs only where that number may be shown (core/features.ts).
+    if (!overMax && doseCheckApplies(drug, n, unit, features)) {
       setOverMax(true);
       return;
     }
@@ -86,7 +91,7 @@ export function DoseForm({ profile, d, draft, onDone }: { profile: Profile; d: D
       <button className="btn primary block" disabled={!valid} onClick={() => void save()}>
         {overMax ? t('dose.confirmSure') : t('common.confirm')}
       </button>
-      {drug.fastingMin && <p className="fine">{t('dose.fasting', { minutes: drug.fastingMin })}</p>}
+      {fasting !== null && <p className="fine">{t('dose.fasting', { minutes: fasting })}</p>}
     </div>
   );
 }

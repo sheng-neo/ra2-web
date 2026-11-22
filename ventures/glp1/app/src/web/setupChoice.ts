@@ -5,6 +5,7 @@
  */
 import { brandOptions, drugById, type BrandOption, type DoseUnit, type Region } from '../core/catalog';
 import type { CourseStatus, Regimen } from '../core/types';
+import { fromKg, storedKg, toKg, type WeightUnit } from '../core/units';
 
 /** A brand is kept only for a region where the medication is sold under that name. */
 export function brandIn(region: Region, drugId: string | null | undefined, brand: string | null | undefined): string | null {
@@ -69,4 +70,39 @@ export function setupStart(saved: Regimen | null | undefined): SetupStart {
     intervalDays: s?.kind === 'interval' ? String(s.hours / 24) : '7',
     weeksOnDose: saved?.weeksOnDoseAtStart ? String(saved.weeksOnDoseAtStart) : '',
   };
+}
+
+// ── Redoing setup: what is kept, and what is added to the log ───────────────
+
+/** A saved weight as the text of a setup field, in the given unit, to one decimal. Blank when nothing is saved. */
+export function savedWeightText(kg: number | null | undefined, unit: WeightUnit): string {
+  return kg ? String(Math.round(fromKg(kg, unit) * 10) / 10) : '';
+}
+
+/**
+ * The weight a setup field stands for when setup is finished. `typed` is null while the field
+ * has not been touched: the saved weight is then kept exactly as it is, so walking through
+ * setup again changes nothing. A field that was emptied means no weight.
+ */
+export function fieldWeightKg(typed: string | null, saved: number | null | undefined, unit: WeightUnit): number | null {
+  if (typed === null) return saved ?? null;
+  const n = Number(typed);
+  return typed.trim() !== '' && n > 0 ? storedKg(toKg(n, unit)) : null;
+}
+
+/**
+ * Whether finishing setup adds the "most recent dose" as a row of the log. The question only
+ * starts the log. Once the log has a dose of the medication, setup does not ask it and adds
+ * nothing, so redoing setup cannot add the same dose again.
+ */
+export function addsStartingDose(status: CourseStatus, amount: number, loggedForMedication: boolean): boolean {
+  return status !== 'not_started' && amount > 0 && !loggedForMedication;
+}
+
+/**
+ * Whether finishing setup adds the weight as a weigh-in: the first time, and when setup is
+ * redone with another weight. The same weight as before is not logged a second time.
+ */
+export function addsStartingWeight(kg: number | null, savedKg: number | null | undefined): kg is number {
+  return kg !== null && kg > 0 && kg !== (savedKg ?? null);
 }

@@ -1,16 +1,20 @@
+import { alertTitle } from '../../core/alert';
 import { doseUnitLabel, drugById } from '../../core/catalog';
 import { countdownText, siteLabel } from '../../core/schedule';
 import { gradeLabel, symptomLabel } from '../../core/symptoms';
+import { emergencyRegion } from '../../core/triage';
 import { fmtDay, fmtTime, fmtWhen } from '../../core/tz';
 import type { Profile } from '../../core/types';
 import { fmtWeight } from '../../core/units';
 import { deleteRecord } from '../actions';
 import { adviceText } from '../content/advice';
-import { disclaimer, statusLabel } from '../content/labels';
+import { footNote, statusLabel } from '../content/labels';
 import { routineTitle } from '../content/workouts';
 import { Curve } from '../components/Curve';
 import { Card } from '../components/ui';
+import { deviceTz } from '../db';
 import type { Derived, TodayItem } from '../derive';
+import { features } from '../features';
 import { bold, useT } from '../i18n';
 import { setUi } from '../store';
 
@@ -19,13 +23,16 @@ export function Today({ profile, d, now, onOpenTrends, onOpenMe }: { profile: Pr
   const lang = t.lang;
   const reg = profile.regimen;
   const oral = d.drug?.route === 'oral';
-  const advice = adviceText(d.advice, d.protein, { oral, lang });
   const statusBits: string[] = [fmtDay(now, d.tz, lang)];
   if (reg) {
-    if (reg.status === 'stopped') statusBits.push(t('today.status.stopped'));
-    else if (d.daysSinceDose !== null && !oral) statusBits.push(d.daysSinceDose === 0 ? t('today.status.shotToday') : t('today.status.daysSinceShot', { days: d.daysSinceDose }));
+    if (reg.status === 'stopped') {
+      // The "after stopping" view is maintenance-stage content. The status itself is on the next line of the header.
+      if (features.maintenanceContent) statusBits.push(t('today.status.stopped'));
+    } else if (d.daysSinceDose !== null && !oral) statusBits.push(d.daysSinceDose === 0 ? t('today.status.shotToday') : t('today.status.daysSinceShot', { days: d.daysSinceDose }));
     if (d.escalation?.escalationActive && (reg.status === 'escalating' || reg.status === 'maintenance')) statusBits.push(t('today.status.escalation'));
   }
+  // Records of a kind this build does not show (they can come in with a restored backup) stay out of the list.
+  const items = d.todayItems.filter((it) => (it.kind !== 'food' || features.foodAndProtein) && (it.kind !== 'workout' || features.workouts));
 
   return (
     <div className="screen">
@@ -46,33 +53,9 @@ export function Today({ profile, d, now, onOpenTrends, onOpenMe }: { profile: Pr
         )}
       </header>
 
-      <Card className={`advice ${advice.tone}`}>
-        <h2>{advice.title}</h2>
-        <p>{advice.body}</p>
-        <div className="row wrap">
-          {d.advice.kind === 'normal' && d.advice.train && (
-            <button className="btn primary" onClick={() => setUi({ sheet: 'workout' })}>
-              {t('today.startWorkout')}
-            </button>
-          )}
-          {d.advice.kind === 'triage' && (
-            <button className="btn danger" onClick={() => d.advice.kind === 'triage' && setUi({ triage: { hits: [d.advice.hit], rowId: d.openTriage?.rowId ?? null } })}>
-              {t('today.seeAlert')}
-            </button>
-          )}
-          {d.advice.kind === 'dose_day' && (
-            <button className="btn primary" onClick={() => setUi({ sheet: 'dose' })}>
-              {t(oral ? 'action.logPill' : 'action.logShot')}
-            </button>
-          )}
-          <button className="btn" onClick={() => setUi({ sheet: 'symptom' })}>
-            {t('today.unwell')}
-          </button>
-        </div>
-        {d.fastLoss && <p className="warn">{t('today.fastLoss')}</p>}
-      </Card>
+      {features.dailyAdvice ? <AdviceCard d={d} oral={oral} /> : <AlertReminder profile={profile} d={d} />}
 
-      <ProteinCard d={d} />
+      {features.foodAndProtein && <ProteinCard d={d} />}
 
       {d.curve.length > 0 && (
         <Card className="clickable">
@@ -86,14 +69,80 @@ export function Today({ profile, d, now, onOpenTrends, onOpenMe }: { profile: Pr
           </button>
         </Card>
       )}
-      {reg && d.drug && !d.drug.pk && <p className="fine pad">{t('today.noCurve')}</p>}
+      {reg &&
+        d.drug &&
+        !d.curveAvailable &&
+        (features.curveNeedsSource ? (
+          <Card>
+            <h3>{t('curve.title')}</h3>
+            <p className="muted">{t('curve.unavailable')}</p>
+          </Card>
+        ) : (
+          <p className="fine pad">{t('today.noCurve')}</p>
+        ))}
 
       <Card>
         <h3>{t('today.log.title')}</h3>
-        {d.todayItems.length === 0 ? <p className="muted">{t('today.log.empty')}</p> : <ul className="log">{d.todayItems.map((it) => <LogRow key={it.row.id} it={it} profile={profile} tz={d.tz} />)}</ul>}
+        {items.length === 0 ? <p className="muted">{t(features.freeTextNote ? 'today.log.empty' : 'today.log.emptyButtons')}</p> : <ul className="log">{items.map((it) => <LogRow key={it.row.id} it={it} profile={profile} tz={d.tz} />)}</ul>}
       </Card>
-      <p className="fine pad">{disclaimer(lang)}</p>
+      <p className="fine pad">{footNote(lang)}</p>
     </div>
+  );
+}
+
+/** The daily advice card ("how to spend today"), with its buttons. */
+function AdviceCard({ d, oral }: { d: Derived; oral: boolean }) {
+  const t = useT();
+  const advice = adviceText(d.advice, d.protein, { oral, lang: t.lang });
+  return (
+    <Card className={`advice ${advice.tone}`}>
+      <h2>{advice.title}</h2>
+      <p>{advice.body}</p>
+      <div className="row wrap">
+        {features.workouts && d.advice.kind === 'normal' && d.advice.train && (
+          <button className="btn primary" onClick={() => setUi({ sheet: 'workout' })}>
+            {t('today.startWorkout')}
+          </button>
+        )}
+        {d.advice.kind === 'triage' && (
+          <button className="btn danger" onClick={() => d.advice.kind === 'triage' && setUi({ triage: { hits: [d.advice.hit], rowId: d.openTriage?.rowId ?? null } })}>
+            {t('today.seeAlert')}
+          </button>
+        )}
+        {d.advice.kind === 'dose_day' && (
+          <button className="btn primary" onClick={() => setUi({ sheet: 'dose' })}>
+            {t(oral ? 'action.logPill' : 'action.logShot')}
+          </button>
+        )}
+        <button className="btn" onClick={() => setUi({ sheet: 'symptom' })}>
+          {t('today.unwell')}
+        </button>
+      </div>
+      {d.fastLoss && <p className="warn">{t('today.fastLoss')}</p>}
+    </Card>
+  );
+}
+
+/**
+ * Where there is no daily advice card: a danger-symptom alert from today stays at the top of
+ * the screen, under the title of the card that was shown, with a way to open it again.
+ */
+function AlertReminder({ profile, d }: { profile: Profile; d: Derived }) {
+  const t = useT();
+  if (d.advice.kind !== 'triage') return null;
+  const hit = d.advice.hit;
+  // A hit that shows no card in this build (it can come in with a restored backup) has nothing to keep in view.
+  const title = alertTitle(hit, emergencyRegion(deviceTz(), profile.region), t.lang, features.triageDetailCards);
+  if (title === null) return null;
+  return (
+    <Card className="advice alert">
+      <h2>{title}</h2>
+      <div className="row wrap">
+        <button className="btn danger" onClick={() => setUi({ triage: { hits: [hit], rowId: d.openTriage?.rowId ?? null } })}>
+          {t('today.seeAlert')}
+        </button>
+      </div>
+    </Card>
   );
 }
 

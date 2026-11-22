@@ -1,16 +1,18 @@
 /**
  * 导出和导入。邮箱同步上线前，这是防丢数据的办法：一键导出，换手机再导入。
  */
+import { alertTitle, showsAlert } from '../core/alert';
 import { DEFAULT_REGION, doseUnitLabel, drugById, drugLabel, regimenLabel, type DoseUnit } from '../core/catalog';
 import type { Lang } from '../core/i18n';
 import { siteLabel, type Site } from '../core/schedule';
 import { symptomLabel } from '../core/symptoms';
-import { triageCard, type TriageId, type TriageLevel } from '../core/triage';
+import type { TriageId, TriageLevel } from '../core/triage';
 import type { Profile } from '../core/types';
 import { zonedParts } from '../core/tz';
 import { fromKg, unitLabel, type WeightUnit } from '../core/units';
 import { db, RECORD_TABLES, type RecordTable } from './db';
 import { saveViaClaude } from './cloud';
+import { features } from './features';
 import { ROUTINE_IDS, routineTitle, type Routine } from './content/workouts';
 import { translator } from './i18n/translate';
 
@@ -67,8 +69,11 @@ export async function buildCsv(lang: Lang): Promise<string> {
   const alertNote = (r: R) => {
     if (!r.triageId) return '';
     if (!english) return t('csv.alert', { alert: String(r.triageId) });
-    const card = triageCard({ id: r.triageId as TriageId, level: (r.triageLevel ?? 'urgent') as TriageLevel }, profile?.region ?? DEFAULT_REGION, lang);
-    return t('csv.alert', { alert: (card.title as string | undefined) ?? String(r.triageId) });
+    // The card this build shows for the alert: the card of its rule, or the fixed card (core/alert.ts).
+    const hit = { id: r.triageId as TriageId, level: (r.triageLevel ?? 'urgent') as TriageLevel };
+    // A hit that shows no card in this build (the row came in with a restored backup) gets no note.
+    if (!showsAlert(hit, features.triageDetailCards)) return '';
+    return t('csv.alert', { alert: alertTitle(hit, profile?.region ?? DEFAULT_REGION, lang, features.triageDetailCards) ?? String(r.triageId) });
   };
   const routineName = (r: R) => (english && ROUTINE_IDS.includes(r.routine as Routine) ? routineTitle(r.routine as Routine, lang) : String(r.routine));
   const variantName = (r: R) => (english && (r.variant === 'light' || r.variant === 'standard') ? t(r.variant === 'light' ? 'workout.light' : 'workout.standard') : r.variant);
@@ -88,7 +93,7 @@ export async function buildCsv(lang: Lang): Promise<string> {
 }
 
 export async function download(name: string, content: string, type: string): Promise<void> {
-  if (await saveViaClaude(name, content, type).catch(() => false)) return;
+  if (features.hostServices && (await saveViaClaude(name, content, type).catch(() => false))) return;
   const url = URL.createObjectURL(new Blob([content], { type }));
   const a = document.createElement('a');
   a.href = url;

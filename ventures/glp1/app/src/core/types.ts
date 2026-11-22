@@ -1,6 +1,7 @@
 import type { DoseUnit, Region } from './catalog';
 import type { Lang } from './i18n';
 import type { Schedule, Site } from './schedule';
+import type { SetupAnswers } from './setupQuestions';
 import type { SymptomKind, TriageId, TriageLevel } from './triage';
 import type { WeightUnit } from './units';
 
@@ -110,4 +111,9 @@ export interface Profile {
   onboardedAt: number | null;
   /** 用户自己最常记的食物（按次数排序后取前 3），用于快捷按钮。 */
   largeText: boolean;
+  /**
+   * Answers to the optional questions at the end of setup. Missing on profiles saved before the
+   * questions existed, or by a build that does not ask them. Read it through cleanSetupAnswers().
+   */
+  setupAnswers?: SetupAnswers;
 }

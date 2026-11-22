@@ -1,0 +1,522 @@
+/**
+ * The launch build, tested as a whole: this file runs with VITE_BUILD_PROFILE=launch, so the
+ * screens and actions it imports are the ones the launch build ships.
+ * What each switch decides on its own is tested in src/core/features.test.ts and alert.test.ts.
+ */
+import 'fake-indexeddb/auto';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+
+vi.hoisted(() => vi.stubEnv('VITE_BUILD_PROFILE', 'launch'));
+
+import { createElement, type ReactElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { drugById } from '../core/catalog';
+import { LAUNCH } from '../core/features';
+import { langOrDefault } from '../core/i18n';
+import { zonedToUtc } from '../core/tz';
+import type { DoseEvent, Profile } from '../core/types';
+import { addQuestionFromList, addSymptom } from './actions';
+import { Screens } from './App';
+import { InputBar } from './components/InputBar';
+import { SetupQuestions } from './components/SetupQuestions';
+import { Sheets } from './components/Sheets';
+import { TriageModal } from './components/TriageModal';
+import { footNote } from './content/labels';
+import { copyProblems } from './copyRules';
+import { countingOn, syncCounts } from './counting';
+import { db } from './db';
+import { derive, type Records } from './derive';
+import { buildCsv } from './exportData';
+import { BUILD_PROFILE, features } from './features';
+import { I18nProvider } from './i18n';
+import { Ask } from './screens/Ask';
+import { Me } from './screens/Me';
+import { Onboarding } from './screens/Onboarding';
+import { Today } from './screens/Today';
+import { Trends } from './screens/Trends';
+import { setUi, type SheetName } from './store';
+
+const TZ = 'America/New_York';
+const NOW = zonedToUtc(2026, 11, 20, 12, 0, TZ);
+const DAY = 86_400_000;
+const NOTICE = 'This app is a logging tool. It is not a medical device and does not give medical advice. Talk to your doctor before making decisions about your medication. Not affiliated with any drug maker.';
+const NO_ESTIMATE = 'An estimate for this medication is not available yet.';
+
+const english: Profile = {
+  id: 'me',
+  lang: 'en',
+  script: 'hans',
+  region: 'US',
+  weightUnit: 'lb',
+  heightCm: 160,
+  startWeightKg: 78,
+  goalWeightKg: 65,
+  birthYear: null,
+  dayStartHour: 4,
+  tz: TZ,
+  safety: { kidneyOrLiver: false, pregnancy: false, insulinOrSU: false, eatingDisorder: false, under18: false },
+  proteinMode: 'auto',
+  proteinManualG: null,
+  aiConsent: true,
+  regimen: { drugId: 'tirzepatide', brand: 'Zepbound', doseAmount: 5, doseUnit: 'mg', schedule: { kind: 'weekly', weekday: 1, time: '21:00' }, status: 'escalating', weeksOnDoseAtStart: 3 },
+  onboardedAt: 1,
+  largeText: false,
+};
+/** A profile saved before the language field existed: Chinese. */
+const chinese: Profile = { ...english, region: 'CN', weightUnit: 'jin', regimen: { ...english.regimen!, brand: undefined } };
+delete chinese.lang;
+const stopped: Profile = { ...english, regimen: { ...english.regimen!, status: 'stopped', stoppedAt: NOW - 40 * DAY } };
+
+const row = (at: number) => ({ id: `r${at}`, createdAt: at, updatedAt: at, deletedAt: null, occurredAt: at, tz: TZ, source: 'manual' as const });
+const dose = (at: number, amount: number): DoseEvent => ({ ...row(at), drugId: 'tirzepatide', amount, unit: 'mg', site: 'thigh_l' });
+
+/** Records as a backup from the full build could bring them in: food and a workout are among them. */
+const records: Records = {
+  doses: [dose(NOW - 18 * DAY, 2.5), dose(NOW - 11 * DAY, 5), dose(NOW - 4 * DAY, 5), dose(NOW - 3_600_000, 5)],
+  foods: [{ ...row(NOW - 7_200_000), text: 'Greek yogurt', proteinG: 17, lowG: 14, highG: 20 }],
+  weights: Array.from({ length: 8 }, (_, i) => ({ ...row(NOW - i * DAY - 5_000), kg: 80 + i * 0.4 })),
+  symptoms: [
+    { ...row(NOW - 9_000_000), kind: 'nausea' as const, grade: 2 },
+    { ...row(NOW - 9_500_000), kind: 'vomiting' as const, grade: 3, triageId: 'dehydration' as const, triageLevel: 'urgent' as const, ack: true },
+  ],
+  workouts: [{ ...row(NOW - 10_000_000), routine: 'band' as const, variant: 'light' as const }],
+};
+
+/** Text a person would read: tags removed, plus labels and placeholders. */
+function visibleText(html: string): string {
+  const attrs = [...html.matchAll(/(?:aria-label|placeholder)="([^"]*)"/g)].map((m) => m[1]);
+  return [html.replace(/<[^>]+>/g, ' '), ...attrs].join(' ').replace(/&quot;/g, '"').replace(/&#x27;/g, "'").replace(/&amp;/g, '&');
+}
+
+function html(profile: Profile, el: ReactElement): string {
+  return renderToStaticMarkup(createElement(I18nProvider, { lang: langOrDefault(profile), children: el }));
+}
+
+const noop = () => undefined;
+function screens(profile: Profile, rec: Records = records) {
+  const d = derive(profile, rec, NOW, TZ);
+  return {
+    today: visibleText(html(profile, createElement(Today, { profile, d, now: NOW, onOpenTrends: noop, onOpenMe: noop }))),
+    trends: visibleText(html(profile, createElement(Trends, { profile, d, rec, now: NOW }))),
+    me: visibleText(html(profile, createElement(Me, { profile, d, onRedoSetup: noop }))),
+    questions: visibleText(html(profile, createElement(Ask, { profile }))),
+    dock: html(profile, createElement(InputBar, { profile, d })),
+  };
+}
+
+function alertText(profile: Profile, hits: Parameters<typeof setUi>[0]['triage']): string {
+  setUi({ triage: hits });
+  const text = visibleText(html(profile, createElement(TriageModal, { profile })));
+  setUi({ triage: null });
+  return text;
+}
+
+/** Any network call from the code under test fails the test that made it. */
+const fetchSpy = vi.fn(() => Promise.reject(new Error('the launch build must not call the network')));
+beforeAll(() => vi.stubGlobal('fetch', fetchSpy));
+afterAll(() => {
+  expect(fetchSpy).not.toHaveBeenCalled();
+  vi.unstubAllGlobals();
+});
+
+describe('launch build: switches', () => {
+  it('this file runs as the launch profile', () => {
+    expect(BUILD_PROFILE).toBe('launch');
+    expect(features).toBe(LAUNCH);
+  });
+});
+
+describe('launch build: no model calls and no note box', () => {
+  it('the dock is three log buttons: no note box, no camera, no food buttons', () => {
+    const dock = screens(english).dock;
+    expect(visibleText(dock).replace(/\s+/g, ' ').trim()).toBe('Log shot Weight Symptom');
+    expect(dock).not.toMatch(/<input|<form|capture=|type="file"/);
+    for (const s of ['Type a note', 'Take a photo', 'Food', 'Egg']) expect(dock, s).not.toContain(s);
+  });
+
+  it('a pill is logged with a button too', () => {
+    const oral: Profile = { ...english, regimen: { drugId: 'semaglutide-oral-wl', brand: 'Wegovy pill', doseAmount: 4, doseUnit: 'mg', schedule: { kind: 'daily', time: '08:00' }, status: 'escalating' } };
+    expect(visibleText(screens(oral).dock).replace(/\s+/g, ' ').trim()).toBe('Log pill Weight Symptom');
+  });
+
+  it('settings have no AI section, and no screen mentions AI', () => {
+    const s = screens(english);
+    for (const text of Object.values(s)) expect(text).not.toMatch(/\bAI\b|AI service|recognition/);
+  });
+
+  it('the dock is on Today only: the third tab has its own box for a question', () => {
+    const page = renderToStaticMarkup(createElement(Screens, { profile: english }));
+    expect(page).toContain('class="quick only"');
+    for (const s of ['>Today<', '>Trends<', '>Questions<', '>Me<']) expect(page, s).toContain(s);
+    expect(page).not.toContain('>Ask<');
+  });
+});
+
+describe('launch build: danger symptoms', () => {
+  it('every serious hit that is not a crisis shows the one fixed card, with the call button and the "not a diagnosis" line', () => {
+    for (const hit of [
+      { id: 'dehydration', level: 'urgent' },
+      { id: 'abdominal_pain_severe', level: 'urgent' },
+      { id: 'hypoglycemia', level: 'act_now' },
+      { id: 'pancreatitis', level: 'emergency' },
+    ] as const) {
+      const text = alertText(english, { hits: [hit], rowId: null }).replace(/\s+/g, ' ');
+      expect(text, hit.id).toContain('Contact your doctor right away');
+      // The number follows where the phone is, so only its shape is checked.
+      expect(text, hit.id).toMatch(/What you logged can be a sign of a serious problem\. Contact your doctor right away\. If it is an emergency, call (\d{3}|your local emergency number)\./);
+      expect(text, hit.id).toContain('It is not a diagnosis.');
+      expect(text, hit.id).toContain('Got it');
+      // None of the detail cards' text.
+      expect(text, hit.id).not.toMatch(/dehydration|pancreas|blood sugar|emergency room|Tell your doctor ahead of time|paused/i);
+    }
+    expect(alertText(english, { hits: [{ id: 'dehydration', level: 'urgent' }], rowId: null })).toMatch(/Call \d{3}/);
+  });
+
+  it('a hit of a mild level (a reminder in the default build) shows no alert at all', () => {
+    for (const hit of [
+      { id: 'procedure', level: 'remind' },
+      { id: 'contraception', level: 'remind' },
+      { id: 'pregnancy', level: 'contact' },
+      { id: 'eating_too_little', level: 'care' },
+    ] as const) {
+      setUi({ triage: { hits: [hit], rowId: null } });
+      expect(html(english, createElement(TriageModal, { profile: english })), hit.id).toBe('');
+      setUi({ triage: null });
+    }
+  });
+
+  it('a crisis hit shows the crisis card', () => {
+    const text = alertText(english, { hits: [{ id: 'crisis', level: 'crisis' }], rowId: null });
+    expect(text).toContain('You are not alone');
+    expect(text).not.toContain('Contact your doctor right away');
+  });
+
+  it('a severe symptom from the symptom sheet still triggers the alert', async () => {
+    await db.symptoms.clear();
+    setUi({ triage: null, coping: null });
+    const hits = await addSymptom(english, 'vomiting', 3);
+    expect(hits).toEqual([{ id: 'dehydration', level: 'urgent' }]);
+    const saved = await db.symptoms.toArray();
+    expect(saved).toHaveLength(1);
+    expect(saved[0]).toMatchObject({ kind: 'vomiting', grade: 3, triageId: 'dehydration', triageLevel: 'urgent' });
+    expect(visibleText(html(english, createElement(TriageModal, { profile: english })))).toContain('Contact your doctor right away');
+    setUi({ triage: null });
+  });
+
+  it('Today keeps the alert of the day in view under the fixed title, without the advice card', () => {
+    const today = screens(english).today;
+    expect(today).toContain('Contact your doctor right away');
+    expect(today).toContain('See the alert again');
+    expect(today).not.toContain('Take care of your body first today');
+    expect(today).not.toMatch(/tips are paused/);
+  });
+
+  it('the spreadsheet names an alert by the card that was shown', async () => {
+    await Promise.all([db.profile.clear(), db.symptoms.clear()]);
+    await db.profile.put(english);
+    await db.symptoms.add({ ...row(NOW - 9_600_000), kind: 'abdominal_pain', grade: 3, triageId: 'abdominal_pain_severe', triageLevel: 'urgent' });
+    await db.symptoms.add({ ...row(NOW - 9_700_000), kind: 'other', grade: 3, note: 'x', triageId: 'crisis', triageLevel: 'crisis' });
+    const lines = (await buildCsv('en')).split('\n');
+    expect(lines).toContain('2026-11-20,09:20,America/New_York,Symptom,Stomach pain,3,Grade 0–3,Alert: Contact your doctor right away');
+    expect(lines).toContain('2026-11-20,09:18,America/New_York,Symptom,x,3,Grade 0–3,Alert: You are not alone');
+    await db.symptoms.clear();
+  });
+});
+
+describe('launch build: hidden features', () => {
+  const s = screens(english);
+  const all = Object.values(s).join('\n');
+
+  it('no coping cards: not on the third tab, not as a sheet, not after logging a symptom', async () => {
+    expect(all).not.toMatch(/Things to try first|Try to avoid|See a doctor if|coping/i);
+    for (const coping of ['nausea', 'constipation', 'no_appetite', 'fatigue']) {
+      setUi({ sheet: null, coping });
+      expect(html(english, createElement(Sheets, { profile: english, d: derive(english, records, NOW, TZ) })), coping).toBe('');
+    }
+    setUi({ coping: null });
+    // Logging a symptom that is not an alert only logs it.
+    await db.symptoms.clear();
+    expect(await addSymptom(english, 'nausea', 2)).toEqual([]);
+    expect(await db.symptoms.count()).toBe(1);
+    expect(html(english, createElement(Sheets, { profile: english, d: derive(english, records, NOW, TZ) }))).toBe('');
+    setUi({ toast: null });
+    await db.symptoms.clear();
+  });
+
+  it('no workouts, food or protein: no sheet, no card, no row in the log', () => {
+    const d = derive(english, records, NOW, TZ);
+    for (const sheet of ['food', 'workout'] as SheetName[]) {
+      setUi({ sheet, coping: null });
+      expect(html(english, createElement(Sheets, { profile: english, d })), String(sheet)).toBe('');
+    }
+    setUi({ sheet: null });
+    // (The weight note says a weigh-in moves "because of water and food"; that sentence stays.)
+    expect(all).not.toMatch(/workout|protein|Log food|\+ Food|Greek yogurt|\b17 g\b|Resistance band/i);
+    // The records are still on the phone (and in the export); only their rows are hidden.
+    expect(d.todayItems.some((it) => it.kind === 'food')).toBe(true);
+    expect(d.todayItems.some((it) => it.kind === 'workout')).toBe(true);
+    // The three kinds the launch build logs are listed.
+    for (const text of ['Weight', 'Shot · Left thigh', 'Nausea', 'Vomiting']) expect(s.today, text).toContain(text);
+  });
+
+  it('the sheets the launch build does use still open', () => {
+    const d = derive(english, records, NOW, TZ);
+    const titles: [SheetName, string][] = [['dose', 'Log shot'], ['weight', 'Log weight'], ['symptom', 'Log a symptom']];
+    for (const [sheet, title] of titles) {
+      setUi({ sheet, coping: null });
+      expect(visibleText(html(english, createElement(Sheets, { profile: english, d }))), title).toContain(title);
+    }
+    setUi({ sheet: null });
+  });
+
+  it('no daily advice card', () => {
+    const calm = screens(english, { ...records, symptoms: [] }).today;
+    expect(calm).not.toMatch(/A good day for a workout|A regular day today|Today is shot day|Day \d+ after a dose increase|Did you forget to log it|Log a symptom/);
+    expect(renderToStaticMarkup(createElement(I18nProvider, { lang: 'en', children: createElement(Today, { profile: english, d: derive(english, { ...records, symptoms: [] }, NOW, TZ), now: NOW, onOpenTrends: noop, onOpenMe: noop }) }))).not.toContain('class="card advice');
+  });
+
+  it('no maintenance-stage content, but the status choices stay', () => {
+    const after = screens(stopped);
+    expect(after.me).toMatch(/Increasing dose\s+Maintenance dose\s+Paused\s+Stopped/);
+    expect(after.today).toContain('Stopped');
+    for (const text of Object.values(after)) expect(text).not.toMatch(/After stopping|after-stopping|regain|from your lowest point/i);
+  });
+
+  it('no Chinese language choice for an English profile; settings show no language picker', () => {
+    expect(s.me).not.toMatch(/简体中文|繁體中文|Language/);
+    expect(copyProblems(all)).toEqual([]);
+  });
+
+  it('the third tab is the list of questions for the doctor', () => {
+    expect(s.questions).toContain('Questions for my doctor');
+    expect(s.questions).toContain('A question for your doctor');
+    expect(s.questions).toContain('No questions yet.');
+    expect(s.questions).not.toMatch(/answers are not ready|in the box below/i);
+  });
+});
+
+describe('launch build: estimated medication level', () => {
+  it('no curve is drawn for a medication without a label source; a neutral line is shown instead', () => {
+    const d = derive(english, records, NOW, TZ);
+    expect(d.curveAvailable).toBe(false);
+    expect(d.curve).toEqual([]);
+    expect(d.curveNow).toBeNull();
+    const s = screens(english);
+    expect(s.today).toContain(NO_ESTIMATE);
+    expect(s.trends).toContain(NO_ESTIMATE);
+    const page = html(english, createElement(Trends, { profile: english, d, rec: records, now: NOW })) + html(english, createElement(Today, { profile: english, d, now: NOW, onOpenTrends: noop, onOpenMe: noop }));
+    expect(page).not.toContain('aria-label="Estimated medication level chart"');
+    expect(page).not.toMatch(/How this is calculated|half-life/);
+  });
+
+  it('the same records do draw a curve where the switch is off, so the switch is what decides', () => {
+    const d = derive(english, records, NOW, TZ, false);
+    expect(d.curveAvailable).toBe(true);
+    expect(d.curve.length).toBeGreaterThan(0);
+  });
+
+  it('no other catalog number reaches the screen either: no dose example, no highest dose, no wait after a pill', () => {
+    const oral: Profile = { ...english, regimen: { drugId: 'semaglutide-oral-wl', brand: 'Wegovy pill', doseAmount: 4, doseUnit: 'mg', schedule: { kind: 'daily', time: '08:00' }, status: 'escalating' } };
+    const pill: DoseEvent = { ...row(NOW - 5 * 60_000), drugId: 'semaglutide-oral-wl', amount: 4, unit: 'mg', site: null };
+    const rec: Records = { ...records, doses: [pill] };
+    // A pill taken five minutes ago: no countdown on Today, and no waiting rule on the pill sheet.
+    const d = derive(oral, rec, NOW, TZ);
+    expect(d.fastingUntil).toBeNull();
+    expect(screens(oral, rec).today).not.toMatch(/Empty stomach|more minutes? before you eat/);
+    setUi({ sheet: 'dose' });
+    const sheet = visibleText(html(oral, createElement(Sheets, { profile: oral, d })));
+    setUi({ sheet: null });
+    expect(sheet).toContain('Log a pill');
+    expect(sheet).not.toMatch(/do not eat or drink|small sip of water|minutes after your pill/);
+    // Where the switch is off the same records do count the wait down, so the switch is what decides.
+    const wait = drugById('semaglutide-oral-wl').fastingMin;
+    expect(wait).toBeGreaterThan(5);
+    expect(derive(oral, rec, NOW, TZ, false).fastingUntil).toBe(pill.occurredAt + wait! * 60_000);
+  });
+
+  it('nothing about an estimate is shown without a medication', () => {
+    const none = screens({ ...english, regimen: null }, { ...records, doses: [] });
+    expect(none.today).not.toContain(NO_ESTIMATE);
+    expect(none.trends).not.toMatch(/Estimated medication level/);
+  });
+});
+
+describe('launch build: notice and settings', () => {
+  it('the notice is shown in setup, in settings, on Today and on the questions tab, in place of the older disclaimer', () => {
+    expect(footNote('en')).toBe(NOTICE);
+    const s = screens(english);
+    for (const text of [s.today, s.me, s.questions]) {
+      expect(text).toContain(NOTICE);
+      expect(text).not.toContain('For information only.');
+    }
+    const setup = visibleText(renderToStaticMarkup(createElement(Onboarding, { existing: null })));
+    expect(setup).toContain(NOTICE);
+    expect(copyProblems(NOTICE)).toEqual([]);
+  });
+
+  it('settings no longer describe hidden features', () => {
+    expect(screens(english).me).not.toMatch(/test version|coping cards|protein formula/i);
+  });
+
+  it('export comes right after the medication card in settings', () => {
+    const me = screens(english).me;
+    const order = ['Medication', 'Backup and export', 'Export backup', 'Export spreadsheet (CSV)', 'Restore from backup', 'Reminders', 'Display', 'About', 'Delete all data'].map((t) => me.indexOf(t));
+    expect(order.every((i) => i >= 0)).toBe(true);
+    expect([...order].sort((a, b) => a - b)).toEqual(order);
+  });
+});
+
+describe('launch build: setup', () => {
+  const first = visibleText(renderToStaticMarkup(createElement(Onboarding, { existing: null })));
+
+  it('starts in English with no language picker and no Chinese', () => {
+    expect(first).toContain("Hi, I'm your GLP-1 companion");
+    expect(first).not.toMatch(/Language|简体中文|繁體中文/);
+    expect(copyProblems(first)).toEqual([]);
+  });
+
+  it('has five steps: the four from before and the three optional questions (the progress bar shows one mark per step)', () => {
+    const page = renderToStaticMarkup(createElement(Onboarding, { existing: null }));
+    expect(page.match(/<div class="progress">(.*?)<\/div>/)![1].match(/<span/g)).toHaveLength(5);
+  });
+});
+
+describe('launch build: a profile that is already Chinese keeps working', () => {
+  it('its screens are Chinese, with the launch rules applied', () => {
+    const page = renderToStaticMarkup(createElement(Screens, { profile: chinese }));
+    for (const s of ['今天', '趋势', '问医生', '我的', 'lang="zh-Hans"', '记一针']) expect(page, s).toContain(s);
+    const s = screens(chinese);
+    expect(s.me).toMatch(/English\s+简体中文/);
+    expect(s.me).not.toContain('繁體中文');
+    expect(s.today).toContain('请马上联系医生');
+    for (const text of Object.values(s)) expect(text).not.toMatch(/蛋白|训练|应对|可以先试试|Today's log|Backup and export/);
+    expect(alertText(chinese, { hits: [{ id: 'dehydration', level: 'urgent' }], rowId: null })).toMatch(/请马上联系医生[\s\S]*不是诊断/);
+  });
+
+  it('redoing setup stays Chinese and still offers English', () => {
+    const redo = visibleText(renderToStaticMarkup(createElement(Onboarding, { existing: { ...chinese, onboardedAt: null } })));
+    expect(redo).toContain('你好，我是你的 GLP-1 伴侣');
+    expect(redo).toMatch(/English\s+简体中文/);
+    expect(redo).not.toContain('繁體中文');
+  });
+});
+
+describe('launch build: questions for the doctor', () => {
+  beforeEach(async () => {
+    await Promise.all([db.questions.clear(), db.symptoms.clear()]);
+    setUi({ triage: null, toast: null });
+  });
+
+  it('a question is saved as typed and nothing else happens', async () => {
+    await addQuestionFromList(english, 'Can I move my shot day to Sunday?');
+    const saved = await db.questions.toArray();
+    expect(saved.map((q) => q.text)).toEqual(['Can I move my shot day to Sunday?']);
+    expect(saved[0].asked).toBe(false);
+    expect(html(english, createElement(TriageModal, { profile: english }))).toBe('');
+    expect(await db.symptoms.count()).toBe(0);
+  });
+
+  it('typed text is still checked for danger signs: the alert is shown, the question is kept, no symptom is logged', async () => {
+    await addQuestionFromList(english, 'Is severe stomach pain going to my back normal?');
+    expect((await db.questions.toArray()).map((q) => q.text)).toEqual(['Is severe stomach pain going to my back normal?']);
+    expect(visibleText(html(english, createElement(TriageModal, { profile: english })))).toContain('Contact your doctor right away');
+    expect(await db.symptoms.count()).toBe(0);
+  });
+
+  it('an ordinary question about an operation, birth control, pregnancy or breastfeeding is saved and shows no alert', async () => {
+    const asked = ['Do I need to stop before surgery?', 'Can I take it with my birth control pill?', 'Can I get pregnant while taking this?', 'Is it safe while breastfeeding?'];
+    for (const text of asked) {
+      await addQuestionFromList(english, text);
+      expect(html(english, createElement(TriageModal, { profile: english })), text).toBe('');
+    }
+    expect((await db.questions.toArray()).map((q) => q.text).sort()).toEqual([...asked].sort());
+    expect(await db.symptoms.count()).toBe(0);
+  });
+
+  it('a row with a mild alert that came in with a backup shows no reminder on Today and no note in the spreadsheet', async () => {
+    const restored = { ...row(NOW - 3_000_000), kind: 'other' as const, grade: 3, note: 'surgery next week', triageId: 'procedure' as const, triageLevel: 'remind' as const };
+    const today = screens(english, { ...records, symptoms: [restored] }).today;
+    expect(today).not.toContain('Contact your doctor right away');
+    expect(today).not.toContain('See the alert again');
+    await db.profile.clear();
+    await db.profile.put(english);
+    await db.symptoms.add(restored);
+    expect((await buildCsv('en')).split('\n')).toContain('2026-11-20,11:10,America/New_York,Symptom,surgery next week,3,Grade 0–3,');
+    await Promise.all([db.symptoms.clear(), db.profile.clear()]);
+  });
+
+  it('a crisis message shows the crisis card', async () => {
+    await addQuestionFromList(english, 'I want to kill myself');
+    const text = visibleText(html(english, createElement(TriageModal, { profile: english })));
+    expect(text).toContain('You are not alone');
+    expect(text).not.toContain('Contact your doctor right away');
+  });
+});
+
+describe('launch build: the three optional setup questions', () => {
+  const page = html(english, createElement(SetupQuestions, { answers: { timeOnMedication: '1_to_3_months', loggedBefore: null, heardFrom: null }, onChange: noop }));
+  const text = visibleText(page);
+
+  it('asks how long, what was used before and where the person heard about the app, with the listed choices', () => {
+    for (const s of [
+      'How long have you been on your medication?',
+      'Not started yet', 'Less than 1 month', '1 to 3 months', '3 to 12 months', 'More than a year',
+      'Before this app, how did you keep track of your medication?',
+      'I did not keep track', 'Notes or a spreadsheet', 'Another tracker app', "The drug maker's app", 'Something else',
+      'Where did you hear about this app?',
+      'App store search', 'A friend or family member', 'An online community', 'A web search', 'Somewhere else',
+    ]) expect(text, s).toContain(s);
+    expect(page.match(/class="chip[ "]/g)).toHaveLength(15);
+    // Only the given answer is marked. Nothing is chosen in advance.
+    expect(page.match(/class="chip on"/g)).toHaveLength(1);
+    expect(page).toContain('<button class="chip on" type="button">1 to 3 months</button>');
+    expect(copyProblems(text)).toEqual([]);
+  });
+
+  it('is there in Chinese for a profile that is already Chinese', () => {
+    const zh = visibleText(html(chinese, createElement(SetupQuestions, { answers: { timeOnMedication: null, loggedBefore: null, heardFrom: null }, onChange: noop })));
+    for (const s of ['你用药多久了？', '不到 1 个月', '用这个应用之前，你怎么记用药？', '药厂的应用', '你是从哪里知道这个应用的？', '朋友或家人']) expect(zh, s).toContain(s);
+    expect(zh).not.toMatch(/[A-Za-z]{4,}/);
+  });
+});
+
+describe('launch build: weekly summary', () => {
+  it('is the first card on Trends, with three numbers and no advice', () => {
+    const trends = screens(english).trends.replace(/\s+/g, ' ');
+    // Doses in the last seven days: four days ago and one hour ago. Monday is one of the seven days.
+    expect(trends).toContain('Weekly summary Sat, Nov 14 to Fri, Nov 20 Doses logged 2 of 1 scheduled Weight change −5.3 lb Days with a symptom logged 1');
+    expect(trends.indexOf('Weekly summary')).toBeLessThan(trends.indexOf('Estimated medication level'));
+    const card = renderToStaticMarkup(createElement(I18nProvider, { lang: 'en', children: createElement(Trends, { profile: english, d: derive(english, records, NOW, TZ), rec: records, now: NOW }) })).match(/<section class="card weekly">.*?<\/section>/)![0];
+    expect(visibleText(card)).not.toMatch(/should|try|good|great|well done|keep it up|on track|behind|missed|goal|lost|gained/i);
+    expect(copyProblems(visibleText(card))).toEqual([]);
+  });
+
+  it('shows no weight change with fewer than two weigh-ins, and no "of N" without a schedule', () => {
+    const few = screens(stopped, { ...records, weights: records.weights.slice(0, 1), symptoms: [] }).trends.replace(/\s+/g, ' ');
+    expect(few).toContain('Doses logged 2 Weight change – Days with a symptom logged 0');
+  });
+
+  it('is in Chinese for a Chinese profile', () => {
+    expect(screens(chinese).trends.replace(/\s+/g, ' ')).toContain('每周小结 11月14日 周六 至 11月20日 周五 记下的用药次数 2 次（计划 1 次） 体重变化 −4.8 斤 记了症状的天数 1');
+  });
+});
+
+describe('launch build: Pro and anonymous counts', () => {
+  it('settings have the Pro row, between Display and About', () => {
+    const me = screens(english).me;
+    const order = ['Display', 'Want Pro?', 'About'].map((t) => me.indexOf(t));
+    expect(order.every((i) => i >= 0)).toBe(true);
+    expect([...order].sort((a, b) => a - b)).toEqual(order);
+  });
+
+  it('a build that was given no count address does not count: no screen, no setting, nothing sent', async () => {
+    expect(import.meta.env.VITE_COUNT_URL).toBeUndefined();
+    expect(countingOn).toBe(false);
+    expect(screens(english).me).not.toMatch(/Usage counts|Share usage counts/);
+    await db.profile.put(english);
+    await syncCounts(true);
+    // (That nothing was sent is checked for the whole file: any call to the network fails it.)
+    await db.profile.clear();
+  });
+});
+

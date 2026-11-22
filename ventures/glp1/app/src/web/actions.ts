@@ -1,12 +1,14 @@
 /**
  * 所有写操作。写本地库，记录后给出"撤销"。
  */
+import { alertHits } from '../core/alert';
 import { drugById, type DoseUnit } from '../core/catalog';
 import type { Site } from '../core/schedule';
 import { triageSymptom, triageText, type SymptomKind, type TriageContext, type TriageHit } from '../core/triage';
 import type { FoodLog, Profile, Source } from '../core/types';
 import { storedKg } from '../core/units';
 import { base, db, requestPersist, restore, softDelete, type RecordTable } from './db';
+import { features } from './features';
 import { msg, type MsgRef } from './i18n/translate';
 import { setUi, toast } from './store';
 
@@ -59,16 +61,29 @@ export async function addQuestion(text: string): Promise<void> {
   toast(msg('toast.questionSaved'));
 }
 
+/**
+ * A question typed straight into the list of questions for the doctor (the list has its own
+ * box where there is no note box). The question is saved as it is. The text is still checked
+ * for danger signs first, like any typed text; a hit shows the alert but logs no symptom,
+ * because the person wrote a question, not a log entry. A hit that shows no card in this build
+ * (core/alert.ts) is not an alert: the question is saved and nothing else happens.
+ */
+export async function addQuestionFromList(p: Profile, text: string): Promise<void> {
+  const hits = alertHits(triageText(text, triageCtx(p)), features.triageDetailCards);
+  await addQuestion(text);
+  if (hits.length) setUi({ triage: { hits, rowId: null } });
+}
+
 /** 快捷记录症状。重度时走分诊。 */
 export async function addSymptom(p: Profile, kind: SymptomKind, grade: number): Promise<TriageHit[]> {
-  const hits = triageSymptom(kind, grade, triageCtx(p));
+  const hits = alertHits(triageSymptom(kind, grade, triageCtx(p)), features.triageDetailCards);
   const top = hits[0] ?? null;
   const row = { ...base('quick'), kind, grade, triageId: top?.id ?? null, triageLevel: top?.level ?? null };
   await db.symptoms.add(row);
   if (top) setUi({ triage: { hits, rowId: row.id } });
   else {
     toast(msg('toast.logged'), () => void softDelete('symptoms', row.id));
-    setUi({ coping: kind });
+    if (features.copingCards) setUi({ coping: kind });
   }
   void requestPersist();
   return hits;
@@ -76,7 +91,7 @@ export async function addSymptom(p: Profile, kind: SymptomKind, grade: number): 
 
 /** 自由文字里的危险信号：先于一切解析运行。命中就记一条症状并弹出分诊卡。 */
 export async function checkTextTriage(p: Profile, text: string): Promise<boolean> {
-  const hits = triageText(text, triageCtx(p));
+  const hits = alertHits(triageText(text, triageCtx(p)), features.triageDetailCards);
   if (!hits.length) return false;
   const row = { ...base('text'), kind: 'other' as const, grade: 3, note: text, triageId: hits[0].id, triageLevel: hits[0].level };
   await db.symptoms.add(row);

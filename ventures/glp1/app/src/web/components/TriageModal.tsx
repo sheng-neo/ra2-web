@@ -1,7 +1,9 @@
-import { emergencyDial, emergencyRegion, triageCard } from '../../core/triage';
+import { alertCards } from '../../core/alert';
+import { emergencyDial, emergencyRegion } from '../../core/triage';
 import { deviceTz } from '../db';
 import type { Profile } from '../../core/types';
 import { ackTriage } from '../actions';
+import { features } from '../features';
 import { useT } from '../i18n';
 import { useUi } from '../store';
 
@@ -11,14 +13,16 @@ export function TriageModal({ profile }: { profile: Profile }) {
   const t = useT();
   if (!triage) return null;
   const where = emergencyRegion(deviceTz(), profile.region);
-  const cards = triage.hits.map((h) => ({ hit: h, card: triageCard(h, where, t.lang) }));
+  // Which cards the hits show depends on the build: the card of each rule, or one fixed card (core/alert.ts).
+  const cards = alertCards(triage.hits, where, t.lang, features.triageDetailCards);
+  if (!cards.length) return null;
   const emergency = cards.some((c) => c.card.showEmergency);
   const num = emergencyDial(where);
   return (
     <div className="triage-backdrop" role="alertdialog" aria-label={t('triage.aria')}>
-      <div className={`triage ${cards[0].hit.level}`}>
-        {cards.map(({ hit, card }) => (
-          <div key={hit.id} className="triage-item">
+      <div className={`triage ${cards[0].level}`}>
+        {cards.map(({ key, card }) => (
+          <div key={key} className="triage-item">
             <h2>{card.title}</h2>
             <p>{card.body}</p>
           </div>

@@ -23,6 +23,8 @@ export const en = {
   'tab.trends': 'Trends',
   'tab.ask': 'Ask',
   'tab.me': 'Me',
+  // The third tab when only the list of questions for the doctor is on it.
+  'tab.questions': 'Questions',
 
   // ── Shared ──
   'common.close': 'Close',
@@ -41,10 +43,18 @@ export const en = {
   // ── Setup ──
   'onb.under18.title': 'Sorry',
   'onb.under18.body': 'This app is not available to people under 18. For your medication and eating, please follow your doctor and your parents.',
+  // Where checking "Under 18" ends setup.
+  'onb.under18.stopTitle': 'This app is for adults',
+  'onb.under18.stopBody': 'You need to be 18 or older to use this app, so setup stops here. Nothing you entered was saved.',
+  // The same stop when setup is being redone: the earlier profile and records are still stored.
+  'onb.under18.stopBodySaved': 'You need to be 18 or older to use this app, so setup stops here. The records you saved before are still on this phone. "Delete all data" removes them, along with any counts this phone has shared.',
+  'onb.under18.restart': 'Start over',
   'onb.back': 'Back',
   'onb.hello.title': "Hi, I'm your GLP-1 companion",
   // The Chinese line also promises results (muscle, no regain). The English line only says what you can log.
   'onb.hello.sub': 'Log your shots or pills, your weight and how you feel. No sign-up. Setup takes about 90 seconds.',
+  // Used where food and protein are hidden. In English the two lines are the same.
+  'onb.hello.subPlain': 'Log your shots or pills, your weight and how you feel. No sign-up. Setup takes about 90 seconds.',
   'onb.region': 'Where are you?',
   'onb.unit': 'Which unit for weight?',
   'onb.scriptNote': 'Chinese is shown in Simplified characters for now. A Traditional version is in progress.',
@@ -79,8 +89,13 @@ export const en = {
   'onb.weight.now': 'Current weight ({unit})',
   'onb.weight.goal': 'Goal weight ({unit}, optional)',
   'onb.body.note': 'Used to calculate your daily protein target.',
+  // Where there is no protein target, height is not asked.
+  'onb.body.titleWeight': 'Your weight',
+  'onb.body.noteWeight': 'Your current weight is the starting point of your weight trend. You can leave these blank.',
   'onb.safety.title': 'A few safety questions',
   'onb.safety.sub': 'Check any that apply to you. I will adjust the tips to match.',
+  // Where the app gives no tips.
+  'onb.safety.subPlain': 'Check any that apply to you.',
   'onb.safety.kidneyOrLiver': 'Kidney or liver disease',
   'onb.safety.pregnancy': 'Pregnant, trying to get pregnant, or breastfeeding',
   'onb.safety.insulinOrSU': 'Taking insulin or a sulfonylurea diabetes medication (such as glimepiride)',
@@ -99,6 +114,58 @@ export const en = {
   'onb.skip': 'Skip',
   'onb.noAi': 'No AI',
   'onb.agree': 'Agree and start',
+  // The last button of setup where there is no AI step.
+  'onb.start': 'Start',
+  // The three optional questions. The choices name kinds of tools, never a product.
+  'onb.about.title': 'Three quick questions',
+  'onb.about.sub': 'These are optional. Tap an answer, or leave a question blank.',
+  'onb.about.time.title': 'How long have you been on your medication?',
+  'onb.about.time.not_started': 'Not started yet',
+  'onb.about.time.under_1_month': 'Less than 1 month',
+  'onb.about.time.1_to_3_months': '1 to 3 months',
+  'onb.about.time.3_to_12_months': '3 to 12 months',
+  'onb.about.time.over_1_year': 'More than a year',
+  'onb.about.before.title': 'Before this app, how did you keep track of your medication?',
+  'onb.about.before.nothing': 'I did not keep track',
+  'onb.about.before.notes_or_spreadsheet': 'Notes or a spreadsheet',
+  'onb.about.before.tracker_app': 'Another tracker app',
+  'onb.about.before.drug_maker_app': "The drug maker's app",
+  'onb.about.before.other': 'Something else',
+  'onb.about.heard.title': 'Where did you hear about this app?',
+  'onb.about.heard.app_store_search': 'App store search',
+  'onb.about.heard.friend_or_family': 'A friend or family member',
+  'onb.about.heard.online_community': 'An online community',
+  'onb.about.heard.web_search': 'A web search',
+  'onb.about.heard.other': 'Somewhere else',
+  'onb.about.note': 'Your answers are saved with your profile on this phone.',
+  // Where the next screen asks about anonymous counts.
+  'onb.about.noteCounts': 'Your answers are saved with your profile on this phone. On the next screen you choose whether to share them as part of usage counts.',
+
+  // ── Anonymous counts ──
+  // The list below must name everything that is sent, and nothing that is not. It follows
+  // CountEvent in src/core/counts.ts: change the two together.
+  'counts.title': 'Share usage counts?',
+  'counts.intro': 'This is up to you. The app works the same either way.',
+  'counts.what': 'If you say yes, this app sends a few counts to our own server. They help us see whether the app is useful to people. This is everything that is sent:',
+  'counts.item.id': 'A random ID made on this phone, and the app version',
+  'counts.item.answers': 'Your answers to the three setup questions, if you gave any',
+  'counts.item.form': 'Whether your medication is a shot or a pill',
+  'counts.item.activated': 'Whether you logged a dose in the first 8 days after setup',
+  'counts.item.weekly': 'For each week after that, the week number and whether you logged a dose (yes or no)',
+  'counts.item.week2': 'Whether you logged a dose in your second week',
+  'counts.item.streak': 'Whether you kept logging your doses for four weeks',
+  'counts.item.paused': 'Whether you marked your medication as paused or stopped',
+  'counts.item.pro': 'Whether you tapped "I would want this" about Pro',
+  'counts.item.day': 'With each of these, the number of days since you finished setup. The phone sends no date and no time of day',
+  'counts.never': 'The counts never include the name of your medication, your dose, your weight, your symptoms, your questions, your time zone or your language.',
+  // The server stores the date a count arrived with it (server/count.ts). With the day number, that date dates the event.
+  'counts.received': 'Our server notes the date each count arrives, but not the time of day. Counts are sent soon after they happen, so that date is usually the date of the thing counted.',
+  'counts.notShared': 'We do not sell these counts, and we do not share them with other companies. A hosting company runs the server for us.',
+  // What a browser adds to every request by itself. The server stores none of it (server/count.ts).
+  'counts.address': "Like anything sent over the internet, a count also shows the receiving server your phone's network address, the kind of phone and browser you use, and its language setting. Our server does not store these with the counts.",
+  'counts.change': 'You can change this at any time under Me. If you turn it off, the counts already sent from this phone are deleted from our server.',
+  'counts.share': 'Share usage counts',
+  'counts.decline': 'Do not share',
 
   // ── Today ──
   // "Maintenance" is kept for the dose stage ("Maintenance dose"); the time after stopping has its own name.
@@ -120,8 +187,12 @@ export const en = {
   'curve.aria': 'Estimated medication level chart',
   'today.curve.note': 'An estimate based on published population averages. It is not a measurement and cannot be used to adjust your dose.',
   'today.noCurve': 'No chart for this medication yet (its numbers are not verified, or it is taken every day).',
+  // Shown in place of the chart where a chart needs label-sourced numbers and the medication has none.
+  'curve.unavailable': 'An estimate for this medication is not available yet.',
   'today.log.title': "Today's log",
   'today.log.empty': 'Nothing logged yet. Type a note below, or tap a button.',
+  // Where there is no note box.
+  'today.log.emptyButtons': 'Nothing logged yet. Tap a button below to log.',
   'protein.title': 'Protein',
   'protein.askDoctor': '<b>{grams}</b> g today. You checked kidney or liver disease, so please check your protein target with your doctor. You can enter it by hand under Me.',
   'protein.ofFloor': '/ {floor} g',
@@ -143,6 +214,15 @@ export const en = {
 
   // ── Trends ──
   'trends.title': 'Trends',
+  // Weekly summary: numbers only. No advice and no judgement.
+  'weekly.title': 'Weekly summary',
+  'weekly.range': '{from} to {to}',
+  'weekly.doses': 'Doses logged',
+  'weekly.dosesOf': '{logged} of {scheduled} scheduled',
+  'weekly.weight': 'Weight change',
+  'weekly.symptomDays': 'Days with a symptom logged',
+  'weekly.none': '–',
+  'weekly.note': 'These are counts of what you logged. Scheduled doses come from the schedule you set, counted up to now. Weight change is your last weigh-in minus your first one in these days. It shows when there are two or more.',
   'trends.curve.note': 'The last 14 days and the next 7 days. The solid line is what has happened. The dashed line assumes you keep taking your medication as planned. 100 = the highest point after long-term use of this dose.',
   'trends.method.link': 'How this is calculated',
   // The Chinese text ends with "not a measurement of the concentration in blood". English says "lab measurement" instead.
@@ -165,6 +245,8 @@ export const en = {
   'symptomDays.title': 'Symptoms by day after your shot',
   'symptomDays.day0': 'Shot',
   'symptomDays.found': 'Orange marks your high-symptom days. The Today tab uses them to plan lighter days.',
+  // Where the Today tab has no daily advice.
+  'symptomDays.foundPlain': 'Orange marks the days after your shot when you logged the most symptoms.',
   'symptomDays.needMore': 'After 3 full cycles are logged, this will find your own high-symptom days ({count} so far).',
   'proteinWeek.title': 'Protein, last 7 days',
   'proteinWeek.note': 'Days you reached your minimum ({floor} g): {hit} of 7. Days with nothing logged do not count.',
@@ -203,9 +285,28 @@ export const en = {
   'me.backup.restore': 'Restore from backup',
   'me.backup.fileName': 'glp1-backup-{date}.json',
   'me.backup.csvName': 'glp1-records-{date}.csv',
+  // The Pro row. Nothing is promised and nothing is unlocked.
+  'me.pro.title': 'Pro',
+  'me.pro.row': 'Want Pro?',
+  'pro.sheet.body': 'Pro is not available yet. There is nothing to buy.',
+  'pro.sheet.ask': 'If a paid version is something you would want, you can tell us here. Tapping the button does not unlock or change anything.',
+  'pro.sheet.want': 'I would want this',
+  'pro.sheet.thanks': 'Thanks. Your answer is saved.',
+  'pro.sheet.counted': 'Your tap is sent with your usage counts.',
+  'pro.sheet.notCounted': 'You are not sharing usage counts, so your tap is not sent to us.',
+  'me.counts.title': 'Usage counts',
+  'me.counts.toggle': 'Share usage counts',
+  'me.counts.on': 'On. A few counts are sent to our own server.',
+  'me.counts.off': 'Off. No counts are sent.',
+  // Shown while sharing is on, so a person can name the ID if they write to us about their counts.
+  'me.counts.id': 'Your random ID: {id}',
+  'me.counts.details': 'See what is sent',
+  'me.counts.deleting': 'The request to delete the counts from this phone has not gone through yet. The app will try again when it is online.',
   'me.about.title': 'About',
   'me.about.body':
     'This is a test version. The danger-symptom alerts, coping cards, protein formula and medication numbers are all still waiting for clinical review. Medication names are used only to identify your medication. Trademarks belong to their owners. This app is not connected to any company that makes medications. It does not sell medication, promote products or show ads.',
+  // Shown with the logging-tool notice, which already says the app is not affiliated with any drug maker.
+  'me.about.bodyShort': 'Medication names are used only to identify your medication. Trademarks belong to their owners. This app does not sell medication, promote products or show ads.',
   'me.wipe.title': 'Delete all data',
   'me.wipe.confirm': 'Tap again to permanently delete all records',
 
@@ -216,6 +317,13 @@ export const en = {
   'ask.show': 'Show',
   'ask.questions.title': 'Questions for my doctor',
   'ask.questions.empty': 'None yet. Ask a question about your medication dose in the box below and it will be saved here.',
+  // The same list where it is the whole tab and has its own box for adding a question.
+  'questions.intro': 'Write down questions about your medication and bring them to your next visit.',
+  'questions.field': 'A question for your doctor',
+  // The hint inside the box. Kept short: with large text the longer label does not fit next to the Add button at 390 px.
+  'questions.placeholder': 'Your question',
+  'questions.add': 'Add',
+  'questions.empty': 'No questions yet.',
 
   // ── Input bar ──
   'quick.weight': 'Weight',
@@ -306,6 +414,10 @@ export const en = {
   'triage.call': 'Call {number}',
   'triage.ack': 'Got it',
 
+  // ── Notice ──
+  // Fixed wording. It also takes the place of the older disclaimer line where it is shown.
+  'notice.loggingTool': 'This app is a logging tool. It is not a medical device and does not give medical advice. Talk to your doctor before making decisions about your medication. Not affiliated with any drug maker.',
+
   // ── Toasts ──
   'toast.undone': 'Undone',
   'toast.dose.pill': 'Logged: pill, {amount} {unit}',
@@ -319,6 +431,8 @@ export const en = {
   'toast.statusChanged': 'Changed to: {status}',
   'toast.calendar': "Calendar file created. Open it to add it to your phone's calendar",
   'toast.saved': 'Saved',
+  'toast.counts.on': 'Sharing usage counts is on',
+  'toast.counts.off': 'Sharing is off. The counts from this phone are being deleted',
   'toast.restored': { one: 'Restored {count} record', other: 'Restored {count} records' },
   'toast.restoreFailed': 'Restore failed: {reason}',
   'backup.notOurs': 'This file is not a backup from this app',

@@ -160,6 +160,14 @@ export function fmtDay(ms: number, tz: string, lang: Lang): string {
   return `${p.month}月${p.day}日 ${WEEKDAY_ZH[p.weekday]}`;
 }
 
+/** A day key (YYYY-MM-DD) as text, in the same form as fmtDay: "Fri, Nov 20" or "11月20日 周五". */
+export function fmtDayKey(key: string, lang: Lang): string {
+  const [y, m, d] = key.split('-').map(Number);
+  const weekday = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
+  if (lang === 'en') return `${WEEKDAY_EN_SHORT[weekday]}, ${MONTH_EN_SHORT[m - 1]} ${d}`;
+  return `${m}月${d}日 ${WEEKDAY_ZH[weekday]}`;
+}
+
 /** "Today 9:00 PM" on the same calendar day as nowMs, otherwise the weekday: "Mon 9:00 PM". */
 export function fmtWhen(ms: number, tz: string, nowMs: number, lang: Lang): string {
   const a = zonedParts(ms, tz);

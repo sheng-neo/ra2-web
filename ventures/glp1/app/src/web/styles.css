@@ -751,3 +751,90 @@ html:lang(en),
 .app:lang(en) .toast button {
   flex: none;
 }
+/*
+ * Builds without the note box (see src/core/features.ts): the log buttons are the whole dock,
+ * so they share the row and are full-size touch targets.
+ */
+.quick.only {
+  overflow-x: visible;
+  padding-bottom: 2px;
+}
+.quick.only .qbtn {
+  flex: 1;
+  min-height: 44px;
+  padding: 6px 8px;
+  font-weight: 600;
+  white-space: normal;
+}
+/* The "logging tool, not a medical device" notice in setup. */
+.fine.notice {
+  border-top: 1px solid var(--line);
+  margin-top: 16px;
+  padding-top: 10px;
+}
+/* The box for adding a question for the doctor: the input takes the row, the button keeps its size. */
+.question-add {
+  margin-bottom: 8px;
+}
+.question-add .btn {
+  flex: none;
+}
+/* The list of questions: a link or another long unbroken string wraps inside its row, so the delete button stays on screen. */
+.log label.check {
+  min-width: 0;
+}
+.log label.check input {
+  flex: none;
+}
+.log label.check span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+/* Weekly summary: a short list of a label and its number. */
+.facts {
+  margin: 8px 0;
+}
+.facts > div {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  padding: 7px 0;
+  border-top: 1px solid var(--line);
+}
+.facts dt {
+  min-width: 0;
+}
+.facts dd {
+  margin: 0;
+  font-weight: 600;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+/* What is sent with anonymous counts: a plain list. */
+.counts-explainer ul {
+  padding-left: 1.2em;
+  margin: 8px 0;
+}
+.counts-explainer li {
+  margin: 4px 0;
+}
+/* The two answers to "share anonymous counts?": the same size and style, one above the other. */
+.choice {
+  margin: 12px 0 4px;
+}
+/* A card that is one row to tap: its title on the left, an arrow on the right. */
+.card-btn.row-link {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+.card-btn.row-link h3 {
+  margin: 0;
+}
+/* The random ID under the counts setting: it may break anywhere, and one tap selects all of it. */
+.install-id {
+  overflow-wrap: anywhere;
+  user-select: all;
+}

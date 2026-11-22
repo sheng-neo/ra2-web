@@ -9,11 +9,14 @@
   },
   "scripts": {
     "dev": "vite",
+    "dev:launch": "vite --mode launch",
     "dev:server": "tsx watch server/index.ts",
     "build": "vite build",
+    "build:launch": "vite build --mode launch && node scripts/check-launch.mjs",
     "start": "tsx server/index.ts",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "review-packet": "tsx scripts/build-review-packet.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.11.0",

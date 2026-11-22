@@ -29,6 +29,18 @@ export function fmtWeight(kg: number, u: WeightUnit, lang: Lang): string {
   return `${(Math.round(fromKg(kg, u) * 10) / 10).toFixed(1)} ${unitLabel(u, lang)}`;
 }
 
+/**
+ * The difference between two weights, with its sign: "−1.2 lb", "+0.4 lb", "0.0 lb".
+ * Each weight is rounded the way fmtWeight shows it before the two are subtracted, so the
+ * difference always agrees with the two numbers the person can see in their log.
+ */
+export function fmtWeightChange(firstKg: number, lastKg: number, u: WeightUnit, lang: Lang): string {
+  const shown = (kg: number) => Math.round(fromKg(kg, u) * 10);
+  const tenths = shown(lastKg) - shown(firstKg);
+  const sign = tenths > 0 ? '+' : tenths < 0 ? '−' : '';
+  return `${sign}${(Math.abs(tenths) / 10).toFixed(1)} ${unitLabel(u, lang)}`;
+}
+
 export function unitLabel(u: WeightUnit, lang: Lang): string {
   if (lang === 'en') return u;
   return u === 'kg' ? '公斤' : u === 'jin' ? '斤' : '磅';

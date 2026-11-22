@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
-import { doseUnitLabel, drugById, drugShortName, needsDoseConfirm, regimenLabel } from '../../core/catalog';
+import { doseUnitLabel, drugById, drugShortName, regimenLabel } from '../../core/catalog';
+import { doseCheckApplies } from '../../core/features';
 import { foodById, foodName, foodShortName } from '../../core/foods';
 import type { Lang } from '../../core/i18n';
 import { parseLocal } from '../../core/localParse';
@@ -10,6 +11,7 @@ import type { Profile } from '../../core/types';
 import { addDose, addFood, addQuestion, addSymptom, addWeight, checkTextTriage, updateProfile } from '../actions';
 import { AiUnavailable, compressImage, parseRemote, type AiEvent } from '../api';
 import type { Derived } from '../derive';
+import { features } from '../features';
 import { bold, useT } from '../i18n';
 import { routeQuestion } from '../intent';
 import { setUi } from '../store';
@@ -27,7 +29,52 @@ type Pending =
 let seq = 0;
 const k = () => `p${++seq}`;
 
+/**
+ * The dock above the tabs. With the note box it is the quick buttons plus the box. Without it,
+ * logging is by the quick buttons only.
+ */
 export function InputBar({ profile, d }: { profile: Profile; d: Derived }) {
+  if (features.freeTextNote) return <NoteDock profile={profile} d={d} />;
+  return (
+    <div className="input-dock">
+      <QuickButtons profile={profile} d={d} only />
+    </div>
+  );
+}
+
+/** The quick log buttons: shot or pill, weight, symptom, and the food buttons where food is logged. */
+function QuickButtons({ profile, d, only = false }: { profile: Profile; d: Derived; only?: boolean }) {
+  const t = useT();
+  const reg = profile.regimen;
+  const oral = reg ? drugById(reg.drugId).route === 'oral' : false;
+  return (
+    <div className={only ? 'quick only' : 'quick'}>
+      <button className="qbtn" onClick={() => setUi({ sheet: 'dose' })}>{t(oral ? 'action.logPill' : 'action.logShot')}</button>
+      <button className="qbtn" onClick={() => setUi({ sheet: 'weight' })}>{t('quick.weight')}</button>
+      <button className="qbtn" onClick={() => setUi({ sheet: 'symptom' })}>{t('quick.symptom')}</button>
+      {features.foodAndProtein && <QuickFoods d={d} />}
+    </div>
+  );
+}
+
+function QuickFoods({ d }: { d: Derived }) {
+  const t = useT();
+  const lang = t.lang;
+  const quickFoods = topFoods(d, lang).slice(0, 3);
+  return (
+    <>
+      {quickFoods.map((f) => (
+        <button key={f.id} className="qbtn food" onClick={() => void addFood({ text: foodName(f, lang), proteinG: f.proteinG, lowG: f.proteinG - f.spreadG, highG: f.proteinG + f.spreadG, foodId: f.id }, 'quick')}>
+          {t('quick.foodItem', { name: f.short, grams: f.proteinG })}
+        </button>
+      ))}
+      <button className="qbtn" onClick={() => setUi({ sheet: 'food' })}>{t('quick.food')}</button>
+    </>
+  );
+}
+
+/** The note box with everything a typed note or a photo can turn into. */
+function NoteDock({ profile, d }: { profile: Profile; d: Derived }) {
   const t = useT();
   const lang = t.lang;
   const [text, setText] = useState('');
@@ -46,9 +93,18 @@ export function InputBar({ profile, d }: { profile: Profile; d: Derived }) {
     localTime: new Date().toString(),
   });
 
+  /** What the phone could not read. Where model calls exist and the user agreed, it goes to the server. */
   const handleAi = async (input: { text?: string; image?: File }) => {
+    // A build without model calls stops here: what was typed stays on the phone.
+    if (!features.ai) return push({ key: k(), kind: 'unrecognized', text: input.text ?? photo, reason: 'empty' });
     if (profile.aiConsent === null) return push({ key: k(), kind: 'consent', text: input.text, image: input.image });
     if (profile.aiConsent === false) return push({ key: k(), kind: 'unrecognized', text: input.text ?? photo, reason: 'ai_off' });
+    await readRemote(input);
+  };
+
+  /** The only place that sends a note or a photo to the server. */
+  const readRemote = async (input: { text?: string; image?: File }) => {
+    if (!features.ai) return;
     setBusy(true);
     try {
       const events = await parseRemote(input.image ? { imageJpegBase64: await compressImage(input.image) } : { text: input.text }, context());
@@ -85,8 +141,11 @@ export function InputBar({ profile, d }: { profile: Profile; d: Derived }) {
     const { events, rest } = parseLocal(s, profile.weightUnit, lang);
     for (const e of events) {
       if (e.type === 'weight') await addWeight(e.kg, 'text');
-      else if (e.type === 'food') for (const it of e.items) await addFood({ text: it.label, proteinG: it.proteinG, lowG: it.lowG, highG: it.highG, foodId: it.foodId }, 'text');
-      else if (e.type === 'dose') push({ key: k(), kind: 'dose', draft: { amount: e.amount, unit: e.unit, site: e.site, occurredAt: Date.now() } });
+      else if (e.type === 'food') {
+        // Where food is not logged, a food note is answered like any note the phone cannot use.
+        if (!features.foodAndProtein) push({ key: k(), kind: 'unrecognized', text: s, reason: 'empty' });
+        else for (const it of e.items) await addFood({ text: it.label, proteinG: it.proteinG, lowG: it.lowG, highG: it.highG, foodId: it.foodId }, 'text');
+      } else if (e.type === 'dose') push({ key: k(), kind: 'dose', draft: { amount: e.amount, unit: e.unit, site: e.site, occurredAt: Date.now() } });
     }
     if (rest) await handleAi({ text: rest });
   };
@@ -96,9 +155,6 @@ export function InputBar({ profile, d }: { profile: Profile; d: Derived }) {
     if (f) await handleAi({ image: f });
   };
 
-  const quickFoods = topFoods(d, lang).slice(0, 3);
-  const oral = reg ? drugById(reg.drugId).route === 'oral' : false;
-
   return (
     <div className="input-dock">
       {pending.length > 0 && (
@@ -107,33 +163,12 @@ export function InputBar({ profile, d }: { profile: Profile; d: Derived }) {
             <PendingCard key={p.key} p={p} profile={profile} d={d} onClose={() => drop(p.key)} onConsent={async (yes) => {
               drop(p.key);
               await updateProfile({ aiConsent: yes });
-              if (yes && p.kind === 'consent') {
-                const fresh = { ...profile, aiConsent: true };
-                setBusy(true);
-                try {
-                  const events = await parseRemote(p.image ? { imageJpegBase64: await compressImage(p.image) } : { text: p.text }, { ...context(), drug: fresh.regimen ? regimenLabel(fresh.regimen, fresh.region, lang) : null });
-                  await applyAi(events, p.text ?? photo);
-                } catch (e) {
-                  push({ key: k(), kind: 'unrecognized', text: p.text ?? photo, reason: e instanceof AiUnavailable ? 'ai_unavailable' : 'empty' });
-                } finally {
-                  setBusy(false);
-                }
-              }
+              if (yes && p.kind === 'consent') await readRemote({ text: p.text, image: p.image });
             }} />
           ))}
         </div>
       )}
-      <div className="quick">
-        <button className="qbtn" onClick={() => setUi({ sheet: 'dose' })}>{t(oral ? 'action.logPill' : 'action.logShot')}</button>
-        <button className="qbtn" onClick={() => setUi({ sheet: 'weight' })}>{t('quick.weight')}</button>
-        <button className="qbtn" onClick={() => setUi({ sheet: 'symptom' })}>{t('quick.symptom')}</button>
-        {quickFoods.map((f) => (
-          <button key={f.id} className="qbtn food" onClick={() => void addFood({ text: foodName(f, lang), proteinG: f.proteinG, lowG: f.proteinG - f.spreadG, highG: f.proteinG + f.spreadG, foodId: f.id }, 'quick')}>
-            {t('quick.foodItem', { name: f.short, grams: f.proteinG })}
-          </button>
-        ))}
-        <button className="qbtn" onClick={() => setUi({ sheet: 'food' })}>{t('quick.food')}</button>
-      </div>
+      <QuickButtons profile={profile} d={d} />
       <form className="bar" onSubmit={(e) => (e.preventDefault(), void submit())}>
         <input
           value={text}
@@ -143,13 +178,15 @@ export function InputBar({ profile, d }: { profile: Profile; d: Derived }) {
           enterKeyHint="send"
           disabled={busy}
         />
-        <button type="button" className="icon-btn" aria-label={t('input.camera')} onClick={() => fileRef.current?.click()} disabled={busy}>
-          📷
-        </button>
+        {features.ai && (
+          <button type="button" className="icon-btn" aria-label={t('input.camera')} onClick={() => fileRef.current?.click()} disabled={busy}>
+            📷
+          </button>
+        )}
         <button type="submit" className="send" disabled={!text.trim() || busy}>
           {t('input.send')}
         </button>
-        <input ref={fileRef} type="file" accept="image/*" capture="environment" hidden onChange={(e) => void onPhoto(e.target.files?.[0])} />
+        {features.ai && <input ref={fileRef} type="file" accept="image/*" capture="environment" hidden onChange={(e) => void onPhoto(e.target.files?.[0])} />}
       </form>
     </div>
   );
@@ -222,7 +259,7 @@ function PendingCard({ p, profile, d, onClose, onConsent }: { p: Pending; profil
           <p>{t('pending.question.body')}</p>
           <p className="muted">"{p.text}"</p>
           <div className="row">
-            <button className="btn" onClick={() => (setUi({ coping: 'nausea' }), onClose())}>{t('pending.question.cards')}</button>
+            {features.copingCards && <button className="btn" onClick={() => (setUi({ coping: 'nausea' }), onClose())}>{t('pending.question.cards')}</button>}
             <button className="btn primary" onClick={() => (void addQuestion(p.text), onClose())}>{t('pending.question.save')}</button>
           </div>
         </div>
@@ -246,7 +283,7 @@ function PendingCard({ p, profile, d, onClose, onConsent }: { p: Pending; profil
             <span className="muted">"{p.text}"</span>
           </p>
           <div className="row">
-            <button className="btn" onClick={() => (setUi({ sheet: 'food' }), onClose())}>{t('pending.unrecognized.food')}</button>
+            {features.foodAndProtein && <button className="btn" onClick={() => (setUi({ sheet: 'food' }), onClose())}>{t('pending.unrecognized.food')}</button>}
             <button className="btn" onClick={() => (setUi({ sheet: 'symptom' }), onClose())}>{t('pending.unrecognized.symptom')}</button>
             <button className="btn" onClick={onClose}>{t('pending.unrecognized.ignore')}</button>
           </div>
@@ -288,7 +325,7 @@ function DoseConfirm({ profile, d, draft, onClose }: { profile: Profile; d: Deri
     );
   }
   const confirm = async () => {
-    if (!overMax && needsDoseConfirm(drug, amount, unit)) return setOverMax(true);
+    if (!overMax && doseCheckApplies(drug, amount, unit, features)) return setOverMax(true);
     await addDose(profile, { drugId: reg.drugId, amount, unit, site, occurredAt: at, source: 'text' });
     onClose();
   };

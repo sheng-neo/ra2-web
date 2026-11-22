@@ -4,6 +4,8 @@
  */
 import { pick, type Lang, type Text } from '../../core/i18n';
 import type { CourseStatus } from '../../core/types';
+import { features } from '../features';
+import { translate } from '../i18n/translate';
 
 const STATUS: Record<CourseStatus, Text> = {
   not_started: { hans: '还没开始', en: 'Not started yet' },
@@ -26,4 +28,12 @@ const DISCLAIMER: Text = {
 
 export function disclaimer(lang: Lang): string {
   return pick(lang, DISCLAIMER);
+}
+
+/**
+ * The line at the foot of a screen. A build with the logging-tool notice shows that notice
+ * here; any other build shows the disclaimer, as before.
+ */
+export function footNote(lang: Lang): string {
+  return features.loggingToolNotice ? translate(lang, 'notice.loggingTool') : disclaimer(lang);
 }

@@ -2,6 +2,7 @@
  * 把本地记录和核心规则拼起来，算出"今天"页需要的一切。纯函数，便于测试。
  */
 import { drugById, type DrugEntry } from '../core/catalog';
+import { curveAvailable, fastingMinutes } from '../core/features';
 import { escalationInfo, exposureCurve, type CurvePoint, type EscalationInfo, type MgDose } from '../core/pk';
 import { proteinTarget, type ProteinTarget } from '../core/protein';
 import { dueStatus, intervalHours, nextDueMs, suggestSite, type DueStatus, type Site } from '../core/schedule';
@@ -10,8 +11,10 @@ import { todayAdvice, type Advice } from '../core/today';
 import { pausesCoaching, type TriageHit } from '../core/triage';
 import { dayDiff, dayKey } from '../core/tz';
 import type { DoseEvent, FoodLog, Profile, WeightLog, WorkoutLog } from '../core/types';
+import { weeklySummary, type WeeklySummary } from '../core/weekly';
 import { fastLoss, regainStatus, rollingAverages, type DailyAvg, type RegainStatus } from '../core/weight';
 import type { SymptomRow } from './db';
+import { features } from './features';
 
 export interface Records {
   doses: DoseEvent[];
@@ -40,6 +43,8 @@ export interface Derived {
   todayItems: TodayItem[];
   openTriage: { hit: TriageHit; rowId: string } | null;
   advice: Advice;
+  /** Whether this build draws the estimated medication level curve for the medication at all (core/features.ts). */
+  curveAvailable: boolean;
   curve: CurvePoint[];
   curveNow: number | null;
   nextSite: Site;
@@ -48,6 +53,8 @@ export interface Derived {
   fastLoss: boolean;
   workoutDays: string[];
   fastingUntil: number | null;
+  /** The last seven days in numbers (core/weekly.ts). */
+  weekly: WeeklySummary;
 }
 
 export type TodayItem =
@@ -60,7 +67,12 @@ export type TodayItem =
 const live = <T extends { deletedAt: number | null }>(xs: T[]) => xs.filter((x) => x.deletedAt === null);
 const byTime = <T extends { occurredAt: number }>(xs: T[]) => [...xs].sort((a, b) => a.occurredAt - b.occurredAt);
 
-export function derive(profile: Profile, rec: Records, nowMs: number, tz: string): Derived {
+/**
+ * `curveNeedsSource` is the switch of the build that decides whether catalog numbers need a
+ * label source: the curve and the wait after a pill (core/features.ts). It is a parameter so
+ * both settings can be tested. Its default reads the one switch, not the whole `features` object.
+ */
+export function derive(profile: Profile, rec: Records, nowMs: number, tz: string, curveNeedsSource: boolean = features.curveNeedsSource): Derived {
   const ds = profile.dayStartHour;
   const today = dayKey(nowMs, tz, ds);
   const reg = profile.regimen;
@@ -128,15 +140,32 @@ export function derive(profile: Profile, rec: Records, nowMs: number, tz: string
 
   let curve: CurvePoint[] = [];
   let curveNow: number | null = null;
-  if (drug?.pk && reg && mgDoses.length) {
+  const canDraw = drug !== null && curveAvailable(drug, { curveNeedsSource });
+  if (drug?.pk && canDraw && reg && mgDoses.length) {
     curve = exposureCurve({ doses: mgDoses, params: drug.pk, intervalH: intervalHours(reg.schedule), nowMs, nextDueMs: active ? nextDue : null });
     const past = curve.filter((p) => !p.projected);
     curveNow = past.length ? Math.round(past[past.length - 1].index) : null;
   }
 
   const weightAvgs = rollingAverages(weights.map((w) => ({ atMs: w.occurredAt, kg: w.kg })), tz, ds);
-  const fastingMin = drug?.fastingMin;
+  // The wait after a pill is a catalog number: it is counted down only where the build may show it.
+  const fastingMin = drug ? fastingMinutes(drug, { curveNeedsSource }) : null;
   const fastingUntil = fastingMin && lastDose && nowMs - lastDose.occurredAt < fastingMin * 60000 ? lastDose.occurredAt + fastingMin * 60000 : null;
+
+  // The summary starts with the person's first day in the app: the end of setup, or their first logged dose if that is earlier.
+  const firstDoseAt = doses.length ? doses[0].occurredAt : null;
+  const sinceMs = profile.onboardedAt === null ? firstDoseAt : firstDoseAt === null ? profile.onboardedAt : Math.min(profile.onboardedAt, firstDoseAt);
+  const weekly = weeklySummary({
+    nowMs,
+    tz,
+    dayStartHour: ds,
+    schedule: reg?.schedule ?? null,
+    active: !!active,
+    sinceMs,
+    doseTimes: doses.map((d) => d.occurredAt),
+    weights: weights.map((w) => ({ atMs: w.occurredAt, kg: w.kg })),
+    symptomTimes: symptoms.map((s) => s.occurredAt),
+  });
 
   const todayItems: TodayItem[] = [
     ...doses.filter((d) => inToday(d.occurredAt)).map((row) => ({ kind: 'dose' as const, row })),
@@ -165,6 +194,7 @@ export function derive(profile: Profile, rec: Records, nowMs: number, tz: string
     todayItems,
     openTriage,
     advice,
+    curveAvailable: canDraw,
     curve,
     curveNow,
     nextSite: suggestSite(doses.slice(-3).map((d) => d.site)),
@@ -173,6 +203,7 @@ export function derive(profile: Profile, rec: Records, nowMs: number, tz: string
     fastLoss: fastLoss(weightAvgs),
     workoutDays,
     fastingUntil,
+    weekly,
   };
 }
 

@@ -119,8 +119,11 @@ function localize(c: CopingSource, lang: Lang): CopingCard {
   return { id: c.id, title: pick(lang, c.title), forSymptoms: c.forSymptoms, tryFirst: all(c.tryFirst), avoid: all(c.avoid), seeDoctor: all(c.seeDoctor), sources: all(SOURCES) };
 }
 
-/** Ids of the cards, in display order. The same in every language. */
-export const COPING_IDS: string[] = CARDS.map((c) => c.id);
+/**
+ * Ids of the cards, in display order. The same in every language.
+ * The call is marked pure so a build that shows no coping cards can leave this whole file out.
+ */
+export const COPING_IDS: string[] = /*#__PURE__*/ CARDS.map((c) => c.id);
 
 export function copingCards(lang: Lang): CopingCard[] {
   return CARDS.map((c) => localize(c, lang));

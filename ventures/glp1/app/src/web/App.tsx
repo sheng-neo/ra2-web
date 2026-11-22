@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { thirdTab } from '../core/features';
 import { htmlLang, langOrDefault, type Lang } from '../core/i18n';
 import type { Profile } from '../core/types';
 import { InputBar } from './components/InputBar';
@@ -11,6 +12,7 @@ import { Onboarding } from './screens/Onboarding';
 import { Today } from './screens/Today';
 import { Trends } from './screens/Trends';
 import { updateProfile } from './actions';
+import { features } from './features';
 import { I18nProvider, translate, useT } from './i18n';
 import { useDerived, useNow, useProfile, useRecords } from './useData';
 
@@ -54,14 +56,15 @@ function Main({ profile }: { profile: Profile }) {
       <main>
         {tab === 'today' && <Today profile={profile} d={d} now={now} onOpenTrends={() => setTab('trends')} onOpenMe={() => setTab('me')} />}
         {tab === 'trends' && <Trends profile={profile} d={d} rec={rec} now={now} />}
-        {tab === 'ask' && <Ask />}
+        {tab === 'ask' && <Ask profile={profile} />}
         {tab === 'me' && <Me profile={profile} d={d} onRedoSetup={() => void updateProfile({ onboardedAt: null })} />}
       </main>
-      {(tab === 'today' || tab === 'ask') && <InputBar profile={profile} d={d} />}
+      {/* On the third tab the dock is the note box for typing a question. Without the note box it has no use there. */}
+      {(tab === 'today' || (tab === 'ask' && features.freeTextNote)) && <InputBar profile={profile} d={d} />}
       <nav className="tabs">
         {TABS.map((id) => (
           <button key={id} className={tab === id ? 'on' : ''} onClick={() => setTab(id)}>
-            {t(`tab.${id}`)}
+            {t(id === 'ask' ? `tab.${thirdTab(features)}` : `tab.${id}`)}
           </button>
         ))}
       </nav>

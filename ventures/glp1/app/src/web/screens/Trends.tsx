@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { drugById } from '../../core/catalog';
 import type { DoseEvent, Profile } from '../../core/types';
-import { dayKey, shiftDayKey } from '../../core/tz';
-import { fmtWeight, fromKg, unitLabel, type WeightUnit } from '../../core/units';
+import { dayKey, fmtDayKey, shiftDayKey } from '../../core/tz';
+import { fmtWeight, fmtWeightChange, fromKg, unitLabel, type WeightUnit } from '../../core/units';
 import { Curve } from '../components/Curve';
 import { Card } from '../components/ui';
 import type { Derived, Records } from '../derive';
+import { features } from '../features';
 import { bold, useT } from '../i18n';
 
 /** Half-life and time to peak shown in the method note. Read from the catalog so the note cannot drift from the curve. */
@@ -27,6 +28,7 @@ export function Trends({ profile, d, rec, now }: { profile: Profile; d: Derived;
   return (
     <div className="screen">
       <h1 className="pad">{t('trends.title')}</h1>
+      <WeeklyCard profile={profile} d={d} />
       {d.curve.length > 0 ? (
         <Card>
           <div className="row between">
@@ -40,6 +42,14 @@ export function Trends({ profile, d, rec, now }: { profile: Profile; d: Derived;
           </button>
           {method && <div className="fine method">{t('trends.method.body', methodNumbers())}</div>}
         </Card>
+      ) : features.curveNeedsSource && !d.curveAvailable ? (
+        // No chart can be drawn for this medication in this build. Without a medication there is nothing to say.
+        d.drug && (
+          <Card>
+            <h3>{t('curve.title')}</h3>
+            <p className="muted">{t('curve.unavailable')}</p>
+          </Card>
+        )
       ) : (
         <Card>
           <h3>{t('trends.curve.emptyTitle')}</h3>
@@ -48,12 +58,52 @@ export function Trends({ profile, d, rec, now }: { profile: Profile; d: Derived;
       )}
       <WeightCard profile={profile} d={d} />
       <SymptomCard d={d} rec={rec} doses={doses} profile={profile} />
-      <ProteinWeek d={d} />
-      <Card>
-        <h3>{t('trends.workouts.title')}</h3>
-        <p>{bold(t('trends.workouts.body', { count: d.workoutDays.filter((k) => k > shiftDayKey(d.today, -7)).length }))}</p>
-      </Card>
+      {features.foodAndProtein && <ProteinWeek d={d} />}
+      {features.workouts && <WorkoutWeek d={d} />}
     </div>
+  );
+}
+
+/**
+ * Weekly summary: three numbers about the last seven days (core/weekly.ts). It only counts what
+ * was logged; it gives no advice and no judgement.
+ */
+function WeeklyCard({ profile, d }: { profile: Profile; d: Derived }) {
+  const t = useT();
+  const lang = t.lang;
+  const w = d.weekly;
+  const range = w.fromDay === w.toDay ? fmtDayKey(w.toDay, lang) : t('weekly.range', { from: fmtDayKey(w.fromDay, lang), to: fmtDayKey(w.toDay, lang) });
+  return (
+    <Card className="weekly">
+      <h3>{t('weekly.title')}</h3>
+      <p className="muted">{range}</p>
+      <dl className="facts">
+        <div>
+          <dt>{t('weekly.doses')}</dt>
+          {/* "of N scheduled" is shown only when the schedule called for a dose on these days. */}
+          <dd>{w.dosesScheduled ? t('weekly.dosesOf', { logged: w.dosesLogged, scheduled: w.dosesScheduled }) : w.dosesLogged}</dd>
+        </div>
+        <div>
+          <dt>{t('weekly.weight')}</dt>
+          <dd>{w.firstWeightKg !== null && w.lastWeightKg !== null ? fmtWeightChange(w.firstWeightKg, w.lastWeightKg, profile.weightUnit, lang) : t('weekly.none')}</dd>
+        </div>
+        <div>
+          <dt>{t('weekly.symptomDays')}</dt>
+          <dd>{w.symptomDays}</dd>
+        </div>
+      </dl>
+      <p className="fine">{t('weekly.note')}</p>
+    </Card>
+  );
+}
+
+function WorkoutWeek({ d }: { d: Derived }) {
+  const t = useT();
+  return (
+    <Card>
+      <h3>{t('trends.workouts.title')}</h3>
+      <p>{bold(t('trends.workouts.body', { count: d.workoutDays.filter((k) => k > shiftDayKey(d.today, -7)).length }))}</p>
+    </Card>
   );
 }
 
@@ -88,7 +138,7 @@ function WeightCard({ profile, d }: { profile: Profile; d: Derived }) {
         {bold(t('weight.summary', { now: fmtWeight(avgs[avgs.length - 1].avgKg, u, lang), low: fmtWeight(nadir, u, lang) }))}
         {profile.startWeightKg && t('weight.start', { start: fmtWeight(profile.startWeightKg, u, lang) })}
       </p>
-      {d.regain && <p className={d.regain.band === 'green' ? 'muted' : 'warn'}>{t(`weight.regain.${d.regain.band}`, { pct: d.regain.regainPct.toFixed(1) })}</p>}
+      {features.maintenanceContent && d.regain && <p className={d.regain.band === 'green' ? 'muted' : 'warn'}>{t(`weight.regain.${d.regain.band}`, { pct: d.regain.regainPct.toFixed(1) })}</p>}
       <p className="fine">{t('weight.note', { unit: unitLabel(u, lang), swing: dailySwing(u) })}</p>
     </Card>
   );
@@ -118,7 +168,8 @@ function SymptomCard({ d, rec, doses, profile }: { d: Derived; rec: Records; dos
           </div>
         ))}
       </div>
-      <p className="fine">{d.highDays?.enoughData ? t('symptomDays.found') : t('symptomDays.needMore', { count: d.highDays?.cycles ?? 0 })}</p>
+      {/* The longer sentence says the Today tab plans around these days; that is only true with the daily advice card. */}
+      <p className="fine">{d.highDays?.enoughData ? t(features.dailyAdvice ? 'symptomDays.found' : 'symptomDays.foundPlain') : t('symptomDays.needMore', { count: d.highDays?.cycles ?? 0 })}</p>
     </Card>
   );
 }

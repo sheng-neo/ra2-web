@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { brandOptionLabel, type BrandOption } from '../core/catalog';
 import type { Regimen } from '../core/types';
-import { brandIn, englishRows, isRowPicked, needsBrandPick, setupStart } from './setupChoice';
+import { addsStartingDose, addsStartingWeight, brandIn, englishRows, fieldWeightKg, isRowPicked, needsBrandPick, savedWeightText, setupStart } from './setupChoice';
 
 const marked = (region: Parameters<typeof englishRows>[0], drugId: string | null, brand: string | null) =>
   englishRows(region, drugId)
@@ -78,5 +78,59 @@ describe('setup: redoing it starts from the saved medication', () => {
     expect(setupStart(custom)).toMatchObject({ amount: '10', doseUnit: 'units', freqMode: 'interval', intervalDays: '3.5', time: '21:00' });
     const noDose: Regimen = { drugId: 'orforglipron', doseAmount: null, doseUnit: 'mg', schedule: { kind: 'daily', time: '08:00' }, status: 'escalating' };
     expect(setupStart(noDose).amount).toBe('');
+  });
+});
+
+describe('setup: redoing it changes nothing unless an answer is changed', () => {
+  it('a weight field starts from the saved weight, in the unit chosen, to one decimal', () => {
+    expect(savedWeightText(90.72, 'lb')).toBe('200');
+    expect(savedWeightText(77.11, 'lb')).toBe('170');
+    expect(savedWeightText(80.25, 'kg')).toBe('80.3');
+    expect(savedWeightText(80, 'jin')).toBe('160');
+    expect(savedWeightText(null, 'lb')).toBe('');
+    expect(savedWeightText(undefined, 'kg')).toBe('');
+  });
+
+  it('a field that was not touched keeps the saved weight exactly, whatever the unit', () => {
+    for (const unit of ['kg', 'lb', 'jin'] as const) {
+      expect(fieldWeightKg(null, 90.72, unit)).toBe(90.72);
+      expect(fieldWeightKg(null, 77.113, unit)).toBe(77.113);
+    }
+    expect(fieldWeightKg(null, null, 'lb')).toBeNull();
+    expect(fieldWeightKg(null, undefined, 'lb')).toBeNull();
+  });
+
+  it('a field that was edited gives the typed weight; an emptied field means no weight', () => {
+    expect(fieldWeightKg('200', 80, 'lb')).toBeCloseTo(90.72, 2);
+    expect(fieldWeightKg('82.5', 80, 'kg')).toBe(82.5);
+    expect(fieldWeightKg('', 80, 'kg')).toBeNull();
+    expect(fieldWeightKg('  ', 80, 'kg')).toBeNull();
+    // Text that is not a weight is not saved as one.
+    expect(fieldWeightKg('abc', 80, 'kg')).toBeNull();
+    expect(fieldWeightKg('0', 80, 'kg')).toBeNull();
+    expect(fieldWeightKg('-5', 80, 'kg')).toBeNull();
+  });
+
+  it('the most recent dose is added only to a log that has no dose of the medication yet', () => {
+    // First setup: nothing is logged yet.
+    expect(addsStartingDose('escalating', 5, false)).toBe(true);
+    expect(addsStartingDose('maintenance', 5, false)).toBe(true);
+    expect(addsStartingDose('stopped', 5, false)).toBe(true);
+    // Not started, or no amount: there is no dose to add.
+    expect(addsStartingDose('not_started', 5, false)).toBe(false);
+    expect(addsStartingDose('escalating', 0, false)).toBe(false);
+    expect(addsStartingDose('escalating', Number('abc'), false)).toBe(false);
+    // Setup redone: the log already has a dose of this medication, so nothing is added again.
+    for (const status of ['escalating', 'maintenance', 'paused', 'stopped'] as const) expect(addsStartingDose(status, 5, true), status).toBe(false);
+  });
+
+  it('the weight is logged the first time, and again only when it was changed', () => {
+    expect(addsStartingWeight(90.72, undefined)).toBe(true);
+    expect(addsStartingWeight(90.72, null)).toBe(true);
+    // Redone without touching the field: fieldWeightKg hands back the saved weight, and nothing is logged.
+    expect(addsStartingWeight(fieldWeightKg(null, 90.72, 'lb'), 90.72)).toBe(false);
+    expect(addsStartingWeight(fieldWeightKg('195', 90.72, 'lb'), 90.72)).toBe(true);
+    expect(addsStartingWeight(null, 90.72)).toBe(false);
+    expect(addsStartingWeight(null, null)).toBe(false);
   });
 });
