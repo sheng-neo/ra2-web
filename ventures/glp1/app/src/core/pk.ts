@@ -1,7 +1,7 @@
 /**
  * 药物水平估算（PRD v2.0 第 5.3 节）：一级吸收 + 一级消除（Bateman 函数）。
  * 只输出相对指数：以"当前剂量、当前间隔长期使用后的最高点"为 100。
- * 这是人群平均模型，不是测量值，不能用来调整剂量。
+ * 每个人都用同一组参数（半衰期、达峰时间取自美国说明书，见 labelFacts.ts），不是测量值，不能用来调整剂量。
  */
 import type { PkParams } from './catalog';
 import { HOUR, DAY } from './tz';
@@ -81,6 +81,11 @@ export function referenceDose(doses: MgDose[]): number | null {
 
 /**
  * 过去 14 天 + 未来 7 天的指数曲线。未来部分假设按计划继续用同样的剂量（projected = true）。
+ *
+ * The forecast holds only planned doses that can still be taken: the planned times from now on.
+ * A planned time that has passed without a logged dose is left out (nextDueMs is in the past
+ * when a dose is overdue). Counting it would add a dose nobody took, and the dashed line would
+ * jump at "now".
  */
 export function exposureCurve(inp: CurveInput): CurvePoint[] {
   const m = modelFor(inp.params);
@@ -91,8 +96,11 @@ export function exposureCurve(inp: CurveInput): CurvePoint[] {
   const to = inp.toMs ?? inp.nowMs + 7 * DAY;
   const step = (inp.stepH ?? 3) * HOUR;
   const future: MgDose[] = [];
-  if (inp.nextDueMs !== null) {
-    for (let t = inp.nextDueMs; t <= to; t += inp.intervalH * HOUR) future.push({ atMs: t, mg: ref });
+  if (inp.nextDueMs !== null && inp.intervalH > 0) {
+    const every = inp.intervalH * HOUR;
+    // The first planned time that is not in the past, on the same rhythm as nextDueMs.
+    const first = inp.nextDueMs >= inp.nowMs ? inp.nextDueMs : inp.nextDueMs + Math.ceil((inp.nowMs - inp.nextDueMs) / every) * every;
+    for (let t = first; t <= to; t += every) future.push({ atMs: t, mg: ref });
   }
   const all = [...inp.doses, ...future];
   const out: CurvePoint[] = [];

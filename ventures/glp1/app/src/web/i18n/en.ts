@@ -175,7 +175,8 @@ export const en = {
   'today.status.escalation': 'Dose increase period',
   'today.next.pill': 'Next pill: {when} ({countdown})',
   'today.next.shot': 'Next shot: {when} ({countdown})',
-  'today.fasting': { one: 'Empty stomach: wait {count} more minute before you eat', other: 'Empty stomach: wait {count} more minutes before you eat' },
+  // The wait after a pill, in the words of the US prescribing information ("wait at least 30 minutes before eating food, drinking beverages or taking other oral medications"). Do not shorten it.
+  'today.fasting': { one: 'Wait at least {count} more minute before you eat, drink or take other oral medications', other: 'Wait at least {count} more minutes before you eat, drink or take other oral medications' },
   'today.noRegimen': 'No medication set up yet. ',
   'today.noRegimen.link': 'Set it up under Me',
   'today.startWorkout': 'Start workout',
@@ -185,10 +186,16 @@ export const en = {
   'today.curve.open': 'See the estimated medication level chart',
   'curve.title': 'Estimated medication level',
   'curve.aria': 'Estimated medication level chart',
-  'today.curve.note': 'An estimate based on published population averages. It is not a measurement and cannot be used to adjust your dose.',
-  'today.noCurve': 'No chart for this medication yet (its numbers are not verified, or it is taken every day).',
-  // Shown in place of the chart where a chart needs label-sourced numbers and the medication has none.
+  // The two chart numbers are read from US prescribing information. Do not call them averages: some are the middle of a range.
+  'today.curve.note': 'An estimate based on numbers from US prescribing information. It is not a measurement and cannot be used to adjust your dose.',
+  // Full build: shown on Today and on Trends for a medication that has no chart.
+  'today.noCurve': 'No chart for this medication. The chart is drawn only for weekly shots that have a half-life and a time to peak from US prescribing information.',
+  // Launch build: shown in place of the chart for a medication that has none (a daily medication, "Other / custom", or numbers that are not label-backed).
   'curve.unavailable': 'An estimate for this medication is not available yet.',
+  // Both builds: the medication has chart numbers, but per brand, and the saved medication names no brand (tirzepatide without Zepbound or Mounjaro).
+  // {brands} is "Zepbound and Mounjaro". The first line is for a person whose list offers those brands; the second for everyone else.
+  'curve.chooseBrand': 'The chart uses two numbers from US prescribing information, and they are stated differently for {brands}. So the chart needs to know your brand. To choose it, go to Me and tap "{button}".',
+  'curve.twoLabels': 'No chart for this medication yet. The chart uses two numbers from US prescribing information, and they are stated differently for {brands}. The app does not choose between them.',
   'today.log.title': "Today's log",
   'today.log.empty': 'Nothing logged yet. Type a note below, or tap a button.',
   // Where there is no note box.
@@ -223,11 +230,11 @@ export const en = {
   'weekly.symptomDays': 'Days with a symptom logged',
   'weekly.none': '–',
   'weekly.note': 'These are counts of what you logged. Scheduled doses come from the schedule you set, counted up to now. Weight change is your last weigh-in minus your first one in these days. It shows when there are two or more.',
-  'trends.curve.note': 'The last 14 days and the next 7 days. The solid line is what has happened. The dashed line assumes you keep taking your medication as planned. 100 = the highest point after long-term use of this dose.',
+  'trends.curve.note': 'The last 14 days and the next 7 days. The solid line is what has happened. The dashed line assumes you take your planned doses from now on. A planned dose that is overdue is not counted until you log it. 100 = the highest point after long-term use of this dose.',
   'trends.method.link': 'How this is calculated',
   // The Chinese text ends with "not a measurement of the concentration in blood". English says "lab measurement" instead.
   'trends.method.body':
-    'This uses a standard model of how the body takes in and clears a medication (first-order absorption and elimination), with published population averages: semaglutide half-life about {semaHalfLife} hours, peak at about {semaPeak} hours; tirzepatide half-life about {tirzHalfLife} hours, peak at about {tirzPeak} hours (still to be checked against the labels). Only doses you logged in mg are used. People absorb and clear medication at very different speeds. This line only helps you picture roughly where the medication level is. It is not a lab measurement and cannot be used to adjust your dose.',
+    'The chart uses a standard model of how the body takes in and clears a medication (first-order absorption and elimination). The model needs two numbers. The half-life is the time the body takes to clear half of a dose. The time to peak is the time from a dose to the highest level. Both come from the pharmacokinetics section of the US prescribing information for {name}. For {name} the chart uses a half-life of {halfLife} hours and a time to peak of {peak} hours. Where that section gives one value or a median, the chart uses it. Where it gives only a range, the chart uses the middle of the range. The chart uses these same two numbers for every person on this medication. They are not measured in you. People absorb and clear medication at very different speeds. Only doses you logged in mg are used. This line is an estimate. It only helps you picture roughly where the medication level is. It is not a lab measurement and cannot be used to adjust your dose.',
   'trends.curve.emptyTitle': 'Estimated medication level',
   'trends.curve.empty': 'After you log semaglutide or tirzepatide shots in mg, an estimated medication level chart will show here.',
   'trends.workouts.title': 'Workouts',
@@ -332,8 +339,9 @@ export const en = {
   'quick.foodItem': '+ {name} {grams} g',
   'input.busy': 'Reading…',
   // Kept short: it has to fit the input next to the camera and Log buttons at 390 px.
-  'input.placeholder': 'Type a note: "took 2.5 mg"',
-  // Shown instead of the example when large text is on, where the example does not fit.
+  // {dose} is the person's own saved dose in mg. No dose number is written into this text.
+  'input.placeholder': 'Type a note: "took {dose} mg"',
+  // Shown instead of the example when large text is on, where the example does not fit, and when the person has no saved dose in mg.
   'input.placeholderLarge': 'Type a note',
   'input.aria': 'Type a note',
   'input.camera': 'Take a photo',
@@ -370,8 +378,10 @@ export const en = {
   'dose.confirm.title': 'Confirm this dose entry',
   'dose.byMouth': 'By mouth',
   'dose.noSite': 'No site given (suggested: {site})',
-  'dose.overMax.card': 'This is more than the usual highest dose for this medication ({max} mg). Did you type an extra digit? If it is correct, tap again.',
-  'dose.overMax.form': '{amount} {unit} is more than the usual highest dose for this medication ({max} mg). Did you type an extra digit? If it is correct, tap the button again.',
+  // The typing check. It says whose number {max} is: the highest dose in the US prescribing information for {name}, a US brand name.
+  // It is not called "usual" or "recommended": for some brands the label gives that dose to some patients only.
+  'dose.overMax.card': 'This is more than the highest dose in the US prescribing information for {name} ({max} mg). Did you type an extra digit? If it is correct, tap again.',
+  'dose.overMax.form': '{amount} {unit} is more than the highest dose in the US prescribing information for {name} ({max} mg). Did you type an extra digit? If it is correct, tap the button again.',
   'dose.confirmSure': 'It is correct, log it',
   'dose.edit': 'Edit',
   'dose.amount': 'Dose',
@@ -379,7 +389,8 @@ export const en = {
   'dose.site': 'Site',
   'dose.siteSuggested': '(suggested: {site})',
   'dose.time': 'Time',
-  'dose.fasting': 'For {minutes} minutes after your pill, do not eat or drink. Take the pill with only a small sip of water.',
+  // In the words of the US prescribing information. Nothing is said about water: the app has no label row for it.
+  'dose.fasting': 'After your pill, wait at least {minutes} minutes before you eat, drink or take other oral medications.',
   'sheet.pill': 'Log a pill',
 
   // ── Other sheets ──

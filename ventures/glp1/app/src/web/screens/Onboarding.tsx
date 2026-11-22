@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
-import { brandOptionLabel, drugById, drugFormText, regionLabel, searchCatalog, type BrandOption, type DoseUnit, type Region } from '../../core/catalog';
-import { doseExample, languageChoices, regionChoices, safetyQuestions, setupSteps, type SetupStep } from '../../core/features';
+import { brandNumbers, brandOptionLabel, drugById, drugFormText, maxDoseLabelName, regimenBrand, regionLabel, searchCatalog, type BrandOption, type DoseUnit, type Region } from '../../core/catalog';
+import { doseCheckApplies, doseExample, languageChoices, regionChoices, safetyQuestions, setupSteps, type SetupStep } from '../../core/features';
 import { DEFAULT_LANG, htmlLang, isChinese, profileLang, scriptFor, type Lang } from '../../core/i18n';
 import { NO_SAFETY_FLAGS, startRegion } from '../../core/profile';
 import type { Schedule } from '../../core/schedule';
@@ -17,7 +17,7 @@ import { Chips, fromLocalInput, toLocalInput } from '../components/ui';
 import { WipeButton } from '../components/WipeButton';
 import { countingOn, countsAnswered, setupFinished } from '../counting';
 import { I18nProvider, LANGUAGE_NAMES, translator } from '../i18n';
-import { addsStartingDose, addsStartingWeight, brandIn, englishRows, fieldWeightKg, isRowPicked, needsBrandPick, savedWeightText, setupStart } from '../setupChoice';
+import { addsStartingDose, addsStartingWeight, brandIn, chineseRows, englishRows, fieldWeightKg, isChineseRowPicked, isRowPicked, needsBrandPick, needsBrandPickChinese, savedWeightText, setupStart } from '../setupChoice';
 
 const SETUP_STATUSES = ['escalating', 'maintenance', 'not_started', 'stopped'] as const;
 // What this build asks (core/features.ts).
@@ -52,8 +52,12 @@ function Setup({ existing, onStartOver }: { existing: Profile | null; onStartOve
   const [drugId, setDrugId] = useState<string | null>(saved?.drugId ?? null);
   const [brand, setBrand] = useState<string | null>(existing ? brandIn(existing.region, saved?.drugId, saved?.brand) : null);
   const [status, setStatus] = useState<CourseStatus>(start.status);
-  const [amount, setAmount] = useState(start.amount);
-  const [doseUnit, setDoseUnit] = useState<DoseUnit>(start.doseUnit);
+  const [amount, setAmountText] = useState(start.amount);
+  const [doseUnit, setDoseUnitValue] = useState<DoseUnit>(start.doseUnit);
+  // True once the typing check has asked about the dose typed here; any change to the dose asks again.
+  const [overMax, setOverMax] = useState(false);
+  const setAmount = (next: string) => (setAmountText(next), setOverMax(false));
+  const setDoseUnit = (next: DoseUnit) => (setDoseUnitValue(next), setOverMax(false));
   const [weekday, setWeekday] = useState(start.weekday ?? new Date().getDay());
   const [time, setTime] = useState(start.time);
   const [intervalDays, setIntervalDays] = useState(start.intervalDays);
@@ -118,23 +122,29 @@ function Setup({ existing, onStartOver }: { existing: Profile | null; onStartOve
     setRegion(next);
     // A brand chosen for another region is not carried along: the list there shows other names.
     setBrand(brandIn(next, drugId, brand));
+    setOverMax(false);
   };
 
-  // English lists the brands sold in the region, one row each. Chinese lists the catalog entries, as before.
+  // English lists the brands sold in the region, one row each. Chinese lists the catalog entries, as
+  // before, with one row per brand only where the brands have numbers of their own (setupChoice.ts).
   const rows: BrandOption[] = useMemo(() => {
-    if (lang !== 'en') return searchCatalog(q).map((entry) => ({ drugId: entry.id, brand: null, entry }));
+    if (lang !== 'en') return chineseRows(searchCatalog(q), region);
     const s = q.trim().toLowerCase();
     return englishRows(region, drugId).filter((o) => !s || optionNames(o, region).some((n) => n.toLowerCase().includes(s)));
   }, [lang, q, region, drugId]);
   const drug = drugId ? drugById(drugId) : null;
-  const example = drug ? doseExample(drug, features) : null;
+  // Catalog numbers are those of the brand's own label.
+  const numbersBrand = drugId ? regimenBrand({ drugId, brand }, region) : null;
+  const example = drug ? doseExample(drug, features, numbersBrand) : null;
   const hasDoses = drugId !== null && loggedDrugs.has(drugId);
-  // Only the English list has brand rows, so only there can a brand still be missing (see setupChoice.ts).
-  const needsBrand = lang === 'en' && needsBrandPick(region, drugId, brand);
-  const isPicked = (o: BrandOption) => (lang === 'en' ? isRowPicked(o, region, drugId, brand) : o.drugId === drugId);
+  // A brand can still be missing where the list has one row per brand of the chosen medication (see setupChoice.ts).
+  const needsBrand = lang === 'en' ? needsBrandPick(region, drugId, brand) : needsBrandPickChinese(region, drugId, brand);
+  const isPicked = (o: BrandOption) => (lang === 'en' ? isRowPicked(o, region, drugId, brand) : isChineseRowPicked(o, drugId, brand));
   const pickDrug = (o: BrandOption) => {
     // A row without a brand keeps the brand already chosen for the same medication.
     setBrand(o.brand ?? (o.drugId === drugId ? brand : null));
+    // Another brand can have another highest dose, so the typing check asks again.
+    setOverMax(false);
     if (o.drugId === drugId) return;
     // Another medication: it starts from its own usual rhythm, and a dose typed or saved for
     // the old one is not carried over.
@@ -446,10 +456,20 @@ function Setup({ existing, onStartOver }: { existing: Profile | null; onStartOve
   const onMedication = stepId === 'medication';
 
   const canNext = !onMedication || !drugId || (!needsBrand && (status === 'not_started' || (Number(amount) > 0 && (status === 'stopped' || freqMode !== 'interval' || Number(intervalDays) > 0))));
+  /**
+   * "Next". The dose typed on the medication step is saved with the medication and becomes the
+   * first row of the log, so it gets the same typing check as a logged dose: a dose in mg above
+   * the label's highest dose is questioned once, and a second tap goes on.
+   */
+  const goNext = () => {
+    if (onMedication && drug && !overMax && doseCheckApplies(drug, Number(amount), doseUnit, features, numbersBrand)) return setOverMax(true);
+    setStep(step + 1);
+  };
 
   return (
     <I18nProvider lang={lang}>
-      <div className="onboarding" lang={htmlLang(lang)}>
+      {/* With the typing check in the bar, the bar is taller: the page gets more room at the bottom so its last fields can still be scrolled into view. */}
+      <div className={onMedication && drug && overMax ? 'onboarding with-note' : 'onboarding'} lang={htmlLang(lang)}>
         <div className="progress">
           {steps.map((_, i) => (
             <span key={i} className={i <= step ? 'on' : ''} />
@@ -457,6 +477,12 @@ function Setup({ existing, onStartOver }: { existing: Profile | null; onStartOve
         </div>
         {steps[step]}
         <div className="row nav">
+          {/* The typing check, as on the sheet where a dose is logged. It is in the bar with the button that asked, so it is in view wherever the page is scrolled. */}
+          {onMedication && drug && overMax && (
+            <p className="warn nav-note" role="alert">
+              {t('dose.overMax.card', { max: String(brandNumbers(drug, numbersBrand).maxMg), name: maxDoseLabelName(drug, lang, numbersBrand) })}
+            </p>
+          )}
           {step > 0 && (
             <button className="btn" onClick={() => setStep(step - 1)}>
               {t('onb.prev')}
@@ -472,7 +498,7 @@ function Setup({ existing, onStartOver }: { existing: Profile | null; onStartOve
               </button>
             </>
           ) : step < steps.length - 1 ? (
-            <button className="btn primary" disabled={!canNext} onClick={() => setStep(step + 1)}>
+            <button className="btn primary" disabled={!canNext} onClick={goNext}>
               {(onMedication && !drugId) || (stepId === 'about' && !hasSetupAnswer(answers)) ? t('onb.skip') : t('onb.next')}
             </button>
           ) : (

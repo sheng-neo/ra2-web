@@ -2,6 +2,12 @@
  * Chinese screen copy. 'hans' is the text the screens had before the message layer existed and
  * must stay exactly as it is: existing users see it. Do not reword it without clinical review.
  *
+ * Reworded on 2026-11-22, when the medication numbers were read from the US labels, and NOT YET
+ * READ BY A CLINICAL REVIEWER: today.fasting, dose.fasting (the wait after a pill, in the label's
+ * words), today.curve.note, trends.curve.note, trends.method.body, today.noCurve,
+ * dose.overMax.card, dose.overMax.form, input.placeholder, input.placeholderLarge, and the new
+ * curve.chooseBrand and curve.twoLabels.
+ *
  * 'hant' overrides single messages for Traditional Chinese. Anything not listed falls back to
  * 'hans', which is how the app has always treated Traditional users (only drug names differ).
  */
@@ -51,7 +57,7 @@ export const hans: Messages = {
   'onb.scriptNote': '目前是简体中文，繁体版在做。',
   'onb.drug.title': '你用的是哪种药？',
   'onb.drug.search': '搜药名，中文英文都行',
-  // Only the English medication list has one row per brand; this line is not shown in Chinese.
+  // Shown where the list has one row per brand of the chosen medication and none is picked yet.
   'onb.drug.pickBrand': '请在上面的列表里选一下品牌。',
   'onb.status.title': '现在的状态',
   'onb.status.escalating': '加量中',
@@ -157,7 +163,7 @@ export const hans: Messages = {
   'today.status.escalation': '加量期',
   'today.next.pill': '下次吃药：{when}（{countdown}）',
   'today.next.shot': '下一针：{when}（{countdown}）',
-  'today.fasting': '空腹中：还有 {count} 分钟再吃东西',
+  'today.fasting': '至少还要等 {count} 分钟，再吃东西、喝饮料或服其他口服药',
   'today.noRegimen': '还没设置用药。',
   'today.noRegimen.link': '去"我的"里设置',
   'today.startWorkout': '开始练',
@@ -167,9 +173,11 @@ export const hans: Messages = {
   'today.curve.open': '查看药物水平曲线',
   'curve.title': '药物水平（估算）',
   'curve.aria': '药物水平估算曲线',
-  'today.curve.note': '按公开的人群平均数据估算，不是测量值，不能用来调整剂量。',
-  'today.noCurve': '这个药暂不画曲线（参数还没核实，或者是每天用的药）。',
+  'today.curve.note': '按美国说明书里的数字估算，不是测量值，不能用来调整剂量。',
+  'today.noCurve': '这个药不画曲线。只有每周一次、并且已从美国说明书读到半衰期和达峰时间的针剂才画。',
   'curve.unavailable': '这个药的估算暂时还没有。',
+  'curve.chooseBrand': '曲线要用美国说明书里的两个数字。{brands} 的说明书写法不一样，所以要先知道你用的是哪一个。请到"我的"里点"{button}"，选一下品牌。',
+  'curve.twoLabels': '这个药暂时不画曲线。曲线要用美国说明书里的两个数字，{brands} 的说明书写法不一样，应用不替你选。',
   'today.log.title': '今天的记录',
   'today.log.empty': '还没有记录。在下面说一句，或者点按钮。',
   'today.log.emptyButtons': '还没有记录。点下面的按钮来记。',
@@ -202,10 +210,10 @@ export const hans: Messages = {
   'weekly.symptomDays': '记了症状的天数',
   'weekly.none': '–',
   'weekly.note': '这里只数你记下的内容。计划次数按你设定的用药安排算，只算到现在为止。体重变化是这几天里最后一次称重减去第一次，称过两次以上才显示。',
-  'trends.curve.note': '过去 14 天和未来 7 天。实线是已经发生的，虚线假设你按计划继续用。100 = 这个剂量长期使用后的最高点。',
+  'trends.curve.note': '过去 14 天和未来 7 天。实线是已经发生的，虚线假设你从现在起按计划继续用。已经过了时间、还没记下的那一次不算在内，记下之后才算。100 = 这个剂量长期使用后的最高点。',
   'trends.method.link': '这是怎么算的',
   'trends.method.body':
-    '用一级吸收、一级消除模型，按公开的人群平均数据估算：司美格鲁肽半衰期约 {semaHalfLife} 小时、达峰约 {semaPeak} 小时；替尔泊肽半衰期约 {tirzHalfLife} 小时、达峰约 {tirzPeak} 小时（待对照说明书核实）。只用你以 mg 记录的剂量计算。每个人吸收和代谢的速度差别很大，这条线只帮你理解"药效大概在什么水平"，不是血药浓度的测量值，不能用来调整剂量。',
+    '用一级吸收、一级消除模型估算药物在体内的变化。模型需要两个数字：半衰期，是身体清除一半药量所需的时间；达峰时间，是用药后药物水平升到最高所需的时间。这两个数字来自 {name} 美国处方信息（说明书）的药代动力学一节。{name} 按半衰期 {halfLife} 小时、达峰时间 {peak} 小时计算。该节给出单一数值或中位数的，直接采用；只给出范围的，取范围的中间值。用这个药的每个人，曲线用的都是这两个数字，不是你本人的测量值。每个人吸收和代谢的速度差别很大。只用你以 mg 记录的剂量计算。这条线只是估算，帮你理解药物水平大概在什么位置，不是血药浓度的测量值，不能用来调整剂量。',
   'trends.curve.emptyTitle': '药物水平',
   'trends.curve.empty': '以 mg 记录司美格鲁肽或替尔泊肽针剂后，这里会显示估算曲线。',
   'trends.workouts.title': '训练',
@@ -301,8 +309,8 @@ export const hans: Messages = {
   'quick.food': '+吃的',
   'quick.foodItem': '+{name} {grams}',
   'input.busy': '识别中…',
-  'input.placeholder': '说一句，比如"刚打了 2.5 左腹"',
-  'input.placeholderLarge': '说一句，比如"刚打了 2.5 左腹"',
+  'input.placeholder': '说一句，比如"刚打了 {dose} 左腹"',
+  'input.placeholderLarge': '说一句',
   'input.aria': '说一句',
   'input.camera': '拍照',
   'input.send': '记',
@@ -338,8 +346,8 @@ export const hans: Messages = {
   'dose.confirm.title': '确认用药记录',
   'dose.byMouth': '口服',
   'dose.noSite': '没说部位（建议{site}）',
-  'dose.overMax.card': '超过了这个药常见的最高剂量（{max} mg）。是不是多打了一位数？确认无误再点一次。',
-  'dose.overMax.form': '{amount} {unit} 超过了这个药常见的最高剂量（{max} mg）。是不是多打了一位数？确认无误再点一次"确认"。',
+  'dose.overMax.card': '超过了 {name} 美国说明书上的最高剂量（{max} mg）。是不是多打了一位数？确认无误再点一次。',
+  'dose.overMax.form': '{amount} {unit} 超过了 {name} 美国说明书上的最高剂量（{max} mg）。是不是多打了一位数？确认无误再点一次"确认"。',
   'dose.confirmSure': '确认无误，记下',
   'dose.edit': '改一下',
   'dose.amount': '剂量',
@@ -347,7 +355,7 @@ export const hans: Messages = {
   'dose.site': '部位',
   'dose.siteSuggested': '（建议：{site}）',
   'dose.time': '时间',
-  'dose.fasting': '吃完药后 {minutes} 分钟内先别吃东西、别喝水（只用少量水送服）。',
+  'dose.fasting': '服药后至少等 {minutes} 分钟，再吃东西、喝饮料或服用其他口服药。',
   'sheet.pill': '记一次服药',
 
   // ── Other sheets ──

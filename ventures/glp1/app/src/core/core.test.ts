@@ -48,7 +48,10 @@ describe('catalog', () => {
   });
 
   it('only draws curves for drugs with PK parameters', () => {
-    expect(CATALOG.filter((d) => d.pk).map((d) => d.id)).toEqual(['semaglutide-wl', 'semaglutide-t2d', 'tirzepatide']);
+    expect(CATALOG.filter((d) => d.pk).map((d) => d.id)).toEqual(['semaglutide-wl', 'semaglutide-t2d']);
+    // Tirzepatide has its numbers per brand, because the two US labels word them differently.
+    expect(CATALOG.filter((d) => d.byBrand).map((d) => d.id)).toEqual(['tirzepatide']);
+    expect(Object.keys(drugById('tirzepatide').byBrand ?? {})).toEqual(['Zepbound', 'Mounjaro']);
   });
 });
 
@@ -98,6 +101,39 @@ describe('pk', () => {
     expect(on.length).toBe(off.length);
     expect(on[on.length - 1].index).toBeGreaterThan(off[off.length - 1].index * 2);
     expect(on.filter((p) => p.projected).length).toBeGreaterThan(0);
+  });
+
+  it('a planned dose that is overdue is not counted: the dashed line starts where the solid line ends', () => {
+    // Four weekly doses, then a missed week: the planned time was 6.5 days ago and nothing was logged.
+    const doses: MgDose[] = Array.from({ length: 4 }, (_, i) => ({ atMs: i * 168 * HOUR, mg: 5 }));
+    const overdue = 4 * 168 * HOUR;
+    const now = overdue + 6.5 * 24 * HOUR;
+    for (const params of [tirz, sema, { halfLifeH: 132, tmaxH: 24 }, { halfLifeH: 120, tmaxH: 40 }]) {
+      const curve = exposureCurve({ doses, params, intervalH: 168, nowMs: now, nextDueMs: overdue });
+      const lastSolid = curve.filter((p) => !p.projected).pop()!;
+      const firstDashed = curve.find((p) => p.projected)!;
+      expect(Math.abs(firstDashed.index - lastSolid.index)).toBeLessThan(2);
+      // The same forecast as when the next planned dose is the one a week after the missed time.
+      const fromNextPlanned = exposureCurve({ doses, params, intervalH: 168, nowMs: now, nextDueMs: overdue + 168 * HOUR });
+      expect(curve.map((p) => p.index)).toEqual(fromNextPlanned.map((p) => p.index));
+      // With the dose nobody took counted, the line would stand far higher right after "now".
+      const withPhantom = exposureIndexAt(firstDashed.tMs, [...doses, { atMs: overdue, mg: 5 }], params, 168)!;
+      expect(withPhantom - firstDashed.index).toBeGreaterThan(20);
+    }
+  });
+
+  it('a planned dose that is due now or later is still part of the forecast', () => {
+    const doses: MgDose[] = Array.from({ length: 4 }, (_, i) => ({ atMs: i * 168 * HOUR, mg: 5 }));
+    const now = 4 * 168 * HOUR;
+    const off = exposureCurve({ doses, params: tirz, intervalH: 168, nowMs: now, nextDueMs: null });
+    for (const nextDueMs of [now, now + 6 * HOUR, now + 3 * 24 * HOUR]) {
+      const on = exposureCurve({ doses, params: tirz, intervalH: 168, nowMs: now, nextDueMs });
+      expect(on[on.length - 1].index).toBeGreaterThan(off[off.length - 1].index + 20);
+    }
+    // Two missed weeks: the forecast starts at the first planned time that is not in the past.
+    const late = exposureCurve({ doses, params: tirz, intervalH: 168, nowMs: now + 15 * 24 * HOUR, nextDueMs: now });
+    const next = exposureCurve({ doses, params: tirz, intervalH: 168, nowMs: now + 15 * 24 * HOUR, nextDueMs: now + 3 * 168 * HOUR });
+    expect(late.map((p) => p.index)).toEqual(next.map((p) => p.index));
   });
 
   it('detects the escalation window after a dose increase', () => {

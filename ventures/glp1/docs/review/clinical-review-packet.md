@@ -4,19 +4,19 @@
 
 From [COMPANY LEGAL NAME] · Contact: [CONTACT EMAIL] · Sent on [EFFECTIVE DATE]
 
-Packet version `102c097d`. This file is built by a script from the code of the app, so the texts and numbers in it are the ones the app uses. Text in "quotation marks" is exact app text, or a phrase a person might type. Words in [square brackets] are filled in by the app or by us.
+Packet version `4362d404`. This file is built by a script from the code of the app, so the texts and numbers in it are the ones the app uses. Text in "quotation marks" is exact app text, or a phrase a person might type. Words in [square brackets] are filled in by the app or by us.
 
-About 17,500 words with 401 coded items: about 47 pages in a compact print layout, about 75 pages as a plain Word file.
+About 22,200 words with 425 coded items: about 59 pages in a compact print layout, about 95 pages as a plain Word file.
 
 | Section | What it holds | Size | In the first public version |
 |----|--------------------|----------------------------|------------------------|
 | 1 | What this is and what we ask of you | 1 page |   |
 | 2 | Danger-symptom rules | 14 rules, 16 card texts, 101 trigger patterns, 217 example phrases | Alerts show one fixed card; 4 rules of a mild level show nothing (2.1). They come from the symptom buttons (2.2) and from typed text (2.3) |
 | 3 | Coping cards, daily advice, workouts | 4 coping cards (34 lines), 17 daily advice texts, 3 workouts (15 exercises) | Hidden until reviewed |
-| 4 | US medication list | 8 brands, 59 rows, 42 numbers to check | The names are shown. No number is used yet: no medication has label-checked numbers, so there is no dose example, no typing check and no wait after a pill |
-| 5 | Estimated medication level: method and wording | 13 assumptions, 10 screen texts | No chart yet: no medication has label-checked numbers |
+| 4 | US medication list | 9 brands, 76 rows, 63 numbers to check (all with their label words, from 7 labels) | The names are shown. The dose example, the typing check and the wait after a pill are used: every number was read from the label |
+| 5 | Estimated medication level: method and wording | 15 assumptions, 12 screen texts | Chart shown for Wegovy, Ozempic, Zepbound, Mounjaro |
 | 6 | Other numbers that need a clinical eye | 31 cut-offs and rules, 12 food values, 17 sentences with numbers | Protein target and food values are hidden until reviewed. Dose timing, injection sites and the setup questions are live |
-| 7 | Open questions | 24 questions |   |
+| 7 | Open questions | 27 questions |   |
 
 ## 1. What this is and what we ask of you
 
@@ -789,150 +789,223 @@ The trends screen counts the workouts of the last 7 days and says: "[N] workouts
 
 ## 4. US medication list
 
-At setup a US user picks one of 8 brands, or "Other / custom": Wegovy, Ozempic, Zepbound, Mounjaro, Wegovy pill, Foundayo, Rybelsus, Saxenda. Brand names are used only so that people can find their own medication. Trademarks belong to their owners. The app is not connected to any drug maker.
+At setup a US user picks one of 9 brands, or "Other / custom": Wegovy, Ozempic, Zepbound, Mounjaro, Wegovy pill, Foundayo, Rybelsus, Ozempic pill, Saxenda. Brand names are used only so that people can find their own medication. Trademarks belong to their owners. The app is not connected to any drug maker.
+
+"Wegovy pill" and "Ozempic pill" are the names the app gives to the tablets sold under a brand name that is also a shot. They are separate rows, with the doses of the tablets.
 
 How the app uses each number:
 
-- **Dose steps.** Only the first step is used: at setup it is the grey example in the box where a person types the dose they were prescribed ("For example, [first step]"). The app never suggests a step and never says when to move up.
-- **Highest dose.** A typing check, nothing more. When a person logs a dose in mg above this number, the app asks once: "[amount] mg is more than the usual highest dose for this medication ([highest dose] mg). Did you type an extra digit? If it is correct, tap the button again." Then it lets them log it. Doses logged in other units are not checked and never converted.
-- **Half-life and time to peak.** Used only for the chart in section 5.
-- **Wait after a pill.** On the sheet where a pill is logged the app shows: "For [minutes] minutes after your pill, do not eat or drink. Take the pill with only a small sip of water." After the pill is logged, the main screen counts those minutes down with other words: "Empty stomach: wait [minutes] more minutes before you eat". The countdown speaks of eating only; the sheet also says not to drink.
+- **Dose steps.** Every dose of the adult schedule in section 2 of the label, from the starting dose up to the highest dose the label gives to any adult. A dose the label gives for one of its uses only is still a step, and the note in its row says who it is for. Only the first step is used: at setup it is the grey example in the box where a person types the dose they were prescribed ("For example, [first step]"). The app never suggests a step and never says when to move up.
+- **Highest dose.** The highest dose the label gives to any adult. A typing check, nothing more. When a person types a dose in mg above this number, at setup or when logging a dose, the app asks once: "[amount] mg is more than the highest dose in the US prescribing information for [US brand] ([highest dose] mg). Did you type an extra digit? If it is correct, tap the button again." Then it lets them go on. The line names the US brand whose label the number is from; for a person whose medication has another brand name, or none, that is the US brand of the same medication. Doses in other units are not checked and never converted.
+- **Half-life and time to peak.** Used only for the chart in section 5, and kept only for weekly shots. The chart needs one number for each. Our rule: Both numbers are read from section 12.3 (Pharmacokinetics) of the label, and from no other section. That section states a single value or a median: the app uses it. That section states only a range: the app uses the midpoint of the range. Days and weeks are turned into hours (1 day = 24 hours, 1 week = 168 hours).
+- **Wait after a pill.** Kept only where the label states a waiting time. On the sheet where a pill is logged the app shows: "After your pill, wait at least [minutes] minutes before you eat, drink or take other oral medications." After the pill is logged, the main screen counts those minutes down: "Wait at least [minutes] more minutes before you eat, drink or take other oral medications". Both lines follow the label's sentence about the wait. The app says nothing about water. A pill logged with a time that is still to come starts no countdown.
 
-**In the first public version a number is used only when its entry names the FDA label page it was read from.** That holds for the chart and for the three uses above: the dose example, the typing check and the wait after a pill. No entry does today, so the first public version shows no dose example, asks no typing check, and shows no wait after a pill. Every medication can only be logged. Each use comes back by itself when the entry gets its label page. The full test version uses every number below as it stands.
+**Where the numbers come from.** We read the numbers of every brand below on the current US prescribing information (the FDA label, as published on DailyMed) on 2026-11-22. For each number the table gives the label's own words, the label section and the label page. Words are copied as they stand; " \| " marks the line between two cells of a table row. Nobody outside our team has confirmed these numbers: that is what we ask of you here.
 
-No entry names a label page yet. **Every number below is from the code and has not been checked against the FDA label.** The rule in the code is that a number may be added or changed only together with the address of the FDA label page it was read from. No entry has been marked as checked by a person.
+**In the first public version a number is used only when it was read from the label.** That holds for the chart and for the three other uses above: the dose example, the typing check and the wait after a pill. The app checks this by itself: a medication whose numbers do not all have their label words in the table below shows none of them and can only be logged. Today every brand below passes that check. The full test version uses every number below as it stands.
 
-Please write the correct value and the label section (for example "2.2" or "12.3") in the two blank columns. Leave a cell empty when the value in the app is right, and write "OK" in the label column. Where the app has no value, please give one from the label.
+The label versions that were read:
+
+| Label | Version | Effective date | DailyMed set id | Page |
+|------------------------|----|--------|--------------------|--------------------------------|
+| WEGOVY (semaglutide) injection, for subcutaneous use; WEGOVY (semaglutide) tablets, for oral use | 19 | 2026-06-18 | ee06186f-2aa3-4990-a760-757579d8f77b | https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=ee06186f-2aa3-4990-a760-757579d8f77b |
+| OZEMPIC (semaglutide) injection, for subcutaneous use | 20 | 2026-06-01 | adec4fd2-6858-4c99-91d4-531f5f2a2d79 | https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=adec4fd2-6858-4c99-91d4-531f5f2a2d79 |
+| ZEPBOUND (tirzepatide) Injection, for subcutaneous use | 40 | 2026-08-28 | 487cd7e7-434c-4925-99fa-aa80b1cc776b | https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=487cd7e7-434c-4925-99fa-aa80b1cc776b |
+| MOUNJARO (tirzepatide) Injection, for subcutaneous use | 40 | 2026-08-27 | d2d7da5d-ad07-4228-955f-cf7e355c8cc0 | https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=d2d7da5d-ad07-4228-955f-cf7e355c8cc0 |
+| FOUNDAYO (orforglipron) tablets, for oral use | 10 | 2026-07-29 | 8ac446c5-feba-474f-a103-23facb9b5c62 | https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=8ac446c5-feba-474f-a103-23facb9b5c62 |
+| RYBELSUS (semaglutide) tablets, for oral use; OZEMPIC (semaglutide) tablets, for oral use | 14 | 2026-01-30 | 27f15fac-7d98-4114-a2ec-92494a91da98 | https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=27f15fac-7d98-4114-a2ec-92494a91da98 |
+| SAXENDA (liraglutide) injection, for subcutaneous use | 22 | 2026-02-25 | 3946d389-0926-4f77-a708-0acb8153b143 | https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=3946d389-0926-4f77-a708-0acb8153b143 |
+
+Please write the correct value and the label section (for example "2.2" or "12.3") in the two blank columns. Leave a cell empty when the value in the app is right, and write "OK" in the label column. Where the app has no value, please give one from the label, or tell us that the label gives none.
 
 #### Wegovy (semaglutide)
 
+Label read: WEGOVY (semaglutide) injection, for subcutaneous use; WEGOVY (semaglutide) tablets, for oral use, version 19, effective 2026-06-18.
+
 | Code | What | In the app | Where it comes from | Your correction | Label section |
-|----|--------------------|----------------|--------------------|----------------|------------|
+|----|----------------|------------|------------------------------------------------|------------|--------|
 | M-01 | Brand name | Wegovy | From code, not yet checked against the FDA label |   |   |
 | M-02 | Generic name | semaglutide | From code, not yet checked against the FDA label |   |   |
 | M-03 | How it is taken | Shot, under the skin | From code, not yet checked against the FDA label |   |   |
-| M-04 | How often | Once a week | From code, not yet checked against the FDA label |   |   |
-| M-05 | Dose steps (mg) | 0.25, 0.5, 1, 1.7, 2.4, 7.2 | From code, not yet checked against the FDA label |   |   |
-| M-06 | Highest dose for the typing check (mg) | 7.2 | From code, not yet checked against the FDA label |   |   |
-| M-07 | Half-life used for the chart | 168 hours (7 days) | From code, not yet checked against the FDA label |   |   |
-| M-08 | Time to peak used for the chart | 48 hours (2 days) | From code, not yet checked against the FDA label |   |   |
+| M-04 | How often | Once a week | Read from the FDA label on 2026-11-22; not yet confirmed by a reviewer. Label words: "Administer WEGOVY injection once weekly, on the same day each week, at any time of day, with or without meals." (section 2.1). Label page: https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=ee06186f-2aa3-4990-a760-757579d8f77b |   |   |
+| M-05 | Dose steps (mg) | 0.25, 0.5, 1, 1.7, 2.4, 7.2 | Read from the FDA label on 2026-11-22; not yet confirmed by a reviewer. Label words: "Starting Dosage \| 1 through 4 \| 0.25 mg" (section 2.2, Table 1); "5 through 8 \| 0.5 mg" (section 2.2, Table 1); "9 through 12 \| 1 mg" (section 2.2, Table 1); "13 through 16 \| 1.7 mg" (section 2.2, Table 1); "The maintenance dosage of WEGOVY for weight reduction in adults is either 1.7 mg or 2.4 mg (recommended) injected subcutaneously once weekly." (section 2.2); "For patients who tolerate the 2.4 mg dosage for at least 4 weeks and additional weight reduction is clinically indicated, the dosage may be increased to a maximum dosage of 7.2 mg subcutaneously once weekly." (section 2.2). How the number follows: Table 1 gives the starting dose and the escalation steps for every approved use (weeks are in the middle column). The maintenance sentence adds 2.4 mg, and the sentence after it adds 7.2 mg. Note: The label gives 7.2 mg only under "Weight Reduction in Adults", as a further increase after at least 4 weeks on 2.4 mg. For cardiovascular risk reduction in adults, for MASH in adults and for pediatric patients aged 12 years and older the last step is 2.4 mg. A step is any dose of the label's adult schedule, also one the label gives for one use only. The label gives one schedule for every pen, vial and syringe of this brand. Label page: https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=ee06186f-2aa3-4990-a760-757579d8f77b |   |   |
+| M-06 | Highest dose for the typing check (mg) | 7.2 | Read from the FDA label on 2026-11-22; not yet confirmed by a reviewer. Label words: "For patients who tolerate the 2.4 mg dosage for at least 4 weeks and additional weight reduction is clinically indicated, the dosage may be increased to a maximum dosage of 7.2 mg subcutaneously once weekly." (section 2.2). Note: Stated under "Weight Reduction in Adults" only. For cardiovascular risk reduction in adults, for MASH in adults and for pediatric patients aged 12 years and older the highest dose the label gives is 2.4 mg. The app uses this number only to catch a typing slip, so it takes the highest dose the label gives to any adult. Label page: https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=ee06186f-2aa3-4990-a760-757579d8f77b |   |   |
+| M-07 | Half-life used for the chart | 168 hours (7 days) | Read from the FDA label on 2026-11-22; not yet confirmed by a reviewer. Label words: "With an elimination half-life of approximately 1 week, semaglutide will be present in the circulation for about 5 to 7 weeks after the last injectable dose of 2.4 mg or 7.2 mg or oral dose of 25 mg." (section 12.3). The label states a single value, 1 week; the app uses 168 hours (7 days). Label page: https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=ee06186f-2aa3-4990-a760-757579d8f77b |   |   |
+| M-08 | Time to peak used for the chart | 48 hours (2 days) | Read from the FDA label on 2026-11-22; not yet confirmed by a reviewer. Label words: "Maximum concentration of semaglutide is reached 1 to 3 days post dose." (section 12.3). The label states a range, 1 to 3 days; the app uses 48 hours (2 days). Note: From the paragraph headed "WEGOVY Injection". The tablets have their own sentence (1 hour post dose). Label page: https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=ee06186f-2aa3-4990-a760-757579d8f77b |   |   |
 
-Chart of the estimated medication level: not drawn in the first public version (its numbers have no label source yet); drawn in the full test version.
+Chart of the estimated medication level: drawn in the first public version; drawn in the full test version.
 
-The dose example, the typing check: not used in the first public version (no label source yet); used in the full test version.
+The dose example, the typing check: used in the first public version; used in the full test version.
 
 #### Ozempic (semaglutide)
 
+Label read: OZEMPIC (semaglutide) injection, for subcutaneous use, version 20, effective 2026-06-01.
+
 | Code | What | In the app | Where it comes from | Your correction | Label section |
-|----|--------------------|----------------|--------------------|----------------|------------|
+|----|----------------|------------|------------------------------------------------|------------|--------|
 | M-09 | Brand name | Ozempic | From code, not yet checked against the FDA label |   |   |
 | M-10 | Generic name | semaglutide | From code, not yet checked against the FDA label |   |   |
 | M-11 | How it is taken | Shot, under the skin | From code, not yet checked against the FDA label |   |   |
-| M-12 | How often | Once a week | From code, not yet checked against the FDA label |   |   |
-| M-13 | Dose steps (mg) | 0.25, 0.5, 1, 2 | From code, not yet checked against the FDA label |   |   |
-| M-14 | Highest dose for the typing check (mg) | 2 | From code, not yet checked against the FDA label |   |   |
-| M-15 | Half-life used for the chart | 168 hours (7 days) | From code, not yet checked against the FDA label |   |   |
-| M-16 | Time to peak used for the chart | 48 hours (2 days) | From code, not yet checked against the FDA label |   |   |
+| M-12 | How often | Once a week | Read from the FDA label on 2026-11-22; not yet confirmed by a reviewer. Label words: "Administer OZEMPIC once weekly, on the same day each week, at any time of the day, with or without meals." (section 2.1). Label page: https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=adec4fd2-6858-4c99-91d4-531f5f2a2d79 |   |   |
+| M-13 | Dose steps (mg) | 0.25, 0.5, 1, 2 | Read from the FDA label on 2026-11-22; not yet confirmed by a reviewer. Label words: "Initiate OZEMPIC with a dosage of 0.25 mg injected subcutaneously once weekly for 4 weeks." (section 2.2); "After 4 weeks on the 0.25 mg dosage, increase the dosage to 0.5 mg once weekly." (section 2.2); "If additional glycemic control is needed after at least 4 weeks on the:" (section 2.2); "0.5 mg dosage, the dosage may be increased to 1 mg once weekly." (section 2.2); "1 mg dosage, the dosage may be increased to 2 mg once weekly." (section 2.2). Note: The steps to 1 mg and 2 mg are printed under the heading for glycemic control. For adults with type 2 diabetes and chronic kidney disease the label gives a maintenance dose of 1 mg. The label gives one schedule for every pen, vial and syringe of this brand. Label page: https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=adec4fd2-6858-4c99-91d4-531f5f2a2d79 |   |   |
+| M-14 | Highest dose for the typing check (mg) | 2 | Read from the FDA label on 2026-11-22; not yet confirmed by a reviewer. Label words: "The maximum recommended dosage is 2 mg once weekly." (section 2.2). Note: Printed under the heading for glycemic control. Section 13.1 names the same figure, 2 mg/week, as the maximum recommended human dose. Label page: https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=adec4fd2-6858-4c99-91d4-531f5f2a2d79 |   |   |
+| M-15 | Half-life used for the chart | 168 hours (7 days) | Read from the FDA label on 2026-11-22; not yet confirmed by a reviewer. Label words: "With an elimination half-life of approximately 1 week, semaglutide will be present in the circulation for about 5 weeks after the last dose." (section 12.3). The label states a single value, 1 week; the app uses 168 hours (7 days). Label page: https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=adec4fd2-6858-4c99-91d4-531f5f2a2d79 |   |   |
+| M-16 | Time to peak used for the chart | 48 hours (2 days) | Read from the FDA label on 2026-11-22; not yet confirmed by a reviewer. Label words: "Maximum concentration of semaglutide is reached 1 to 3 days post dose." (section 12.3). The label states a range, 1 to 3 days; the app uses 48 hours (2 days). Label page: https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=adec4fd2-6858-4c99-91d4-531f5f2a2d79 |   |   |
 
-Chart of the estimated medication level: not drawn in the first public version (its numbers have no label source yet); drawn in the full test version.
+Chart of the estimated medication level: drawn in the first public version; drawn in the full test version.
 
-The dose example, the typing check: not used in the first public version (no label source yet); used in the full test version.
+The dose example, the typing check: used in the first public version; used in the full test version.
 
-#### Zepbound and Mounjaro (tirzepatide)
+#### Zepbound (tirzepatide)
 
-Zepbound and Mounjaro share one entry in the app, so they have the same numbers. Please tell us if they should differ.
+Zepbound and Mounjaro are one medication in the app. Each has the numbers of its own label, and where the two labels differ the numbers differ.
+
+Label read: ZEPBOUND (tirzepatide) Injection, for subcutaneous use, version 40, effective 2026-08-28.
 
 | Code | What | In the app | Where it comes from | Your correction | Label section |
-|----|--------------------|----------------|--------------------|----------------|------------|
-| M-17 | Brand names | Zepbound, Mounjaro | From code, not yet checked against the FDA label |   |   |
+|----|----------------|------------|------------------------------------------------|------------|--------|
+| M-17 | Brand name | Zepbound | From code, not yet checked against the FDA label |   |   |
 | M-18 | Generic name | tirzepatide | From code, not yet checked against the FDA label |   |   |
 | M-19 | How it is taken | Shot, under the skin | From code, not yet checked against the FDA label |   |   |
-| M-20 | How often | Once a week | From code, not yet checked against the FDA label |   |   |
-| M-21 | Dose steps (mg) | 2.5, 5, 7.5, 10, 12.5, 15 | From code, not yet checked against the FDA label |   |   |
-| M-22 | Highest dose for the typing check (mg) | 15 | From code, not yet checked against the FDA label |   |   |
-| M-23 | Half-life used for the chart | 120 hours (5 days) | From code, not yet checked against the FDA label |   |   |
-| M-24 | Time to peak used for the chart | 24 hours (1 day) | From code, not yet checked against the FDA label |   |   |
+| M-20 | How often | Once a week | Read from the FDA label on 2026-11-22; not yet confirmed by a reviewer. Label words: "Administer ZEPBOUND once weekly at any time of day, with or without meals." (section 2.4). Label page: https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=487cd7e7-434c-4925-99fa-aa80b1cc776b |   |   |
+| M-21 | Dose steps (mg) | 2.5, 5, 7.5, 10, 12.5, 15 | Read from the FDA label on 2026-11-22; not yet confirmed by a reviewer. Label words: "The recommended starting dosage of ZEPBOUND for all indications is 2.5 mg injected subcutaneously once weekly for 4 weeks." (section 2.1); "After 4 weeks, increase the dosage to 5 mg injected subcutaneously once weekly." (section 2.1); "The dosage may be increased in 2.5 mg increments, after at least 4 weeks on the current dose [see Dosage and Administration (2.2)]." (section 2.1); "7.5 mg/0.5 mL" (section 3); "10 mg/0.5 mL" (section 3); "12.5 mg/0.5 mL" (section 3); "15 mg/0.5 mL" (section 3). How the number follows: Section 2.1 names 2.5 mg and 5 mg, then increases of 2.5 mg. 7.5, 10, 12.5 and 15 mg follow from that rule up to the maximum of 15 mg; each is a dose section 3 lists. Note: The label names 5 mg, 10 mg and 15 mg as maintenance doses for weight reduction; 2.5 mg is for starting only. The label gives one schedule for every pen, vial and syringe of this brand. Label page: https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=487cd7e7-434c-4925-99fa-aa80b1cc776b |   |   |
+| M-22 | Highest dose for the typing check (mg) | 15 | Read from the FDA label on 2026-11-22; not yet confirmed by a reviewer. Label words: "The maximum dosage of ZEPBOUND for all indications is 15 mg injected subcutaneously once weekly." (section 2.2). Label page: https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=487cd7e7-434c-4925-99fa-aa80b1cc776b |   |   |
+| M-23 | Half-life used for the chart | 132 hours (5.5 days) | Read from the FDA label on 2026-11-22; not yet confirmed by a reviewer. Label words: "The elimination half-life is approximately 5-6 days in patients with overweight or obesity, and in patients with OSA and obesity." (section 12.3). The label states a range, 5 to 6 days; the app uses 132 hours (5.5 days). Note: Section 10 (Overdosage) of this label speaks of "the half-life of tirzepatide of approximately 5 days". The app reads the pharmacokinetics section, 12.3, only, and that section gives the range. With the single value of section 10 the number would be 120 hours. Label page: https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=487cd7e7-434c-4925-99fa-aa80b1cc776b |   |   |
+| M-24 | Time to peak used for the chart | 24 hours (1 day) | Read from the FDA label on 2026-11-22; not yet confirmed by a reviewer. Label words: "Following subcutaneous administration, the median time (range) to maximum plasma concentration of tirzepatide is 24 hours (8 to 72 hours)." (section 12.3). The label states a median, 24 hours; the app uses 24 hours (1 day). Label page: https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=487cd7e7-434c-4925-99fa-aa80b1cc776b |   |   |
 
-Chart of the estimated medication level: not drawn in the first public version (its numbers have no label source yet); drawn in the full test version.
+Chart of the estimated medication level: drawn in the first public version; drawn in the full test version.
 
-The dose example, the typing check: not used in the first public version (no label source yet); used in the full test version.
+The dose example, the typing check: used in the first public version; used in the full test version.
+
+#### Mounjaro (tirzepatide)
+
+Mounjaro and Zepbound are one medication in the app. Each has the numbers of its own label, and where the two labels differ the numbers differ.
+
+Label read: MOUNJARO (tirzepatide) Injection, for subcutaneous use, version 40, effective 2026-08-27.
+
+| Code | What | In the app | Where it comes from | Your correction | Label section |
+|----|----------------|------------|------------------------------------------------|------------|--------|
+| M-25 | Brand name | Mounjaro | From code, not yet checked against the FDA label |   |   |
+| M-26 | Generic name | tirzepatide | From code, not yet checked against the FDA label |   |   |
+| M-27 | How it is taken | Shot, under the skin | From code, not yet checked against the FDA label |   |   |
+| M-28 | How often | Once a week | Read from the FDA label on 2026-11-22; not yet confirmed by a reviewer. Label words: "Administer MOUNJARO once weekly, any time of day, with or without meals." (section 2.2). Label page: https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=d2d7da5d-ad07-4228-955f-cf7e355c8cc0 |   |   |
+| M-29 | Dose steps (mg) | 2.5, 5, 7.5, 10, 12.5, 15 | Read from the FDA label on 2026-11-22; not yet confirmed by a reviewer. Label words: "The recommended starting dosage of MOUNJARO is 2.5 mg injected subcutaneously once weekly [see Dosage and Administration (2.2)]." (section 2.1); "If additional glycemic control is needed, increase the dosage in 2.5 mg increments after at least 4 weeks on the current dose." (section 2.1); "5 mg/0.5 mL" (section 3); "7.5 mg/0.5 mL" (section 3); "10 mg/0.5 mL" (section 3); "12.5 mg/0.5 mL" (section 3); "15 mg/0.5 mL" (section 3). How the number follows: Section 2.1 names 2.5 mg, then increases of 2.5 mg. 5, 7.5, 10, 12.5 and 15 mg follow from that rule up to the adult maximum of 15 mg; each is a dose section 3 lists. Note: Each increase is for when more glycemic control is needed. The label names no maintenance dose. The label gives one schedule for every pen, vial and syringe of this brand. Label page: https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=d2d7da5d-ad07-4228-955f-cf7e355c8cc0 |   |   |
+| M-30 | Highest dose for the typing check (mg) | 15 | Read from the FDA label on 2026-11-22; not yet confirmed by a reviewer. Label words: "The maximum dosage of MOUNJARO is:" (section 2.1); "15 mg injected subcutaneously once weekly in adults." (section 2.1). Note: The same list gives 10 mg once weekly as the maximum for pediatric patients. The app is for adults. Label page: https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=d2d7da5d-ad07-4228-955f-cf7e355c8cc0 |   |   |
+| M-31 | Half-life used for the chart | 120 hours (5 days) | Read from the FDA label on 2026-11-22; not yet confirmed by a reviewer. Label words: "The apparent population mean clearance of tirzepatide is 0.061 L/h with an elimination half-life of approximately 5 days, enabling once-weekly dosing." (section 12.3). The label states a single value, 5 days; the app uses 120 hours (5 days). Label page: https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=d2d7da5d-ad07-4228-955f-cf7e355c8cc0 |   |   |
+| M-32 | Time to peak used for the chart | 40 hours | Read from the FDA label on 2026-11-22; not yet confirmed by a reviewer. Label words: "Following subcutaneous administration, the time to maximum plasma concentration of tirzepatide ranges from 8 to 72 hours." (section 12.3). The label states a range, 8 to 72 hours; the app uses 40 hours. Note: This label gives no median. The other tirzepatide label gives a median of 24 hours with the same range. Label page: https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=d2d7da5d-ad07-4228-955f-cf7e355c8cc0 |   |   |
+
+Chart of the estimated medication level: drawn in the first public version; drawn in the full test version.
+
+The dose example, the typing check: used in the first public version; used in the full test version.
 
 #### Wegovy pill (semaglutide)
 
+Label read: WEGOVY (semaglutide) injection, for subcutaneous use; WEGOVY (semaglutide) tablets, for oral use, version 19, effective 2026-06-18.
+
 | Code | What | In the app | Where it comes from | Your correction | Label section |
-|----|--------------------|----------------|--------------------|----------------|------------|
-| M-25 | Brand name | Wegovy pill | From code, not yet checked against the FDA label |   |   |
-| M-26 | Generic name | semaglutide | From code, not yet checked against the FDA label |   |   |
-| M-27 | How it is taken | Pill, by mouth | From code, not yet checked against the FDA label |   |   |
-| M-28 | How often | Once a day | From code, not yet checked against the FDA label |   |   |
-| M-29 | Dose steps (mg) | 1.5, 4, 9, 25 | From code, not yet checked against the FDA label |   |   |
-| M-30 | Highest dose for the typing check (mg) | 25 | From code, not yet checked against the FDA label |   |   |
-| M-31 | Half-life used for the chart |   | Not in the app. Left blank until it is read from the FDA label |   |   |
-| M-32 | Time to peak used for the chart |   | Not in the app. Left blank until it is read from the FDA label |   |   |
-| M-33 | Wait after the pill before eating or drinking (minutes) | 30 | From code, not yet checked against the FDA label |   |   |
+|----|----------------|------------|------------------------------------------------|------------|--------|
+| M-33 | Brand name | Wegovy pill | From code, not yet checked against the FDA label |   |   |
+| M-34 | Generic name | semaglutide | From code, not yet checked against the FDA label |   |   |
+| M-35 | How it is taken | Pill, by mouth | From code, not yet checked against the FDA label |   |   |
+| M-36 | How often | Once a day | Read from the FDA label on 2026-11-22; not yet confirmed by a reviewer. Label words: "Take one WEGOVY tablet orally once daily on an empty stomach in the morning with water (up to 4 ounces)." (section 2.1). Label page: https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=ee06186f-2aa3-4990-a760-757579d8f77b |   |   |
+| M-37 | Dose steps (mg) | 1.5, 4, 9, 25 | Read from the FDA label on 2026-11-22; not yet confirmed by a reviewer. Label words: "Starting Dosage \| 1 through 30 \| 1.5 mg" (section 2.3, Table 2); "Dosage Escalation \| 31 through 60 \| 4 mg" (section 2.3, Table 2); "61 through 90 \| 9 mg" (section 2.3, Table 2); "Maintenance Dosage \| 91 and onward \| 25 mg" (section 2.3, Table 2). Note: The middle column of Table 2 counts days. Label page: https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=ee06186f-2aa3-4990-a760-757579d8f77b |   |   |
+| M-38 | Highest dose for the typing check (mg) | 25 | Read from the FDA label on 2026-11-22; not yet confirmed by a reviewer. Label words: "The recommended maintenance dosage of WEGOVY tablets is 25 mg orally once daily." (section 2.3). How the number follows: The highest dose in the label's adult schedule. The label does not call it a maximum in section 2. Label page: https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=ee06186f-2aa3-4990-a760-757579d8f77b |   |   |
+| M-39 | Half-life used for the chart |   | Not in the app. The chart is for weekly shots only, so no number is kept for a medication taken every day |   |   |
+| M-40 | Time to peak used for the chart |   | Not in the app. The chart is for weekly shots only, so no number is kept for a medication taken every day |   |   |
+| M-41 | Wait after the pill (minutes) | 30 | Read from the FDA label on 2026-11-22; not yet confirmed by a reviewer. Label words: "After taking a WEGOVY tablet, wait at least 30 minutes before eating food, drinking beverages or taking other oral medications [see Clinical Pharmacology (12.3)]." (section 2.1). Note: The label says "at least" 30 minutes. The wait covers food, beverages and other oral medications. Label page: https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=ee06186f-2aa3-4990-a760-757579d8f77b |   |   |
 
 Chart of the estimated medication level: not drawn in the first public version (the app has no half-life and time to peak for it); not drawn in the full test version.
 
-The dose example, the typing check, the wait after a pill: not used in the first public version (no label source yet); used in the full test version.
+The dose example, the typing check, the wait after a pill: used in the first public version; used in the full test version.
 
 #### Foundayo (orforglipron)
 
+Label read: FOUNDAYO (orforglipron) tablets, for oral use, version 10, effective 2026-07-29.
+
 | Code | What | In the app | Where it comes from | Your correction | Label section |
-|----|--------------------|----------------|--------------------|----------------|------------|
-| M-34 | Brand name | Foundayo | From code, not yet checked against the FDA label |   |   |
-| M-35 | Generic name | orforglipron | From code, not yet checked against the FDA label |   |   |
-| M-36 | How it is taken | Pill, by mouth | From code, not yet checked against the FDA label |   |   |
-| M-37 | How often | Once a day | From code, not yet checked against the FDA label |   |   |
-| M-38 | Dose steps (mg) |   | Not in the app. Left blank until it is read from the FDA label |   |   |
-| M-39 | Highest dose for the typing check (mg) |   | Not in the app. Left blank until it is read from the FDA label |   |   |
-| M-40 | Half-life used for the chart |   | Not in the app. Left blank until it is read from the FDA label |   |   |
-| M-41 | Time to peak used for the chart |   | Not in the app. Left blank until it is read from the FDA label |   |   |
-| M-42 | Wait after the pill before eating or drinking (minutes) |   | Not in the app. No wait is shown for this medication |   |   |
+|----|----------------|------------|------------------------------------------------|------------|--------|
+| M-42 | Brand name | Foundayo | From code, not yet checked against the FDA label |   |   |
+| M-43 | Generic name | orforglipron | From code, not yet checked against the FDA label |   |   |
+| M-44 | How it is taken | Pill, by mouth | From code, not yet checked against the FDA label |   |   |
+| M-45 | How often | Once a day | Read from the FDA label on 2026-11-22; not yet confirmed by a reviewer. Label words: "Take FOUNDAYO orally once daily, with or without food." (section 2.1). Label page: https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=8ac446c5-feba-474f-a103-23facb9b5c62 |   |   |
+| M-46 | Dose steps (mg) | 0.8, 2.5, 5.5, 9, 14.5, 17.2 | Read from the FDA label on 2026-11-22; not yet confirmed by a reviewer. Label words: "The starting dosage is 0.8 mg orally once daily." (section 2.1); "After at least 30 days on the 0.8 mg dosage, increase the dosage to 2.5 mg once daily." (section 2.1); "After at least 30 days on the 2.5 mg dosage, increase the dosage to 5.5 mg once daily." (section 2.1); "The dosage may be increased to the next dosage level (9 mg, 14.5 mg, or 17.2 mg once daily) after at least 30 days on the current dosage, based on treatment response and tolerability." (section 2.1). Label page: https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=8ac446c5-feba-474f-a103-23facb9b5c62 |   |   |
+| M-47 | Highest dose for the typing check (mg) | 17.2 | Read from the FDA label on 2026-11-22; not yet confirmed by a reviewer. Label words: "The maximum dosage of FOUNDAYO is 17.2 mg once daily." (section 2.1). Note: Section 2.2 gives a lower maximum of 9 mg once daily when the tablet is used with a strong CYP3A4 inhibitor. The app does not know what other medicines a person takes. Label page: https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=8ac446c5-feba-474f-a103-23facb9b5c62 |   |   |
+| M-48 | Half-life used for the chart |   | Not in the app. The chart is for weekly shots only, so no number is kept for a medication taken every day |   |   |
+| M-49 | Time to peak used for the chart |   | Not in the app. The chart is for weekly shots only, so no number is kept for a medication taken every day |   |   |
+| M-50 | Wait after the pill (minutes) |   | Read from the FDA label on 2026-11-22; not yet confirmed by a reviewer. Label words: "Take FOUNDAYO orally once daily, with or without food." (section 2.1). How the number follows: The label states no waiting time before food, so the app shows no wait for this tablet. Label page: https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=8ac446c5-feba-474f-a103-23facb9b5c62 |   |   |
 
 Chart of the estimated medication level: not drawn in the first public version (the app has no half-life and time to peak for it); not drawn in the full test version.
+
+The dose example, the typing check: used in the first public version; used in the full test version.
 
 #### Rybelsus (semaglutide)
 
+Label read: RYBELSUS (semaglutide) tablets, for oral use; OZEMPIC (semaglutide) tablets, for oral use, version 14, effective 2026-01-30.
+
 | Code | What | In the app | Where it comes from | Your correction | Label section |
-|----|--------------------|----------------|--------------------|----------------|------------|
-| M-43 | Brand name | Rybelsus | From code, not yet checked against the FDA label |   |   |
-| M-44 | Generic name | semaglutide | From code, not yet checked against the FDA label |   |   |
-| M-45 | How it is taken | Pill, by mouth | From code, not yet checked against the FDA label |   |   |
-| M-46 | How often | Once a day | From code, not yet checked against the FDA label |   |   |
-| M-47 | Dose steps (mg) | 3, 7, 14 | From code, not yet checked against the FDA label |   |   |
-| M-48 | Highest dose for the typing check (mg) | 14 | From code, not yet checked against the FDA label |   |   |
-| M-49 | Half-life used for the chart |   | Not in the app. Left blank until it is read from the FDA label |   |   |
-| M-50 | Time to peak used for the chart |   | Not in the app. Left blank until it is read from the FDA label |   |   |
-| M-51 | Wait after the pill before eating or drinking (minutes) | 30 | From code, not yet checked against the FDA label |   |   |
+|----|----------------|------------|------------------------------------------------|------------|--------|
+| M-51 | Brand name | Rybelsus | From code, not yet checked against the FDA label |   |   |
+| M-52 | Generic name | semaglutide | From code, not yet checked against the FDA label |   |   |
+| M-53 | How it is taken | Pill, by mouth | From code, not yet checked against the FDA label |   |   |
+| M-54 | How often | Once a day | Read from the FDA label on 2026-11-22; not yet confirmed by a reviewer. Label words: "Take one RYBELSUS or OZEMPIC tablet orally once daily on an empty stomach in the morning with water (up to 4 ounces of water)." (section 2.1). Label page: https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=27f15fac-7d98-4114-a2ec-92494a91da98 |   |   |
+| M-55 | Dose steps (mg) | 3, 7, 14 | Read from the FDA label on 2026-11-22; not yet confirmed by a reviewer. Label words: "Starting Dosage (Initiation Phase) (Days 1 to 30): The recommended starting dosage is 3 mg orally once daily (this dosage is not effective for glycemic control)." (section 2.2); "Days 31 to 60: Increase the dosage to 7 mg orally once daily." (section 2.2); "Additional glycemic control is needed, increase the dosage to 14 mg orally once daily." (section 2.2). Note: From the part of section 2.2 headed "RYBELSUS: Recommended Dosage". Section 2.1 says the two tablet brands on this label "are not substitutable on a mg-to-mg basis". Label page: https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=27f15fac-7d98-4114-a2ec-92494a91da98 |   |   |
+| M-56 | Highest dose for the typing check (mg) | 14 | Read from the FDA label on 2026-11-22; not yet confirmed by a reviewer. Label words: "Additional glycemic control is needed, increase the dosage to 14 mg orally once daily." (section 2.2). How the number follows: The highest dose in the label's adult schedule. The label does not call it a maximum in section 2. Label page: https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=27f15fac-7d98-4114-a2ec-92494a91da98 |   |   |
+| M-57 | Half-life used for the chart |   | Not in the app. The chart is for weekly shots only, so no number is kept for a medication taken every day |   |   |
+| M-58 | Time to peak used for the chart |   | Not in the app. The chart is for weekly shots only, so no number is kept for a medication taken every day |   |   |
+| M-59 | Wait after the pill (minutes) | 30 | Read from the FDA label on 2026-11-22; not yet confirmed by a reviewer. Label words: "After taking RYBELSUS or OZEMPIC tablets, wait at least 30 minutes before eating food, drinking beverages or taking other oral medications [see Clinical Pharmacology (12.3)]." (section 2.1). Note: The label says "at least" 30 minutes. The wait covers food, beverages and other oral medications. Label page: https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=27f15fac-7d98-4114-a2ec-92494a91da98 |   |   |
 
 Chart of the estimated medication level: not drawn in the first public version (the app has no half-life and time to peak for it); not drawn in the full test version.
 
-The dose example, the typing check, the wait after a pill: not used in the first public version (no label source yet); used in the full test version.
+The dose example, the typing check, the wait after a pill: used in the first public version; used in the full test version.
+
+#### Ozempic pill (semaglutide)
+
+Label read: RYBELSUS (semaglutide) tablets, for oral use; OZEMPIC (semaglutide) tablets, for oral use, version 14, effective 2026-01-30.
+
+| Code | What | In the app | Where it comes from | Your correction | Label section |
+|----|----------------|------------|------------------------------------------------|------------|--------|
+| M-60 | Brand name | Ozempic pill | From code, not yet checked against the FDA label |   |   |
+| M-61 | Generic name | semaglutide | From code, not yet checked against the FDA label |   |   |
+| M-62 | How it is taken | Pill, by mouth | From code, not yet checked against the FDA label |   |   |
+| M-63 | How often | Once a day | Read from the FDA label on 2026-11-22; not yet confirmed by a reviewer. Label words: "Take one RYBELSUS or OZEMPIC tablet orally once daily on an empty stomach in the morning with water (up to 4 ounces of water)." (section 2.1). Label page: https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=27f15fac-7d98-4114-a2ec-92494a91da98 |   |   |
+| M-64 | Dose steps (mg) | 1.5, 4, 9 | Read from the FDA label on 2026-11-22; not yet confirmed by a reviewer. Label words: "Starting Dosage (Initiation Phase) (Days 1 through 30): The recommended starting dosage is 1.5 mg orally once daily (this dosage is not effective for glycemic control)." (section 2.2); "Days 31 to 60: Increase the dosage to 4 mg orally once daily." (section 2.2); "Additional glycemic control is needed, increase the dosage to 9 mg orally once daily." (section 2.2). Note: From the part of section 2.2 headed "OZEMPIC Tablets: Recommended Dosage". Section 2.1 says the two tablet brands on this label "are not substitutable on a mg-to-mg basis". Label page: https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=27f15fac-7d98-4114-a2ec-92494a91da98 |   |   |
+| M-65 | Highest dose for the typing check (mg) | 9 | Read from the FDA label on 2026-11-22; not yet confirmed by a reviewer. Label words: "Additional glycemic control is needed, increase the dosage to 9 mg orally once daily." (section 2.2). How the number follows: The highest dose in the label's adult schedule. The label does not call it a maximum in section 2. Label page: https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=27f15fac-7d98-4114-a2ec-92494a91da98 |   |   |
+| M-66 | Half-life used for the chart |   | Not in the app. The chart is for weekly shots only, so no number is kept for a medication taken every day |   |   |
+| M-67 | Time to peak used for the chart |   | Not in the app. The chart is for weekly shots only, so no number is kept for a medication taken every day |   |   |
+| M-68 | Wait after the pill (minutes) | 30 | Read from the FDA label on 2026-11-22; not yet confirmed by a reviewer. Label words: "After taking RYBELSUS or OZEMPIC tablets, wait at least 30 minutes before eating food, drinking beverages or taking other oral medications [see Clinical Pharmacology (12.3)]." (section 2.1). Note: The label says "at least" 30 minutes. The wait covers food, beverages and other oral medications. Label page: https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=27f15fac-7d98-4114-a2ec-92494a91da98 |   |   |
+
+Chart of the estimated medication level: not drawn in the first public version (the app has no half-life and time to peak for it); not drawn in the full test version.
+
+The dose example, the typing check, the wait after a pill: used in the first public version; used in the full test version.
 
 #### Saxenda (liraglutide)
 
+Label read: SAXENDA (liraglutide) injection, for subcutaneous use, version 22, effective 2026-02-25.
+
 | Code | What | In the app | Where it comes from | Your correction | Label section |
-|----|--------------------|----------------|--------------------|----------------|------------|
-| M-52 | Brand name | Saxenda | From code, not yet checked against the FDA label |   |   |
-| M-53 | Generic name | liraglutide | From code, not yet checked against the FDA label |   |   |
-| M-54 | How it is taken | Shot, under the skin | From code, not yet checked against the FDA label |   |   |
-| M-55 | How often | Once a day | From code, not yet checked against the FDA label |   |   |
-| M-56 | Dose steps (mg) | 0.6, 1.2, 1.8, 2.4, 3 | From code, not yet checked against the FDA label |   |   |
-| M-57 | Highest dose for the typing check (mg) | 3 | From code, not yet checked against the FDA label |   |   |
-| M-58 | Half-life used for the chart |   | Not in the app. Left blank until it is read from the FDA label |   |   |
-| M-59 | Time to peak used for the chart |   | Not in the app. Left blank until it is read from the FDA label |   |   |
+|----|----------------|------------|------------------------------------------------|------------|--------|
+| M-69 | Brand name | Saxenda | From code, not yet checked against the FDA label |   |   |
+| M-70 | Generic name | liraglutide | From code, not yet checked against the FDA label |   |   |
+| M-71 | How it is taken | Shot, under the skin | From code, not yet checked against the FDA label |   |   |
+| M-72 | How often | Once a day | Read from the FDA label on 2026-11-22; not yet confirmed by a reviewer. Label words: "Inject SAXENDA subcutaneously once daily at any time of day, without regard to the timing of meals." (section 2.1). Label page: https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=3946d389-0926-4f77-a708-0acb8153b143 |   |   |
+| M-73 | Dose steps (mg) | 0.6, 1.2, 1.8, 2.4, 3 | Read from the FDA label on 2026-11-22; not yet confirmed by a reviewer. Label words: "1 \| 0.6 mg" (section 2.2, Table 1); "2 \| 1.2 mg" (section 2.2, Table 1); "3 \| 1.8 mg" (section 2.2, Table 1); "4 \| 2.4 mg" (section 2.2, Table 1); "5 and onward \| 3 mg" (section 2.2, Table 1). Note: The first column of Table 1 is the week, the second the daily dose. These are the doses one pen can be set to; the pen has a single strength. Label page: https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=3946d389-0926-4f77-a708-0acb8153b143 |   |   |
+| M-74 | Highest dose for the typing check (mg) | 3 | Read from the FDA label on 2026-11-22; not yet confirmed by a reviewer. Label words: "For adults, the recommended dosage of SAXENDA is 3 mg daily, lower dosages are for titration only." (section 2.2). How the number follows: The highest dose in the label's adult schedule. Section 8.1 names 3 mg/day as the maximum recommended human dose. Label page: https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=3946d389-0926-4f77-a708-0acb8153b143 |   |   |
+| M-75 | Half-life used for the chart |   | Not in the app. The chart is for weekly shots only, so no number is kept for a medication taken every day |   |   |
+| M-76 | Time to peak used for the chart |   | Not in the app. The chart is for weekly shots only, so no number is kept for a medication taken every day |   |   |
 
 Chart of the estimated medication level: not drawn in the first public version (the app has no half-life and time to peak for it); not drawn in the full test version.
 
-The dose example, the typing check: not used in the first public version (no label source yet); used in the full test version.
+The dose example, the typing check: used in the first public version; used in the full test version.
+
+**Tirzepatide without a brand name.** A person whose saved medication is tirzepatide with neither of the names Zepbound and Mounjaro (for example a profile from another country) gets the dose example and the typing check, which are the same on both labels, but no chart: the app does not choose between the two labels. In place of the chart the app says why (section 5.4). A person in the United States is told where to choose the brand; the chart is then drawn.
 
 **Other / custom.** The person types the name of the medication. The app has no numbers for it, so there is no typing check and no chart.
 
 ## 5. The estimated medication level: method and wording
 
-The chart shows a rough picture of how much medication is in the body over time, worked out from the doses the person logged. It is a population-average estimate. It is not a measurement, it has no unit, and the app says it cannot be used to adjust a dose.
+The chart shows a rough picture of how much medication is in the body over time, worked out from the doses the person logged and from two numbers of the label (section 4). The same two numbers are used for every person on a medication. It is an estimate, not a measurement. It has no unit, and the app says it cannot be used to adjust a dose.
 
-In the first public version the chart is drawn only for a medication whose numbers in section 4 name the FDA label page they were read from. Today that is: no medication. Medications with numbers in the code: Wegovy, Ozempic, Zepbound, Mounjaro. Medications without numbers, which never get a chart: Wegovy pill, Foundayo, Rybelsus, Saxenda.
+In the first public version the chart is drawn only for a medication whose numbers in section 4 were all read from the FDA label. Today that is: Wegovy, Ozempic, Zepbound, Mounjaro. Medications with a half-life and a time to peak in the code: Wegovy, Ozempic, Zepbound, Mounjaro. Medications without them, which never get a chart: Wegovy pill, Foundayo, Rybelsus, Ozempic pill, Saxenda. The chart is designed for weekly shots; medications taken every day have no numbers for it on purpose.
 
 ### 5.1 The model, as the code has it
 
@@ -942,33 +1015,33 @@ One compartment, with first-order absorption and first-order elimination (the Ba
 B(t) = ka / (ka - ke) x ( e^(-ke x t) - e^(-ka x t) )        B(t) = 0 before the dose
 ```
 
-- **ke** = ln 2 / half-life.
+- **ke** = ln 2 / half-life. The half-life and the time to peak are the single numbers of section 4, taken from the label by the rule given there.
 - **ka** is not read from a label. It is solved so that B(t) is highest exactly at the time to peak: ln(ka / ke) / (ka - ke) = time to peak.
 - **All logged doses are added up:** Level(t) = sum of (dose in mg x B(t - time of that dose)).
 - **The number on screen** is 100 x Level(t) / Peak, rounded to a whole number. Peak is the highest Level in one dosing interval after 20 doses of the *most recently logged dose*, taken exactly on the schedule the person set. So 100 means "the highest point after long-term use of the dose you logged last".
-- **The chart** covers the last 14 days (solid line) and the next 7 days (dashed line), one point every 3 hours. The dashed part assumes the person keeps taking the same dose on schedule. When the status is not "Increasing dose" or "Maintenance dose", the dashed part has no future doses and only falls.
+- **The chart** covers the last 14 days (solid line) and the next 7 days (dashed line), one point every 3 hours. The dashed part assumes the person takes the same dose at each planned time from now on. A planned time that has passed without a logged dose is not counted: an overdue dose is left out until the person logs it, and the dashed part goes on from the next planned time on the same rhythm. So the dashed line starts where the solid line ends. When the status is not "Increasing dose" or "Maintenance dose", the dashed part has no future doses and only falls.
 - No factor turns a dose into a concentration (no absorbed fraction, volume or clearance). The result is a relative number only.
 
 ### 5.2 What the model does with the numbers in section 4
 
-These values were worked out by running the code. They are not from a label. They are here so you can judge whether the picture is believable.
+The first two rows are the numbers of section 4. Every other value was worked out by running the code and is not from a label. They are here so you can judge whether the picture is believable.
 
-|   | Wegovy, Ozempic | Zepbound, Mounjaro |
-|--------------------------------|----------------|----------------|
-| Half-life in the app | 168 hours (7 days) | 120 hours (5 days) |
-| Time to peak in the app | 48 hours (2 days) | 24 hours (1 day) |
-| Schedule used here | One dose a week | One dose a week |
-| ke (per hour) | 0.00413 | 0.00578 |
-| ka (per hour), solved from the time to peak | 0.05984 | 0.13801 |
-| Absorption half-life that follows from ka | 11.6 hours | 5 hours |
-| Check: one dose alone peaks after | 48 hours | 24 hours |
-| After long-term use, the peak comes this long after a dose | 35.5 hours | 20.5 hours |
-| Number shown right before the next dose, after long-term use (the peak is 100) | 62 | 44 |
-| Highest number after the very first dose | 47 | 61 |
-| Doses at the same amount until the peak reaches 90 or more | 4 | 3 |
-| After the last dose: time until the number is under 50 | 9.2 days | 6.2 days |
-| After the last dose: time until the number is under 25 | 16.2 days | 11.2 days |
-| After the last dose: time until the number is under 5 | 32.5 days | 22.8 days |
+|   | Wegovy, Ozempic | Zepbound | Mounjaro |
+|--------------------------------|----------------|----------------|----------------|
+| Half-life in the app | 168 hours (7 days) | 132 hours (5.5 days) | 120 hours (5 days) |
+| Time to peak in the app | 48 hours (2 days) | 24 hours (1 day) | 40 hours |
+| Schedule used here | One dose a week | One dose a week | One dose a week |
+| ke (per hour) | 0.00413 | 0.00525 | 0.00578 |
+| ka (per hour), solved from the time to peak | 0.05984 | 0.14291 | 0.06708 |
+| Absorption half-life that follows from ka | 11.6 hours | 4.9 hours | 10.3 hours |
+| Check: one dose alone peaks after | 48 hours | 24 hours | 40 hours |
+| After long-term use, the peak comes this long after a dose | 35.5 hours | 20 hours | 32 hours |
+| Number shown right before the next dose, after long-term use (the peak is 100) | 62 | 48 | 50 |
+| Highest number after the very first dose | 47 | 57 | 59 |
+| Doses at the same amount until the peak reaches 90 or more | 4 | 3 | 3 |
+| After the last dose: time until the number is under 50 | 9.2 days | 6.7 days | 7 days |
+| After the last dose: time until the number is under 25 | 16.2 days | 12.2 days | 12 days |
+| After the last dose: time until the number is under 5 | 32.5 days | 24.9 days | 23.6 days |
 
 **Example: what happens when the dose goes up.** A made-up log with the numbers of Wegovy and Ozempic: four doses of the same amount A on schedule, then four doses of twice that amount. This shows how the number behaves. It is not a dosing suggestion.
 
@@ -989,9 +1062,9 @@ When a higher dose is logged, 100 is redefined as the long-term peak of the new 
 
 | Code | Assumption or limit |
 |----|--------------------------------------------------------|
-| P-01 | Everyone is treated as the same average person. Body weight, kidney function, age, injection site and other medications change nothing. |
+| P-01 | Everyone on a medication is treated as the same person, with the two numbers of section 4. Body weight, kidney function, age, injection site and other medications change nothing. |
 | P-02 | One compartment only. Absorption and elimination are both first-order. |
-| P-03 | The time to peak is one number. The absorption rate is solved from it and is not checked against anything else. |
+| P-03 | The half-life is one number and the time to peak is one number, both read from section 12.3 of the label only. Where that section gives only a range, the app uses its midpoint (section 4); a midpoint is not an average and is not a figure the label prints. The absorption rate is solved from the time to peak and is not checked against anything else. |
 | P-04 | Doses add up in a straight line: twice the dose gives twice the level. |
 | P-05 | There is no absorbed fraction, volume or clearance in the model, so there is no concentration. Only a relative number is shown. |
 | P-06 | The scale changes with the dose: 100 is always the long-term peak of the dose logged last (see the example in 5.2). Numbers from before and after a dose change cannot be compared. |
@@ -999,9 +1072,11 @@ When a higher dose is logged, 100 is redefined as the long-term peak of the new 
 | P-08 | Only doses logged in mg are used. Doses logged in units, mL or clicks are left out and never converted. |
 | P-09 | When a person says at setup that they have been on their current dose for several weeks, the chart assumes earlier doses of the same amount on schedule (one for each of those weeks, 8 at most). They are used only for the chart and are not saved as records. |
 | P-10 | A dose that was taken but not logged is missing from the chart. A dose logged at the wrong time is used as logged. |
-| P-11 | Medications without a half-life and time to peak in the app get no chart: Wegovy pill, Foundayo, Rybelsus, Saxenda. |
-| P-12 | Wegovy and Ozempic are separate entries in the app but use the same half-life and time to peak. |
-| P-13 | The chart is not used by any other rule. The danger-symptom rules, the dose-increase period and the reminders do not read it. |
+| P-11 | A planned dose that is overdue is not in the dashed part (5.1). The dashed line then shows what happens if that dose is not taken and the next planned one is. The app gives no advice about a missed dose. |
+| P-12 | Medications without a half-life and time to peak in the app get no chart: Wegovy pill, Foundayo, Rybelsus, Ozempic pill, Saxenda. |
+| P-13 | Wegovy and Ozempic are separate entries in the app but use the same half-life and time to peak. |
+| P-14 | Zepbound and Mounjaro contain the same ingredient but are drawn with different numbers, because their labels word the half-life and the time to peak differently (section 4). The same doses give a different line for each brand. |
+| P-15 | The chart is not used by any other rule. The danger-symptom rules, the dose-increase period and the reminders do not read it. |
 
 ### 5.4 Exact wording on screen
 
@@ -1010,15 +1085,17 @@ Next to the title the app shows one whole number with no unit, for example 78. I
 | Code | Where | Exact wording |
 |----|--------------------|----------------------------------------|
 | S-01 | Title of the chart | Estimated medication level |
-| S-02 | Under the small chart on the main screen | An estimate based on published population averages. It is not a measurement and cannot be used to adjust your dose. |
-| S-03 | Under the large chart | The last 14 days and the next 7 days. The solid line is what has happened. The dashed line assumes you keep taking your medication as planned. 100 = the highest point after long-term use of this dose. |
-| S-04 | Link under the large chart ("How this is calculated") opens this text | This uses a standard model of how the body takes in and clears a medication (first-order absorption and elimination), with published population averages: semaglutide half-life about 168 hours, peak at about 48 hours; tirzepatide half-life about 120 hours, peak at about 24 hours (still to be checked against the labels). Only doses you logged in mg are used. People absorb and clear medication at very different speeds. This line only helps you picture roughly where the medication level is. It is not a lab measurement and cannot be used to adjust your dose. |
-| S-05 | In place of the chart in the first public version, when the numbers of the medication have no label source | An estimate for this medication is not available yet. |
-| S-06 | On the main screen when the medication has no chart (full test version) | No chart for this medication yet (its numbers are not verified, or it is taken every day). |
-| S-07 | In place of the large chart when there is nothing to draw | After you log semaglutide or tirzepatide shots in mg, an estimated medication level chart will show here. |
-| S-08 | On the sheet where a dose is logged | Only the number you enter is saved. Units are not converted. The estimated medication level chart uses only doses logged in mg. |
-| S-09 | Line at the bottom of the main screens in the first public version | This app is a logging tool. It is not a medical device and does not give medical advice. Talk to your doctor before making decisions about your medication. Not affiliated with any drug maker. |
-| S-10 | Line at the bottom of the main screens in the full test version | For information only. This is not medical advice. Talk to your doctor before you change your medication or your workouts. |
+| S-02 | Under the small chart on the main screen | An estimate based on numbers from US prescribing information. It is not a measurement and cannot be used to adjust your dose. |
+| S-03 | Under the large chart | The last 14 days and the next 7 days. The solid line is what has happened. The dashed line assumes you take your planned doses from now on. A planned dose that is overdue is not counted until you log it. 100 = the highest point after long-term use of this dose. |
+| S-04 | Link under the large chart ("How this is calculated") opens this text. It is shown here as a person on Wegovy sees it; the name and the two numbers are those of the person's own medication (section 4) | The chart uses a standard model of how the body takes in and clears a medication (first-order absorption and elimination). The model needs two numbers. The half-life is the time the body takes to clear half of a dose. The time to peak is the time from a dose to the highest level. Both come from the pharmacokinetics section of the US prescribing information for Wegovy. For Wegovy the chart uses a half-life of 168 hours and a time to peak of 48 hours. Where that section gives one value or a median, the chart uses it. Where it gives only a range, the chart uses the middle of the range. The chart uses these same two numbers for every person on this medication. They are not measured in you. People absorb and clear medication at very different speeds. Only doses you logged in mg are used. This line is an estimate. It only helps you picture roughly where the medication level is. It is not a lab measurement and cannot be used to adjust your dose. |
+| S-05 | In place of the chart in the first public version, when the medication has no chart (a medication taken every day, a medication that is not on the list, or one whose numbers were not all read from the label) | An estimate for this medication is not available yet. |
+| S-06 | In place of the chart, in both versions, when the saved medication is tirzepatide with neither of the names Zepbound and Mounjaro and the person is in the United States, where the list offers both | The chart uses two numbers from US prescribing information, and they are stated differently for Zepbound and Mounjaro. So the chart needs to know your brand. To choose it, go to Me and tap "Change medication or redo setup". |
+| S-07 | The same, for a person whose list does not offer the two names (another country, or "Other") | No chart for this medication yet. The chart uses two numbers from US prescribing information, and they are stated differently for Zepbound and Mounjaro. The app does not choose between them. |
+| S-08 | On the main screen and in place of the large chart when the medication has no chart (full test version) | No chart for this medication. The chart is drawn only for weekly shots that have a half-life and a time to peak from US prescribing information. |
+| S-09 | In place of the large chart when the medication has a chart but no dose has been logged in mg yet | After you log semaglutide or tirzepatide shots in mg, an estimated medication level chart will show here. |
+| S-10 | On the sheet where a dose is logged | Only the number you enter is saved. Units are not converted. The estimated medication level chart uses only doses logged in mg. |
+| S-11 | Line at the bottom of the main screens in the first public version | This app is a logging tool. It is not a medical device and does not give medical advice. Talk to your doctor before making decisions about your medication. Not affiliated with any drug maker. |
+| S-12 | Line at the bottom of the main screens in the full test version | For information only. This is not medical advice. Talk to your doctor before you change your medication or your workouts. |
 
 ## 6. Other numbers that need a clinical eye
 
@@ -1164,35 +1241,38 @@ The people who wrote the code left notes where something waits for review. Each 
 
 | Code | Question | Note in the code |
 |----|--------------------------------------------|----------------|
-| Q-01 | Every brand name, dose step, highest dose, half-life and time to peak in section 4 is unchecked. Please check each row against the current FDA label and give the label section. The code comment points to label section 12.3 for the half-life and the time to peak. | `src/core/catalog.ts` line 3, 52 |
-| Q-02 | Foundayo (orforglipron) has no dose steps, no highest dose and no numbers for the chart in the app, because nobody has read them from the label yet. Please give them with their label sections, or tell us where the label gives none. | `src/core/catalog.ts` line 154 |
-| Q-03 | The trigger phrases, the level of each rule and the English card texts in section 2 have never been reviewed. Which danger signs are missing? Which rules sit at the wrong level? Which card text could harm or mislead a person? | `src/core/triage.ts` line 4, 75, 597 |
-| Q-04 | The emergency number on the cards is marked as still to be verified. For a US user it is 911. On which cards is "call 911" the wrong instruction, and what should those cards say? | `src/core/triage.ts` line 467 |
-| Q-05 | The crisis line on the self-harm card is marked as still to be verified. For a US user the card says "crisis line 988". Is that the right line, and the right way to name it? | `src/core/triage.ts` line 489, 500 |
-| Q-06 | The coping cards in section 3.1 must be reviewed before they are shown. Is any line wrong or unsafe? Is anything missing under "See a doctor if"? Are the two sources named under each card the right ones to name? | `src/web/content/coping.ts` line 3, 5 |
-| Q-07 | The daily advice texts in section 3.2 wait for review. Is any text wrong or unsafe for a person on these medications? Is any text shown in the wrong situation? | `src/web/content/advice.ts` line 2, 4, 55 |
-| Q-08 | The workouts in section 3.3 need review of the exercises and the amounts by a qualified professional. Are you the right person for that part? If not, please say so and leave it out of your quote. | `src/web/content/workouts.ts` line 3, 5 |
-| Q-09 | The general notice at the bottom of the main screens (last row of section 5.4) waits for review. Does it say what it should? | `src/web/content/labels.ts` line 23 |
-| Q-10 | The protein formula and its cut-offs in section 6.1 wait for a dietitian or doctor to confirm them. Are the 60 g floor, the 1.0, 1.2 to 1.5 and 2.0 g per kg lines, the BMI line of 28 and the adjusted weight right for adults on these medications? Who else should get no automatic target? | `src/core/protein.ts` line 6 |
-| Q-11 | The protein values in section 6.2 are rough and were meant to be checked against the China Food Composition Table. For a US user, which rows are wrong, and which reference should we use instead? | `src/core/foods.ts` line 2 |
-| Q-12 | The weight cut-offs in section 6.3 are product choices, not taken from a guideline: regain of 3% and 5% above the lowest point, and a drop of more than 1.5% a week for two weeks. Are they reasonable? Is the text at each line right? | `src/core/weight.ts` line 3 |
+| Q-01 | The dose steps, the highest dose, the half-life, the time to peak and the wait after a pill in section 4 were read from the current US labels by us on 2026-11-22. Nobody outside our team has confirmed them. Please check each row against the label words quoted next to it and against the label itself, and give the label section. The brand names, the generic names and how each medication is taken have not been checked against a label. | `src/core/catalog.ts` line 10 |
+| Q-02 | The trigger phrases, the level of each rule and the English card texts in section 2 have never been reviewed. Which danger signs are missing? Which rules sit at the wrong level? Which card text could harm or mislead a person? | `src/core/triage.ts` line 4, 75, 597 |
+| Q-03 | The emergency number on the cards is marked as still to be verified. For a US user it is 911. On which cards is "call 911" the wrong instruction, and what should those cards say? | `src/core/triage.ts` line 467 |
+| Q-04 | The crisis line on the self-harm card is marked as still to be verified. For a US user the card says "crisis line 988". Is that the right line, and the right way to name it? | `src/core/triage.ts` line 489, 500 |
+| Q-05 | The coping cards in section 3.1 must be reviewed before they are shown. Is any line wrong or unsafe? Is anything missing under "See a doctor if"? Are the two sources named under each card the right ones to name? | `src/web/content/coping.ts` line 3, 5 |
+| Q-06 | The daily advice texts in section 3.2 wait for review. Is any text wrong or unsafe for a person on these medications? Is any text shown in the wrong situation? | `src/web/content/advice.ts` line 2, 4, 55 |
+| Q-07 | The workouts in section 3.3 need review of the exercises and the amounts by a qualified professional. Are you the right person for that part? If not, please say so and leave it out of your quote. | `src/web/content/workouts.ts` line 3, 5 |
+| Q-08 | The general notice at the bottom of the main screens (last row of section 5.4) waits for review. Does it say what it should? | `src/web/content/labels.ts` line 25 |
+| Q-09 | The protein formula and its cut-offs in section 6.1 wait for a dietitian or doctor to confirm them. Are the 60 g floor, the 1.0, 1.2 to 1.5 and 2.0 g per kg lines, the BMI line of 28 and the adjusted weight right for adults on these medications? Who else should get no automatic target? | `src/core/protein.ts` line 6 |
+| Q-10 | The protein values in section 6.2 are rough and were meant to be checked against the China Food Composition Table. For a US user, which rows are wrong, and which reference should we use instead? | `src/core/foods.ts` line 2 |
+| Q-11 | The weight cut-offs in section 6.3 are product choices, not taken from a guideline: regain of 3% and 5% above the lowest point, and a drop of more than 1.5% a week for two weeks. Are they reasonable? Is the text at each line right? | `src/core/weight.ts` line 3 |
 
 ### 7.2 Questions that came up while this packet was put together
 
 | Code | Question |
 |----|------------------------------------------------------------|
-| Q-13 | In the first public version a person can report a danger sign in two ways only: with a symptom button (section 2.2), or by typing it where the app checks typed text (section 2.3). No button leads to R-01 `crisis`, R-02 `pancreatitis`, R-03 `chest_or_faint`, R-04 `anaphylaxis`, R-05 `vision`, R-08 `gallbladder`, R-09 `thyroid`, R-10 `pregnancy`, R-11 `procedure`, R-12 `contraception`, R-13 `eating_too_little`. Which danger signs need their own button before launch? |
-| Q-14 | In the first public version R-10 `pregnancy`, R-11 `procedure`, R-12 `contraception`, R-13 `eating_too_little` show no alert (section 2.1): their own cards are hidden until reviewed, and the fixed card with its call button does not fit a reminder. A person who types text that matches only these rules sees nothing. Is that acceptable for the first public version? If one of them needs to show something at launch, which one, and what should it say? |
-| Q-15 | An alert raised from the box for questions for the doctor leaves no reminder on the main screen once it is closed (section 2), while an alert from a symptom button stays at the top for the rest of the day. In the first public version that box is the only way to raise R-01 `crisis`, R-02 `pancreatitis`, R-03 `chest_or_faint`, R-04 `anaphylaxis`, R-05 `vision`, R-08 `gallbladder`, R-09 `thyroid`. Is it acceptable that these alerts are shown once and then gone? |
-| Q-16 | Please compare the rules in section 2 with the "call your healthcare provider right away" items in the current Medication Guides of the medications in section 4. Which items on the guides have no rule here? |
-| Q-17 | Several cards name a possible cause (pancreas, gallbladder, allergic reaction, blood sugar). Is it right to name a cause at all? Is it the right cause for every phrase that triggers the rule? One example: "short of breath" alone shows the card "This may be a serious allergic reaction". |
-| Q-18 | The pregnancy card R-10 `pregnancy` quotes the semaglutide label to every user, whatever medication they take. What should it say to a person on one of the other medications in section 4? |
-| Q-19 | The birth control reminder R-12 `contraception` is shown only when the medication is tirzepatide (Zepbound, Mounjaro). Is that right? Does any other medication in section 4 need a reminder of this kind? |
-| Q-20 | The number on the chart can drop right after a dose increase, because 100 is tied to the dose logged last (example in section 5.2). Could that mislead a person? Would a fixed scale be safer? |
-| Q-21 | After a late weekly dose the app shows the next dose on the usual weekday when that is at least 72 hours away (section 6.5). The app gives no advice about missed doses, but it does show this date. Is 72 hours a safe line for every weekly medication in section 4? |
-| Q-22 | The app shows a wait before eating or drinking after a pill for Wegovy pill and Rybelsus, and none for Foundayo (section 4). Is the wording of that line right for each of them, including what it says about water? The countdown on the main screen says only to wait before eating, while the sheet says not to eat or drink. Should the two say the same? |
-| Q-23 | The typing check calls its limit "the usual highest dose" (section 4). Is the highest dose on the label the right limit for this check, and is that the right name for it? |
-| Q-24 | A person can check "A history of an eating disorder" at setup (section 6.7). Almost nothing changes when they do. What should the app do differently for them, for example with the goal weight, the weight chart or the fast-drop line? |
+| Q-12 | In the first public version a person can report a danger sign in two ways only: with a symptom button (section 2.2), or by typing it where the app checks typed text (section 2.3). No button leads to R-01 `crisis`, R-02 `pancreatitis`, R-03 `chest_or_faint`, R-04 `anaphylaxis`, R-05 `vision`, R-08 `gallbladder`, R-09 `thyroid`, R-10 `pregnancy`, R-11 `procedure`, R-12 `contraception`, R-13 `eating_too_little`. Which danger signs need their own button before launch? |
+| Q-13 | In the first public version R-10 `pregnancy`, R-11 `procedure`, R-12 `contraception`, R-13 `eating_too_little` show no alert (section 2.1): their own cards are hidden until reviewed, and the fixed card with its call button does not fit a reminder. A person who types text that matches only these rules sees nothing. Is that acceptable for the first public version? If one of them needs to show something at launch, which one, and what should it say? |
+| Q-14 | An alert raised from the box for questions for the doctor leaves no reminder on the main screen once it is closed (section 2), while an alert from a symptom button stays at the top for the rest of the day. In the first public version that box is the only way to raise R-01 `crisis`, R-02 `pancreatitis`, R-03 `chest_or_faint`, R-04 `anaphylaxis`, R-05 `vision`, R-08 `gallbladder`, R-09 `thyroid`. Is it acceptable that these alerts are shown once and then gone? |
+| Q-15 | Please compare the rules in section 2 with the "call your healthcare provider right away" items in the current Medication Guides of the medications in section 4. Which items on the guides have no rule here? |
+| Q-16 | Several cards name a possible cause (pancreas, gallbladder, allergic reaction, blood sugar). Is it right to name a cause at all? Is it the right cause for every phrase that triggers the rule? One example: "short of breath" alone shows the card "This may be a serious allergic reaction". |
+| Q-17 | The pregnancy card R-10 `pregnancy` quotes the semaglutide label to every user, whatever medication they take. What should it say to a person on one of the other medications in section 4? |
+| Q-18 | The birth control reminder R-12 `contraception` is shown only when the medication is tirzepatide (Zepbound, Mounjaro). Is that right? Does any other medication in section 4 need a reminder of this kind? |
+| Q-19 | The number on the chart can drop right after a dose increase, because 100 is tied to the dose logged last (example in section 5.2). Could that mislead a person? Would a fixed scale be safer? |
+| Q-20 | After a late weekly dose the app shows the next dose on the usual weekday when that is at least 72 hours away (section 6.5). The app gives no advice about missed doses, but it does show this date. Is 72 hours a safe line for every weekly medication in section 4? |
+| Q-21 | The app shows a wait after a pill for Wegovy pill, Rybelsus, Ozempic pill, and none for Foundayo (section 4). The labels say to wait "at least" that long before eating food, drinking beverages or taking other oral medications, and the app's two lines now say the same. The labels also say to take the tablet with water, "up to 4 ounces"; the app says nothing about water. Is the wording right for each of them? Should the app also say how to take the tablet (empty stomach, in the morning, how much water)? |
+| Q-22 | For every brand the app takes the highest dose the label gives to any adult. It is the limit of the typing check and the last dose step. For these brands the label gives that dose to some patients only, or gives a lower one to others. Wegovy, 7.2 mg: Stated under "Weight Reduction in Adults" only. For cardiovascular risk reduction in adults, for MASH in adults and for pediatric patients aged 12 years and older the highest dose the label gives is 2.4 mg. The app uses this number only to catch a typing slip, so it takes the highest dose the label gives to any adult. Ozempic, 2 mg: Printed under the heading for glycemic control. Section 13.1 names the same figure, 2 mg/week, as the maximum recommended human dose. Mounjaro, 15 mg: The same list gives 10 mg once weekly as the maximum for pediatric patients. The app is for adults. Foundayo, 17.2 mg: Section 2.2 gives a lower maximum of 9 mg once daily when the tablet is used with a strong CYP3A4 inhibitor. The app does not know what other medicines a person takes. Is that the right way to treat these doses, for the typing check and for the list of steps? |
+| Q-23 | Where a label gives only a range for the half-life or the time to peak, the chart uses the midpoint of the range (section 4). That is the case for: Wegovy, time to peak: the label gives 1 to 3 days and the app uses 48 hours (2 days); Ozempic, time to peak: the label gives 1 to 3 days and the app uses 48 hours (2 days); Zepbound, half-life: the label gives 5 to 6 days and the app uses 132 hours (5.5 days); Mounjaro, time to peak: the label gives 8 to 72 hours and the app uses 40 hours. Is the midpoint a fair single number for a rough chart of this kind? Would you take another value from the label? |
+| Q-24 | Zepbound and Mounjaro contain the same ingredient, but the chart uses different numbers for each, because their labels word them differently: Zepbound half-life 132 hours (5.5 days), time to peak 24 hours (1 day); Mounjaro half-life 120 hours (5 days), time to peak 40 hours. Zepbound: Section 10 (Overdosage) of this label speaks of "the half-life of tirzepatide of approximately 5 days". The app reads the pharmacokinetics section, 12.3, only, and that section gives the range. With the single value of section 10 the number would be 120 hours. Should the two brands be drawn differently? If not, which numbers should both use? |
+| Q-25 | The app lists the tablets of a brand that is also a shot under its own name: "Wegovy pill", "Ozempic pill". Could a person pick the wrong row, and so see the dose example and the highest dose of the other form? Is "pill" the right word for these tablets? |
+| Q-26 | The typing check calls its limit "the highest dose in the US prescribing information for" the brand (section 4). Is the highest dose on the label the right limit for this check, and is that a fair name for it? For Wegovy pill, Rybelsus, Ozempic pill, Saxenda the label does not call that dose a maximum in section 2; the app uses the highest dose of the label's schedule. A person whose medication has another brand name, or none, is shown the name of the US brand of the same medication. Is that clear enough? |
+| Q-27 | A person can check "A history of an eating disorder" at setup (section 6.7). Almost nothing changes when they do. What should the app do differently for them, for example with the goal weight, the weight chart or the fast-drop line? |
 
 ### 7.3 Anything else
 

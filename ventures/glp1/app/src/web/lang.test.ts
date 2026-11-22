@@ -153,6 +153,67 @@ describe('screens follow the profile language', () => {
       expect(text, s).toContain(s);
     }
     for (const s of ["Today's log", 'Next shot', 'Estimated medication level', 'Backup and export', 'Log shot', 'Undo']) expect(text, s).not.toContain(s);
+    // This profile has no brand, and the two US labels of tirzepatide give different chart numbers: no chart, and a line that says so.
+    // The line names the two brands and does not send the person to a list that cannot offer them (Mainland China).
+    expect(text).toContain('这个药暂时不画曲线。曲线要用美国说明书里的两个数字，Zepbound 和 Mounjaro 的说明书写法不一样，应用不替你选。');
+    expect(text).not.toContain('只有每周一次');
+    expect(text).not.toContain('选一下品牌');
+    expect(text).not.toContain('这里会显示估算曲线');
+  });
+
+  it('a Chinese profile on a medication with one US label keeps its chart, with the method link', () => {
+    const wegovy: Profile = { ...legacy, regimen: { ...legacy.regimen!, drugId: 'semaglutide-wl', doseAmount: 1 } };
+    const rec = records('鸡蛋 × 2');
+    rec.doses = rec.doses.map((x) => ({ ...x, drugId: 'semaglutide-wl', amount: 1 }));
+    const d = derive(wegovy, rec, NOW, TZ);
+    expect(d.curve.length).toBeGreaterThan(0);
+    const trends = render(wegovy, createElement(Trends, { profile: wegovy, d, rec, now: NOW }));
+    for (const s of ['药物水平（估算）', '药物水平估算曲线', '这是怎么算的', '诺和盈']) expect(trends + render(wegovy, createElement(Me, { profile: wegovy, d, onRedoSetup: () => undefined })), s).toContain(s);
+    expect(trends).not.toContain('这个药不画曲线');
+  });
+
+  it('the full build, tirzepatide without a brand: the line says why there is no chart, and where the person can choose', () => {
+    const noop = () => undefined;
+    const pages = (profile: Profile) => {
+      const rec = records('Egg × 2');
+      const d = derive(profile, rec, NOW, TZ);
+      expect(d.curve).toEqual([]);
+      return render(profile, createElement(Today, { profile, d, now: NOW, onOpenTrends: noop, onOpenMe: noop })) + render(profile, createElement(Trends, { profile, d, rec, now: NOW }));
+    };
+    const noBrand: Profile = { ...english, regimen: { ...english.regimen!, brand: undefined } };
+    // United States: the list offers both brands, in English and in Chinese.
+    const us = pages(noBrand);
+    expect(us.split('they are stated differently for Zepbound and Mounjaro. So the chart needs to know your brand. To choose it, go to Me and tap "Change medication or redo setup".').length - 1).toBe(2);
+    const usChinese = pages({ ...noBrand, lang: 'hans' });
+    expect(usChinese.split('Zepbound 和 Mounjaro 的说明书写法不一样，所以要先知道你用的是哪一个。请到"我的"里点"换药或重新设置"，选一下品牌。').length - 1).toBe(2);
+    // "Other": nothing to choose from, so the line only says why.
+    const other = pages({ ...noBrand, region: 'OTHER' });
+    expect(other.split('they are stated differently for Zepbound and Mounjaro. The app does not choose between them.').length - 1).toBe(2);
+    expect(other).not.toContain('go to Me');
+    // The line for medications without chart numbers states a rule tirzepatide meets, so it is not shown here.
+    for (const text of [us, usChinese, other]) expect(text).not.toMatch(/drawn only for weekly shots|只有每周一次|will show here|这里会显示估算曲线/);
+    // A medication with no chart numbers at all still gets that line.
+    const mazdutide: Profile = { ...legacy, lang: 'en', regimen: { ...legacy.regimen!, drugId: 'mazdutide' } };
+    const rec = records('Egg × 2');
+    const d = derive(mazdutide, { ...rec, doses: rec.doses.map((x) => ({ ...x, drugId: 'mazdutide' })) }, NOW, TZ);
+    expect(render(mazdutide, createElement(Today, { profile: mazdutide, d, now: NOW, onOpenTrends: noop, onOpenMe: noop }))).toContain('No chart for this medication. The chart is drawn only for weekly shots that have a half-life and a time to peak from US prescribing information.');
+  });
+
+  it('the example in the note box is the person\'s own dose: no dose number is written into the copy', () => {
+    const box = (profile: Profile) => render(profile, createElement(InputBar, { profile, d: derive(profile, records('Egg × 2'), NOW, TZ) }));
+    expect(box(english)).toContain('Type a note: "took 5 mg"');
+    expect(box({ ...english, regimen: { ...english.regimen!, drugId: 'semaglutide-wl', brand: 'Wegovy', doseAmount: 1.7 } })).toContain('Type a note: "took 1.7 mg"');
+    expect(box(legacy)).toContain('说一句，比如"刚打了 5 左腹"');
+    // No saved dose in mg, large text, or a pill in Chinese (the Chinese example speaks of a shot): the plain line.
+    const plain: Profile[] = [{ ...english, regimen: null }, { ...english, regimen: { ...english.regimen!, doseAmount: null } }, { ...english, regimen: { ...english.regimen!, doseUnit: 'units' } }, { ...english, largeText: true }];
+    for (const p of plain) {
+      expect(box(p)).toContain('Type a note');
+      expect(box(p)).not.toMatch(/took|\d mg/);
+    }
+    const pill: Profile = { ...legacy, regimen: { drugId: 'semaglutide-oral-t2d', doseAmount: 7, doseUnit: 'mg', schedule: { kind: 'daily', time: '08:00' }, status: 'maintenance' } };
+    expect(box(pill)).toContain('说一句');
+    expect(box(pill)).not.toContain('刚打了');
+    expect(box({ ...pill, lang: 'en' })).toContain('Type a note: "took 7 mg"');
   });
 
   it('an English profile shows no Chinese anywhere, and breaks no copy rule', () => {

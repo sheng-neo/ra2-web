@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { doseUnitLabel, drugById, regimenLabel, type DoseUnit } from '../../core/catalog';
+import { brandNumbers, doseUnitLabel, drugById, maxDoseLabelName, regimenBrand, regimenLabel, type DoseUnit } from '../../core/catalog';
 import { doseCheckApplies, fastingMinutes } from '../../core/features';
 import { FOODS, foodName, foodUnit } from '../../core/foods';
 import { siteLabel, SITES, type Site } from '../../core/schedule';
@@ -54,12 +54,14 @@ export function DoseForm({ profile, d, draft, onDone }: { profile: Profile; d: D
   const [overMax, setOverMax] = useState(false);
   const n = Number(amount);
   const valid = amount !== '' && n > 0 && n < 1000;
-  const fasting = fastingMinutes(drug, features);
+  // Catalog numbers are those of the brand's own label.
+  const brand = regimenBrand(reg, profile.region);
+  const fasting = fastingMinutes(drug, features, brand);
 
   const save = async () => {
     if (!valid) return;
     // The check names the catalog's highest dose, so it runs only where that number may be shown (core/features.ts).
-    if (!overMax && doseCheckApplies(drug, n, unit, features)) {
+    if (!overMax && doseCheckApplies(drug, n, unit, features, brand)) {
       setOverMax(true);
       return;
     }
@@ -86,8 +88,8 @@ export function DoseForm({ profile, d, draft, onDone }: { profile: Profile; d: D
         {t('dose.time')}
         <input type="datetime-local" value={when} onChange={(e) => setWhen(e.target.value)} />
       </label>
-      {/* The largest dose comes from the catalog and only guards against a typing slip. */}
-      {overMax && <p className="warn">{t('dose.overMax.form', { amount: String(n), unit, max: String(drug.maxMg) })}</p>}
+      {/* The largest dose comes from the catalog and only guards against a typing slip. The line names the US brand whose label it is from. */}
+      {overMax && <p className="warn">{t('dose.overMax.form', { amount: String(n), unit, max: String(brandNumbers(drug, brand).maxMg), name: maxDoseLabelName(drug, lang, brand) })}</p>}
       <button className="btn primary block" disabled={!valid} onClick={() => void save()}>
         {overMax ? t('dose.confirmSure') : t('common.confirm')}
       </button>

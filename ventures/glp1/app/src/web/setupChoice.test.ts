@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { brandOptionLabel, type BrandOption } from '../core/catalog';
+import { brandOptionLabel, CATALOG, drugById, type BrandOption } from '../core/catalog';
 import type { Regimen } from '../core/types';
-import { addsStartingDose, addsStartingWeight, brandIn, englishRows, fieldWeightKg, isRowPicked, needsBrandPick, savedWeightText, setupStart } from './setupChoice';
+import { addsStartingDose, addsStartingWeight, brandIn, chineseRows, englishRows, fieldWeightKg, isChineseRowPicked, isRowPicked, needsBrandPick, needsBrandPickChinese, savedWeightText, setupStart } from './setupChoice';
 
 const marked = (region: Parameters<typeof englishRows>[0], drugId: string | null, brand: string | null) =>
   englishRows(region, drugId)
@@ -24,6 +24,41 @@ describe('setup: the chosen brand follows the region', () => {
     expect(brand).toBeNull();
     expect(marked('HK', 'tirzepatide', brand)).toEqual(['Mounjaro (tirzepatide)']);
     expect(needsBrandPick('HK', 'tirzepatide', brand)).toBe(false);
+  });
+});
+
+describe('setup: the Chinese list', () => {
+  const labels = (region: Parameters<typeof chineseRows>[1]) => chineseRows(CATALOG, region).map((o) => brandOptionLabel(o, region, 'hans'));
+
+  it('is one row per catalog entry, as before, except where two brands have numbers of their own', () => {
+    for (const region of ['CN', 'HK', 'TW', 'SG', 'MY', 'OTHER'] as const) {
+      const rows = chineseRows(CATALOG, region);
+      expect(rows.map((o) => o.drugId), region).toEqual(CATALOG.map((d) => d.id));
+      expect(rows.every((o) => o.brand === null), region).toBe(true);
+    }
+    // In the United States tirzepatide is two rows: the chart numbers of Zepbound and Mounjaro differ.
+    const us = chineseRows(CATALOG, 'US');
+    expect(us.filter((o) => o.drugId === 'tirzepatide').map((o) => o.brand)).toEqual(['Zepbound', 'Mounjaro']);
+    expect(us.filter((o) => o.drugId !== 'tirzepatide').every((o) => o.brand === null)).toBe(true);
+    expect(us).toHaveLength(CATALOG.length + 1);
+    expect(labels('US')).toContain('Zepbound（替尔泊肽）');
+    expect(labels('US')).toContain('Mounjaro（替尔泊肽）');
+    expect(labels('US')).not.toContain('Zepbound / Mounjaro（替尔泊肽）');
+    expect(labels('CN')).toContain('穆峰达（替尔泊肽）');
+  });
+
+  it('asks for the brand where the list has a row for each, and marks only the chosen one', () => {
+    expect(needsBrandPickChinese('US', 'tirzepatide', null)).toBe(true);
+    expect(needsBrandPickChinese('US', 'tirzepatide', 'Mounjaro')).toBe(false);
+    expect(needsBrandPickChinese('CN', 'tirzepatide', null)).toBe(false);
+    expect(needsBrandPickChinese('US', 'semaglutide-wl', null)).toBe(false);
+    expect(needsBrandPickChinese('US', null, null)).toBe(false);
+    const marked = (drugId: string | null, brand: string | null) => chineseRows(CATALOG, 'US').filter((o) => isChineseRowPicked(o, drugId, brand)).map((o) => `${o.drugId}:${o.brand ?? ''}`);
+    expect(marked('tirzepatide', null)).toEqual([]);
+    expect(marked('tirzepatide', 'Zepbound')).toEqual(['tirzepatide:Zepbound']);
+    expect(marked('semaglutide-wl', null)).toEqual(['semaglutide-wl:']);
+    // A row without a brand is marked whatever brand is kept for the medication.
+    expect(isChineseRowPicked({ drugId: 'semaglutide-wl', brand: null, entry: drugById('semaglutide-wl') }, 'semaglutide-wl', 'Wegovy')).toBe(true);
   });
 });
 
@@ -56,8 +91,13 @@ describe('setup: which row of the English list is marked', () => {
     expect(marked('HK', 'orforglipron', null)).toEqual(['orforglipron']);
     expect(marked('US', 'mazdutide', null)).toEqual(['mazdutide']);
     // Nothing is added when the medication has a row, or none is chosen.
-    expect(englishRows('US', 'tirzepatide')).toHaveLength(9);
-    expect(englishRows('US', null)).toHaveLength(9);
+    // The US list is nine brands and "Other / custom".
+    expect(englishRows('US', 'tirzepatide')).toHaveLength(10);
+    expect(englishRows('US', null)).toHaveLength(10);
+    // The two Ozempic rows are separate medications, so each marks only itself.
+    expect(marked('US', 'semaglutide-t2d', 'Ozempic')).toEqual(['Ozempic (semaglutide)']);
+    expect(marked('US', 'semaglutide-oral-t2d-ozempic', 'Ozempic pill')).toEqual(['Ozempic pill (semaglutide)']);
+    expect(needsBrandPick('US', 'semaglutide-oral-t2d-ozempic', null)).toBe(false);
   });
 });
 

@@ -688,6 +688,14 @@ label.check input {
 .nav {
   flex-wrap: wrap;
 }
+/* A note in the setup bar takes its own line above the buttons, so it is never scrolled out of view. */
+.nav .nav-note {
+  flex: 0 0 100%;
+  margin: 0;
+}
+.onboarding.with-note {
+  padding-bottom: 300px;
+}
 /* Feet and inches: two short inputs side by side, each followed by its unit. */
 .field {
   margin: 10px 0 4px;

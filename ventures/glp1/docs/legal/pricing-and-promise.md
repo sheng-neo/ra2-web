@@ -15,7 +15,7 @@ Last updated: [EFFECTIVE DATE]
 These features are free. They will stay free for as long as we run [APP NAME].
 
 - Logging shots and pills
-- The estimated medication level chart (only for medications whose numbers have a public source)
+- The estimated medication level chart (for some brand-name weekly shots only; the numbers come from US prescribing information)
 - Medication reminders
 - Weight and side effect logging
 - Danger-symptom alerts
@@ -73,7 +73,7 @@ We follow the law and the rules of the app stores. If a law, a regulator or an a
 
 ## Notes for the owner and the lawyer (delete this section before publishing)
 
-1. **List only what is live.** On the day this page is published, every item on the free list must work in the app that is in the store. Remove any item that does not. Check these three first: the chart is open for at least one medication, reminders work in the store build, and the weekly summary exists.
+1. **List only what is live.** On the day this page is published, every item on the free list must work in the app that is in the store. Remove any item that does not. Check these three first: the chart is open for at least one medication (as of 2026-11-22 the launch build draws it for four weekly shots: Wegovy, Ozempic, Zepbound and Mounjaro), reminders work in the store build, and the weekly summary exists.
 2. **"Free for as long as we run the app."** The plan says "free forever". This draft says "for as long as we run [APP NAME]", because a promise with no end cannot be kept if the app closes. [LAWYER: confirm the wording.] **Owner to decide:** the plan, this page and the store description must say the same thing. Either accept this narrower wording and change the plan to match, or put "forever" back here and in the store description, with the closing rule of promise 3 (90 days' notice) as its limit.
 3. **Scope of the exit clause.** The plan attaches the "law or store review" clause to the free list only. This draft repeats it for the whole page, because the app stores also control billing, trials and renewal notices. [LAWYER: confirm.] **Owner to decide,** together with note 2: keep the wider clause and change the plan, or narrow it here to the free list.
 4. **The 14-day reminder.** There is no account and no email address, so the reminder has to come from the app itself (a notice in the app, and a phone notification if the user allows notifications). This must be built before Pro goes on sale.

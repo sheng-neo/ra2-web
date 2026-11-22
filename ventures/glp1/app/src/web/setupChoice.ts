@@ -3,7 +3,7 @@
  * shows, which row is marked, when a brand still has to be chosen, and what redoing setup
  * starts from. Kept apart from Onboarding.tsx so they can be tested.
  */
-import { brandOptions, drugById, type BrandOption, type DoseUnit, type Region } from '../core/catalog';
+import { brandOptions, drugById, type BrandOption, type DoseUnit, type DrugEntry, type Region } from '../core/catalog';
 import type { CourseStatus, Regimen } from '../core/types';
 import { fromKg, storedKg, toKg, type WeightUnit } from '../core/units';
 
@@ -39,6 +39,30 @@ export function needsBrandPick(region: Region, drugId: string | null, brand: str
 export function isRowPicked(o: BrandOption, region: Region, drugId: string | null, brand: string | null): boolean {
   if (o.drugId !== drugId) return false;
   return o.brand === brand || (brand === null && !needsBrandPick(region, drugId, brand));
+}
+
+/**
+ * Rows of the Chinese medication list: the catalog entries, one row each, as before. One
+ * exception: where the region sells an entry under several brand names and a brand has numbers
+ * of its own (tirzepatide in the US: Zepbound and Mounjaro have different chart numbers), each
+ * brand is its own row, so that the person can say which one they take.
+ */
+export function chineseRows(entries: DrugEntry[], region: Region): BrandOption[] {
+  return entries.flatMap((entry): BrandOption[] => {
+    const brands = entry.brands[region] ?? [];
+    const split = brands.length > 1 && brands.some((b) => entry.byBrand?.[b] !== undefined);
+    return split ? brands.map((brand) => ({ drugId: entry.id, brand, entry })) : [{ drugId: entry.id, brand: null, entry }];
+  });
+}
+
+/** True when the Chinese list has a row per brand for the chosen medication and none is chosen yet. */
+export function needsBrandPickChinese(region: Region, drugId: string | null, brand: string | null): boolean {
+  return drugId !== null && brand === null && chineseRows([drugById(drugId)], region).length > 1;
+}
+
+/** Whether a row of the Chinese list is the chosen one: its medication, and its brand where the row has one. */
+export function isChineseRowPicked(o: BrandOption, drugId: string | null, brand: string | null): boolean {
+  return o.drugId === drugId && (o.brand === null || o.brand === brand);
 }
 
 export interface SetupStart {

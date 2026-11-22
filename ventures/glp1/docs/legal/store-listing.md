@@ -51,7 +51,7 @@ WHAT YOU CAN DO
 • Log each shot or pill in a few taps
 • Log your weight and your side effects
 • Get reminders for your next dose
-• See an estimated medication level chart, for medications whose numbers have a public source
+• See an estimated medication level chart for some brand-name weekly shots, with numbers from US prescribing information
 • See a weekly summary of your numbers
 • See a fixed "contact your doctor right away" message if you log certain serious symptoms
 • Export all your records at any time, and restore them from your own export file
@@ -69,7 +69,7 @@ WHICH MEDICATIONS
 You can log any GLP-1 medication, taken as a shot or as a pill. This includes semaglutide, tirzepatide, liraglutide and orforglipron. In the United States these are sold under brand names such as Wegovy, Ozempic, Zepbound, Mounjaro, Rybelsus, Saxenda and Foundayo. Brand names are used here only to help you find your medication. They are trademarks of their owners. [APP NAME] is not affiliated with, endorsed by or sponsored by any drug maker.
 
 WHAT THIS APP IS NOT
-[APP NAME] is a logging tool. It is not a medical device. It does not diagnose, treat, cure or prevent any condition. It does not give medical advice, and it does not tell you what dose to take. The estimated medication level chart is an estimate based on published population averages. It is not a measurement, and it cannot be used to adjust your dose. Talk to your doctor before you make decisions about your medication. If you think you have a medical emergency, call 911.
+[APP NAME] is a logging tool. It is not a medical device. It does not diagnose, treat, cure or prevent any condition. It does not give medical advice, and it does not tell you what dose to take. The estimated medication level chart is an estimate based on numbers from US prescribing information. It is not a measurement, and it cannot be used to adjust your dose. Talk to your doctor before you make decisions about your medication. If you think you have a medical emergency, call 911.
 
 PRIVACY
 • No account
@@ -100,7 +100,7 @@ Notes:
 - The section headings are in capitals only because store descriptions cannot show bold text. Change them to sentence case if you prefer.
 - The "Our three promises" block carries every promise of the promise page in short form: the free list, the same-price rule, the renewal price cap, the 14-day reminder, export without sign-up and the 90 days' notice. If the promise page changes, change this block in the same store update. The long description is about 3,500 characters with this block (about 3,600 once the placeholders are filled in), under the limit of 4,000. Count again after any edit.
 - [UNSURE: a store reviewer may object to a description that mentions a paid plan that is not on sale yet. If so, cut promise 2 down to its first sentence ("There is no paid plan today.") and keep the link to the promise page.]
-- [TO CONFIRM: every bullet under "What you can do" works in the store build on the day of submission. Remove any that does not. The chart must be open for at least one medication.]
+- [TO CONFIRM: every bullet under "What you can do" works in the store build on the day of submission. Remove any that does not. The chart must be open for at least one medication.] As of 2026-11-22 the launch build draws the chart for four weekly shots (Wegovy, Ozempic, Zepbound, Mounjaro), from doses logged in mg. It draws none for a medication taken every day, for a weekly shot typed in under "Other / custom", for tirzepatide saved without the name Zepbound or Mounjaro, or from doses logged in units, mL or clicks. So the chart bullet says "some brand-name weekly shots", not every weekly shot.
 - "Stored on your phone" is used without the word "only". Optional usage counts leave the phone, and the phone-backup question in the privacy policy is still open.
 
 ## 3. Screenshot captions

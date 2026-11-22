@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { doseUnitLabel, drugById, drugShortName, regimenLabel } from '../../core/catalog';
+import { brandNumbers, doseUnitLabel, drugById, drugShortName, maxDoseLabelName, regimenBrand, regimenLabel } from '../../core/catalog';
 import { doseCheckApplies } from '../../core/features';
 import { foodById, foodName, foodShortName } from '../../core/foods';
 import type { Lang } from '../../core/i18n';
@@ -85,6 +85,9 @@ function NoteDock({ profile, d }: { profile: Profile; d: Derived }) {
   const push = (...ps: Pending[]) => setPending((cur) => [...cur, ...ps]);
   const reg = profile.regimen;
   const photo = t('common.photo');
+  // The example in the box uses the person's own saved dose, so no dose number is written into
+  // the copy. The Chinese example speaks of a shot, so a pill gets none there.
+  const noteExample = reg && reg.doseAmount && reg.doseUnit === 'mg' && (lang === 'en' || drugById(reg.drugId).route !== 'oral') ? reg.doseAmount : null;
 
   const context = () => ({
     drug: reg ? regimenLabel(reg, profile.region, lang) : null,
@@ -173,7 +176,7 @@ function NoteDock({ profile, d }: { profile: Profile; d: Derived }) {
         <input
           value={text}
           onChange={(e) => setText(e.target.value)}
-          placeholder={busy ? t('input.busy') : t(profile.largeText ? 'input.placeholderLarge' : 'input.placeholder')}
+          placeholder={busy ? t('input.busy') : noteExample === null || profile.largeText ? t('input.placeholderLarge') : t('input.placeholder', { dose: noteExample })}
           aria-label={t('input.aria')}
           enterKeyHint="send"
           disabled={busy}
@@ -309,6 +312,8 @@ function DoseConfirm({ profile, d, draft, onClose }: { profile: Profile; d: Deri
   }
   const drug = drugById(reg.drugId);
   const name = drugShortName(drug, profile.region, lang, reg.brand);
+  // Catalog numbers are those of the brand's own label.
+  const brand = regimenBrand(reg, profile.region);
   const amount = draft.amount ?? reg.doseAmount ?? 0;
   const unit = draft.unit ?? reg.doseUnit;
   const at = draft.occurredAt ?? Date.now();
@@ -325,7 +330,7 @@ function DoseConfirm({ profile, d, draft, onClose }: { profile: Profile; d: Deri
     );
   }
   const confirm = async () => {
-    if (!overMax && doseCheckApplies(drug, amount, unit, features)) return setOverMax(true);
+    if (!overMax && doseCheckApplies(drug, amount, unit, features, brand)) return setOverMax(true);
     await addDose(profile, { drugId: reg.drugId, amount, unit, site, occurredAt: at, source: 'text' });
     onClose();
   };
@@ -338,8 +343,8 @@ function DoseConfirm({ profile, d, draft, onClose }: { profile: Profile; d: Deri
       <p className="dose-line">
         {name} <b>{amount} {doseUnitLabel(unit, lang)}</b> · {drug.route === 'oral' ? t('dose.byMouth') : site ? siteLabel(site, lang) : t('dose.noSite', { site: siteLabel(d.nextSite, lang) })} · {fmtWhen(at, d.tz, Date.now(), lang)}
       </p>
-      {/* The largest dose comes from the catalog and only guards against a typing slip. */}
-      {overMax && <p className="warn">{t('dose.overMax.card', { max: String(drug.maxMg) })}</p>}
+      {/* The largest dose comes from the catalog and only guards against a typing slip. The line names the US brand whose label it is from. */}
+      {overMax && <p className="warn">{t('dose.overMax.card', { max: String(brandNumbers(drug, brand).maxMg), name: maxDoseLabelName(drug, lang, brand) })}</p>}
       <div className="row">
         <button className="btn primary" onClick={() => void confirm()}>{overMax ? t('dose.confirmSure') : t('common.confirm')}</button>
         <button className="btn" onClick={() => setEditing(true)}>{t('dose.edit')}</button>

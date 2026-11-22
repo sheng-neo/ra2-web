@@ -11,7 +11,7 @@
  * show what the app shows, so nothing clinical is typed here a second time:
  * - card texts, coping cards, advice, workouts, the medication list, the food list and the
  *   launch switches come from src/core and src/web/content, by calling the functions the app
- *   calls;
+ *   calls. The label words behind each medication number come from src/core/labelFacts.ts;
  * - screen wording that lives in src/web/i18n/en.ts is read from that file as text, by key
  *   (screenText). A key that is gone stops the build;
  * - where this script explains code in plain words (trigger patterns, formulas, cut-offs), the
@@ -37,7 +37,8 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { createServer } from 'vite';
 
-import type { DrugEntry, PkParams } from '../src/core/catalog';
+import type { DrugEntry, DrugNumbers, PkParams } from '../src/core/catalog';
+import type { LabelDoc, LabelFact, LabelField, StatedTime } from '../src/core/labelFacts';
 import type { MgDose } from '../src/core/pk';
 import type { Advice } from '../src/core/today';
 import type { SymptomKind, TriageCard, TriageContext, TriageHit, TriageId, TriageLevel } from '../src/core/triage';
@@ -83,9 +84,10 @@ async function load<T>(rel: string): Promise<T> {
 }
 
 const { alertCards, fixedAlertCard, showsAlert } = await load<typeof import('../src/core/alert')>('src/core/alert.ts');
-const { brandOptions, CATALOG, hasLabelSource } = await load<typeof import('../src/core/catalog')>('src/core/catalog.ts');
+const { brandNumbers, brandOptions, CATALOG, hasLabelSource } = await load<typeof import('../src/core/catalog')>('src/core/catalog.ts');
 const { curveAvailable, FULL, labelFactsShown, LAUNCH, safetyQuestions, thirdTab } = await load<typeof import('../src/core/features')>('src/core/features.ts');
 const { FOODS, foodName, foodUnit } = await load<typeof import('../src/core/foods')>('src/core/foods.ts');
+const { hoursFromLabel, labelFact, LABELS_READ_ON, PK_RULE } = await load<typeof import('../src/core/labelFacts')>('src/core/labelFacts.ts');
 const { parseLocal } = await load<typeof import('../src/core/localParse')>('src/core/localParse.ts');
 const { bateman, concentration, exposureIndexAt, modelFor, steadyStatePeak } = await load<typeof import('../src/core/pk')>('src/core/pk.ts');
 const { bmi, proteinTarget } = await load<typeof import('../src/core/protein')>('src/core/protein.ts');
@@ -812,7 +814,7 @@ const DESCRIBED_CODE: [string, string, string, string][] = [
   ['src/core/pk.ts', 'export function concentration(', 'fa12fefe', 'section 5'],
   ['src/core/pk.ts', 'export function steadyStatePeak(', '884eea7b', 'section 5'],
   ['src/core/pk.ts', 'export function referenceDose(', 'ca701dc4', 'section 5'],
-  ['src/core/pk.ts', 'export function exposureCurve(', '502d8aee', 'section 5'],
+  ['src/core/pk.ts', 'export function exposureCurve(', '207398b9', 'section 5'],
   ['src/core/pk.ts', 'export function exposureIndexAt(', '899cc4de', 'section 5'],
   ['src/core/pk.ts', 'export function escalationInfo(', 'a4d9019a', 'sections 3.2 and 5'],
   ['src/core/pk.ts', 'export function daysUntilBelow(', '6a07df5d', 'section 6'],
@@ -828,7 +830,7 @@ const DESCRIBED_CODE: [string, string, string, string][] = [
   ['src/core/schedule.ts', 'export function nextDueMs(', 'c30caaa9', 'section 6 (dose timing)'],
   ['src/core/schedule.ts', 'export function dueStatus(', '6d302e68', 'section 6 (dose timing)'],
   ['src/core/schedule.ts', 'export function suggestSite(', '8c2d1110', 'section 6 (injection sites)'],
-  ['src/core/catalog.ts', 'export function needsDoseConfirm(', '506c35e3', 'section 4 (typing check)'],
+  ['src/core/catalog.ts', 'export function needsDoseConfirm(', '2c323485', 'section 4 (typing check)'],
 ];
 
 function checkDescribedCode(): void {
@@ -1564,107 +1566,173 @@ function hiddenTextsSection(counts: HiddenCounts): string[] {
 
 const NOT_CHECKED = 'From code, not yet checked against the FDA label';
 const BLANK_IN_APP = 'Not in the app. Left blank until it is read from the FDA label';
+/** Status of a number that has its row in src/core/labelFacts.ts. The day is the day the labels were read. */
+const READ_FROM_LABEL = `Read from the FDA label on ${LABELS_READ_ON}; not yet confirmed by a reviewer`;
+const NO_CHART_NUMBER = 'Not in the app. The chart is for weekly shots only, so no number is kept for a medication taken every day';
 
-const hoursWords = (h: number): string => (h % 24 === 0 ? `${h} hours (${plural(h / 24, 'day')})` : `${h} hours`);
+const hoursWords = (h: number): string => (h % 24 === 0 ? `${h} hours (${plural(h / 24, 'day')})` : h % 12 === 0 ? `${h} hours (${h / 24} days)` : `${h} hours`);
+/** "20260618" as "2026-06-18". */
+const isoDay = (yyyymmdd: string): string => `${yyyymmdd.slice(0, 4)}-${yyyymmdd.slice(4, 6)}-${yyyymmdd.slice(6, 8)}`;
 
 interface MedicationCounts {
   brands: number;
   entries: number;
   rows: number;
   numbers: number;
+  /** Numbers that have their label words in the table. */
+  fromLabel: number;
+  labels: number;
 }
 
-/** The US brand list grouped by catalog entry, in the order the app shows it. "Other / custom" is left out. */
-function usMedications(): { entry: DrugEntry; brands: string[] }[] {
-  const groups: { entry: DrugEntry; brands: string[] }[] = [];
-  for (const option of brandOptions('US')) {
-    if (option.brand === null) continue;
-    const group = groups.find((g) => g.entry.id === option.entry.id);
-    if (group) group.brands.push(option.brand);
-    else groups.push({ entry: option.entry, brands: [option.brand] });
-  }
-  return groups;
+/** One US brand: a row of the picker, with the numbers of its own label. "Other / custom" is left out. */
+interface UsBrand {
+  brand: string;
+  entry: DrugEntry;
+  numbers: DrugNumbers;
 }
+
+/** The US brand list, in the order the app shows it. */
+function usBrands(): UsBrand[] {
+  return brandOptions('US').flatMap((o) => (o.brand === null ? [] : [{ brand: o.brand, entry: o.entry, numbers: brandNumbers(o.entry, o.brand) }]));
+}
+
+/** The label a brand's rows were read from, where it has rows. */
+function labelOf(b: UsBrand): LabelDoc | null {
+  return (['frequency', 'ladderMg', 'maxMg', 'halfLifeH', 'tmaxH', 'fastingMin'] as LabelField[]).map((f) => labelFact(b.entry.id, b.brand, f)?.label).find((l) => l !== undefined) ?? null;
+}
+
+/** What a label states for a half-life or a time to peak, in words: "a range, 1 to 3 days". */
+function statedWords(s: StatedTime): string {
+  if (s.kind === 'range') return `a range, ${s.low} to ${s.high} ${s.unit}s`;
+  return `${s.kind === 'median' ? 'a median' : 'a single value'}, ${plural(s.value, s.unit)}`;
+}
+
+/** The cell that says where a number comes from: the status, the label's words with their sections, how the number follows, and the page. */
+function provenanceCell(fact: LabelFact | undefined, matches: boolean, fallback: string): string {
+  if (!fact || !matches) return fallback;
+  const words = fact.quotes.map((quote) => `${q(quote.text)} (section ${quote.section})`).join('; ');
+  const parts = [`${READ_FROM_LABEL}.`, `Label words: ${words}.`];
+  if (fact.stated) parts.push(`The label states ${statedWords(fact.stated)}; the app uses ${hoursWords(hoursFromLabel(fact.stated))}.`);
+  else if (fact.rule) parts.push(`How the number follows: ${md(fact.rule)}`);
+  if (fact.note) parts.push(`Note: ${md(fact.note)}`);
+  parts.push(`Label page: ${fact.label.url}`);
+  return parts.join(' ');
+}
+
+const sameSteps = (a: unknown, b: number[]): boolean => Array.isArray(a) && a.length === b.length && a.every((x, i) => x === b[i]);
 
 function medicationSection(counts: MedicationCounts): string[] {
   const out: string[] = [];
-  const groups = usMedications();
+  const brands = usBrands();
   const hasCustom = brandOptions('US').some((o) => o.entry.id === 'custom');
-  const anySource = groups.some((g) => hasLabelSource(g.entry));
-  const anyVerified = groups.some((g) => g.entry.verified);
-  counts.brands = groups.reduce((n, g) => n + g.brands.length, 0);
-  counts.entries = groups.length;
+  const anyVerified = brands.some((b) => b.entry.verified);
+  const labels = [...new Set(brands.map(labelOf).filter((l): l is LabelDoc => l !== null))];
+  counts.brands = brands.length;
+  counts.entries = new Set(brands.map((b) => b.entry.id)).size;
+  counts.labels = labels.length;
 
   out.push('## 4. US medication list', '');
   out.push(
-    `At setup a US user picks one of ${plural(counts.brands, 'brand')}${hasCustom ? ', or "Other / custom"' : ''}: ${groups.flatMap((g) => g.brands).join(', ')}. Brand names are used only so that people can find their own medication. Trademarks belong to their owners. The app is not connected to any drug maker.`,
+    `At setup a US user picks one of ${plural(counts.brands, 'brand')}${hasCustom ? ', or "Other / custom"' : ''}: ${brands.map((b) => b.brand).join(', ')}. Brand names are used only so that people can find their own medication. Trademarks belong to their owners. The app is not connected to any drug maker.`,
     '',
   );
+  const pills = brands.filter((b) => / pill$/.test(b.brand));
+  if (pills.length) {
+    out.push(
+      `${pills.map((b) => `"${b.brand}"`).join(' and ')} ${pills.length === 1 ? 'is the name the app gives' : 'are the names the app gives'} to the tablets sold under a brand name that is also a shot. They are separate rows, with the doses of the tablets.`,
+      '',
+    );
+  }
   out.push('How the app uses each number:', '');
   // The countdown on the main screen has its own wording, which says less than the line on the sheet.
   const countdown = screenCodeHas('src/web/screens/Today.tsx', /d\.fastingUntil && <div className="due">\{t\('today\.fasting'/, 'the countdown after a pill on the main screen') ? screenTextMany('today.fasting', { count: '[minutes]' }) : null;
   out.push(
     ...list([
-      `**Dose steps.** ${
+      `**Dose steps.** Every dose of the adult schedule in section 2 of the label, from the starting dose up to the highest dose the label gives to any adult. A dose the label gives for one of its uses only is still a step, and the note in its row says who it is for. ${
         screenCodeHas('src/web/screens/Onboarding.tsx', /example !== null \? t\('onb\.dose\.example', \{ dose: example \}\)/, 'how the dose steps are used')
           ? `Only the first step is used: at setup it is the grey example in the box where a person types the dose they were prescribed (${q(screenText('onb.dose.example', { dose: '[first step]' }))}).`
           : 'Used only as an example in the box where a person types the dose they were prescribed.'
       } The app never suggests a step and never says when to move up.`,
-      `**Highest dose.** A typing check, nothing more. When a person logs a dose in mg above this number, the app asks once: ${q(screenText('dose.overMax.form', { amount: '[amount]', unit: 'mg', max: '[highest dose]' }))} Then it lets them log it. Doses logged in other units are not checked and never converted.`,
-      '**Half-life and time to peak.** Used only for the chart in section 5.',
-      `**Wait after a pill.** On the sheet where a pill is logged the app shows: ${q(screenText('dose.fasting', { minutes: '[minutes]' }))} ${
-        countdown ? `After the pill is logged, the main screen counts those minutes down with other words: ${q(countdown)}. The countdown speaks of eating only; the sheet also says not to drink.` : 'After the pill is logged, the main screen counts those minutes down.'
+      `**Highest dose.** The highest dose the label gives to any adult. A typing check, nothing more. When a person types a dose in mg above this number, at setup or when logging a dose, the app asks once: ${q(screenText('dose.overMax.form', { amount: '[amount]', unit: 'mg', max: '[highest dose]', name: '[US brand]' }))} Then it lets them go on. The line names the US brand whose label the number is from; for a person whose medication has another brand name, or none, that is the US brand of the same medication. Doses in other units are not checked and never converted.`,
+      `**Half-life and time to peak.** Used only for the chart in section 5, and kept only for weekly shots. The chart needs one number for each. Our rule: ${PK_RULE}`,
+      `**Wait after a pill.** Kept only where the label states a waiting time. On the sheet where a pill is logged the app shows: ${q(screenText('dose.fasting', { minutes: '[minutes]' }))} ${
+        countdown ? `After the pill is logged, the main screen counts those minutes down: ${q(countdown)}. Both lines follow the label's sentence about the wait. The app says nothing about water. A pill logged with a time that is still to come starts no countdown.` : 'After the pill is logged, the main screen counts those minutes down.'
       }`,
     ]),
   );
-  // In a build where catalog numbers need a label source, none of the three uses above happens for an entry without one.
-  const factsAtLaunch = groups.filter((g) => labelFactsShown(g.entry, LAUNCH)).flatMap((g) => g.brands);
-  if (factsAtLaunch.length < counts.brands) {
+  const backed = brands.filter((b) => hasLabelSource(b.entry));
+  const factsAtLaunch = brands.filter((b) => labelFactsShown(b.entry, LAUNCH)).map((b) => b.brand);
+  out.push(
+    backed.length
+      ? `**Where the numbers come from.** We read the numbers of ${backed.length === brands.length ? 'every brand below' : backed.map((b) => b.brand).join(', ')} on the current US prescribing information (the FDA label, as published on DailyMed) on ${LABELS_READ_ON}. For each number the table gives the label's own words, the label section and the label page. Words are copied as they stand; " \\| " marks the line between two cells of a table row. ${anyVerified ? '' : 'Nobody outside our team has confirmed these numbers: that is what we ask of you here.'}`
+      : `No number has been read from a label yet. **Every number below is from the code and has not been checked against the FDA label.**${anyVerified ? '' : ' No entry has been marked as checked by a person.'}`,
+    '',
+  );
+  if (LAUNCH.curveNeedsSource) {
     out.push(
-      `**In the first public version a number is used only when its entry names the FDA label page it was read from.** That holds for the chart and for the three uses above: the dose example, the typing check and the wait after a pill. ${
-        factsAtLaunch.length ? `Today that is the case for ${factsAtLaunch.join(', ')} only.` : 'No entry does today, so the first public version shows no dose example, asks no typing check, and shows no wait after a pill. Every medication can only be logged.'
-      } Each use comes back by itself when the entry gets its label page. The full test version uses every number below as it stands.`,
+      `**In the first public version a number is used only when it was read from the label.** That holds for the chart and for the three other uses above: the dose example, the typing check and the wait after a pill. The app checks this by itself: a medication whose numbers do not all have their label words in the table below shows none of them and can only be logged. ${
+        factsAtLaunch.length === brands.length ? 'Today every brand below passes that check.' : factsAtLaunch.length ? `Today that check is passed by ${factsAtLaunch.join(', ')} only.` : 'Today no brand passes that check.'
+      } The full test version uses every number below as it stands.`,
       '',
     );
   }
+  if (labels.length) {
+    out.push('The label versions that were read:', '');
+    out.push(...table(['Label', 'Version', 'Effective date', 'DailyMed set id', 'Page'], labels.map((l) => [md(l.title), l.version, isoDay(l.effective), l.setid, l.url]), [6, 1, 2, 5, 8]));
+  }
   out.push(
-    anySource
-      ? 'Where an entry names the FDA label page its numbers were read from, the table says so. Every other number is from the code and has not been checked against the label.'
-      : `No entry names a label page yet. **Every number below is from the code and has not been checked against the FDA label.** The rule in the code is that a number may be added or changed only together with the address of the FDA label page it was read from.${anyVerified ? '' : ' No entry has been marked as checked by a person.'}`,
-    '',
-  );
-  out.push(
-    'Please write the correct value and the label section (for example "2.2" or "12.3") in the two blank columns. Leave a cell empty when the value in the app is right, and write "OK" in the label column. Where the app has no value, please give one from the label.',
+    'Please write the correct value and the label section (for example "2.2" or "12.3") in the two blank columns. Leave a cell empty when the value in the app is right, and write "OK" in the label column. Where the app has no value, please give one from the label, or tell us that the label gives none.',
     '',
   );
 
-  for (const { entry, brands } of groups) {
-    out.push(`#### ${brands.join(' and ')} (${entry.ingredient ?? entry.generic.en})`, '');
-    if (brands.length > 1) out.push(`${brands.join(' and ')} share one entry in the app, so they have the same numbers. Please tell us if they should differ.`, '');
-    const numberStatus = hasLabelSource(entry) ? `Read from the label page ${entry.source ?? ''}` : NOT_CHECKED;
+  for (const b of brands) {
+    const { brand, entry, numbers: n } = b;
+    const label = labelOf(b);
+    out.push(`#### ${brand} (${entry.ingredient ?? entry.generic.en})`, '');
+    const sharing = brands.filter((x) => x.entry.id === entry.id && x.brand !== brand).map((x) => x.brand);
+    if (sharing.length) out.push(`${brand} and ${sharing.join(' and ')} are one medication in the app. Each has the numbers of its own label, and where the two labels differ the numbers differ.`, '');
+    if (label) out.push(`Label read: ${md(label.title)}, version ${label.version}, effective ${isoDay(label.effective)}.`, '');
     const rows: string[][] = [];
-    const row = (what: string, value: string, status: string, numbers = 0) => {
+    const row = (what: string, value: string, status: string, numbers = 0, fromLabel = false) => {
       rows.push([code('M'), what, value, status, '', '']);
       counts.numbers += numbers;
+      if (fromLabel) counts.fromLabel += numbers;
     };
-    row(brands.length > 1 ? 'Brand names' : 'Brand name', brands.join(', '), NOT_CHECKED);
+    /** A number with its label row. The row counts only when it holds the same value as the app. */
+    const numberRow = (what: string, value: string, field: LabelField, present: boolean, matches: (f: LabelFact) => boolean, numbers: number, blank = BLANK_IN_APP) => {
+      const fact = labelFact(entry.id, brand, field);
+      const ok = fact !== undefined && matches(fact);
+      row(what, value, present ? provenanceCell(fact, ok, NOT_CHECKED) : ok ? provenanceCell(fact, true, blank) : blank, present ? numbers : 0, present && ok);
+    };
+    row('Brand name', brand, NOT_CHECKED);
     row('Generic name', entry.ingredient ?? entry.generic.en, NOT_CHECKED);
     row('How it is taken', entry.route === 'oral' ? 'Pill, by mouth' : 'Shot, under the skin', NOT_CHECKED);
-    row('How often', entry.frequency === 'daily' ? 'Once a day' : 'Once a week', NOT_CHECKED);
-    row('Dose steps (mg)', entry.ladderMg.join(', '), entry.ladderMg.length ? numberStatus : BLANK_IN_APP, entry.ladderMg.length);
-    row('Highest dose for the typing check (mg)', entry.maxMg === null ? '' : String(entry.maxMg), entry.maxMg === null ? BLANK_IN_APP : numberStatus, entry.maxMg === null ? 0 : 1);
-    row('Half-life used for the chart', entry.pk ? hoursWords(entry.pk.halfLifeH) : '', entry.pk ? numberStatus : BLANK_IN_APP, entry.pk ? 1 : 0);
-    row('Time to peak used for the chart', entry.pk ? hoursWords(entry.pk.tmaxH) : '', entry.pk ? numberStatus : BLANK_IN_APP, entry.pk ? 1 : 0);
+    numberRow('How often', entry.frequency === 'daily' ? 'Once a day' : 'Once a week', 'frequency', true, (f) => f.value === entry.frequency, 0);
+    numberRow('Dose steps (mg)', n.ladderMg.join(', '), 'ladderMg', n.ladderMg.length > 0, (f) => sameSteps(f.value, n.ladderMg), n.ladderMg.length);
+    numberRow('Highest dose for the typing check (mg)', n.maxMg === null ? '' : String(n.maxMg), 'maxMg', n.maxMg !== null, (f) => f.value === n.maxMg, 1);
+    const noPk = entry.frequency === 'daily' ? NO_CHART_NUMBER : BLANK_IN_APP;
+    numberRow('Half-life used for the chart', n.pk ? hoursWords(n.pk.halfLifeH) : '', 'halfLifeH', n.pk !== null, (f) => f.value === n.pk?.halfLifeH, 1, noPk);
+    numberRow('Time to peak used for the chart', n.pk ? hoursWords(n.pk.tmaxH) : '', 'tmaxH', n.pk !== null, (f) => f.value === n.pk?.tmaxH, 1, noPk);
     if (entry.route === 'oral') {
-      row('Wait after the pill before eating or drinking (minutes)', entry.fastingMin ? String(entry.fastingMin) : '', entry.fastingMin ? numberStatus : 'Not in the app. No wait is shown for this medication', entry.fastingMin ? 1 : 0);
+      // A tablet without a wait still has a row when the label was read: the words that say no wait is needed.
+      numberRow('Wait after the pill (minutes)', n.fastingMin ? String(n.fastingMin) : '', 'fastingMin', n.fastingMin !== undefined, (f) => f.value === (n.fastingMin ?? null), 1, 'Not in the app. No wait is shown for this medication');
     }
-    out.push(...table(['Code', 'What', 'In the app', 'Where it comes from', 'Your correction', 'Label section'], rows, [1, 5, 4, 5, 4, 3]));
+    out.push(...table(['Code', 'What', 'In the app', 'Where it comes from', 'Your correction', 'Label section'], rows, [1, 4, 3, 12, 3, 2]));
     counts.rows += rows.length;
     const drawn = (on: boolean) => (on ? 'drawn' : 'not drawn');
-    const why = !entry.pk ? ' (the app has no half-life and time to peak for it)' : !curveAvailable(entry, LAUNCH) ? ' (its numbers have no label source yet)' : '';
-    out.push(`Chart of the estimated medication level: ${drawn(curveAvailable(entry, LAUNCH))} in the first public version${why}; ${drawn(curveAvailable(entry, FULL))} in the full test version.`, '');
-    const otherUses = [entry.ladderMg.length ? 'the dose example' : '', entry.maxMg !== null ? 'the typing check' : '', entry.fastingMin ? 'the wait after a pill' : ''].filter(Boolean);
-    if (otherUses.length) out.push(`${sentenceCase(otherUses.join(', '))}: ${labelFactsShown(entry, LAUNCH) ? 'used' : 'not used'} in the first public version${labelFactsShown(entry, LAUNCH) ? '' : ' (no label source yet)'}; used in the full test version.`, '');
+    const why = !n.pk ? ' (the app has no half-life and time to peak for it)' : !curveAvailable(entry, LAUNCH, brand) ? ' (its numbers do not all have their label words)' : '';
+    out.push(`Chart of the estimated medication level: ${drawn(curveAvailable(entry, LAUNCH, brand))} in the first public version${why}; ${drawn(curveAvailable(entry, FULL, brand))} in the full test version.`, '');
+    const otherUses = [n.ladderMg.length ? 'the dose example' : '', n.maxMg !== null ? 'the typing check' : '', n.fastingMin ? 'the wait after a pill' : ''].filter(Boolean);
+    if (otherUses.length) out.push(`${sentenceCase(otherUses.join(', '))}: ${labelFactsShown(entry, LAUNCH) ? 'used' : 'not used'} in the first public version${labelFactsShown(entry, LAUNCH) ? '' : ' (its numbers do not all have their label words)'}; used in the full test version.`, '');
+  }
+  // A regimen can be saved without a brand name; where two brands of one medication have different chart numbers the app then has none.
+  const split = [...new Set(brands.filter((b) => b.entry.byBrand && brandNumbers(b.entry).pk === null && b.numbers.pk !== null).map((b) => b.entry))];
+  for (const entry of split) {
+    const names = brands.filter((b) => b.entry.id === entry.id).map((b) => b.brand);
+    out.push(
+      `**${sentenceCase(entry.ingredient ?? entry.generic.en)} without a brand name.** A person whose saved medication is ${entry.ingredient ?? entry.generic.en} with neither of the names ${names.join(' and ')} (for example a profile from another country) gets the dose example and the typing check, which are the same on both labels, but no chart: the app does not choose between the two labels. In place of the chart the app says why (section 5.4). A person in the United States is told where to choose the brand; the chart is then drawn.`,
+      '',
+    );
   }
   if (hasCustom) out.push('**Other / custom.** The person types the name of the medication. The app has no numbers for it, so there is no typing check and no chart.', '');
   return out;
@@ -1725,29 +1793,29 @@ interface CurveCounts {
 
 function curveSection(counts: CurveCounts): string[] {
   const out: string[] = [];
-  const meds = usMedications().filter((g) => g.entry.pk !== null);
-  // Entries with the same numbers and the same schedule are one column.
+  const meds = usBrands().filter((b) => b.numbers.pk !== null);
+  // Brands with the same numbers and the same schedule are one column.
   const columns: { names: string[]; pk: PkParams; intervalH: number; facts: PkFacts }[] = [];
-  for (const { entry, brands } of meds) {
-    const pk = entry.pk as PkParams;
+  for (const { entry, brand, numbers } of meds) {
+    const pk = numbers.pk as PkParams;
     const intervalH = entry.frequency === 'daily' ? 24 : 168;
     const same = columns.find((c) => c.pk.halfLifeH === pk.halfLifeH && c.pk.tmaxH === pk.tmaxH && c.intervalH === intervalH);
-    if (same) same.names.push(...brands);
-    else columns.push({ names: [...brands], pk, intervalH, facts: pkFacts(pk, intervalH) });
+    if (same) same.names.push(brand);
+    else columns.push({ names: [brand], pk, intervalH, facts: pkFacts(pk, intervalH) });
   }
   for (const c of columns) {
     if (Math.abs(c.facts.singlePeakH - c.pk.tmaxH) > 0.3) problems.push(`Section 5 says a single dose peaks at the time to peak, but for ${c.names.join(', ')} the model peaks at ${c.facts.singlePeakH.toFixed(1)} h, not ${c.pk.tmaxH} h.`);
   }
-  const launchCurves = usMedications().filter((g) => curveAvailable(g.entry, LAUNCH)).flatMap((g) => g.brands);
-  const noNumbers = usMedications().filter((g) => g.entry.pk === null).flatMap((g) => g.brands);
+  const launchCurves = usBrands().filter((b) => curveAvailable(b.entry, LAUNCH, b.brand)).map((b) => b.brand);
+  const noNumbers = usBrands().filter((b) => b.numbers.pk === null).map((b) => b.brand);
 
   out.push('## 5. The estimated medication level: method and wording', '');
   out.push(
-    'The chart shows a rough picture of how much medication is in the body over time, worked out from the doses the person logged. It is a population-average estimate. It is not a measurement, it has no unit, and the app says it cannot be used to adjust a dose.',
+    'The chart shows a rough picture of how much medication is in the body over time, worked out from the doses the person logged and from two numbers of the label (section 4). The same two numbers are used for every person on a medication. It is an estimate, not a measurement. It has no unit, and the app says it cannot be used to adjust a dose.',
     '',
   );
   out.push(
-    `In the first public version the chart is drawn ${LAUNCH.curveNeedsSource ? 'only for a medication whose numbers in section 4 name the FDA label page they were read from' : 'for every medication that has a half-life and a time to peak in section 4'}. Today that is: ${launchCurves.length ? launchCurves.join(', ') : 'no medication'}. Medications with numbers in the code: ${meds.flatMap((g) => g.brands).join(', ') || 'none'}. Medications without numbers, which never get a chart: ${noNumbers.join(', ') || 'none'}.`,
+    `In the first public version the chart is drawn ${LAUNCH.curveNeedsSource ? 'only for a medication whose numbers in section 4 were all read from the FDA label' : 'for every medication that has a half-life and a time to peak in section 4'}. Today that is: ${launchCurves.length ? launchCurves.join(', ') : 'no medication'}. Medications with a half-life and a time to peak in the code: ${meds.map((b) => b.brand).join(', ') || 'none'}. Medications without them, which never get a chart: ${noNumbers.join(', ') || 'none'}. The chart is designed for weekly shots; medications taken every day have no numbers for it on purpose.`,
     '',
   );
 
@@ -1756,17 +1824,17 @@ function curveSection(counts: CurveCounts): string[] {
   out.push('```', 'B(t) = ka / (ka - ke) x ( e^(-ke x t) - e^(-ka x t) )        B(t) = 0 before the dose', '```', '');
   out.push(
     ...list([
-      '**ke** = ln 2 / half-life.',
+      '**ke** = ln 2 / half-life. The half-life and the time to peak are the single numbers of section 4, taken from the label by the rule given there.',
       '**ka** is not read from a label. It is solved so that B(t) is highest exactly at the time to peak: ln(ka / ke) / (ka - ke) = time to peak.',
       '**All logged doses are added up:** Level(t) = sum of (dose in mg x B(t - time of that dose)).',
       '**The number on screen** is 100 x Level(t) / Peak, rounded to a whole number. Peak is the highest Level in one dosing interval after 20 doses of the *most recently logged dose*, taken exactly on the schedule the person set. So 100 means "the highest point after long-term use of the dose you logged last".',
-      '**The chart** covers the last 14 days (solid line) and the next 7 days (dashed line), one point every 3 hours. The dashed part assumes the person keeps taking the same dose on schedule. When the status is not "Increasing dose" or "Maintenance dose", the dashed part has no future doses and only falls.',
+      '**The chart** covers the last 14 days (solid line) and the next 7 days (dashed line), one point every 3 hours. The dashed part assumes the person takes the same dose at each planned time from now on. A planned time that has passed without a logged dose is not counted: an overdue dose is left out until the person logs it, and the dashed part goes on from the next planned time on the same rhythm. So the dashed line starts where the solid line ends. When the status is not "Increasing dose" or "Maintenance dose", the dashed part has no future doses and only falls.',
       'No factor turns a dose into a concentration (no absorbed fraction, volume or clearance). The result is a relative number only.',
     ]),
   );
 
   out.push('### 5.2 What the model does with the numbers in section 4', '');
-  out.push('These values were worked out by running the code. They are not from a label. They are here so you can judge whether the picture is believable.', '');
+  out.push('The first two rows are the numbers of section 4. Every other value was worked out by running the code and is not from a label. They are here so you can judge whether the picture is believable.', '');
   const cell = (f: (c: (typeof columns)[number]) => string): string[] => columns.map(f);
   const daysCell = (d: number | null) => (d === null ? 'more than a year' : `${round(d, 1)} days`);
   out.push(
@@ -1816,11 +1884,13 @@ function curveSection(counts: CurveCounts): string[] {
 
   out.push('### 5.3 Assumptions and limits', '');
   const history = screenCodeHas('src/web/derive.ts', /Math\.min\(Math\.floor\(weeksOnDose\) - 1, (\d+)\)/, 'how many earlier doses the chart assumes');
-  const sameNumbers = columns.filter((c) => c.names.length > 1 && new Set(meds.filter((g) => g.brands.some((b) => c.names.includes(b))).map((g) => g.entry.id)).size > 1);
+  const sameNumbers = columns.filter((c) => c.names.length > 1 && new Set(meds.filter((b) => c.names.includes(b.brand)).map((b) => b.entry.id)).size > 1);
+  // Brands of one medication that are drawn with different numbers, because their labels differ.
+  const splitBrands = [...new Set(meds.map((b) => b.entry.id))].map((id) => meds.filter((b) => b.entry.id === id)).filter((group) => new Set(group.map((b) => `${b.numbers.pk?.halfLifeH}/${b.numbers.pk?.tmaxH}`)).size > 1);
   const assumptions = [
-    'Everyone is treated as the same average person. Body weight, kidney function, age, injection site and other medications change nothing.',
+    'Everyone on a medication is treated as the same person, with the two numbers of section 4. Body weight, kidney function, age, injection site and other medications change nothing.',
     'One compartment only. Absorption and elimination are both first-order.',
-    'The time to peak is one number. The absorption rate is solved from it and is not checked against anything else.',
+    'The half-life is one number and the time to peak is one number, both read from section 12.3 of the label only. Where that section gives only a range, the app uses its midpoint (section 4); a midpoint is not an average and is not a figure the label prints. The absorption rate is solved from the time to peak and is not checked against anything else.',
     'Doses add up in a straight line: twice the dose gives twice the level.',
     'There is no absorbed fraction, volume or clearance in the model, so there is no concentration. Only a relative number is shown.',
     'The scale changes with the dose: 100 is always the long-term peak of the dose logged last (see the example in 5.2). Numbers from before and after a dose change cannot be compared.',
@@ -1828,26 +1898,45 @@ function curveSection(counts: CurveCounts): string[] {
     'Only doses logged in mg are used. Doses logged in units, mL or clicks are left out and never converted.',
     `When a person says at setup that they have been on their current dose for several weeks, the chart assumes earlier doses of the same amount on schedule${history ? ` (one for each of those weeks, ${history[1]} at most)` : ''}. They are used only for the chart and are not saved as records.`,
     'A dose that was taken but not logged is missing from the chart. A dose logged at the wrong time is used as logged.',
+    'A planned dose that is overdue is not in the dashed part (5.1). The dashed line then shows what happens if that dose is not taken and the next planned one is. The app gives no advice about a missed dose.',
     `Medications without a half-life and time to peak in the app get no chart: ${noNumbers.join(', ') || 'none'}.`,
     ...sameNumbers.map((c) => `${c.names.join(' and ')} are separate entries in the app but use the same half-life and time to peak.`),
+    ...splitBrands.map((group) => `${group.map((b) => b.brand).join(' and ')} contain the same ingredient but are drawn with different numbers, because their labels word the half-life and the time to peak differently (section 4). The same doses give a different line for each brand.`),
     'The chart is not used by any other rule. The danger-symptom rules, the dose-increase period and the reminders do not read it.',
   ];
   out.push(...table(['Code', 'Assumption or limit'], assumptions.map((a) => [code('P'), a]), [1, 14]));
   counts.assumptions = assumptions.length;
 
   out.push('### 5.4 Exact wording on screen', '');
-  const sema = CATALOG.find((d) => d.id === 'semaglutide-wl')?.pk;
-  const tirz = CATALOG.find((d) => d.id === 'tirzepatide')?.pk;
-  const method = screenText('trends.method.body', { semaHalfLife: sema?.halfLifeH ?? '?', semaPeak: sema?.tmaxH ?? '?', tirzHalfLife: tirz?.halfLifeH ?? '?', tirzPeak: tirz?.tmaxH ?? '?' });
+  // The method text names the person's own medication and its two numbers. It is shown here for the first medication with a chart.
+  const example = meds[0];
+  const method = screenText('trends.method.body', { name: example?.brand ?? '?', halfLife: example?.numbers.pk?.halfLifeH ?? '?', peak: example?.numbers.pk?.tmaxH ?? '?' });
   if (/\[\w+\]/.test(method)) problems.push(`The method text ("trends.method.body") has a placeholder this script does not fill: ${method.match(/\[\w+\]/g)?.join(', ') ?? ''}. Update curveSection().`);
+  if (!example) problems.push('Section 5.4 shows the method text for a medication with a chart, but no US brand has a half-life and a time to peak. Update curveSection().');
+  for (const piece of ['pharmacokinetics section of the US prescribing information', 'Where that section gives one value or a median', 'middle of the range', 'They are not measured in you', 'not a lab measurement', 'cannot be used to adjust your dose']) {
+    if (!method.includes(piece)) problems.push(`The method text ("trends.method.body") no longer says "${piece}". Section 5.4 of the packet describes it as saying so; re-read the text and update curveSection().`);
+  }
+  // The large chart's place shows the same no-chart line as the main screen; the sentence below rests on that.
+  const noChartOnTrends =
+    screenCodeHas('src/web/screens/Trends.tsx', /<p className="muted">\{noChartText\(d, t\.lang\)\}<\/p>/, 'where the no-chart line is shown on the trends screen') &&
+    screenCodeHas('src/web/content/labels.ts', /translate\(lang, features\.curveNeedsSource \? 'curve\.unavailable' : 'today\.noCurve'\)/, 'which no-chart line each version shows');
+  // A medication whose chart numbers belong to single brands, saved without one of them, has its own two lines.
+  const needsBrandLines = screenCodeHas('src/web/content/labels.ts', /d\.chartNeedsBrand\.canChoose \? translate\(lang, 'curve\.chooseBrand', \{ brands, button: translate\(lang, 'me\.med\.change'\) \}\) : translate\(lang, 'curve\.twoLabels', \{ brands \}\)/, 'the line shown when the chart only needs a brand');
+  const splitNames = splitBrands[0]?.map((b) => b.brand).join(' and ') ?? '[brands]';
   const wordings: [string, string][] = [
     ['Title of the chart', screenText('curve.title')],
     ['Under the small chart on the main screen', screenText('today.curve.note')],
     ['Under the large chart', screenText('trends.curve.note')],
-    [`Link under the large chart (${q(screenText('trends.method.link'))}) opens this text`, method],
-    ...(LAUNCH.curveNeedsSource ? [['In place of the chart in the first public version, when the numbers of the medication have no label source', screenText('curve.unavailable')] as [string, string]] : []),
-    [`On the main screen when the medication has no chart${LAUNCH.curveNeedsSource ? ' (full test version)' : ''}`, screenText('today.noCurve')],
-    ['In place of the large chart when there is nothing to draw', screenText('trends.curve.empty')],
+    [`Link under the large chart (${q(screenText('trends.method.link'))}) opens this text. It is shown here as a person on ${example?.brand ?? '?'} sees it; the name and the two numbers are those of the person's own medication (section 4)`, method],
+    ...(LAUNCH.curveNeedsSource ? [['In place of the chart in the first public version, when the medication has no chart (a medication taken every day, a medication that is not on the list, or one whose numbers were not all read from the label)', screenText('curve.unavailable')] as [string, string]] : []),
+    ...(needsBrandLines && splitBrands.length
+      ? ([
+          [`In place of the chart, in both versions, when the saved medication is ${splitBrands[0][0].entry.ingredient ?? ''} with neither of the names ${splitNames} and the person is in the United States, where the list offers both`, screenText('curve.chooseBrand', { brands: splitNames, button: screenText('me.med.change') })],
+          [`The same, for a person whose list does not offer the two names (another country, or "Other")`, screenText('curve.twoLabels', { brands: splitNames })],
+        ] as [string, string][])
+      : []),
+    [`${noChartOnTrends ? 'On the main screen and in place of the large chart' : 'On the main screen'} when the medication has no chart${LAUNCH.curveNeedsSource ? ' (full test version)' : ''}`, screenText('today.noCurve')],
+    ['In place of the large chart when the medication has a chart but no dose has been logged in mg yet', screenText('trends.curve.empty')],
     ['On the sheet where a dose is logged', screenText('dose.unitNote')],
     ...(LAUNCH.loggingToolNotice ? [['Line at the bottom of the main screens in the first public version', screenText('notice.loggingTool')] as [string, string]] : []),
     [`Line at the bottom of the main screens${LAUNCH.loggingToolNotice ? ' in the full test version' : ''}`, disclaimer('en')],
@@ -2106,12 +2195,8 @@ interface OpenQuestion {
  */
 const QUESTIONS_FROM_COMMENTS: OpenQuestion[] = [
   {
-    from: ['src/core/catalog.ts#a5a5bec8', 'src/core/catalog.ts#c15c246f'],
-    ask: 'Every brand name, dose step, highest dose, half-life and time to peak in section 4 is unchecked. Please check each row against the current FDA label and give the label section. The code comment points to label section 12.3 for the half-life and the time to peak.',
-  },
-  {
-    from: ['src/core/catalog.ts#e0f30e29'],
-    ask: 'Foundayo (orforglipron) has no dose steps, no highest dose and no numbers for the chart in the app, because nobody has read them from the label yet. Please give them with their label sections, or tell us where the label gives none.',
+    from: ['src/core/catalog.ts#f131c62e'],
+    ask: `The dose steps, the highest dose, the half-life, the time to peak and the wait after a pill in section 4 were read from the current US labels by us on ${LABELS_READ_ON}. Nobody outside our team has confirmed them. Please check each row against the label words quoted next to it and against the label itself, and give the label section. The brand names, the generic names and how each medication is taken have not been checked against a label.`,
   },
   {
     from: ['src/core/triage.ts#919582a7', 'src/core/triage.ts#0347ea12', 'src/core/triage.ts#f1f55955'],
@@ -2218,15 +2303,61 @@ function openQuestionsSection(internals: TriageInternals): string[] {
   }
   extra.push('The number on the chart can drop right after a dose increase, because 100 is tied to the dose logged last (example in section 5.2). Could that mislead a person? Would a fixed scale be safer?');
   extra.push('After a late weekly dose the app shows the next dose on the usual weekday when that is at least 72 hours away (section 6.5). The app gives no advice about missed doses, but it does show this date. Is 72 hours a safe line for every weekly medication in section 4?');
-  const orals = usMedications().filter((g) => g.entry.route === 'oral');
+  const orals = usBrands().filter((b) => b.entry.route === 'oral');
   if (orals.length) {
-    const withWait = orals.filter((g) => g.entry.fastingMin).flatMap((g) => g.brands);
-    const withoutWait = orals.filter((g) => !g.entry.fastingMin).flatMap((g) => g.brands);
+    const withWait = orals.filter((b) => b.numbers.fastingMin).map((b) => b.brand);
+    const withoutWait = orals.filter((b) => !b.numbers.fastingMin).map((b) => b.brand);
+    // What the labels say about the wait, where the rows of section 4 quote it.
+    const waitWords = orals.map((b) => labelFact(b.entry.id, b.brand, 'fastingMin')).filter((f): f is LabelFact => f !== undefined && f.value !== null);
+    const waterWords = orals.map((b) => labelFact(b.entry.id, b.brand, 'frequency')).some((f) => f?.quotes.some((x) => x.text.includes('up to 4 ounces')));
+    const labelSays =
+      waitWords.length && waitWords.every((f) => f.quotes.some((x) => x.text.includes('wait at least') && x.text.includes('drinking beverages or taking other oral medications')))
+        ? ` The labels say to wait "at least" that long before eating food, drinking beverages or taking other oral medications, and the app's two lines now say the same${waterWords ? '. The labels also say to take the tablet with water, "up to 4 ounces"; the app says nothing about water' : ''}.`
+        : '';
     extra.push(
-      `The app shows a wait before eating or drinking after a pill for ${withWait.join(' and ') || 'no medication'}${withoutWait.length ? `, and none for ${withoutWait.join(' and ')}` : ''} (section 4). Is the wording of that line right for each of them, including what it says about water? The countdown on the main screen says only to wait before eating, while the sheet says not to eat or drink. Should the two say the same?`,
+      `The app shows a wait after a pill for ${withWait.join(', ') || 'no medication'}${withoutWait.length ? `, and none for ${withoutWait.join(' and ')}` : ''} (section 4).${labelSays} Is the wording right for each of them? Should the app also say how to take the tablet (empty stomach, in the morning, how much water)?`,
     );
   }
-  extra.push(`The typing check calls its limit "the usual highest dose" (section 4). Is the highest dose on the label the right limit for this check, and is that the right name for it?`);
+  // Decisions we took when reading the labels. Each is stated from the rows of section 4.
+  const allBrands = usBrands();
+  // The highest dose of a brand is also its last step. Where the label gives that dose to some patients only, the row says so in its note.
+  const limited = allBrands.flatMap((b) => {
+    const max = b.numbers.maxMg;
+    const note = labelFact(b.entry.id, b.brand, 'maxMg')?.note;
+    return max !== null && note && sameSteps(labelFact(b.entry.id, b.brand, 'ladderMg')?.value, b.numbers.ladderMg) && b.numbers.ladderMg[b.numbers.ladderMg.length - 1] === max ? [`${b.brand}, ${max} mg: ${md(note)}`] : [];
+  });
+  if (limited.length) {
+    extra.push(
+      `For every brand the app takes the highest dose the label gives to any adult. It is the limit of the typing check and the last dose step. For these brands the label gives that dose to some patients only, or gives a lower one to others. ${limited.join(' ')} Is that the right way to treat these doses, for the typing check and for the list of steps?`,
+    );
+  }
+  const midpoints = allBrands.flatMap((b) =>
+    (['halfLifeH', 'tmaxH'] as const).flatMap((field) => {
+      const fact = labelFact(b.entry.id, b.brand, field);
+      return fact?.stated?.kind === 'range' ? [`${b.brand}, ${field === 'halfLifeH' ? 'half-life' : 'time to peak'}: the label gives ${fact.stated.low} to ${fact.stated.high} ${fact.stated.unit}s and the app uses ${hoursWords(hoursFromLabel(fact.stated))}`] : [];
+    }),
+  );
+  if (midpoints.length) extra.push(`Where a label gives only a range for the half-life or the time to peak, the chart uses the midpoint of the range (section 4). That is the case for: ${midpoints.join('; ')}. Is the midpoint a fair single number for a rough chart of this kind? Would you take another value from the label?`);
+  for (const entryId of [...new Set(allBrands.filter((b) => b.entry.byBrand).map((b) => b.entry.id))]) {
+    const group = allBrands.filter((b) => b.entry.id === entryId && b.numbers.pk !== null);
+    if (new Set(group.map((b) => `${b.numbers.pk?.halfLifeH}/${b.numbers.pk?.tmaxH}`)).size < 2) continue;
+    const notes = group.flatMap((b) => {
+      const note = labelFact(entryId, b.brand, 'halfLifeH')?.note;
+      return note ? [`${b.brand}: ${note}`] : [];
+    });
+    extra.push(
+      `${group.map((b) => b.brand).join(' and ')} contain the same ingredient, but the chart uses different numbers for each, because their labels word them differently: ${group.map((b) => `${b.brand} half-life ${hoursWords(b.numbers.pk?.halfLifeH ?? 0)}, time to peak ${hoursWords(b.numbers.pk?.tmaxH ?? 0)}`).join('; ')}. ${notes.map(md).join(' ')} Should the two brands be drawn differently? If not, which numbers should both use?`.replace(/ {2,}/g, ' '),
+    );
+  }
+  const pillNames = allBrands.filter((b) => / pill$/.test(b.brand)).map((b) => b.brand);
+  if (pillNames.length) extra.push(`The app lists the tablets of a brand that is also a shot under its own name: ${pillNames.map((n) => `"${n}"`).join(', ')}. Could a person pick the wrong row, and so see the dose example and the highest dose of the other form? Is "pill" the right word for these tablets?`);
+  // Brands whose label gives a top dose without calling it a maximum (the row of section 4 says so in its rule).
+  const topStepOnly = allBrands.filter((b) => labelFact(b.entry.id, b.brand, 'maxMg')?.rule !== undefined).map((b) => b.brand);
+  extra.push(
+    `The typing check calls its limit "the highest dose in the US prescribing information for" the brand (section 4). Is the highest dose on the label the right limit for this check, and is that a fair name for it?${
+      topStepOnly.length ? ` For ${topStepOnly.join(', ')} the label does not call that dose a maximum in section 2; the app uses the highest dose of the label's schedule.` : ''
+    } A person whose medication has another brand name, or none, is shown the name of the US brand of the same medication. Is that clear enough?`,
+  );
   extra.push('A person can check "A history of an eating disorder" at setup (section 6.7). Almost nothing changes when they do. What should the app do differently for them, for example with the goal weight, the weight chart or the fast-drop line?');
 
   out.push('### 7.2 Questions that came up while this packet was put together', '');
@@ -2314,7 +2445,7 @@ async function main(): Promise<void> {
 
   const triage: TriageCounts = { rules: 0, cards: 0, triggers: 0, testPhrases: 0, probes: 0 };
   const hidden: HiddenCounts = { copingCards: 0, copingLines: 0, adviceTexts: 0, routines: 0, exercises: 0 };
-  const meds: MedicationCounts = { brands: 0, entries: 0, rows: 0, numbers: 0 };
+  const meds: MedicationCounts = { brands: 0, entries: 0, rows: 0, numbers: 0, fromLabel: 0, labels: 0 };
   const curve: CurveCounts = { wordings: 0, assumptions: 0 };
   const numbers: NumberCounts = { numbers: 0, foods: 0, textNumbers: 0 };
 
@@ -2335,7 +2466,7 @@ async function main(): Promise<void> {
 
   const questions = coded('Q');
   const items = triage.rules + triage.triggers + coded('B') + coded('L') + coded('O') + coded('U') + coded('X') + hidden.copingLines + coded('A') + hidden.exercises + coded('M') + coded('P') + coded('S') + coded('N') + coded('F') + questions;
-  const launchCurveBrands = usMedications().filter((g) => curveAvailable(g.entry, LAUNCH)).flatMap((g) => g.brands);
+  const launchCurveBrands = usBrands().filter((b) => curveAvailable(b.entry, LAUNCH, b.brand)).map((b) => b.brand);
   const contents = table(
     ['Section', 'What it holds', 'Size', 'In the first public version'],
     [
@@ -2350,12 +2481,14 @@ async function main(): Promise<void> {
       [
         '4',
         'US medication list',
-        `${plural(meds.brands, 'brand')}, ${plural(meds.rows, 'row')}, ${plural(meds.numbers, 'number')} to check`,
-        usMedications().some((g) => labelFactsShown(g.entry, LAUNCH))
-          ? 'The names are shown. The dose example, the typing check and the wait after a pill are used only for a medication with label-checked numbers'
-          : 'The names are shown. No number is used yet: no medication has label-checked numbers, so there is no dose example, no typing check and no wait after a pill',
+        `${plural(meds.brands, 'brand')}, ${plural(meds.rows, 'row')}, ${plural(meds.numbers, 'number')} to check (${meds.fromLabel === meds.numbers ? 'all' : meds.fromLabel} with their label words, from ${plural(meds.labels, 'label')})`,
+        usBrands().every((b) => labelFactsShown(b.entry, LAUNCH))
+          ? 'The names are shown. The dose example, the typing check and the wait after a pill are used: every number was read from the label'
+          : usBrands().some((b) => labelFactsShown(b.entry, LAUNCH))
+            ? 'The names are shown. The dose example, the typing check and the wait after a pill are used only for a medication whose numbers were all read from the label'
+            : 'The names are shown. No number is used yet: no medication has numbers read from the label, so there is no dose example, no typing check and no wait after a pill',
       ],
-      ['5', 'Estimated medication level: method and wording', `${plural(curve.assumptions, 'assumption')}, ${plural(curve.wordings, 'screen text')}`, launchCurveBrands.length ? `Chart shown for ${launchCurveBrands.join(', ')}` : 'No chart yet: no medication has label-checked numbers'],
+      ['5', 'Estimated medication level: method and wording', `${plural(curve.assumptions, 'assumption')}, ${plural(curve.wordings, 'screen text')}`, launchCurveBrands.length ? `Chart shown for ${launchCurveBrands.join(', ')}` : 'No chart yet: no medication has numbers read from the label'],
       ['6', 'Other numbers that need a clinical eye', `${plural(numbers.numbers, 'cut-off or rule', 'cut-offs and rules')}, ${plural(numbers.foods, 'food value')}, ${plural(numbers.textNumbers, 'sentence')} with numbers`, `${LAUNCH.foodAndProtein ? '' : 'Protein target and food values are hidden until reviewed. '}Dose timing, injection sites and the setup questions are live`],
       ['7', 'Open questions', plural(questions, 'question'), ''],
     ],

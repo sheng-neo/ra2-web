@@ -10,14 +10,14 @@ Before anyone uses the app, we want a US-licensed pharmacist or physician to go 
 
 **What we would send you**
 
-One document, the review packet (attached). It is about 17,500 words: about 47 pages in a compact print layout, or about 75 pages as a plain Word file. Most of it is tables. It has 401 coded items, so a comment can be as short as "M-17: change to ...". It holds:
+One document, the review packet (attached). It is about 22,200 words: about 59 pages in a compact print layout, or about 95 pages as a plain Word file. Most of it is tables. It has 425 coded items, so a comment can be as short as "M-17: change to ...". It holds:
 
 - 14 danger-symptom rules, with 16 card texts and 101 trigger patterns, and the example phrases they were tested with;
 - 4 coping cards, 17 daily advice texts and 15 exercises, all switched off in the app until they have been reviewed;
-- the US medication list: 8 brands with 42 numbers (dose steps, highest dose, half-life, time to peak) to check against the current FDA labels;
+- the US medication list: 9 brands with 63 numbers (dose steps, highest dose, half-life, time to peak, wait after a pill). We read them from the current FDA labels ourselves. Each one has the label's own words, the label section and the label page next to it, for you to check;
 - the method and the exact on-screen wording of a chart called "Estimated medication level";
 - other cut-offs the app uses (protein target, food values, weight trend, dose timing);
-- 24 open questions.
+- 27 open questions.
 
 **What we ask you to do**
 

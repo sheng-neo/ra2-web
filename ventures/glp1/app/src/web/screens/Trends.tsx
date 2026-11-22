@@ -1,19 +1,31 @@
 import { useState } from 'react';
-import { drugById } from '../../core/catalog';
+import { brandLabel, brandNumbers, drugById, hasLabelSource, labelBrand, regimenBrand } from '../../core/catalog';
+import type { Lang } from '../../core/i18n';
 import type { DoseEvent, Profile } from '../../core/types';
 import { dayKey, fmtDayKey, shiftDayKey } from '../../core/tz';
 import { fmtWeight, fmtWeightChange, fromKg, unitLabel, type WeightUnit } from '../../core/units';
 import { Curve } from '../components/Curve';
 import { Card } from '../components/ui';
+import { noChartText } from '../content/labels';
 import type { Derived, Records } from '../derive';
 import { features } from '../features';
 import { bold, useT } from '../i18n';
 
-/** Half-life and time to peak shown in the method note. Read from the catalog so the note cannot drift from the curve. */
-function methodNumbers() {
-  const sema = drugById('semaglutide-wl').pk;
-  const tirz = drugById('tirzepatide').pk;
-  return { semaHalfLife: sema?.halfLifeH ?? '?', semaPeak: sema?.tmaxH ?? '?', tirzHalfLife: tirz?.halfLifeH ?? '?', tirzPeak: tirz?.tmaxH ?? '?' };
+/**
+ * What the method note names: the US brand whose prescribing information the two numbers were
+ * read from, and the half-life and time to peak the chart uses for this person's medication.
+ * They are read from the catalog, so the note cannot drift from the curve. Null when the numbers
+ * have no US label behind them; the note says they do, so it is then not offered.
+ */
+export function methodFacts(profile: Profile, lang: Lang): { name: string; halfLife: number; peak: number } | null {
+  const reg = profile.regimen;
+  if (!reg) return null;
+  const drug = drugById(reg.drugId);
+  const brand = regimenBrand(reg, profile.region);
+  const pk = brandNumbers(drug, brand).pk;
+  const usBrand = labelBrand(drug, brand);
+  if (!pk || !usBrand || !hasLabelSource(drug)) return null;
+  return { name: brandLabel(drug, usBrand, lang), halfLife: pk.halfLifeH, peak: pk.tmaxH };
 }
 
 /** How far a single weigh-in can swing, in the user's unit (about half a kilogram to one kilogram). */
@@ -24,6 +36,7 @@ function dailySwing(u: WeightUnit): string {
 export function Trends({ profile, d, rec, now }: { profile: Profile; d: Derived; rec: Records; now: number }) {
   const t = useT();
   const [method, setMethod] = useState(false);
+  const methodNote = methodFacts(profile, t.lang);
   const doses = rec.doses.filter((x) => x.deletedAt === null && (!profile.regimen || x.drugId === profile.regimen.drugId));
   return (
     <div className="screen">
@@ -37,20 +50,21 @@ export function Trends({ profile, d, rec, now }: { profile: Profile; d: Derived;
           </div>
           <Curve points={d.curve} nowMs={now} doseTimes={doses.map((x) => x.occurredAt)} height={150} />
           <p className="fine">{t('trends.curve.note')}</p>
-          <button className="link" onClick={() => setMethod(!method)}>
-            {t('trends.method.link')}
-          </button>
-          {method && <div className="fine method">{t('trends.method.body', methodNumbers())}</div>}
+          {methodNote && (
+            <button className="link" onClick={() => setMethod(!method)}>
+              {t('trends.method.link')}
+            </button>
+          )}
+          {methodNote && method && <div className="fine method">{t('trends.method.body', methodNote)}</div>}
         </Card>
-      ) : features.curveNeedsSource && !d.curveAvailable ? (
-        // No chart can be drawn for this medication in this build. Without a medication there is nothing to say.
-        d.drug && (
-          <Card>
-            <h3>{t('curve.title')}</h3>
-            <p className="muted">{t('curve.unavailable')}</p>
-          </Card>
-        )
-      ) : (
+      ) : d.drug && !d.curveAvailable ? (
+        // No chart can be drawn for this medication in this build, so the card must not promise one.
+        <Card>
+          <h3>{t('curve.title')}</h3>
+          <p className="muted">{noChartText(d, t.lang)}</p>
+        </Card>
+      ) : features.curveNeedsSource && !d.drug ? null : (
+        // A chart will come once doses are logged in mg. Without a medication the launch build says nothing.
         <Card>
           <h3>{t('trends.curve.emptyTitle')}</h3>
           <p className="muted">{t('trends.curve.empty')}</p>

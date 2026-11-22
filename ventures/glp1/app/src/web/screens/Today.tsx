@@ -8,7 +8,7 @@ import type { Profile } from '../../core/types';
 import { fmtWeight } from '../../core/units';
 import { deleteRecord } from '../actions';
 import { adviceText } from '../content/advice';
-import { footNote, statusLabel } from '../content/labels';
+import { footNote, noChartText, statusLabel } from '../content/labels';
 import { routineTitle } from '../content/workouts';
 import { Curve } from '../components/Curve';
 import { Card } from '../components/ui';
@@ -75,10 +75,10 @@ export function Today({ profile, d, now, onOpenTrends, onOpenMe }: { profile: Pr
         (features.curveNeedsSource ? (
           <Card>
             <h3>{t('curve.title')}</h3>
-            <p className="muted">{t('curve.unavailable')}</p>
+            <p className="muted">{noChartText(d, lang)}</p>
           </Card>
         ) : (
-          <p className="fine pad">{t('today.noCurve')}</p>
+          <p className="fine pad">{noChartText(d, lang)}</p>
         ))}
 
       <Card>

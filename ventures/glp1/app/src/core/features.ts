@@ -11,7 +11,7 @@
  * build from src/web/features.ts. The functions in this file take the switches as an argument,
  * so they can be tested for both profiles.
  */
-import { hasLabelSource, needsDoseConfirm, regionsFor, type DoseUnit, type DrugEntry, type Region } from './catalog';
+import { brandNumbers, chartBrands, hasLabelSource, maxDoseLabelBrands, needsDoseConfirm, regionsFor, type DoseUnit, type DrugEntry, type Region } from './catalog';
 import { LANGS, type Lang } from './i18n';
 import type { Safety } from './types';
 
@@ -55,10 +55,12 @@ export interface Features {
    */
   allRegions: boolean;
   /**
-   * On: the numbers of a catalog entry are used only when the entry names the label they were
-   * read from (`source`). That covers the estimated medication level curve and every other place
-   * a catalog number reaches the screen: the dose example in setup, the typing check against the
-   * highest dose, and the wait after a pill. Without a source the medication can only be logged.
+   * On: the numbers of a catalog entry are used only when the entry is label-backed: it names
+   * the US label pages they were read from (`source`) and every number has its row in
+   * core/labelFacts.ts (hasLabelSource). That covers the estimated medication level curve and
+   * every other place a catalog number reaches the screen: the dose example in setup, the typing
+   * check against the highest dose, and the wait after a pill. An entry that is not label-backed
+   * can only be logged.
    * Off: any entry with numbers.
    */
   curveNeedsSource: boolean;
@@ -204,35 +206,56 @@ export function regionChoices(lang: Lang, current: Region, f: Pick<Features, 'al
 /**
  * Whether the numbers of a medication's catalog entry may be used on screen at all: for the
  * curve, the dose example in setup, the typing check against the highest dose, and the wait
- * after a pill. Where the build needs a label source, an entry without one shows none of them;
- * they come back by themselves once the entry gets its `source`.
+ * after a pill. Where the build needs a label source, an entry that is not label-backed shows
+ * none of them; they come back by themselves once every number of the entry has its label row.
+ *
+ * The functions below take the brand of the regimen as well, because two brands of one entry can
+ * have different numbers on their labels (catalog.ts, brandNumbers).
  */
 export function labelFactsShown(drug: DrugEntry, f: Pick<Features, 'curveNeedsSource'>): boolean {
   return !f.curveNeedsSource || hasLabelSource(drug);
 }
 
 /** Whether the estimated medication level curve may be drawn for a medication. */
-export function curveAvailable(drug: DrugEntry, f: Pick<Features, 'curveNeedsSource'>): boolean {
-  return drug.pk !== null && labelFactsShown(drug, f);
+export function curveAvailable(drug: DrugEntry, f: Pick<Features, 'curveNeedsSource'>, brand?: string | null): boolean {
+  return brandNumbers(drug, brand).pk !== null && labelFactsShown(drug, f);
 }
 
 /**
- * Whether a typed dose gets the second confirmation ("more than the usual highest dose"). The
- * message names the highest dose of the catalog entry, so it is asked only where that number
- * may be shown.
+ * Whether a typed dose gets the second confirmation ("more than the highest dose in the US
+ * prescribing information for ..."). The message names the highest dose of the catalog entry
+ * and the US brand whose label it is from, so it is asked only where that number may be shown
+ * and there is such a brand to name (maxDoseLabelBrands).
  */
-export function doseCheckApplies(drug: DrugEntry, amount: number, unit: DoseUnit, f: Pick<Features, 'curveNeedsSource'>): boolean {
-  return labelFactsShown(drug, f) && needsDoseConfirm(drug, amount, unit);
+export function doseCheckApplies(drug: DrugEntry, amount: number, unit: DoseUnit, f: Pick<Features, 'curveNeedsSource'>, brand?: string | null): boolean {
+  return labelFactsShown(drug, f) && maxDoseLabelBrands(drug, brand).length > 0 && needsDoseConfirm(drug, amount, unit, brand);
 }
 
-/** Minutes to wait after a pill before eating or drinking, where the build may show the number. Null: no wait is shown. */
-export function fastingMinutes(drug: DrugEntry, f: Pick<Features, 'curveNeedsSource'>): number | null {
-  return drug.fastingMin && labelFactsShown(drug, f) ? drug.fastingMin : null;
+/**
+ * Why a medication that has chart numbers gets no chart: the numbers belong to single brands,
+ * because their US labels state them differently, and the regimen names none of those brands
+ * (tirzepatide without Zepbound or Mounjaro). `brands` are the brands that would get a chart in
+ * this build. `canChoose` says whether the person's region lists them all, so that picking one
+ * in setup brings the chart; elsewhere the person can do nothing about it. Null in every other
+ * case, also for a medication that has no chart numbers at all.
+ */
+export function chartNeedsBrand(drug: DrugEntry, f: Pick<Features, 'curveNeedsSource'>, brand: string | null | undefined, region: Region): { brands: string[]; canChoose: boolean } | null {
+  const brands = chartBrands(drug, brand).filter((b) => curveAvailable(drug, f, b));
+  if (!brands.length) return null;
+  const listed = drug.brands[region] ?? [];
+  return { brands, canChoose: brands.every((b) => listed.includes(b)) };
+}
+
+/** Minutes to wait after a pill before eating, drinking or taking other oral medications, where the build may show the number. Null: no wait is shown. */
+export function fastingMinutes(drug: DrugEntry, f: Pick<Features, 'curveNeedsSource'>, brand?: string | null): number | null {
+  const wait = brandNumbers(drug, brand).fastingMin;
+  return wait && labelFactsShown(drug, f) ? wait : null;
 }
 
 /** The dose shown as an example of the format in setup, where the build may show the number. Null: no example. */
-export function doseExample(drug: DrugEntry, f: Pick<Features, 'curveNeedsSource'>): number | null {
-  return drug.ladderMg.length && labelFactsShown(drug, f) ? drug.ladderMg[0] : null;
+export function doseExample(drug: DrugEntry, f: Pick<Features, 'curveNeedsSource'>, brand?: string | null): number | null {
+  const steps = brandNumbers(drug, brand).ladderMg;
+  return steps.length && labelFactsShown(drug, f) ? steps[0] : null;
 }
 
 /**

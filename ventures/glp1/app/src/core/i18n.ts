@@ -69,6 +69,13 @@ export function plural(n: number, one: string, many = `${one}s`): string {
   return `${n} ${n === 1 ? one : many}`;
 }
 
+/** Names in one phrase: "Zepbound and Mounjaro", "A, B and C"; Chinese "Zepbound 和 Mounjaro". */
+export function listNames(names: string[], lang: Lang): string {
+  if (names.length < 2) return names.join('');
+  const and = lang === 'en' ? ' and ' : ' 和 ';
+  return `${names.slice(0, -1).join(lang === 'en' ? ', ' : '、')}${and}${names[names.length - 1]}`;
+}
+
 /** BCP 47 tag, for the page's lang attribute and for Intl. */
 export function htmlLang(lang: Lang): 'en' | 'zh-Hans' | 'zh-Hant' {
   return lang === 'en' ? 'en' : lang === 'hant' ? 'zh-Hant' : 'zh-Hans';

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { brandOptionLabel, brandOptions, CATALOG, DEFAULT_REGION, doseUnitLabel, drugById, drugFormText, drugLabel, drugShortName, hasLabelSource, regimenLabel, regionLabel, regionsFor, searchCatalog } from './catalog';
 import { FOODS, foodName, foodShortName, foodUnit } from './foods';
-import { DEFAULT_LANG, htmlLang, isLang, langOrDefault, pick, plural, profileLang, scriptFor, type Lang } from './i18n';
+import { DEFAULT_LANG, htmlLang, isLang, langOrDefault, listNames, pick, plural, profileLang, scriptFor, type Lang } from './i18n';
 import { reminderFileName, reminderIcs, reminderTitle } from './ics';
 import { parseLocal } from './localParse';
 import { newProfile, startRegion } from './profile';
@@ -258,6 +258,17 @@ describe('calendar reminder in English', () => {
   });
 });
 
+describe('names in one phrase', () => {
+  it('joins two names with "and", and more with commas', () => {
+    expect(listNames(['Zepbound', 'Mounjaro'], 'en')).toBe('Zepbound and Mounjaro');
+    expect(listNames(['A', 'B', 'C'], 'en')).toBe('A, B and C');
+    expect(listNames(['Zepbound', 'Mounjaro'], 'hans')).toBe('Zepbound 和 Mounjaro');
+    expect(listNames(['A', 'B', 'C'], 'hans')).toBe('A、B 和 C');
+    expect(listNames(['Wegovy'], 'en')).toBe('Wegovy');
+    expect(listNames([], 'en')).toBe('');
+  });
+});
+
 describe('US medication list', () => {
   const us = brandOptions('US');
 
@@ -270,11 +281,12 @@ describe('US medication list', () => {
       'Wegovy pill (semaglutide)',
       'Foundayo (orforglipron)',
       'Rybelsus (semaglutide)',
+      'Ozempic pill (semaglutide)',
       'Saxenda (liraglutide)',
       'Other / custom',
     ]);
     // "Shot", the word every other screen uses for an injection.
-    expect(us.map((o) => drugFormText(o.entry, 'en')).slice(0, 8)).toEqual(['Shot · weekly', 'Shot · weekly', 'Shot · weekly', 'Shot · weekly', 'Pill · daily', 'Pill · daily', 'Pill · daily', 'Shot · daily']);
+    expect(us.map((o) => drugFormText(o.entry, 'en')).slice(0, 9)).toEqual(['Shot · weekly', 'Shot · weekly', 'Shot · weekly', 'Shot · weekly', 'Pill · daily', 'Pill · daily', 'Pill · daily', 'Pill · daily', 'Shot · daily']);
   });
 
   it('lets the user pick Zepbound and Mounjaro separately although they share one entry', () => {
@@ -297,6 +309,10 @@ describe('US medication list', () => {
     expect(us.find((o) => o.brand === 'Foundayo')!.entry).toMatchObject({ id: 'orforglipron', route: 'oral', frequency: 'daily' });
     expect(us.find((o) => o.brand === 'Saxenda')!.entry).toMatchObject({ id: 'liraglutide', route: 'sc', frequency: 'daily' });
     expect(us.find((o) => o.brand === 'Wegovy')!.entry).toMatchObject({ id: 'semaglutide-wl', route: 'sc', frequency: 'weekly' });
+    // The two Ozempic rows are different medications: a weekly shot and a daily tablet.
+    expect(us.find((o) => o.brand === 'Ozempic')!.entry).toMatchObject({ id: 'semaglutide-t2d', route: 'sc', frequency: 'weekly' });
+    expect(us.find((o) => o.brand === 'Ozempic pill')!.entry).toMatchObject({ id: 'semaglutide-oral-t2d-ozempic', route: 'oral', frequency: 'daily' });
+    expect(us.find((o) => o.brand === 'Rybelsus')!.entry).toMatchObject({ id: 'semaglutide-oral-t2d', route: 'oral', frequency: 'daily' });
     expect(us[us.length - 1]).toMatchObject({ drugId: 'custom', brand: null });
   });
 
@@ -307,6 +323,23 @@ describe('US medication list', () => {
     expect(drugLabel(pill, 'US', 'hant')).toBe('Wegovy 片（口服司美格魯肽（減重））');
     expect(drugShortName(pill, 'US', 'hans')).toBe('Wegovy 片');
     expect(drugShortName(pill, 'US', 'en')).toBe('Wegovy pill');
+    const ozempicPill = drugById('semaglutide-oral-t2d-ozempic');
+    expect(drugLabel(ozempicPill, 'US', 'en')).toBe('Ozempic pill (semaglutide)');
+    expect(drugShortName(ozempicPill, 'US', 'hans')).toBe('Ozempic 片');
+    expect(drugLabel(ozempicPill, 'OTHER', 'en')).toBe('oral semaglutide for diabetes (Ozempic tablets)');
+    // Next to its brand name the Chinese generic name does not repeat the brand.
+    expect(drugLabel(ozempicPill, 'US', 'hans')).toBe('Ozempic 片（口服司美格鲁肽（降糖））');
+    expect(drugLabel(ozempicPill, 'US', 'hant')).toBe('Ozempic 片（口服司美格魯肽（降糖））');
+    expect(drugLabel(ozempicPill, 'CN', 'hans')).toBe('口服司美格鲁肽（降糖，Ozempic 片）');
+    // Liraglutide is named after its use, like semaglutide: the numbers are those of the weight product's label.
+    const lira = drugById('liraglutide');
+    expect(drugLabel(lira, 'OTHER', 'en')).toBe('liraglutide for weight');
+    expect(drugLabel(lira, 'US', 'en')).toBe('Saxenda (liraglutide)');
+    expect(drugLabel(lira, 'CN', 'hans')).toBe('利拉鲁肽（减重）');
+    expect(drugLabel(lira, 'TW', 'hant')).toBe('善纖達（利拉魯肽（減重））');
+    expect(lira.brands.CN).toBeUndefined();
+    expect(searchCatalog('liraglutide').map((d) => d.id)).toEqual(['liraglutide']);
+    expect(searchCatalog('利拉鲁肽').map((d) => d.id)).toEqual(['liraglutide']);
     // No brand in the region: the generic name, which says which semaglutide it is.
     expect(drugLabel(drugById('semaglutide-wl'), 'OTHER', 'en')).toBe('semaglutide for weight');
     expect(drugLabel(drugById('semaglutide-oral-t2d'), 'OTHER', 'en')).toBe('oral semaglutide for diabetes');
@@ -329,8 +362,9 @@ describe('US medication list', () => {
       expect(regionLabel(region, 'en')).toMatch(ASCII);
     }
     // A brand that is only written in Chinese is shown by its generic English name.
-    expect(brandOptions('CN').map((o) => brandOptionLabel(o, 'CN', 'en'))).toEqual(['semaglutide for weight', 'semaglutide for diabetes', 'tirzepatide', 'mazdutide', 'liraglutide', 'oral semaglutide for diabetes', 'Other / custom']);
-    expect(brandOptions('TW').map((o) => brandOptionLabel(o, 'TW', 'en'))).toEqual(['semaglutide for weight', 'semaglutide for diabetes', 'tirzepatide', 'liraglutide', 'oral semaglutide for diabetes', 'Other / custom']);
+    // Mainland China has no liraglutide row: the weight product's name there is not confirmed.
+    expect(brandOptions('CN').map((o) => brandOptionLabel(o, 'CN', 'en'))).toEqual(['semaglutide for weight', 'semaglutide for diabetes', 'tirzepatide', 'mazdutide', 'oral semaglutide for diabetes', 'Other / custom']);
+    expect(brandOptions('TW').map((o) => brandOptionLabel(o, 'TW', 'en'))).toEqual(['semaglutide for weight', 'semaglutide for diabetes', 'tirzepatide', 'liraglutide for weight', 'oral semaglutide for diabetes', 'Other / custom']);
     expect(regimenLabel({ drugId: 'tirzepatide', brand: '穆峰达' }, 'CN', 'en')).toBe('tirzepatide');
     expect(regimenLabel({ drugId: 'tirzepatide', brand: '穆峰达' }, 'CN', 'hans')).toBe('穆峰达（替尔泊肽）');
     expect(regionLabel('US', 'en')).toBe('United States');
@@ -340,8 +374,11 @@ describe('US medication list', () => {
   });
 
   it('other regions keep their own brands; a region without brands lists generic names', () => {
-    expect(brandOptions('CN').map((o) => brandOptionLabel(o, 'CN', 'hans'))).toEqual(['诺和盈（司美格鲁肽（减重））', '诺和泰（司美格鲁肽（降糖））', '穆峰达（替尔泊肽）', '信尔美（玛仕度肽）', '利拉鲁肽（利拉鲁肽）', '诺和忻（口服司美格鲁肽（降糖））', '其他 / 自己填']);
-    expect(brandOptions('OTHER').map((o) => o.brand)).toEqual([null, null, null, null, null, null, null, null, null]);
+    expect(brandOptions('CN').map((o) => brandOptionLabel(o, 'CN', 'hans'))).toEqual(['诺和盈（司美格鲁肽（减重））', '诺和泰（司美格鲁肽（降糖））', '穆峰达（替尔泊肽）', '信尔美（玛仕度肽）', '诺和忻（口服司美格鲁肽（降糖））', '其他 / 自己填']);
+    expect(brandOptions('OTHER').map((o) => o.brand)).toEqual([null, null, null, null, null, null, null, null, null, null]);
+    // Every generic row has its own name, so two entries cannot be mistaken for each other.
+    const generic = brandOptions('OTHER').map((o) => brandOptionLabel(o, 'OTHER', 'en'));
+    expect(new Set(generic).size).toBe(generic.length);
     expect(brandOptions('OTHER').map((o) => o.drugId)).toEqual(CATALOG.map((d) => d.id));
   });
 
@@ -349,43 +386,53 @@ describe('US medication list', () => {
     expect(searchCatalog('foundayo').map((d) => d.id)).toEqual(['orforglipron']);
     expect(searchCatalog('wegovy pill').map((d) => d.id)).toEqual(['semaglutide-oral-wl']);
     expect(searchCatalog('Wegovy 片').map((d) => d.id)).toEqual(['semaglutide-oral-wl']);
-    expect(searchCatalog('semaglutide').map((d) => d.id)).toEqual(['semaglutide-wl', 'semaglutide-t2d', 'semaglutide-oral-wl', 'semaglutide-oral-t2d']);
+    expect(searchCatalog('semaglutide').map((d) => d.id)).toEqual(['semaglutide-wl', 'semaglutide-t2d', 'semaglutide-oral-wl', 'semaglutide-oral-t2d', 'semaglutide-oral-t2d-ozempic']);
+    expect(searchCatalog('ozempic pill').map((d) => d.id)).toEqual(['semaglutide-oral-t2d-ozempic']);
+    expect(searchCatalog('Ozempic 片').map((d) => d.id)).toEqual(['semaglutide-oral-t2d-ozempic']);
+    expect(searchCatalog('ozempic').map((d) => d.id)).toEqual(['semaglutide-t2d', 'semaglutide-oral-t2d-ozempic']);
   });
 });
 
 describe('drug facts are never invented', () => {
-  /** The numbers that were in the code before the US list was added. */
-  const KNOWN: Record<string, { ladderMg: number[]; maxMg: number | null; pk: { halfLifeH: number; tmaxH: number } | null; fastingMin?: number }> = {
+  /** The numbers in the catalog, as read from the US labels on 2026-11-22 (labelFacts.ts has the label words). */
+  const READ: Record<string, { ladderMg: number[]; maxMg: number | null; pk: { halfLifeH: number; tmaxH: number } | null; fastingMin?: number }> = {
     'semaglutide-wl': { ladderMg: [0.25, 0.5, 1, 1.7, 2.4, 7.2], maxMg: 7.2, pk: { halfLifeH: 168, tmaxH: 48 } },
     'semaglutide-t2d': { ladderMg: [0.25, 0.5, 1, 2], maxMg: 2, pk: { halfLifeH: 168, tmaxH: 48 } },
-    tirzepatide: { ladderMg: [2.5, 5, 7.5, 10, 12.5, 15], maxMg: 15, pk: { halfLifeH: 120, tmaxH: 24 } },
+    tirzepatide: { ladderMg: [2.5, 5, 7.5, 10, 12.5, 15], maxMg: 15, pk: null },
     mazdutide: { ladderMg: [], maxMg: null, pk: null },
     liraglutide: { ladderMg: [0.6, 1.2, 1.8, 2.4, 3], maxMg: 3, pk: null },
     'semaglutide-oral-wl': { ladderMg: [1.5, 4, 9, 25], maxMg: 25, pk: null, fastingMin: 30 },
     'semaglutide-oral-t2d': { ladderMg: [3, 7, 14], maxMg: 14, pk: null, fastingMin: 30 },
-    orforglipron: { ladderMg: [], maxMg: null, pk: null },
+    'semaglutide-oral-t2d-ozempic': { ladderMg: [1.5, 4, 9], maxMg: 9, pk: null, fastingMin: 30 },
+    orforglipron: { ladderMg: [0.8, 2.5, 5.5, 9, 14.5, 17.2], maxMg: 17.2, pk: null },
     custom: { ladderMg: [], maxMg: null, pk: null },
   };
 
-  it('an entry without a label source has only the numbers the code already had', () => {
-    expect(CATALOG.map((d) => d.id)).toEqual(Object.keys(KNOWN));
-    for (const d of CATALOG) {
-      if (d.source) continue;
-      expect({ ladderMg: d.ladderMg, maxMg: d.maxMg, pk: d.pk, fastingMin: d.fastingMin }, d.id).toEqual({ fastingMin: undefined, ...KNOWN[d.id] });
-    }
+  it('the catalog has exactly these entries and numbers; changing one means reading the label again', () => {
+    expect(CATALOG.map((d) => d.id)).toEqual(Object.keys(READ));
+    for (const d of CATALOG) expect({ ladderMg: d.ladderMg, maxMg: d.maxMg, pk: d.pk, fastingMin: d.fastingMin }, d.id).toEqual({ fastingMin: undefined, ...READ[d.id] });
+    expect(drugById('tirzepatide').byBrand).toEqual({ Zepbound: { pk: { halfLifeH: 132, tmaxH: 24 } }, Mounjaro: { pk: { halfLifeH: 120, tmaxH: 40 } } });
+    for (const d of CATALOG) if (d.id !== 'tirzepatide') expect(d.byBrand, d.id).toBeUndefined();
   });
 
-  it('a source is an FDA label page, and nothing is marked verified by code', () => {
+  it('a source is a US label page, an entry without one has no numbers, and nothing is marked verified by code', () => {
     for (const d of CATALOG) {
-      if (d.source) expect(d.source, d.id).toMatch(/^https:\/\/(www\.accessdata\.fda\.gov|dailymed\.nlm\.nih\.gov)\//);
+      for (const url of d.source ?? []) expect(url, d.id).toMatch(/^https:\/\/(www\.accessdata\.fda\.gov|dailymed\.nlm\.nih\.gov)\//);
       expect(hasLabelSource(d), d.id).toBe(d.source !== undefined);
+      if (!d.source) expect({ ladderMg: d.ladderMg, maxMg: d.maxMg, pk: d.pk, fastingMin: d.fastingMin, byBrand: d.byBrand }, d.id).toEqual({ ladderMg: [], maxMg: null, pk: null, fastingMin: undefined, byBrand: undefined });
       expect(d.verified, d.id).toBe(false);
     }
   });
 
-  it('Foundayo can be logged but has no dose ladder, no dose check and no curve until its label is read', () => {
-    expect(drugById('orforglipron')).toMatchObject({ ladderMg: [], maxMg: null, pk: null, verified: false });
-    expect(drugById('orforglipron').source).toBeUndefined();
+  it('Foundayo has the dose steps and the highest dose of its label, no wait and no chart', () => {
+    expect(drugById('orforglipron')).toMatchObject({ ladderMg: [0.8, 2.5, 5.5, 9, 14.5, 17.2], maxMg: 17.2, pk: null, verified: false });
+    expect(drugById('orforglipron').fastingMin).toBeUndefined();
+    expect(drugById('orforglipron').source).toHaveLength(1);
+  });
+
+  it('a medication with no US brand has no numbers at all', () => {
+    expect(drugById('mazdutide')).toMatchObject({ ladderMg: [], maxMg: null, pk: null, verified: false });
+    expect(drugById('mazdutide').source).toBeUndefined();
   });
 });
 

@@ -41,7 +41,7 @@ The app records what you enter. It does not check your entries against your pres
 
 ## 5. Estimates are estimates
 
-- **The estimated medication level chart** is drawn from the doses you logged and from published averages for large groups of people. It is not a measurement of your body. People take in and clear medication at very different speeds. You cannot use the chart to adjust your dose.
+- **The estimated medication level chart** is drawn from the doses you logged and from two numbers in the US prescribing information for your medication. The same two numbers are used for every person on that medication. It is not a measurement of your body. People take in and clear medication at very different speeds. You cannot use the chart to adjust your dose.
 - **The weekly summary** only adds up the numbers you entered.
 - **Reminders** depend on your phone and its settings. A reminder can be late or can fail. Do not rely on the app as your only reminder.
 

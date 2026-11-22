@@ -1,8 +1,8 @@
 /**
  * 把本地记录和核心规则拼起来，算出"今天"页需要的一切。纯函数，便于测试。
  */
-import { drugById, type DrugEntry } from '../core/catalog';
-import { curveAvailable, fastingMinutes } from '../core/features';
+import { brandNumbers, drugById, regimenBrand, type DrugEntry } from '../core/catalog';
+import { chartNeedsBrand, curveAvailable, fastingMinutes } from '../core/features';
 import { escalationInfo, exposureCurve, type CurvePoint, type EscalationInfo, type MgDose } from '../core/pk';
 import { proteinTarget, type ProteinTarget } from '../core/protein';
 import { dueStatus, intervalHours, nextDueMs, suggestSite, type DueStatus, type Site } from '../core/schedule';
@@ -45,6 +45,12 @@ export interface Derived {
   advice: Advice;
   /** Whether this build draws the estimated medication level curve for the medication at all (core/features.ts). */
   curveAvailable: boolean;
+  /**
+   * Set when there is no chart only because the regimen names none of the brands that have chart
+   * numbers of their own (core/features.ts, chartNeedsBrand). The screens then say so, and where
+   * the person can choose a brand they say where.
+   */
+  chartNeedsBrand: { brands: string[]; canChoose: boolean } | null;
   curve: CurvePoint[];
   curveNow: number | null;
   nextSite: Site;
@@ -140,17 +146,24 @@ export function derive(profile: Profile, rec: Records, nowMs: number, tz: string
 
   let curve: CurvePoint[] = [];
   let curveNow: number | null = null;
-  const canDraw = drug !== null && curveAvailable(drug, { curveNeedsSource });
-  if (drug?.pk && canDraw && reg && mgDoses.length) {
-    curve = exposureCurve({ doses: mgDoses, params: drug.pk, intervalH: intervalHours(reg.schedule), nowMs, nextDueMs: active ? nextDue : null });
+  // The half-life and the time to peak are those of the brand's own label (catalog.ts, brandNumbers).
+  const brand = reg ? regimenBrand(reg, profile.region) : null;
+  const pk = drug ? brandNumbers(drug, brand).pk : null;
+  const canDraw = drug !== null && curveAvailable(drug, { curveNeedsSource }, brand);
+  const needsBrand = drug !== null && !canDraw ? chartNeedsBrand(drug, { curveNeedsSource }, brand, profile.region) : null;
+  if (pk && canDraw && reg && mgDoses.length) {
+    curve = exposureCurve({ doses: mgDoses, params: pk, intervalH: intervalHours(reg.schedule), nowMs, nextDueMs: active ? nextDue : null });
     const past = curve.filter((p) => !p.projected);
     curveNow = past.length ? Math.round(past[past.length - 1].index) : null;
   }
 
   const weightAvgs = rollingAverages(weights.map((w) => ({ atMs: w.occurredAt, kg: w.kg })), tz, ds);
   // The wait after a pill is a catalog number: it is counted down only where the build may show it.
-  const fastingMin = drug ? fastingMinutes(drug, { curveNeedsSource }) : null;
-  const fastingUntil = fastingMin && lastDose && nowMs - lastDose.occurredAt < fastingMin * 60000 ? lastDose.occurredAt + fastingMin * 60000 : null;
+  const fastingMin = drug ? fastingMinutes(drug, { curveNeedsSource }, brand) : null;
+  // A pill logged with a time that is still to come starts no countdown: the wait runs from the
+  // time the pill is taken, and counting from a later time would show more than the label's wait.
+  const sincePill = lastDose ? nowMs - lastDose.occurredAt : null;
+  const fastingUntil = fastingMin && lastDose && sincePill !== null && sincePill >= 0 && sincePill < fastingMin * 60000 ? lastDose.occurredAt + fastingMin * 60000 : null;
 
   // The summary starts with the person's first day in the app: the end of setup, or their first logged dose if that is earlier.
   const firstDoseAt = doses.length ? doses[0].occurredAt : null;
@@ -195,6 +208,7 @@ export function derive(profile: Profile, rec: Records, nowMs: number, tz: string
     openTriage,
     advice,
     curveAvailable: canDraw,
+    chartNeedsBrand: needsBrand,
     curve,
     curveNow,
     nextSite: suggestSite(doses.slice(-3).map((d) => d.site)),

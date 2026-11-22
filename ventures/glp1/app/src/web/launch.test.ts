@@ -29,11 +29,12 @@ import { derive, type Records } from './derive';
 import { buildCsv } from './exportData';
 import { BUILD_PROFILE, features } from './features';
 import { I18nProvider } from './i18n';
+import { translate } from './i18n/translate';
 import { Ask } from './screens/Ask';
 import { Me } from './screens/Me';
 import { Onboarding } from './screens/Onboarding';
 import { Today } from './screens/Today';
-import { Trends } from './screens/Trends';
+import { methodFacts, Trends } from './screens/Trends';
 import { setUi, type SheetName } from './store';
 
 const TZ = 'America/New_York';
@@ -296,30 +297,141 @@ describe('launch build: hidden features', () => {
 });
 
 describe('launch build: estimated medication level', () => {
-  it('no curve is drawn for a medication without a label source; a neutral line is shown instead', () => {
-    const d = derive(english, records, NOW, TZ);
-    expect(d.curveAvailable).toBe(false);
-    expect(d.curve).toEqual([]);
-    expect(d.curveNow).toBeNull();
-    const s = screens(english);
-    expect(s.today).toContain(NO_ESTIMATE);
-    expect(s.trends).toContain(NO_ESTIMATE);
-    const page = html(english, createElement(Trends, { profile: english, d, rec: records, now: NOW })) + html(english, createElement(Today, { profile: english, d, now: NOW, onOpenTrends: noop, onOpenMe: noop }));
-    expect(page).not.toContain('aria-label="Estimated medication level chart"');
-    expect(page).not.toMatch(/How this is calculated|half-life/);
-  });
+  const chart = 'aria-label="Estimated medication level chart"';
+  const pages = (profile: Profile, rec: Records) => {
+    const d = derive(profile, rec, NOW, TZ);
+    return html(profile, createElement(Trends, { profile, d, rec, now: NOW })) + html(profile, createElement(Today, { profile, d, now: NOW, onOpenTrends: noop, onOpenMe: noop }));
+  };
+  const mounjaro: Profile = { ...english, regimen: { ...english.regimen!, brand: 'Mounjaro' } };
+  const noBrand: Profile = { ...english, regimen: { ...english.regimen!, brand: undefined } };
+  const saxenda: Profile = { ...english, regimen: { drugId: 'liraglutide', brand: 'Saxenda', doseAmount: 3, doseUnit: 'mg', schedule: { kind: 'daily', time: '08:00' }, status: 'maintenance' } };
+  const saxendaDoses: Records = { ...records, doses: [1, 2, 3].map((n) => ({ ...row(NOW - n * DAY), drugId: 'liraglutide', amount: 3, unit: 'mg' as const, site: 'thigh_l' as const })) };
 
-  it('the same records do draw a curve where the switch is off, so the switch is what decides', () => {
-    const d = derive(english, records, NOW, TZ, false);
+  it('a curve is drawn for a weekly shot whose numbers were read from its US label', () => {
+    const d = derive(english, records, NOW, TZ);
     expect(d.curveAvailable).toBe(true);
     expect(d.curve.length).toBeGreaterThan(0);
+    expect(d.curveNow).not.toBeNull();
+    const s = screens(english);
+    expect(s.today).not.toContain(NO_ESTIMATE);
+    expect(s.trends).not.toContain(NO_ESTIMATE);
+    const page = pages(english, records);
+    expect(page.split(chart).length - 1).toBe(2);
+    expect(page).toContain('How this is calculated');
+    expect(copyProblems(visibleText(page))).toEqual([]);
   });
 
-  it('no other catalog number reaches the screen either: no dose example, no highest dose, no wait after a pill', () => {
+  it('Zepbound and Mounjaro are drawn with the numbers of their own labels, so the same doses give two curves', () => {
+    const zep = derive(english, records, NOW, TZ).curve.map((p) => p.index);
+    const mou = derive(mounjaro, records, NOW, TZ).curve.map((p) => p.index);
+    expect(mou).toHaveLength(zep.length);
+    expect(mou).not.toEqual(zep);
+    expect(methodFacts(english, 'en')).toEqual({ name: 'Zepbound', halfLife: 132, peak: 24 });
+    expect(methodFacts(mounjaro, 'en')).toEqual({ name: 'Mounjaro', halfLife: 120, peak: 40 });
+  });
+
+  it('the method note names the US prescribing information, the two numbers and the rule, and keeps its limits', () => {
+    const note = translate('en', 'trends.method.body', methodFacts(english, 'en')!);
+    // The rule is about one section of the label: another section can give the same figure in other words (Zepbound, section 10).
+    expect(note).toContain('Both come from the pharmacokinetics section of the US prescribing information for Zepbound.');
+    expect(note).toContain('For Zepbound the chart uses a half-life of 132 hours and a time to peak of 24 hours.');
+    expect(note).toContain('Where that section gives one value or a median, the chart uses it. Where it gives only a range, the chart uses the middle of the range.');
+    for (const kept of ['The chart uses these same two numbers for every person on this medication. They are not measured in you.', 'This line is an estimate.', 'It is not a lab measurement and cannot be used to adjust your dose.', 'Only doses you logged in mg are used.']) expect(note, kept).toContain(kept);
+    // Some of the numbers are the middle of a range, so nothing calls them averages.
+    expect(note).not.toMatch(/average|still to be checked|not verified|\{|\?/i);
+    expect(translate('en', 'today.curve.note')).toBe('An estimate based on numbers from US prescribing information. It is not a measurement and cannot be used to adjust your dose.');
+    expect(translate('hans', 'today.curve.note')).not.toMatch(/平均/);
+    expect(copyProblems(note)).toEqual([]);
+    const wegovy: Profile = { ...english, regimen: { ...english.regimen!, drugId: 'semaglutide-wl', brand: 'Wegovy' } };
+    expect(translate('en', 'trends.method.body', methodFacts(wegovy, 'en')!)).toContain('For Wegovy the chart uses a half-life of 168 hours and a time to peak of 48 hours.');
+    // Chinese: the same facts, for a profile that is already Chinese. Its numbers are those of the US label.
+    const zh = translate('hans', 'trends.method.body', methodFacts({ ...chinese, regimen: { ...chinese.regimen!, drugId: 'semaglutide-wl' } }, 'hans')!);
+    for (const kept of ['来自 Wegovy 美国处方信息（说明书）的药代动力学一节', '半衰期 168 小时、达峰时间 48 小时', '该节给出单一数值或中位数的，直接采用；只给出范围的，取范围的中间值', '不是你本人的测量值', '帮你理解药物水平大概在什么位置', '不是血药浓度的测量值，不能用来调整剂量']) expect(zh, kept).toContain(kept);
+    expect(zh).not.toMatch(/待对照说明书核实|平均|药效|\{/);
+  });
+
+  it('no curve, and no method note, where the medication has no chart numbers; a line says so instead', () => {
+    const CHOOSE = 'The chart uses two numbers from US prescribing information, and they are stated differently for Zepbound and Mounjaro. So the chart needs to know your brand. To choose it, go to Me and tap "Change medication or redo setup".';
+    const TWO_LABELS = 'No chart for this medication yet. The chart uses two numbers from US prescribing information, and they are stated differently for Zepbound and Mounjaro. The app does not choose between them.';
+    // A daily medication gets the neutral line. Tirzepatide saved without a brand gets its own: its
+    // two US labels state the numbers differently, and in the United States the person can choose.
+    const other: Profile = { ...noBrand, region: 'OTHER' };
+    for (const [profile, rec, line] of [[saxenda, saxendaDoses, NO_ESTIMATE], [noBrand, records, CHOOSE], [other, records, TWO_LABELS]] as [Profile, Records, string][]) {
+      const d = derive(profile, rec, NOW, TZ);
+      expect(d.curveAvailable).toBe(false);
+      expect(d.curve).toEqual([]);
+      expect(d.curveNow).toBeNull();
+      const s = screens(profile, rec);
+      expect(s.today).toContain(line);
+      expect(s.trends).toContain(line);
+      for (const not of [NO_ESTIMATE, CHOOSE, TWO_LABELS].filter((x) => x !== line)) expect(s.today + s.trends).not.toContain(not);
+      const page = pages(profile, rec);
+      expect(page).not.toContain(chart);
+      expect(page).not.toMatch(/How this is calculated|half-life|will show here|only for weekly shots/);
+      expect(methodFacts(profile, 'en')).toBeNull();
+      expect(copyProblems(s.today + s.trends)).toEqual([]);
+    }
+    // The button the line names is the one on the Me screen.
+    expect(screens(noBrand).me).toContain('Change medication or redo setup');
+    // The full build draws no curve for them either: there are no numbers to draw with.
+    expect(derive(saxenda, saxendaDoses, NOW, TZ, false).curve).toEqual([]);
+    expect(derive(noBrand, records, NOW, TZ, false).curve).toEqual([]);
+  });
+
+  it('the wait after a pill is shown where the label states one', () => {
     const oral: Profile = { ...english, regimen: { drugId: 'semaglutide-oral-wl', brand: 'Wegovy pill', doseAmount: 4, doseUnit: 'mg', schedule: { kind: 'daily', time: '08:00' }, status: 'escalating' } };
     const pill: DoseEvent = { ...row(NOW - 5 * 60_000), drugId: 'semaglutide-oral-wl', amount: 4, unit: 'mg', site: null };
     const rec: Records = { ...records, doses: [pill] };
-    // A pill taken five minutes ago: no countdown on Today, and no waiting rule on the pill sheet.
+    // A pill taken five minutes ago: the countdown is on Today, and the waiting rule is on the pill sheet.
+    const wait = drugById('semaglutide-oral-wl').fastingMin;
+    expect(wait).toBe(30);
+    const d = derive(oral, rec, NOW, TZ);
+    expect(d.fastingUntil).toBe(pill.occurredAt + wait! * 60_000);
+    // Both lines use the words of the label: "at least", and eating, drinking and other oral medications.
+    expect(screens(oral, rec).today).toContain('Wait at least 25 more minutes before you eat, drink or take other oral medications');
+    setUi({ sheet: 'dose' });
+    const sheet = visibleText(html(oral, createElement(Sheets, { profile: oral, d })));
+    setUi({ sheet: null });
+    expect(sheet).toContain('Log a pill');
+    expect(sheet).toContain('After your pill, wait at least 30 minutes before you eat, drink or take other oral medications.');
+    // Nothing the label does not say: no "sip", no "do not drink", no rule about water.
+    expect(screens(oral, rec).today + sheet).not.toMatch(/sip|Empty stomach|do not eat or drink|water/i);
+    expect(translate('en', 'today.fasting', { count: 1 })).toBe('Wait at least 1 more minute before you eat, drink or take other oral medications');
+    for (const key of ['today.fasting', 'dose.fasting'] as const) {
+      const zh = translate('hans', key, { count: 30, minutes: 30 });
+      expect(zh, key).toMatch(/至少.*30 分钟.*吃东西、喝饮料或服用?其他口服药/);
+      expect(zh, key).not.toMatch(/少量水|别喝水|空腹/);
+    }
+    // A pill logged with a time later than now starts no countdown.
+    const later: Records = { ...records, doses: [{ ...pill, occurredAt: NOW + 5 * 3_600_000 }] };
+    expect(derive(oral, later, NOW, TZ).fastingUntil).toBeNull();
+    expect(screens(oral, later).today).not.toMatch(/more minutes? before you eat/);
+  });
+
+  it('the typing check names the US label its highest dose is from, and does not call it "usual"', () => {
+    const d = derive(english, records, NOW, TZ);
+    expect(translate('en', 'dose.overMax.form', { amount: '25', unit: 'mg', max: '15', name: 'Zepbound' })).toBe(
+      '25 mg is more than the highest dose in the US prescribing information for Zepbound (15 mg). Did you type an extra digit? If it is correct, tap the button again.',
+    );
+    for (const key of ['dose.overMax.form', 'dose.overMax.card'] as const) {
+      const en = translate('en', key, { amount: '8.2', unit: 'mg', max: '7.2', name: 'Wegovy' });
+      expect(en, key).toContain('the highest dose in the US prescribing information for Wegovy (7.2 mg)');
+      expect(en, key).not.toMatch(/usual|recommended|\{/);
+      const zh = translate('hans', key, { amount: '8.2', unit: 'mg', max: '7.2', name: 'Wegovy' });
+      expect(zh, key).toContain('超过了 Wegovy 美国说明书上的最高剂量（7.2 mg）');
+      expect(zh, key).not.toMatch(/常见|\{/);
+    }
+    // The sheet itself asks nothing until a dose is typed; its text has no leftover placeholder.
+    setUi({ sheet: 'dose' });
+    const sheet = visibleText(html(english, createElement(Sheets, { profile: english, d })));
+    setUi({ sheet: null });
+    expect(sheet).not.toMatch(/highest dose|\{name\}/);
+  });
+
+  it('no wait is shown for a tablet whose label says "with or without food"', () => {
+    const oral: Profile = { ...english, regimen: { drugId: 'orforglipron', brand: 'Foundayo', doseAmount: 2.5, doseUnit: 'mg', schedule: { kind: 'daily', time: '08:00' }, status: 'escalating' } };
+    const pill: DoseEvent = { ...row(NOW - 5 * 60_000), drugId: 'orforglipron', amount: 2.5, unit: 'mg', site: null };
+    const rec: Records = { ...records, doses: [pill] };
     const d = derive(oral, rec, NOW, TZ);
     expect(d.fastingUntil).toBeNull();
     expect(screens(oral, rec).today).not.toMatch(/Empty stomach|more minutes? before you eat/);
@@ -328,10 +440,6 @@ describe('launch build: estimated medication level', () => {
     setUi({ sheet: null });
     expect(sheet).toContain('Log a pill');
     expect(sheet).not.toMatch(/do not eat or drink|small sip of water|minutes after your pill/);
-    // Where the switch is off the same records do count the wait down, so the switch is what decides.
-    const wait = drugById('semaglutide-oral-wl').fastingMin;
-    expect(wait).toBeGreaterThan(5);
-    expect(derive(oral, rec, NOW, TZ, false).fastingUntil).toBe(pill.occurredAt + wait! * 60_000);
   });
 
   it('nothing about an estimate is shown without a medication', () => {

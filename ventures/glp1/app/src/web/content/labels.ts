@@ -2,8 +2,10 @@
  * Labels that only the screens use. Labels built from core data (injection site, symptom,
  * grade, region, weekday) are in src/core and take the same `Lang`.
  */
-import { pick, type Lang, type Text } from '../../core/i18n';
+import { brandLabel } from '../../core/catalog';
+import { listNames, pick, type Lang, type Text } from '../../core/i18n';
 import type { CourseStatus } from '../../core/types';
+import type { Derived } from '../derive';
 import { features } from '../features';
 import { translate } from '../i18n/translate';
 
@@ -28,6 +30,22 @@ const DISCLAIMER: Text = {
 
 export function disclaimer(lang: Lang): string {
   return pick(lang, DISCLAIMER);
+}
+
+/**
+ * The line shown in place of the chart for a medication that has none.
+ * - The chart numbers belong to single brands and the saved medication names none of them
+ *   (tirzepatide without Zepbound or Mounjaro): the line says so, and where the person's list
+ *   offers those brands it says where to choose one.
+ * - Any other medication without a chart: the neutral line of the build.
+ */
+export function noChartText(d: Pick<Derived, 'drug' | 'chartNeedsBrand'>, lang: Lang): string {
+  if (d.drug && d.chartNeedsBrand) {
+    const drug = d.drug;
+    const brands = listNames(d.chartNeedsBrand.brands.map((b) => brandLabel(drug, b, lang)), lang);
+    return d.chartNeedsBrand.canChoose ? translate(lang, 'curve.chooseBrand', { brands, button: translate(lang, 'me.med.change') }) : translate(lang, 'curve.twoLabels', { brands });
+  }
+  return translate(lang, features.curveNeedsSource ? 'curve.unavailable' : 'today.noCurve');
 }
 
 /**

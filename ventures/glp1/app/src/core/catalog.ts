@@ -1,20 +1,42 @@
 /**
  * 药物目录（PRD v2.0 附录 A）。
- * 品牌名、剂量阶梯、最高剂量、药代参数全部【待核实】：上线前对照各地区说明书和
- * FDA 说明书 12.3 节逐条确认，确认后把 verified 改为 true。
  * 品牌名只用于让用户认出自己的药；商标归各自权利人所有，本产品与药企无关联。
  *
- * Rules for drug facts (dose ladder, maximum dose, half-life, Tmax):
- * - Never write a number from memory. A number may be added or changed only after reading it
- *   on the FDA label (accessdata.fda.gov or dailymed.nlm.nih.gov); put that page's URL in
- *   `source` in the same change.
- * - No `source` means the numbers of that entry have NOT been checked against a label yet.
- * - Unknown stays empty: `ladderMg: []`, `maxMg: null`, `pk: null`. The app then only logs
- *   the medication: no dose check and no estimated medication level curve.
- * - `verified` is set to true by a human reviewer only.
- * No entry has a `source` yet, so every number below is still unverified.
+ * Where the numbers come from (dose steps, highest dose, half-life, time to peak, wait after a pill):
+ * - Every number of an entry with a US brand was read from the current US prescribing
+ *   information (the FDA label on dailymed.nlm.nih.gov) on 2026-11-22. labelFacts.ts has one row
+ *   per number and US brand: the label's words, the section, the label version and its page.
+ *   `source` lists those label pages.
+ * - The numbers are PENDING CLINICAL REVIEW: they were read from the labels by us and have not
+ *   been confirmed by a reviewer. `verified` is set to true by a human reviewer only. Code never
+ *   sets it.
+ * - Never write a number from memory. A number may be added or changed only after reading it on
+ *   the label (dailymed.nlm.nih.gov or www.accessdata.fda.gov); add or change its row in
+ *   labelFacts.ts in the same change. An entry is label-backed (hasLabelSource) only when every
+ *   number it carries has a row, for every US brand. The launch build shows the numbers of a
+ *   label-backed entry only.
+ * - Unknown stays empty: `ladderMg: []`, `maxMg: null`, `pk: null`, no `fastingMin`. The app then
+ *   only logs the medication: no dose example, no dose check, no wait and no chart.
+ * - One entry serves every region. The numbers are per ingredient and form, and they are read
+ *   from the US label. A brand of another region (Hong Kong, Taiwan and so on) uses the same
+ *   numbers. That is accepted for now; the labels of other regions have not been read.
+ * - Where two US brands of one entry have different numbers on their labels, each brand has its
+ *   own under `byBrand` (tirzepatide). Read numbers through brandNumbers(), with the brand of
+ *   the regimen, and never straight from the entry.
+ *
+ * What the number fields hold:
+ * - ladderMg: every dose of the label's adult schedule (section 2), from the starting dose up to
+ *   the highest dose the label gives to any adult, so the last step is maxMg. A dose the label
+ *   gives for one of its uses only is still a step (Wegovy 7.2 mg, Ozempic 2 mg); its row in
+ *   labelFacts.ts says who it is for. The app shows only the first step, as the example in setup.
+ * - maxMg: the highest dose the label gives to any adult. It only catches a typing slip.
+ * - pk: weekly shots only, because the chart is designed for them. Daily medications keep
+ *   `pk: null`. PK_RULE in labelFacts.ts says how one half-life and one time to peak are taken
+ *   from the label's wording.
+ * - fastingMin: tablets only, and only where the label states a waiting time.
  */
 import type { Lang } from './i18n';
+import { LABEL_FACTS, LABELS, type LabelField, type LabelValue } from './labelFacts';
 import type { Regimen } from './types';
 
 export type Region = 'CN' | 'TW' | 'HK' | 'US' | 'SG' | 'MY' | 'OTHER';
@@ -26,9 +48,26 @@ export interface PkParams {
   tmaxH: number;
 }
 
-export interface DrugEntry {
+/** The numbers of a medication that reach the screen. */
+export interface DrugNumbers {
+  /** Dose steps of the label's adult schedule, in mg, from the starting dose up. */
+  ladderMg: number[];
+  /** 超过即要求二次确认（防手滑，如 25 写成 2.5 的反面）。null: no number, no check. */
+  maxMg: number | null;
+  /** Half-life and time to peak for the chart. Weekly shots only. null: no chart. */
+  pk: PkParams | null;
+  /** 口服片剂：说明书写明的服药后等待分钟数。Absent: the label states no wait, or it has not been read. */
+  fastingMin?: number;
+}
+
+export interface DrugEntry extends DrugNumbers {
   id: string;
   generic: { hans: string; hant: string; en: string };
+  /**
+   * Chinese generic name to show next to a brand name, where the plain generic name already
+   * carries the brand ("Ozempic 片（口服司美格鲁肽（降糖））", not the brand twice).
+   */
+  genericBeside?: { hans: string; hant: string };
   /** Active ingredient in English, shown next to a brand name: "Wegovy (semaglutide)". */
   ingredient?: string;
   /** 各地区常见品牌名，用户界面优先显示所在地区的名字。 */
@@ -40,18 +79,16 @@ export interface DrugEntry {
   brandZh?: Record<string, string>;
   route: Route;
   frequency: Frequency;
-  ladderMg: number[];
-  /** 超过即要求二次确认（防手滑，如 25 写成 2.5 的反面）。null 表示参数未核实，不校验。 */
-  maxMg: number | null;
-  /** 只给药代参数核实过的药画曲线。 */
-  pk: PkParams | null;
-  /** 口服司美格鲁肽：服药后需空腹的分钟数。 */
-  fastingMin?: number;
   /**
-   * URL of the FDA label page that ladderMg, maxMg and pk were read from. Missing means the
-   * numbers have not been checked against a label.
+   * Numbers that differ between the US labels of two brands of this entry, keyed by the stored
+   * brand name. A brand listed here uses these in place of the entry's own (see brandNumbers).
    */
-  source?: string;
+  byBrand?: Record<string, Partial<DrugNumbers>>;
+  /**
+   * Pages of the US labels the numbers were read from (labelFacts.ts has the words of each
+   * label). Missing: the entry has no numbers from a label.
+   */
+  source?: string[];
   /** Set to true by a human reviewer only, after checking the entry against the label. */
   verified: boolean;
 }
@@ -64,9 +101,12 @@ export const CATALOG: DrugEntry[] = [
     brands: { CN: ['诺和盈'], TW: ['週纖達'], HK: ['Wegovy'], US: ['Wegovy'], SG: ['Wegovy'], MY: ['Wegovy'] },
     route: 'sc',
     frequency: 'weekly',
+    // 7.2 mg is the last step and the highest dose. The label gives it only for weight reduction
+    // in adults, after at least 4 weeks on 2.4 mg (its row in labelFacts.ts says so).
     ladderMg: [0.25, 0.5, 1, 1.7, 2.4, 7.2],
     maxMg: 7.2,
     pk: { halfLifeH: 168, tmaxH: 48 },
+    source: [LABELS.wegovy.url],
     verified: false,
   },
   {
@@ -79,6 +119,7 @@ export const CATALOG: DrugEntry[] = [
     ladderMg: [0.25, 0.5, 1, 2],
     maxMg: 2,
     pk: { halfLifeH: 168, tmaxH: 48 },
+    source: [LABELS.ozempic.url],
     verified: false,
   },
   {
@@ -90,7 +131,15 @@ export const CATALOG: DrugEntry[] = [
     frequency: 'weekly',
     ladderMg: [2.5, 5, 7.5, 10, 12.5, 15],
     maxMg: 15,
-    pk: { halfLifeH: 120, tmaxH: 24 },
+    // The two US labels word the half-life and the time to peak differently, so each brand has
+    // its own pair (byBrand). The entry itself has none: a regimen whose brand is neither of the
+    // two (see regimenBrand) gets no chart, because the app must not guess which label applies.
+    pk: null,
+    byBrand: {
+      Zepbound: { pk: { halfLifeH: 132, tmaxH: 24 } },
+      Mounjaro: { pk: { halfLifeH: 120, tmaxH: 40 } },
+    },
+    source: [LABELS.zepbound.url, LABELS.mounjaro.url],
     verified: false,
   },
   {
@@ -107,14 +156,20 @@ export const CATALOG: DrugEntry[] = [
   },
   {
     id: 'liraglutide',
-    generic: { hans: '利拉鲁肽', hant: '利拉魯肽', en: 'liraglutide' },
+    // Named after its use, like the semaglutide entries: the numbers are those of the Saxenda
+    // label, and other liraglutide products have other doses. No Mainland China brand is listed.
+    // The list there used the bare generic name as the brand, and the name of the weight product
+    // there has not been confirmed. A regimen saved with that old name still resolves to this
+    // entry and is shown under the generic name.
+    generic: { hans: '利拉鲁肽（减重）', hant: '利拉魯肽（減重）', en: 'liraglutide for weight' },
     ingredient: 'liraglutide',
-    brands: { CN: ['利拉鲁肽'], TW: ['善纖達'], HK: ['Saxenda'], US: ['Saxenda'], SG: ['Saxenda'], MY: ['Saxenda'] },
+    brands: { TW: ['善纖達'], HK: ['Saxenda'], US: ['Saxenda'], SG: ['Saxenda'], MY: ['Saxenda'] },
     route: 'sc',
     frequency: 'daily',
     ladderMg: [0.6, 1.2, 1.8, 2.4, 3],
     maxMg: 3,
     pk: null,
+    source: [LABELS.saxenda.url],
     verified: false,
   },
   {
@@ -129,6 +184,7 @@ export const CATALOG: DrugEntry[] = [
     maxMg: 25,
     pk: null,
     fastingMin: 30,
+    source: [LABELS.wegovy.url],
     verified: false,
   },
   {
@@ -142,6 +198,25 @@ export const CATALOG: DrugEntry[] = [
     maxMg: 14,
     pk: null,
     fastingMin: 30,
+    source: [LABELS.semaglutideTablets.url],
+    verified: false,
+  },
+  {
+    // The second tablet brand on the same US label as Rybelsus. Its doses are its own: the label
+    // says the two "are not substitutable on a mg-to-mg basis", so it cannot share that entry.
+    id: 'semaglutide-oral-t2d-ozempic',
+    generic: { hans: '口服司美格鲁肽（降糖，Ozempic 片）', hant: '口服司美格魯肽（降糖，Ozempic 片）', en: 'oral semaglutide for diabetes (Ozempic tablets)' },
+    genericBeside: { hans: '口服司美格鲁肽（降糖）', hant: '口服司美格魯肽（降糖）' },
+    ingredient: 'semaglutide',
+    brands: { US: ['Ozempic pill'] },
+    brandZh: { 'Ozempic pill': 'Ozempic 片' },
+    route: 'oral',
+    frequency: 'daily',
+    ladderMg: [1.5, 4, 9],
+    maxMg: 9,
+    pk: null,
+    fastingMin: 30,
+    source: [LABELS.semaglutideTablets.url],
     verified: false,
   },
   {
@@ -151,11 +226,11 @@ export const CATALOG: DrugEntry[] = [
     brands: { US: ['Foundayo'] },
     route: 'oral',
     frequency: 'daily',
-    // Needs verification: dose strengths, maximum dose and PK have not been read from the
-    // FDA label yet, so they stay empty. Do not fill them in from memory.
-    ladderMg: [],
-    maxMg: null,
+    // No fastingMin: the label says "with or without food".
+    ladderMg: [0.8, 2.5, 5.5, 9, 14.5, 17.2],
+    maxMg: 17.2,
     pk: null,
+    source: [LABELS.foundayo.url],
     verified: false,
   },
   {
@@ -175,9 +250,123 @@ export function drugById(id: string): DrugEntry {
   return CATALOG.find((d) => d.id === id) ?? CATALOG[CATALOG.length - 1];
 }
 
-/** True when the entry's numbers were read from an FDA label page (it has a `source`). */
+/**
+ * The numbers of an entry as the label of one brand gives them. A brand with numbers of its own
+ * (byBrand) uses those. Any other brand, a brand of another region, and a regimen saved without
+ * a brand use the entry's own numbers.
+ */
+export function brandNumbers(d: DrugEntry, brand?: string | null): DrugNumbers {
+  const own = brand ? d.byBrand?.[brand] : undefined;
+  return {
+    ladderMg: own?.ladderMg ?? d.ladderMg,
+    maxMg: own && 'maxMg' in own ? (own.maxMg ?? null) : d.maxMg,
+    pk: own && 'pk' in own ? (own.pk ?? null) : d.pk,
+    fastingMin: own && 'fastingMin' in own ? own.fastingMin : d.fastingMin,
+  };
+}
+
+/**
+ * The brand whose numbers a regimen uses: the saved brand, or, for a regimen saved without one,
+ * the only brand the entry has in the person's region. That is the name the screens show for
+ * such a regimen (drugLabel), so the numbers and the name go together. Null when the region has
+ * several brands of the entry, or none.
+ */
+export function regimenBrand(reg: Pick<Regimen, 'drugId' | 'brand'>, region: Region): string | null {
+  if (reg.brand) return reg.brand;
+  const regional = drugById(reg.drugId).brands[region] ?? [];
+  return regional.length === 1 ? regional[0] : null;
+}
+
+/**
+ * The US brand whose label the numbers of a regimen come from. Null when the entry has no US
+ * brand, or has several and the regimen names none of them.
+ */
+export function labelBrand(d: DrugEntry, brand?: string | null): string | null {
+  const us = d.brands.US ?? [];
+  if (brand && us.includes(brand)) return brand;
+  return us.length === 1 ? us[0] : null;
+}
+
+/**
+ * The US brands whose labels give the highest dose a regimen is checked against. The typing
+ * check names them, so that the person can see whose number it is: the regimen's own brand when
+ * that is a US brand, otherwise every US brand of the entry with this same highest dose on its
+ * label (a brand of another region, or no brand at all). Empty when there is no such label.
+ */
+export function maxDoseLabelBrands(d: DrugEntry, brand?: string | null): string[] {
+  const us = d.brands.US ?? [];
+  const max = brandNumbers(d, brand).maxMg;
+  if (max === null) return [];
+  if (brand && us.includes(brand)) return [brand];
+  return us.filter((b) => brandNumbers(d, b).maxMg === max);
+}
+
+/** The names of maxDoseLabelBrands as the user reads them, in one piece: "Wegovy", "Wegovy 片", "Zepbound / Mounjaro". */
+export function maxDoseLabelName(d: DrugEntry, lang: Lang, brand?: string | null): string {
+  return maxDoseLabelBrands(d, brand)
+    .map((b) => brandLabel(d, b, lang))
+    .join(' / ');
+}
+
+/**
+ * Brands of an entry that have chart numbers of their own, for a regimen that has none because
+ * it names no such brand (tirzepatide saved without Zepbound or Mounjaro: their two US labels
+ * state the numbers differently, and the app does not pick one). Empty when the regimen has
+ * chart numbers, and when no brand of the entry has any.
+ */
+export function chartBrands(d: DrugEntry, brand?: string | null): string[] {
+  if (brandNumbers(d, brand).pk !== null) return [];
+  return Object.keys(d.byBrand ?? {}).filter((b) => brandNumbers(d, b).pk !== null);
+}
+
+const sameValue = (a: LabelValue | undefined, b: LabelValue): boolean => (Array.isArray(a) && Array.isArray(b) ? a.length === b.length && a.every((x, i) => x === b[i]) : a === b);
+
+/**
+ * The numbers of an entry that have no row in labelFacts.ts, as "brand: field". Every number an
+ * entry carries needs a row with the same value for every US brand of the entry. An entry with
+ * no US brand has no US label, so everything it carries is listed.
+ */
+export function unbackedNumbers(d: DrugEntry): string[] {
+  const missing: string[] = [];
+  const usBrands = d.brands.US ?? [];
+  const backed = (brand: string, field: LabelField, value: LabelValue): boolean => {
+    const row = LABEL_FACTS.find((f) => f.entryId === d.id && f.brand === brand && f.field === field);
+    return row !== undefined && row.quotes.length > 0 && sameValue(row.value, value);
+  };
+  const check = (who: string, n: DrugNumbers, brand: string | null) => {
+    const need = (field: LabelField, value: LabelValue) => {
+      if (brand === null || !backed(brand, field, value)) missing.push(`${who}: ${field}`);
+    };
+    if (brand !== null) need('frequency', d.frequency);
+    if (n.ladderMg.length) need('ladderMg', n.ladderMg);
+    if (n.maxMg !== null) need('maxMg', n.maxMg);
+    if (n.pk) need('halfLifeH', n.pk.halfLifeH);
+    if (n.pk) need('tmaxH', n.pk.tmaxH);
+    if (n.fastingMin !== undefined) need('fastingMin', n.fastingMin);
+  };
+  for (const brand of usBrands) check(brand, brandNumbers(d, brand), brand);
+  // Numbers kept for a brand that has no US label cannot have a row.
+  for (const brand of Object.keys(d.byBrand ?? {})) if (!usBrands.includes(brand)) missing.push(`${brand}: not a US brand`);
+  // The entry's own numbers are used for a regimen without a US brand name. A number there that
+  // every US brand replaces with its own would come from no label at all.
+  const own = brandNumbers(d);
+  const replacedByAll = (field: keyof DrugNumbers) => usBrands.length > 0 && usBrands.every((b) => d.byBrand?.[b] !== undefined && field in (d.byBrand[b] ?? {}));
+  check('no US brand', {
+    ladderMg: usBrands.length === 0 || replacedByAll('ladderMg') ? own.ladderMg : [],
+    maxMg: usBrands.length === 0 || replacedByAll('maxMg') ? own.maxMg : null,
+    pk: usBrands.length === 0 || replacedByAll('pk') ? own.pk : null,
+    fastingMin: usBrands.length === 0 || replacedByAll('fastingMin') ? own.fastingMin : undefined,
+  }, null);
+  return missing;
+}
+
+/**
+ * True when the entry is label-backed: it names its US label pages (`source`), it has a US
+ * brand, and every number it carries has a row in labelFacts.ts for every US brand. The launch
+ * build shows the numbers of such an entry only (labelFactsShown in features.ts).
+ */
 export function hasLabelSource(d: DrugEntry): boolean {
-  return !!d.source;
+  return !!d.source?.length && (d.brands.US?.length ?? 0) > 0 && unbackedNumbers(d).length === 0;
 }
 
 /** A brand name as shown to the user. The stored name is always the catalog's own spelling. */
@@ -209,8 +398,7 @@ function shownBrands(d: DrugEntry, region: Region, lang: Lang, brand?: string | 
 export function drugLabel(d: DrugEntry, region: Region, lang: Lang, brand?: string | null): string {
   const brands = shownBrands(d, region, lang, brand);
   if (lang === 'en') return brands.length ? `${brands.join(' / ')} (${d.ingredient ?? d.generic.en})` : d.generic.en;
-  const generic = d.generic[lang];
-  return brands.length ? `${brands.join(' / ')}（${generic}）` : generic;
+  return brands.length ? `${brands.join(' / ')}（${d.genericBeside?.[lang] ?? d.generic[lang]}）` : d.generic[lang];
 }
 
 /** One short name for a one-line summary: the chosen brand, else the region's first brand, else the generic name. */
@@ -255,7 +443,7 @@ export interface BrandOption {
  * The US list is exactly these brands plus "Other / custom".
  */
 const BRAND_ORDER: Partial<Record<Region, string[]>> = {
-  US: ['Wegovy', 'Ozempic', 'Zepbound', 'Mounjaro', 'Wegovy pill', 'Foundayo', 'Rybelsus', 'Saxenda'],
+  US: ['Wegovy', 'Ozempic', 'Zepbound', 'Mounjaro', 'Wegovy pill', 'Foundayo', 'Rybelsus', 'Ozempic pill', 'Saxenda'],
 };
 
 /**
@@ -327,8 +515,12 @@ export function doseUnitLabel(u: DoseUnit, lang: Lang): string {
   return u;
 }
 
-/** 剂量超过目录最高剂量时需要二次确认。非 mg 单位不换算、不校验（审核指南 1.4.2）。 */
-export function needsDoseConfirm(d: DrugEntry, amount: number, unit: DoseUnit): boolean {
-  if (unit !== 'mg' || d.maxMg === null) return false;
-  return amount > d.maxMg + 1e-9;
+/**
+ * 剂量超过目录最高剂量时需要二次确认。非 mg 单位不换算、不校验（审核指南 1.4.2）。
+ * `brand` is the brand of the regimen, for an entry whose brands have their own numbers.
+ */
+export function needsDoseConfirm(d: DrugEntry, amount: number, unit: DoseUnit, brand?: string | null): boolean {
+  const { maxMg } = brandNumbers(d, brand);
+  if (unit !== 'mg' || maxMg === null) return false;
+  return amount > maxMg + 1e-9;
 }
