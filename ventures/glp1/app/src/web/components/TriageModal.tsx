@@ -1,4 +1,5 @@
 import { alertCards } from '../../core/alert';
+import { guideChoice } from '../../core/medGuide';
 import { emergencyDial, emergencyRegion } from '../../core/triage';
 import { deviceTz } from '../db';
 import type { Profile } from '../../core/types';
@@ -29,7 +30,7 @@ export function TriageModal({ profile }: { profile: Profile }) {
         ))}
         <p className="fine">{t('triage.note')}</p>
         {/* The whole list of the Medication Guide, never the one item a rule may stand for: the app does not say which it is. Not on a crisis card. */}
-        {features.guideWarningSigns && cards.some((c) => c.key !== 'crisis') && (
+        {features.guideWarningSigns && cards.some((c) => c.key !== 'crisis') && guideChoice(profile.regimen, profile.region).kind !== 'none' && (
           <button className="btn block guide-open" onClick={() => setUi({ guide: true })}>
             {t('guide.open')}
           </button>

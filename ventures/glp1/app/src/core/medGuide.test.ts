@@ -178,3 +178,17 @@ describe('which guide a saved medication gets', () => {
     expect(guideChoice({ drugId: 'not-in-the-catalog' }, 'US')).toEqual({ kind: 'none' });
   });
 });
+
+describe('the guides are US documents', () => {
+  it('a brand of the same name in another region gets no US guide', async () => {
+    const { guideChoice, guideOverdose, MED_GUIDE_LIST } = await import('./medGuide');
+    for (const region of ['HK', 'SG', 'MY', 'CN', 'TW', 'OTHER'] as const) {
+      for (const reg of [{ drugId: 'semaglutide-wl', brand: 'Wegovy' }, { drugId: 'tirzepatide', brand: 'Mounjaro' }, { drugId: 'liraglutide', brand: 'Saxenda' }, { drugId: 'semaglutide-t2d', brand: 'Ozempic' }]) {
+        expect(guideChoice(reg, region).kind, `${region} ${reg.brand}`).toBe('none');
+      }
+    }
+    expect(guideChoice({ drugId: 'semaglutide-wl', brand: 'Wegovy' }, 'US').kind).toBe('guide');
+    // Every guide has its sentence about taking too much, and it names the emergency room.
+    for (const g of MED_GUIDE_LIST) expect(guideOverdose(g)?.text, g.key).toMatch(/If you take too much .* emergency room right away/);
+  });
+});

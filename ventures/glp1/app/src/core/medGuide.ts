@@ -5,7 +5,7 @@
  * labelFacts.ts). An entry holds the guide's "most important information" items and its serious
  * side effects, word for word, and the other places where the guide tells the patient to tell
  * or call someone. The screen "Warning signs in the Medication Guide" shows the first two parts
- * exactly as they stand here. guideCoverage.ts ties the danger-symptom rules of triage.ts to
+ * exactly as they stand here, and as a third part the sentence about taking too much. guideCoverage.ts ties the danger-symptom rules of triage.ts to
  * these items, and scripts/build-review-packet.ts prints both for the clinical reviewer.
  *
  * THIS FILE IS WRITTEN BY A SCRIPT. Do not edit a quoted word by hand.
@@ -379,7 +379,7 @@ export type MedGuideKey = keyof typeof MED_GUIDES;
 
 export const MED_GUIDE_LIST: MedGuide[] = Object.values(MED_GUIDES);
 
-/** The other instructions of each guide, by the key of the guide. Not shown in the app. */
+/** The other instructions of each guide, by the key of the guide. Only the one about taking too much is shown in the app (guideOverdose). */
 export const MED_GUIDE_OTHER: Record<MedGuideKey, GuideOther[]> = {
   wegovy: [
     { kind: 'before_use_condition', under: 'Before using WEGOVY, tell your healthcare provider if you have any other medical conditions, including if you:', text: 'have or have had problems with your pancreas or kidneys.', action: 'tell' },
@@ -484,6 +484,15 @@ export function medGuideFor(entryId: string, brand: string): MedGuide | undefine
   return MED_GUIDE_LIST.find((g) => g.brands[brand] === entryId);
 }
 
+/**
+ * What the guide says about taking too much, with the heading it stands under. It is the one
+ * instruction outside the two parts that names an emergency room, so the screen shows it as a
+ * third part, word for word.
+ */
+export function guideOverdose(g: MedGuide): GuideOther | undefined {
+  return MED_GUIDE_OTHER[g.key as MedGuideKey]?.find((o) => o.kind === 'overdose');
+}
+
 /** The items the screen shows, in the guide's order: the most important information, then the serious side effects. */
 export function guideItems(g: MedGuide): GuideItem[] {
   return [...g.mostImportant.items, ...g.seriousSideEffects.items];
@@ -509,13 +518,15 @@ export function guideDated(g: MedGuide, lang: Lang): string {
  *   them, and the person's region lists them all, so picking one in setup settles it
  *   (tirzepatide without Zepbound or Mounjaro; the chart asks in the same way).
  * - none: everything else. No US guide is on file: "Other / custom", a medication with no US
- *   brand, a brand of another region, no medication at all. The app never picks a guide for a
+ *   brand, any region other than the United States (also where the brand has the same name),
+ *   no medication at all. The app never picks a guide for a
  *   brand the person did not name.
  */
 export type GuideChoice = { kind: 'guide'; guide: MedGuide; brand: string } | { kind: 'chooseBrand'; brands: string[] } | { kind: 'none' };
 
 export function guideChoice(reg: Pick<Regimen, 'drugId' | 'brand'> | null | undefined, region: Region): GuideChoice {
-  if (!reg) return { kind: 'none' };
+  // The guides are US documents. A brand of the same name sold elsewhere has its own leaflet.
+  if (!reg || region !== 'US') return { kind: 'none' };
   const drug = drugById(reg.drugId);
   const brand = regimenBrand(reg, region);
   const guide = brand ? medGuideFor(drug.id, brand) : undefined;

@@ -1,6 +1,7 @@
 import { brandLabel, drugById } from '../../core/catalog';
 import { listNames } from '../../core/i18n';
-import { guideChoice, guideDated, type GuideSection, type MedGuide } from '../../core/medGuide';
+import { useEffect, useRef } from 'react';
+import { guideChoice, guideDated, guideOverdose, type GuideSection, type MedGuide } from '../../core/medGuide';
 import type { Profile } from '../../core/types';
 import { useT } from '../i18n';
 import { setUi, useUi } from '../store';
@@ -19,6 +20,17 @@ import { setUi, useUi } from '../store';
 export function GuideSheet({ profile }: { profile: Profile }) {
   const { guide } = useUi();
   const t = useT();
+  const closeRef = useRef<HTMLButtonElement>(null);
+  // The sheet holds safety text and may lie over an alert: Escape closes it, and focus moves into it.
+  useEffect(() => {
+    if (!guide) return;
+    closeRef.current?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setUi({ guide: false });
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [guide]);
   if (!guide) return null;
   const close = () => setUi({ guide: false });
   const reg = profile.regimen;
@@ -26,10 +38,10 @@ export function GuideSheet({ profile }: { profile: Profile }) {
   const drug = reg ? drugById(reg.drugId) : null;
   return (
     <div className="sheet-backdrop over-alert" onClick={close}>
-      <div className="sheet guide" role="dialog" aria-label={t('guide.title')} onClick={(e) => e.stopPropagation()}>
+      <div className="sheet guide" role="dialog" aria-modal="true" aria-label={t('guide.title')} onClick={(e) => e.stopPropagation()}>
         <div className="sheet-head">
           <h2>{t('guide.title')}</h2>
-          <button className="icon-btn" aria-label={t('common.close')} onClick={close}>
+          <button ref={closeRef} className="icon-btn" aria-label={t('common.close')} onClick={close}>
             ✕
           </button>
         </div>
@@ -41,6 +53,10 @@ export function GuideSheet({ profile }: { profile: Profile }) {
           ) : (
             <p>{reg ? t('guide.none') : t('dose.setupFirst')}</p>
           )}
+          {/* The list is several screens long: a way out at its end too. */}
+          <button className="btn block guide-close" onClick={close}>
+            {t('common.close')}
+          </button>
         </div>
       </div>
     </div>
@@ -49,6 +65,7 @@ export function GuideSheet({ profile }: { profile: Profile }) {
 
 function GuideText({ guide, brand }: { guide: MedGuide; brand: string }) {
   const t = useT();
+  const overdose = guideOverdose(guide);
   return (
     <>
       <p>{t('guide.source', { brand, dated: guideDated(guide, t.lang) })}</p>
@@ -63,6 +80,15 @@ function GuideText({ guide, brand }: { guide: MedGuide; brand: string }) {
       <div className="guide-text" lang="en">
         <Part section={guide.mostImportant} />
         <Part section={guide.seriousSideEffects} />
+        {/* The guide's sentence about taking too much, under the heading it stands under in the guide. */}
+        {overdose && (
+          <section>
+            <h3>{overdose.under}</h3>
+            <ul>
+              <li>{overdose.text}</li>
+            </ul>
+          </section>
+        )}
       </div>
     </>
   );

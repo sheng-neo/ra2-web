@@ -85,9 +85,10 @@ describe('from the guides to the rules', () => {
     for (const pair of ['hunger and a headache', 'weakness and hunger', 'anxiety and a headache', 'irritability and hunger']) expect(triageText(pair, ctx), pair).toEqual([]);
   });
 
-  it('a rule named for a sign shows the fixed card in the first public version, so the card is never weaker than the guide\'s instruction', () => {
+  it('a rule named for a sign shows the one fixed card in the first public version', () => {
     const fixed = fixedAlertCard('US', 'en');
-    // The fixed card says "right away" and offers the emergency number: the strongest instruction of any item.
+    // The fixed card says "right away" and offers the emergency number. It says more than the guide for the "tell" items
+    // and less for the "Stop using" and "get medical help right away" items (see the header of guideCoverage.ts).
     expect(fixed.title).toBe('Contact your doctor right away');
     expect(fixed.body).toMatch(/Contact your doctor right away\. If it is an emergency, call 911\.$/);
     expect(fixed.showEmergency).toBe(true);

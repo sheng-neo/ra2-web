@@ -658,7 +658,9 @@ describe('English corpus: the same words, the other way round', () => {
   });
 
   it('one sign of low blood sugar alone is quiet, unless another rule stands for it; two together are not', () => {
-    for (const one of ['sweating', 'headache', 'hungry', 'weakness', 'anxiety', 'irritable', 'drowsy', 'confused', 'shaky', 'slurred speech']) expect(triageText(one, ctx), one).toEqual([]);
+    for (const one of ['sweating', 'headache', 'hungry', 'weakness', 'anxiety', 'irritable', 'drowsy', 'confused', 'shaky']) expect(triageText(one, ctx), one).toEqual([]);
+    // Slurred speech alone raises the card: it is also a sign of a stroke (general emergency signs).
+    expect(triageText('slurred speech', ctx).map((h) => h.id)).toEqual(['chest_or_faint']);
     // Three of the guides' signs are also signs of another item, and raise the card alone.
     expect(hitIds('blurred vision')).toEqual(['vision']);
     expect(hitIds('fast heartbeat')).toEqual(['chest_or_faint']);

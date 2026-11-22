@@ -854,7 +854,18 @@ html:lang(en),
   max-height: 100dvh;
   height: 100dvh;
   border-radius: 0;
-  padding-top: calc(12px + env(safe-area-inset-top));
+  padding-top: 0;
+}
+/* The header stays in view while the list scrolls, so the close button is always there. */
+.sheet.guide .sheet-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--bg);
+  padding: calc(12px + env(safe-area-inset-top)) 0 8px;
+}
+.guide-close {
+  margin-top: 16px;
 }
 /* The page address is one long word: it may break anywhere. */
 .guide-link {

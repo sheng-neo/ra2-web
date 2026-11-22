@@ -297,11 +297,11 @@ describe('triage — context', () => {
     expect(triageSymptom('vomiting', 2, ctx)).toEqual([]);
     expect(triageSymptom('abdominal_pain', 3, ctx)[0].id).toBe('abdominal_pain_severe');
     // Severe nausea: the Medication Guides name it with vomiting and diarrhea.
-    expect(triageSymptom('nausea', 3, ctx)).toEqual([{ id: 'dehydration', level: 'urgent' }]);
+    expect(triageSymptom('nausea', 3, ctx)).toEqual([{ id: 'dehydration', level: 'urgent', fixedCard: true }]);
     expect(triageSymptom('nausea', 2, ctx)).toEqual([]);
     // Severe dizziness raises the card for everyone ("fainting or feeling dizzy" in the guides);
     // a person on insulin or a sulfonylurea gets the low-blood-sugar hit, as before.
-    expect(triageSymptom('dizziness', 3, ctx)).toEqual([{ id: 'dehydration', level: 'urgent' }]);
+    expect(triageSymptom('dizziness', 3, ctx)).toEqual([{ id: 'dehydration', level: 'urgent', fixedCard: true }]);
     expect(triageSymptom('dizziness', 2, ctx)).toEqual([]);
     expect(triageSymptom('dizziness', 3, { ...ctx, insulinOrSU: true })).toEqual([{ id: 'hypoglycemia', level: 'act_now' }]);
     // Every other symptom raises nothing at any grade.

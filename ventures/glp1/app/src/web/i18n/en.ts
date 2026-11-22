@@ -433,7 +433,7 @@ export const en = {
   'guide.open': 'See the warning signs in the Medication Guide',
   // Fixed wording. {brand} is the person's medication. {dated} is the guide's own date line: "revised 06/2026", "issued 07/2026".
   'guide.source': "From the Medication Guide for {brand}, {dated}. These are the manufacturer's words, approved by the FDA. Nothing here is written by this app.",
-  'guide.parts': 'These are two parts of the guide: the most important information and the serious side effects. The full guide comes with your prescription. It is also at this address:',
+  'guide.parts': 'These are three parts of the guide: the most important information, the serious side effects, and what to do if you take too much. The full guide comes with your prescription. It is also at this address:',
   'guide.none': 'This app has no Medication Guide on file for your medication. The Medication Guide comes with your prescription.',
   // {brands} is "Zepbound and Mounjaro". The chart asks for the brand in the same way (curve.chooseBrand).
   'guide.chooseBrand': 'The Medication Guides for {brands} are separate. So the list needs to know your brand. To choose it, go to Me and tap "{button}".',

@@ -1766,7 +1766,7 @@ function guideSections(counts: GuideCounts): string[] {
   // 2.6 The lists, word for word.
   out.push('### 2.6 The warning signs shown in the app: the words of the Medication Guides', '');
   out.push(
-    `The app has one screen named ${q(screenText('guide.title'))}. A person opens it from the ${q(screenText('tab.me'))} tab, or with the button on an alert (2.1). It shows two parts of the FDA Medication Guide of the person's own medication: the "most important information" and the serious side effects. The text is the guide's own, in the guide's order, with its sub-bullets as bullets. The app adds no word to the list, sets nothing in bold and marks no item as more urgent than another.`,
+    `The app has one screen named ${q(screenText('guide.title'))}. A person opens it from the ${q(screenText('tab.me'))} tab, or with the button on an alert (2.1). It shows three parts of the FDA Medication Guide of the person's own medication: the "most important information", the serious side effects, and the sentence about taking too much under the heading it has in the guide. It shows them only to a profile in the United States; a brand of the same name in another country gets the line that no guide is on file. The text is the guide's own, in the guide's order, with its sub-bullets as bullets. The app adds no word to the list, sets nothing in bold and marks no item as more urgent than another.`,
     '',
   );
   out.push(`**Status of everything quoted in this section:** ${COPIED_FROM_GUIDE}. A script took the words from the label files published on DailyMed, and a second script checked every one of them against those files. No person outside our team has compared them with the guides.`, '');
@@ -1856,7 +1856,7 @@ function guideSections(counts: GuideCounts): string[] {
   }
   out.push(...table(['Code', 'Item of the guides (codes in 2.6)', 'What the guides tell the patient to do', 'Sign, in the guides\' words', 'What raises the alert', 'Reason or note'], rows, [1, 5, 5, 5, 5, 7]));
 
-  out.push('**The other instructions of the guides.** Outside the two parts, the guides tell the patient in a few more places to tell, call or talk to someone. None of these names a sign a person can notice. The app does not show them and raises no alert for them:', '');
+  out.push('**The other instructions of the guides.** Outside the two parts, the guides tell the patient in a few more places to tell, call or talk to someone. Only one of these names signs: the Wegovy sentence about taking too much (severe nausea, severe vomiting, severe low blood sugar). The app shows the sentence about taking too much on the screen (2.6); it shows none of the others, and raises no alert for any of them:', '');
   const kinds = Object.keys(OTHER_COVERAGE) as (keyof typeof OTHER_COVERAGE)[];
   out.push(
     ...table(
@@ -2825,7 +2825,7 @@ function openQuestionsSection(internals: TriageInternals): string[] {
     if (stopItems.length) extra.push(`For ${stopItems.map((i) => ITEM_NAMES[i].toLowerCase()).join(' and for ')} the guides' instruction begins "Stop using" or "Stop taking". The fixed card does not say that: the app gives no advice about doses. The button under the card opens the guide's own words (2.6). Is that enough?`);
   }
   extra.push(
-    'The app shows two parts of each Medication Guide: the most important information and the serious side effects (2.6). Is that the right selection? Should it also show the sentence about taking too much (2.7), or the list of the most common side effects, so that a person does not take the short list for the whole guide?',
+    'The app shows three parts of each Medication Guide: the most important information, the serious side effects, and the sentence about taking too much (2.6). Is that the right selection? Should it also show the list of the most common side effects, so that a person does not take the short list for the whole guide?',
   );
   const marks = NOT_FROM_A_GUIDE.filter((n) => showsLaunchCard(n.rule));
   if (marks.length) extra.push(`These rules, or parts of rules, raise an alert although no Medication Guide names the sign (2.8): ${marks.map((n) => `${ruleRef(n.rule)}: ${md(n.part)}`).join('; ')}. Is each of them right to keep? Is a sign of this kind missing?`);

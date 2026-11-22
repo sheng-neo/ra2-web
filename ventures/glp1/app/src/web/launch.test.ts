@@ -281,11 +281,14 @@ describe('launch build: warning signs in the Medication Guide', () => {
           at = found + piece.length;
         }
         // Every item and every sub-bullet is a list entry of its own; none is left out.
-        expect(out.match(/<li>/g), brand).toHaveLength(guideItems(g).length + guideItems(g).reduce((n, i) => n + i.bullets.length, 0));
+        // One more list item: the guide's sentence about taking too much, shown as a third part.
+        expect(out.match(/<li>/g), brand).toHaveLength(guideItems(g).length + guideItems(g).reduce((n, i) => n + i.bullets.length, 0) + 1);
+        expect(out, brand).toContain('nearest hospital emergency room right away');
         // Nothing is set in bold or coloured: the guide's words carry no emphasis of ours.
         expect(out, brand).not.toMatch(/<(?:b|strong|em|i|mark)\b|style=/);
         // Inside the guide's text there is no class at all: only headings, paragraphs and lists.
-        const guideText = out.slice(out.indexOf('<div class="guide-text" lang="en">') + '<div class="guide-text" lang="en">'.length);
+        // (The Close button of ours comes after the guide's text.)
+        const guideText = out.slice(out.indexOf('<div class="guide-text" lang="en">') + '<div class="guide-text" lang="en">'.length, out.indexOf('<button class="btn block guide-close"'));
         expect(guideText, brand).not.toMatch(/class=/);
         expect(guideText.replace(/<\/?(?:section|h3|p|ul|li|div)>/g, ''), brand).not.toMatch(/<[a-z]/);
       }
@@ -337,7 +340,7 @@ describe('launch build: warning signs in the Medication Guide', () => {
     const out = html(english, createElement(GuideSheet, { profile: english }));
     setUi({ triage: null, guide: false });
     expect(out).toContain('class="sheet-backdrop over-alert"');
-    expect(out.match(/<li>/g)).toHaveLength(guideItems(MED_GUIDES.zepbound).length + guideItems(MED_GUIDES.zepbound).reduce((n, i) => n + i.bullets.length, 0));
+    expect(out.match(/<li>/g)).toHaveLength(guideItems(MED_GUIDES.zepbound).length + guideItems(MED_GUIDES.zepbound).reduce((n, i) => n + i.bullets.length, 0) + 1);
   });
 });
 

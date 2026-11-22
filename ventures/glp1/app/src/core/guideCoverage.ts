@@ -22,9 +22,12 @@
  *   scripts/build-review-packet.ts prints it for one.
  *
  * The card of the first public version is one fixed card ("Contact your doctor right away",
- * with the emergency number). It is the same for every rule here, so it is never weaker for one
- * item than for another. Where a guide only says "tell your healthcare provider", the card
- * says more than the guide; the reviewer is asked whether that is right.
+ * with the emergency number). It is the same for every rule here. Where a guide only says
+ * "tell your healthcare provider", the card says more than the guide. Where a guide says "Stop
+ * using ..." or "get medical help right away" (pancreatitis and serious allergic reactions),
+ * the card says LESS: it does not tell the person to stop the medication, and it names the
+ * emergency number only "if it is an emergency". The guide's own words are one tap away, on
+ * the button that stands first on the alert. The reviewer is asked about both.
  */
 import { showsAlert } from './alert';
 import { MED_GUIDE_LIST, guideItems, type GuideItemId, type GuideOtherKind } from './medGuide';
@@ -106,7 +109,7 @@ export const ITEM_COVERAGE: ItemCoverage[] = [
       { words: ['shakiness'], rules: ['hypoglycemia'], alone: false, reason: ONE_SIGN_OF_LOW_SUGAR },
       { words: ['feeling jittery'], rules: ['hypoglycemia'], alone: false, reason: `${ONE_SIGN_OF_LOW_SUGAR} It is counted as the same sign as shakiness.` },
       { words: ['blurred vision'], rules: ['hypoglycemia', 'vision'], alone: true, note: 'Alone it raises the card through the rule for changes in vision.' },
-      { words: ['slurred speech'], rules: ['hypoglycemia'], alone: false, reason: ONE_SIGN_OF_LOW_SUGAR },
+      { words: ['slurred speech'], rules: ['hypoglycemia', 'chest_or_faint'], alone: true, note: 'Alone it raises the card through the rule for general emergency signs: speech that is suddenly slurred is a sign of a stroke.' },
       { words: ['confusion or drowsiness'], rules: ['hypoglycemia'], alone: false, reason: ONE_SIGN_OF_LOW_SUGAR },
       { words: ['fast heartbeat'], rules: ['hypoglycemia', 'chest_or_faint'], alone: true, note: 'Alone it raises the card through the rule for a very rapid heartbeat (a sign of a serious allergic reaction in the guides).' },
       { words: ['weakness'], rules: ['hypoglycemia'], alone: false, reason: COMMON_SIGN_OF_LOW_SUGAR },
@@ -169,7 +172,7 @@ export interface OtherCoverage {
   reason: string;
 }
 
-/** The other instructions of the guides (MED_GUIDE_OTHER), by kind. None of them names a sign a person can notice. */
+/** The other instructions of the guides (MED_GUIDE_OTHER), by kind. Only one of them names signs: the Wegovy sentence about taking too much (severe nausea, severe vomiting, severe low blood sugar). */
 export const OTHER_COVERAGE: Record<GuideOtherKind, OtherCoverage> = {
   before_use_condition: { reason: 'A condition to tell the healthcare provider about before starting the medication, not a sign.' },
   pregnancy: { reminder: 'pregnancy', reason: 'Not a sign: something to tell the healthcare provider about.' },
@@ -178,7 +181,7 @@ export const OTHER_COVERAGE: Record<GuideOtherKind, OtherCoverage> = {
   birth_control: { reminder: 'contraception', reason: 'Not a sign: something to talk over with the healthcare provider. The reminder rule applies to tirzepatide only.' },
   medicines: { reason: 'Not a sign: the patient is asked to tell the healthcare provider about other medicines.' },
   diabetes_medicines: { reason: 'Not a sign: the patient is asked to talk about low blood sugar and diabetes medicines before starting.' },
-  overdose: { reason: 'Taking too much is an event, not a sign, and the app has no rule for it; the guides say to call the healthcare provider or the Poison Help line, or to go to the nearest emergency room, right away.' },
+  overdose: { reason: 'Taking too much is an event, not a sign, and the app has no rule for it. The screen shows the sentence word for word as a third part. The guides say to call the healthcare provider or the Poison Help line, or to go to the nearest emergency room, right away.' },
   missed_doses: { reason: 'Not a sign. The app gives no advice about missed doses and has no rule for them.' },
   side_effects_general: { reason: 'A general instruction about side effects, with no sign of its own.' },
 };
