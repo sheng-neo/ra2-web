@@ -64,6 +64,16 @@ describe('server', () => {
     expect(parse).not.toHaveBeenCalled();
   });
 
+  it('never sends English danger-symptom text to the model either', async () => {
+    const parse = vi.fn();
+    const app = createApp({ client: { beta: { messages: { parse } } } as unknown as ParseClient });
+    for (const text of ['severe stomach pain going to my back', 'I can’t breathe', 'I want to die']) {
+      const res = await app.request('/api/parse', body({ text, context: { drug: 'Zepbound (tirzepatide)', doseUnit: 'mg', weightUnit: 'lb', localTime: 'x' } }));
+      expect(await res.json(), text).toEqual({ events: [], triage: true });
+    }
+    expect(parse).not.toHaveBeenCalled();
+  });
+
   it('passes model, effort, structured output and fallbacks; maps the parsed output', async () => {
     const parse = vi.fn().mockResolvedValue({
       stop_reason: 'end_turn',

@@ -1,19 +1,21 @@
-import { EMERGENCY_NUMBER, emergencyRegion, triageCard } from '../../core/triage';
+import { emergencyDial, emergencyRegion, triageCard } from '../../core/triage';
 import { deviceTz } from '../db';
 import type { Profile } from '../../core/types';
 import { ackTriage } from '../actions';
+import { useT } from '../i18n';
 import { useUi } from '../store';
 
 /** 危险症状分诊卡。全屏、警示色，是"不显示红色警告"规则的唯一例外。 */
 export function TriageModal({ profile }: { profile: Profile }) {
   const { triage } = useUi();
+  const t = useT();
   if (!triage) return null;
   const where = emergencyRegion(deviceTz(), profile.region);
-  const cards = triage.hits.map((h) => ({ hit: h, card: triageCard(h, where) }));
+  const cards = triage.hits.map((h) => ({ hit: h, card: triageCard(h, where, t.lang) }));
   const emergency = cards.some((c) => c.card.showEmergency);
-  const num = EMERGENCY_NUMBER[where];
+  const num = emergencyDial(where);
   return (
-    <div className="triage-backdrop" role="alertdialog" aria-label="身体情况提醒">
+    <div className="triage-backdrop" role="alertdialog" aria-label={t('triage.aria')}>
       <div className={`triage ${cards[0].hit.level}`}>
         {cards.map(({ hit, card }) => (
           <div key={hit.id} className="triage-item">
@@ -21,15 +23,15 @@ export function TriageModal({ profile }: { profile: Profile }) {
             <p>{card.body}</p>
           </div>
         ))}
-        <p className="fine">这是根据你的描述做的提醒，不是诊断。拿不准就去看医生。</p>
+        <p className="fine">{t('triage.note')}</p>
         <div className="row">
-          {emergency && /^\d+$/.test(num) && (
+          {emergency && num !== null && (
             <a className="btn danger" href={`tel:${num}`}>
-              拨打 {num}
+              {t('triage.call', { number: num })}
             </a>
           )}
           <button className="btn" onClick={() => void ackTriage(triage.rowId)}>
-            我知道了
+            {t('triage.ack')}
           </button>
         </div>
       </div>

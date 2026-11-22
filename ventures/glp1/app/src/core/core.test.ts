@@ -9,7 +9,7 @@ import { highSymptomDays } from './symptoms';
 import { parseLocal } from './localParse';
 import { reminderIcs } from './ics';
 import { todayAdvice, type TodayInput } from './today';
-import { fromKg, toKg } from './units';
+import { fromKg, toKg, fmtWeight } from './units';
 
 const SH = 'Asia/Shanghai';
 const NY = 'America/New_York';
@@ -33,8 +33,8 @@ describe('tz', () => {
 
 describe('catalog', () => {
   it('shows the regional brand name and finds drugs by any name', () => {
-    expect(drugLabel(drugById('tirzepatide'), 'CN')).toBe('穆峰达（替尔泊肽）');
-    expect(drugLabel(drugById('semaglutide-wl'), 'TW')).toBe('週纖達（司美格鲁肽（减重））');
+    expect(drugLabel(drugById('tirzepatide'), 'CN', 'hans')).toBe('穆峰达（替尔泊肽）');
+    expect(drugLabel(drugById('semaglutide-wl'), 'TW', 'hans')).toBe('週纖達（司美格鲁肽（减重））');
     expect(searchCatalog('zepbound').map((d) => d.id)).toEqual(['tirzepatide']);
     expect(searchCatalog('诺和').map((d) => d.id)).toEqual(['semaglutide-wl', 'semaglutide-t2d', 'semaglutide-oral-t2d']);
   });
@@ -234,37 +234,86 @@ describe('symptoms', () => {
 
 describe('local parser', () => {
   it('reads a dose with site', () => {
-    const r = parseLocal('刚打了 7.5，右大腿', 'kg');
+    const r = parseLocal('刚打了 7.5，右大腿', 'kg', 'hans');
     expect(r.events).toEqual([{ type: 'dose', amount: 7.5, unit: 'mg', site: 'thigh_r', raw: '打了 7.5' }]);
     expect(r.rest).toBe('');
   });
 
   it('reads weight in kg, jin and lb', () => {
-    expect(parseLocal('今早 81.6', 'kg').events[0]).toMatchObject({ type: 'weight', kg: 81.6 });
-    expect(parseLocal('163斤', 'kg').events[0]).toMatchObject({ type: 'weight', kg: 81.5 });
-    expect(parseLocal('体重 180', 'lb').events[0]).toMatchObject({ type: 'weight', kg: 81.6 });
+    expect(parseLocal('今早 81.6', 'kg', 'hans').events[0]).toMatchObject({ type: 'weight', kg: 81.6 });
+    expect(parseLocal('163斤', 'kg', 'hans').events[0]).toMatchObject({ type: 'weight', kg: 81.5 });
+    // Stored to 0.01 kg, so the pounds that were typed read back as typed (180 lb is 81.65 kg).
+    expect(parseLocal('体重 180', 'lb', 'hans').events[0]).toMatchObject({ type: 'weight', kg: 81.65 });
+  });
+
+  it('reads a weight with two decimals whole, never its tail', () => {
+    expect(parseLocal('182.75 lb', 'kg', 'en')).toEqual({ events: [{ type: 'weight', kg: 82.89, raw: '182.75 lb' }], rest: '' });
+    expect(parseLocal('282.75 lbs', 'kg', 'en')).toEqual({ events: [{ type: 'weight', kg: 128.25, raw: '282.75 lbs' }], rest: '' });
+    expect(parseLocal('82.75 kg', 'lb', 'en')).toEqual({ events: [{ type: 'weight', kg: 82.75, raw: '82.75 kg' }], rest: '' });
+    expect(parseLocal('81.65公斤', 'jin', 'hans')).toEqual({ events: [{ type: 'weight', kg: 81.65, raw: '81.65公斤' }], rest: '' });
+    expect(parseLocal('体重 81.65 公斤', 'jin', 'hans')).toEqual({ events: [{ type: 'weight', kg: 81.65, raw: '体重 81.65 公斤' }], rest: '' });
+    expect(parseLocal('今天 163.5斤', 'kg', 'hans').events[0]).toMatchObject({ type: 'weight', kg: 81.75 });
+    // Three decimals, or a longer number, is not a weight this parser should guess at.
+    expect(parseLocal('81.655 kg', 'kg', 'en').events).toEqual([]);
+    expect(parseLocal('1182.5 lb', 'kg', 'en').events).toEqual([]);
+  });
+
+  it('a weight typed with one decimal reads back as typed, in every unit', () => {
+    const cases: [string, 'lb' | 'kg' | 'jin', (n: string) => string][] = [
+      ['lb', 'lb', (n) => `${n} lb`],
+      ['lb', 'lb', (n) => `weighed ${n}`],
+      ['kg', 'kg', (n) => `${n} kg`],
+      ['jin', 'jin', (n) => `${n}斤`],
+      ['jin', 'jin', (n) => `体重 ${n}`],
+    ];
+    for (const [, unit, say] of cases) {
+      for (let tenths = 700; tenths <= 4000; tenths += 7) {
+        const typed = (tenths / 10).toFixed(1);
+        const e = parseLocal(say(typed), unit, 'en').events[0];
+        if (!e) continue; // outside 30–300 kg
+        expect(e.type === 'weight' && fmtWeight(e.kg, unit, 'en'), say(typed)).toBe(`${typed} ${unit}`);
+      }
+    }
+    expect(parseLocal('182.4 lb', 'lb', 'en').events[0]).toMatchObject({ kg: 82.74 });
+    expect(parseLocal('weighed 199.9 lbs', 'lb', 'en').events[0]).toMatchObject({ kg: 90.67 });
+    expect(parseLocal('150.5 lbs', 'lb', 'en').events[0]).toMatchObject({ kg: 68.27 });
   });
 
   it('logs simple foods locally and leaves composite dishes for AI', () => {
-    const r = parseLocal('早饭俩鸡蛋一杯豆浆', 'kg');
+    const r = parseLocal('早饭俩鸡蛋一杯豆浆', 'kg', 'hans');
     expect(r.events).toHaveLength(1);
     const food = r.events[0];
     expect(food.type === 'food' && food.items.reduce((s, i) => s + i.proteinG, 0)).toBe(19);
     expect(r.rest).toBe('');
-    const dish = parseLocal('皮蛋瘦肉粥一碗', 'kg');
+    const dish = parseLocal('皮蛋瘦肉粥一碗', 'kg', 'hans');
     expect(dish.events).toEqual([]);
     expect(dish.rest).toContain('皮蛋瘦肉粥');
   });
 
+  it('reads English measure words the same way as the Chinese ones', () => {
+    const foods = (text: string) => {
+      const r = parseLocal(text, 'lb', 'en');
+      const e = r.events[0];
+      return { labels: e?.type === 'food' ? e.items.map((i) => i.label) : [], rest: r.rest, count: r.events.length };
+    };
+    expect(foods('2 eggs and a glass of milk')).toEqual({ labels: ['Egg × 2', 'Milk × 1'], rest: '', count: 1 });
+    expect(foods('a cup of greek yogurt')).toEqual({ labels: ['Greek yogurt × 1'], rest: '', count: 1 });
+    expect(foods('one scoop of protein powder')).toEqual({ labels: ['Protein powder × 1'], rest: '', count: 1 });
+    expect(foods('two cups of milk')).toEqual({ labels: ['Milk × 2'], rest: '', count: 1 });
+    expect(foods('3 bowls of congee')).toEqual({ labels: ['Plain rice porridge (congee) × 3'], rest: '', count: 1 });
+    // A dish the table does not know still goes to the AI whole.
+    expect(foods('a bowl of chicken noodle soup')).toMatchObject({ labels: [], count: 0 });
+  });
+
   it('splits one message into several records', () => {
-    const r = parseLocal('打完针了 打了2.5 体重 82.3 早饭俩鸡蛋', 'kg');
+    const r = parseLocal('打完针了 打了2.5 体重 82.3 早饭俩鸡蛋', 'kg', 'hans');
     expect(r.events.map((e) => e.type).sort()).toEqual(['dose', 'food', 'weight']);
   });
 });
 
 describe('ics', () => {
   it('creates a weekly floating-time reminder without the drug name', () => {
-    const s = reminderIcs({ kind: 'weekly', weekday: 1, time: '21:00' }, { year: 2026, month: 11, day: 23, hour: 21, minute: 0 }, 'u1');
+    const s = reminderIcs({ kind: 'weekly', weekday: 1, time: '21:00' }, { year: 2026, month: 11, day: 23, hour: 21, minute: 0 }, 'u1', 'hans');
     expect(s).toContain('DTSTART:20261123T210000\r\n');
     expect(s).toContain('RRULE:FREQ=WEEKLY;BYDAY=MO');
     expect(s).toContain('SUMMARY:该记一针了');

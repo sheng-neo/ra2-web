@@ -1,0 +1,587 @@
+[
+  {
+    "region": "CN",
+    "hit": {
+      "id": "crisis",
+      "level": "crisis"
+    },
+    "card": {
+      "title": "你不是一个人",
+      "body": "如果你有伤害自己的想法，请现在就联系能帮你的人：心理援助热线 12356（全国心理援助热线）。有立即的危险，请拨打 120。",
+      "showEmergency": true,
+      "pauseCoaching": true
+    }
+  },
+  {
+    "region": "CN",
+    "hit": {
+      "id": "pancreatitis",
+      "level": "emergency"
+    },
+    "card": {
+      "title": "这种腹痛需要马上看医生",
+      "body": "上腹剧烈疼痛、疼到后背（可能伴呕吐）可能和胰腺有关。请马上去急诊，必要时拨打 120。今天的训练和饮食提醒先暂停。",
+      "showEmergency": true,
+      "pauseCoaching": true
+    }
+  },
+  {
+    "region": "CN",
+    "hit": {
+      "id": "abdominal_pain_severe",
+      "level": "urgent"
+    },
+    "card": {
+      "title": "剧烈或持续的腹痛，请尽快看医生",
+      "body": "如果疼到后背、伴呕吐，或越来越重，请马上去急诊（120）。今天的训练先暂停。",
+      "showEmergency": true,
+      "pauseCoaching": true
+    }
+  },
+  {
+    "region": "CN",
+    "hit": {
+      "id": "chest_or_faint",
+      "level": "emergency"
+    },
+    "card": {
+      "title": "请立即就医",
+      "body": "胸痛或晕倒需要马上处理，请拨打 120。",
+      "showEmergency": true,
+      "pauseCoaching": true
+    }
+  },
+  {
+    "region": "CN",
+    "hit": {
+      "id": "anaphylaxis",
+      "level": "emergency"
+    },
+    "card": {
+      "title": "可能是严重过敏",
+      "body": "嘴唇或喉咙肿、喘不上气、全身起疹子，请立即拨打 120。",
+      "showEmergency": true,
+      "pauseCoaching": true
+    }
+  },
+  {
+    "region": "CN",
+    "hit": {
+      "id": "vision",
+      "level": "emergency"
+    },
+    "card": {
+      "title": "视力突然变化，请马上就医",
+      "body": "一只眼突然看不清或视野缺了一块，请马上去眼科或急诊（120），并告诉医生你在用 GLP-1 类药物。",
+      "showEmergency": true,
+      "pauseCoaching": true
+    }
+  },
+  {
+    "region": "CN",
+    "hit": {
+      "id": "hypoglycemia",
+      "level": "act_now"
+    },
+    "card": {
+      "title": "可能是低血糖，先处理",
+      "body": "先吃 15 克糖（比如半杯果汁或 3–4 块方糖），15 分钟后不缓解或更糟，请就医（120），并联系你的医生。",
+      "showEmergency": true,
+      "pauseCoaching": true
+    }
+  },
+  {
+    "region": "CN",
+    "hit": {
+      "id": "hypoglycemia",
+      "level": "urgent"
+    },
+    "card": {
+      "title": "这些症状建议问问医生",
+      "body": "手抖、出冷汗、心慌同时出现，可能和血糖有关。如果反复出现，请尽快看医生。",
+      "showEmergency": false,
+      "pauseCoaching": true
+    }
+  },
+  {
+    "region": "CN",
+    "hit": {
+      "id": "dehydration",
+      "level": "urgent"
+    },
+    "card": {
+      "title": "小心脱水",
+      "body": "一直吐或拉、喝水也吐、尿很少、站起来眼前发黑，有脱水和伤肾的风险，请尽快就医。先别勉强喝蛋白饮料，能喝就小口喝水或补液盐。",
+      "showEmergency": true,
+      "pauseCoaching": true
+    }
+  },
+  {
+    "region": "CN",
+    "hit": {
+      "id": "gallbladder",
+      "level": "urgent"
+    },
+    "card": {
+      "title": "请尽快看医生",
+      "body": "右上腹疼、发烧、眼白或皮肤发黄，可能和胆囊有关。",
+      "showEmergency": false,
+      "pauseCoaching": true
+    }
+  },
+  {
+    "region": "CN",
+    "hit": {
+      "id": "thyroid",
+      "level": "urgent"
+    },
+    "card": {
+      "title": "请尽快看医生",
+      "body": "脖子摸到肿块、吞咽困难或声音嘶哑一直不好，请告诉医生你在用这类药。",
+      "showEmergency": false,
+      "pauseCoaching": false
+    }
+  },
+  {
+    "region": "CN",
+    "hit": {
+      "id": "pregnancy",
+      "level": "contact"
+    },
+    "card": {
+      "title": "请联系开药的医生",
+      "body": "怀孕、备孕或哺乳期间用药需要医生评估（司美格鲁肽说明书要求计划怀孕前至少停药 2 个月）。减重目标已暂停。",
+      "showEmergency": false,
+      "pauseCoaching": false
+    }
+  },
+  {
+    "region": "CN",
+    "hit": {
+      "id": "procedure",
+      "level": "remind"
+    },
+    "card": {
+      "title": "提前告诉医生",
+      "body": "要做手术、全麻、胃镜或肠镜，请提前告诉医生和麻醉医生你在用 GLP-1 类药物。",
+      "showEmergency": false,
+      "pauseCoaching": false
+    }
+  },
+  {
+    "region": "CN",
+    "hit": {
+      "id": "contraception",
+      "level": "remind"
+    },
+    "card": {
+      "title": "说明书里的一条提醒",
+      "body": "替尔泊肽说明书建议：开始用药和每次加量后的 4 周内，口服避孕药之外加用其他避孕方式。",
+      "showEmergency": false,
+      "pauseCoaching": false
+    }
+  },
+  {
+    "region": "CN",
+    "hit": {
+      "id": "eating_too_little",
+      "level": "care"
+    },
+    "card": {
+      "title": "吃得太少了，照顾好自己",
+      "body": "连续多天几乎吃不下东西，建议和医生或营养师聊聊。减重目标先放一放，先保证喝水和一点蛋白。",
+      "showEmergency": false,
+      "pauseCoaching": false
+    }
+  },
+  {
+    "region": "US",
+    "hit": {
+      "id": "crisis",
+      "level": "crisis"
+    },
+    "card": {
+      "title": "你不是一个人",
+      "body": "如果你有伤害自己的想法，请现在就联系能帮你的人：心理援助热线 988。有立即的危险，请拨打 911。",
+      "showEmergency": true,
+      "pauseCoaching": true
+    }
+  },
+  {
+    "region": "US",
+    "hit": {
+      "id": "pancreatitis",
+      "level": "emergency"
+    },
+    "card": {
+      "title": "这种腹痛需要马上看医生",
+      "body": "上腹剧烈疼痛、疼到后背（可能伴呕吐）可能和胰腺有关。请马上去急诊，必要时拨打 911。今天的训练和饮食提醒先暂停。",
+      "showEmergency": true,
+      "pauseCoaching": true
+    }
+  },
+  {
+    "region": "US",
+    "hit": {
+      "id": "abdominal_pain_severe",
+      "level": "urgent"
+    },
+    "card": {
+      "title": "剧烈或持续的腹痛，请尽快看医生",
+      "body": "如果疼到后背、伴呕吐，或越来越重，请马上去急诊（911）。今天的训练先暂停。",
+      "showEmergency": true,
+      "pauseCoaching": true
+    }
+  },
+  {
+    "region": "US",
+    "hit": {
+      "id": "chest_or_faint",
+      "level": "emergency"
+    },
+    "card": {
+      "title": "请立即就医",
+      "body": "胸痛或晕倒需要马上处理，请拨打 911。",
+      "showEmergency": true,
+      "pauseCoaching": true
+    }
+  },
+  {
+    "region": "US",
+    "hit": {
+      "id": "anaphylaxis",
+      "level": "emergency"
+    },
+    "card": {
+      "title": "可能是严重过敏",
+      "body": "嘴唇或喉咙肿、喘不上气、全身起疹子，请立即拨打 911。",
+      "showEmergency": true,
+      "pauseCoaching": true
+    }
+  },
+  {
+    "region": "US",
+    "hit": {
+      "id": "vision",
+      "level": "emergency"
+    },
+    "card": {
+      "title": "视力突然变化，请马上就医",
+      "body": "一只眼突然看不清或视野缺了一块，请马上去眼科或急诊（911），并告诉医生你在用 GLP-1 类药物。",
+      "showEmergency": true,
+      "pauseCoaching": true
+    }
+  },
+  {
+    "region": "US",
+    "hit": {
+      "id": "hypoglycemia",
+      "level": "act_now"
+    },
+    "card": {
+      "title": "可能是低血糖，先处理",
+      "body": "先吃 15 克糖（比如半杯果汁或 3–4 块方糖），15 分钟后不缓解或更糟，请就医（911），并联系你的医生。",
+      "showEmergency": true,
+      "pauseCoaching": true
+    }
+  },
+  {
+    "region": "US",
+    "hit": {
+      "id": "hypoglycemia",
+      "level": "urgent"
+    },
+    "card": {
+      "title": "这些症状建议问问医生",
+      "body": "手抖、出冷汗、心慌同时出现，可能和血糖有关。如果反复出现，请尽快看医生。",
+      "showEmergency": false,
+      "pauseCoaching": true
+    }
+  },
+  {
+    "region": "US",
+    "hit": {
+      "id": "dehydration",
+      "level": "urgent"
+    },
+    "card": {
+      "title": "小心脱水",
+      "body": "一直吐或拉、喝水也吐、尿很少、站起来眼前发黑，有脱水和伤肾的风险，请尽快就医。先别勉强喝蛋白饮料，能喝就小口喝水或补液盐。",
+      "showEmergency": true,
+      "pauseCoaching": true
+    }
+  },
+  {
+    "region": "US",
+    "hit": {
+      "id": "gallbladder",
+      "level": "urgent"
+    },
+    "card": {
+      "title": "请尽快看医生",
+      "body": "右上腹疼、发烧、眼白或皮肤发黄，可能和胆囊有关。",
+      "showEmergency": false,
+      "pauseCoaching": true
+    }
+  },
+  {
+    "region": "US",
+    "hit": {
+      "id": "thyroid",
+      "level": "urgent"
+    },
+    "card": {
+      "title": "请尽快看医生",
+      "body": "脖子摸到肿块、吞咽困难或声音嘶哑一直不好，请告诉医生你在用这类药。",
+      "showEmergency": false,
+      "pauseCoaching": false
+    }
+  },
+  {
+    "region": "US",
+    "hit": {
+      "id": "pregnancy",
+      "level": "contact"
+    },
+    "card": {
+      "title": "请联系开药的医生",
+      "body": "怀孕、备孕或哺乳期间用药需要医生评估（司美格鲁肽说明书要求计划怀孕前至少停药 2 个月）。减重目标已暂停。",
+      "showEmergency": false,
+      "pauseCoaching": false
+    }
+  },
+  {
+    "region": "US",
+    "hit": {
+      "id": "procedure",
+      "level": "remind"
+    },
+    "card": {
+      "title": "提前告诉医生",
+      "body": "要做手术、全麻、胃镜或肠镜，请提前告诉医生和麻醉医生你在用 GLP-1 类药物。",
+      "showEmergency": false,
+      "pauseCoaching": false
+    }
+  },
+  {
+    "region": "US",
+    "hit": {
+      "id": "contraception",
+      "level": "remind"
+    },
+    "card": {
+      "title": "说明书里的一条提醒",
+      "body": "替尔泊肽说明书建议：开始用药和每次加量后的 4 周内，口服避孕药之外加用其他避孕方式。",
+      "showEmergency": false,
+      "pauseCoaching": false
+    }
+  },
+  {
+    "region": "US",
+    "hit": {
+      "id": "eating_too_little",
+      "level": "care"
+    },
+    "card": {
+      "title": "吃得太少了，照顾好自己",
+      "body": "连续多天几乎吃不下东西，建议和医生或营养师聊聊。减重目标先放一放，先保证喝水和一点蛋白。",
+      "showEmergency": false,
+      "pauseCoaching": false
+    }
+  },
+  {
+    "region": "OTHER",
+    "hit": {
+      "id": "crisis",
+      "level": "crisis"
+    },
+    "card": {
+      "title": "你不是一个人",
+      "body": "如果你有伤害自己的想法，请现在就联系能帮你的人：心理援助热线 当地心理援助热线。有立即的危险，请拨打 当地急救电话。",
+      "showEmergency": true,
+      "pauseCoaching": true
+    }
+  },
+  {
+    "region": "OTHER",
+    "hit": {
+      "id": "pancreatitis",
+      "level": "emergency"
+    },
+    "card": {
+      "title": "这种腹痛需要马上看医生",
+      "body": "上腹剧烈疼痛、疼到后背（可能伴呕吐）可能和胰腺有关。请马上去急诊，必要时拨打 当地急救电话。今天的训练和饮食提醒先暂停。",
+      "showEmergency": true,
+      "pauseCoaching": true
+    }
+  },
+  {
+    "region": "OTHER",
+    "hit": {
+      "id": "abdominal_pain_severe",
+      "level": "urgent"
+    },
+    "card": {
+      "title": "剧烈或持续的腹痛，请尽快看医生",
+      "body": "如果疼到后背、伴呕吐，或越来越重，请马上去急诊（当地急救电话）。今天的训练先暂停。",
+      "showEmergency": true,
+      "pauseCoaching": true
+    }
+  },
+  {
+    "region": "OTHER",
+    "hit": {
+      "id": "chest_or_faint",
+      "level": "emergency"
+    },
+    "card": {
+      "title": "请立即就医",
+      "body": "胸痛或晕倒需要马上处理，请拨打 当地急救电话。",
+      "showEmergency": true,
+      "pauseCoaching": true
+    }
+  },
+  {
+    "region": "OTHER",
+    "hit": {
+      "id": "anaphylaxis",
+      "level": "emergency"
+    },
+    "card": {
+      "title": "可能是严重过敏",
+      "body": "嘴唇或喉咙肿、喘不上气、全身起疹子，请立即拨打 当地急救电话。",
+      "showEmergency": true,
+      "pauseCoaching": true
+    }
+  },
+  {
+    "region": "OTHER",
+    "hit": {
+      "id": "vision",
+      "level": "emergency"
+    },
+    "card": {
+      "title": "视力突然变化，请马上就医",
+      "body": "一只眼突然看不清或视野缺了一块，请马上去眼科或急诊（当地急救电话），并告诉医生你在用 GLP-1 类药物。",
+      "showEmergency": true,
+      "pauseCoaching": true
+    }
+  },
+  {
+    "region": "OTHER",
+    "hit": {
+      "id": "hypoglycemia",
+      "level": "act_now"
+    },
+    "card": {
+      "title": "可能是低血糖，先处理",
+      "body": "先吃 15 克糖（比如半杯果汁或 3–4 块方糖），15 分钟后不缓解或更糟，请就医（当地急救电话），并联系你的医生。",
+      "showEmergency": true,
+      "pauseCoaching": true
+    }
+  },
+  {
+    "region": "OTHER",
+    "hit": {
+      "id": "hypoglycemia",
+      "level": "urgent"
+    },
+    "card": {
+      "title": "这些症状建议问问医生",
+      "body": "手抖、出冷汗、心慌同时出现，可能和血糖有关。如果反复出现，请尽快看医生。",
+      "showEmergency": false,
+      "pauseCoaching": true
+    }
+  },
+  {
+    "region": "OTHER",
+    "hit": {
+      "id": "dehydration",
+      "level": "urgent"
+    },
+    "card": {
+      "title": "小心脱水",
+      "body": "一直吐或拉、喝水也吐、尿很少、站起来眼前发黑，有脱水和伤肾的风险，请尽快就医。先别勉强喝蛋白饮料，能喝就小口喝水或补液盐。",
+      "showEmergency": true,
+      "pauseCoaching": true
+    }
+  },
+  {
+    "region": "OTHER",
+    "hit": {
+      "id": "gallbladder",
+      "level": "urgent"
+    },
+    "card": {
+      "title": "请尽快看医生",
+      "body": "右上腹疼、发烧、眼白或皮肤发黄，可能和胆囊有关。",
+      "showEmergency": false,
+      "pauseCoaching": true
+    }
+  },
+  {
+    "region": "OTHER",
+    "hit": {
+      "id": "thyroid",
+      "level": "urgent"
+    },
+    "card": {
+      "title": "请尽快看医生",
+      "body": "脖子摸到肿块、吞咽困难或声音嘶哑一直不好，请告诉医生你在用这类药。",
+      "showEmergency": false,
+      "pauseCoaching": false
+    }
+  },
+  {
+    "region": "OTHER",
+    "hit": {
+      "id": "pregnancy",
+      "level": "contact"
+    },
+    "card": {
+      "title": "请联系开药的医生",
+      "body": "怀孕、备孕或哺乳期间用药需要医生评估（司美格鲁肽说明书要求计划怀孕前至少停药 2 个月）。减重目标已暂停。",
+      "showEmergency": false,
+      "pauseCoaching": false
+    }
+  },
+  {
+    "region": "OTHER",
+    "hit": {
+      "id": "procedure",
+      "level": "remind"
+    },
+    "card": {
+      "title": "提前告诉医生",
+      "body": "要做手术、全麻、胃镜或肠镜，请提前告诉医生和麻醉医生你在用 GLP-1 类药物。",
+      "showEmergency": false,
+      "pauseCoaching": false
+    }
+  },
+  {
+    "region": "OTHER",
+    "hit": {
+      "id": "contraception",
+      "level": "remind"
+    },
+    "card": {
+      "title": "说明书里的一条提醒",
+      "body": "替尔泊肽说明书建议：开始用药和每次加量后的 4 周内，口服避孕药之外加用其他避孕方式。",
+      "showEmergency": false,
+      "pauseCoaching": false
+    }
+  },
+  {
+    "region": "OTHER",
+    "hit": {
+      "id": "eating_too_little",
+      "level": "care"
+    },
+    "card": {
+      "title": "吃得太少了，照顾好自己",
+      "body": "连续多天几乎吃不下东西，建议和医生或营养师聊聊。减重目标先放一放，先保证喝水和一点蛋白。",
+      "showEmergency": false,
+      "pauseCoaching": false
+    }
+  }
+]

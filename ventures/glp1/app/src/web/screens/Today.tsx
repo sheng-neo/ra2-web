@@ -1,24 +1,30 @@
-import { drugById } from '../../core/catalog';
+import { doseUnitLabel, drugById } from '../../core/catalog';
+import { countdownText, siteLabel } from '../../core/schedule';
+import { gradeLabel, symptomLabel } from '../../core/symptoms';
+import { fmtDay, fmtTime, fmtWhen } from '../../core/tz';
 import type { Profile } from '../../core/types';
 import { fmtWeight } from '../../core/units';
 import { deleteRecord } from '../actions';
 import { adviceText } from '../content/advice';
-import { DISCLAIMER, SITE_LABEL, STATUS_LABEL, symptomLabel, GRADE_LABEL } from '../content/labels';
-import { ROUTINES } from '../content/workouts';
+import { disclaimer, statusLabel } from '../content/labels';
+import { routineTitle } from '../content/workouts';
 import { Curve } from '../components/Curve';
-import { Card, fmtCountdown, fmtDay, fmtTime, fmtWhen } from '../components/ui';
+import { Card } from '../components/ui';
 import type { Derived, TodayItem } from '../derive';
+import { bold, useT } from '../i18n';
 import { setUi } from '../store';
 
 export function Today({ profile, d, now, onOpenTrends, onOpenMe }: { profile: Profile; d: Derived; now: number; onOpenTrends: () => void; onOpenMe: () => void }) {
+  const t = useT();
+  const lang = t.lang;
   const reg = profile.regimen;
   const oral = d.drug?.route === 'oral';
-  const advice = adviceText(d.advice, d.protein, { oral });
-  const statusBits: string[] = [fmtDay(now, d.tz)];
+  const advice = adviceText(d.advice, d.protein, { oral, lang });
+  const statusBits: string[] = [fmtDay(now, d.tz, lang)];
   if (reg) {
-    if (reg.status === 'stopped') statusBits.push('停药维持期');
-    else if (d.daysSinceDose !== null && !oral) statusBits.push(d.daysSinceDose === 0 ? '今天打了针' : `打针后第 ${d.daysSinceDose} 天`);
-    if (d.escalation?.escalationActive && (reg.status === 'escalating' || reg.status === 'maintenance')) statusBits.push('加量期');
+    if (reg.status === 'stopped') statusBits.push(t('today.status.stopped'));
+    else if (d.daysSinceDose !== null && !oral) statusBits.push(d.daysSinceDose === 0 ? t('today.status.shotToday') : t('today.status.daysSinceShot', { days: d.daysSinceDose }));
+    if (d.escalation?.escalationActive && (reg.status === 'escalating' || reg.status === 'maintenance')) statusBits.push(t('today.status.escalation'));
   }
 
   return (
@@ -26,76 +32,80 @@ export function Today({ profile, d, now, onOpenTrends, onOpenMe }: { profile: Pr
       <header className="status">
         <div>{statusBits.join(' · ')}</div>
         {reg && d.nextDue !== null && (
-          <div className={`due ${d.dueStatus}`}>
-            {oral ? '下次吃药' : '下一针'}：{fmtWhen(d.nextDue, d.tz, now)}（{fmtCountdown(d.nextDue, now)}）
+          <div className={`due ${d.dueStatus}`}>{t(oral ? 'today.next.pill' : 'today.next.shot', { when: fmtWhen(d.nextDue, d.tz, now, lang), countdown: countdownText(d.nextDue, now, lang) })}</div>
+        )}
+        {reg && d.nextDue === null && <div className="due">{statusLabel(reg.status, lang)}</div>}
+        {d.fastingUntil && <div className="due">{t('today.fasting', { count: Math.ceil((d.fastingUntil - now) / 60000) })}</div>}
+        {!reg && (
+          <div className="due">
+            {t('today.noRegimen')}
+            <button className="link" onClick={onOpenMe}>
+              {t('today.noRegimen.link')}
+            </button>
           </div>
         )}
-        {reg && d.nextDue === null && <div className="due">{STATUS_LABEL[reg.status]}</div>}
-        {d.fastingUntil && <div className="due">空腹中：还有 {Math.ceil((d.fastingUntil - now) / 60000)} 分钟再吃东西</div>}
-        {!reg && <div className="due">还没设置用药。<button className="link" onClick={onOpenMe}>去"我的"里设置</button></div>}
       </header>
 
       <Card className={`advice ${advice.tone}`}>
         <h2>{advice.title}</h2>
         <p>{advice.body}</p>
-        <div className="row">
+        <div className="row wrap">
           {d.advice.kind === 'normal' && d.advice.train && (
             <button className="btn primary" onClick={() => setUi({ sheet: 'workout' })}>
-              开始练
+              {t('today.startWorkout')}
             </button>
           )}
           {d.advice.kind === 'triage' && (
             <button className="btn danger" onClick={() => d.advice.kind === 'triage' && setUi({ triage: { hits: [d.advice.hit], rowId: d.openTriage?.rowId ?? null } })}>
-              再看一次提醒
+              {t('today.seeAlert')}
             </button>
           )}
           {d.advice.kind === 'dose_day' && (
             <button className="btn primary" onClick={() => setUi({ sheet: 'dose' })}>
-              {oral ? '记吃药' : '记一针'}
+              {t(oral ? 'action.logPill' : 'action.logShot')}
             </button>
           )}
           <button className="btn" onClick={() => setUi({ sheet: 'symptom' })}>
-            我不舒服
+            {t('today.unwell')}
           </button>
         </div>
-        {d.fastLoss && <p className="warn">最近两周每周都掉了 1.5% 以上，减得偏快。注意吃够蛋白，可以和医生聊聊。</p>}
+        {d.fastLoss && <p className="warn">{t('today.fastLoss')}</p>}
       </Card>
 
       <ProteinCard d={d} />
 
       {d.curve.length > 0 && (
         <Card className="clickable">
-          <button className="card-btn" onClick={onOpenTrends} aria-label="查看药物水平曲线">
+          <button className="card-btn" onClick={onOpenTrends} aria-label={t('today.curve.open')}>
             <div className="row between">
-              <h3>药物水平（估算）</h3>
+              <h3>{t('curve.title')}</h3>
               <span className="big">{d.curveNow ?? '–'}</span>
             </div>
             <Curve points={d.curve} nowMs={now} doseTimes={[]} height={70} compact />
-            <p className="fine">按公开的人群平均数据估算，不是测量值，不能用来调整剂量。</p>
+            <p className="fine">{t('today.curve.note')}</p>
           </button>
         </Card>
       )}
-      {reg && d.drug && !d.drug.pk && <p className="fine pad">这个药暂不画曲线（参数还没核实，或者是每天用的药）。</p>}
+      {reg && d.drug && !d.drug.pk && <p className="fine pad">{t('today.noCurve')}</p>}
 
       <Card>
-        <h3>今天的记录</h3>
-        {d.todayItems.length === 0 ? <p className="muted">还没有记录。在下面说一句，或者点按钮。</p> : <ul className="log">{d.todayItems.map((it) => <LogRow key={it.row.id} it={it} profile={profile} tz={d.tz} />)}</ul>}
+        <h3>{t('today.log.title')}</h3>
+        {d.todayItems.length === 0 ? <p className="muted">{t('today.log.empty')}</p> : <ul className="log">{d.todayItems.map((it) => <LogRow key={it.row.id} it={it} profile={profile} tz={d.tz} />)}</ul>}
       </Card>
-      <p className="fine pad">{DISCLAIMER}</p>
+      <p className="fine pad">{disclaimer(lang)}</p>
     </div>
   );
 }
 
 function ProteinCard({ d }: { d: Derived }) {
+  const t = useT();
   const p = d.protein;
   if (p.kind === 'off') return null;
   if (p.kind === 'ask_doctor') {
     return (
       <Card>
-        <h3>蛋白</h3>
-        <p>
-          今天 <b>{d.proteinToday}</b> 克。你勾选了肾病或肝病，蛋白目标请向医生确认，可以在"我的"里手动填。
-        </p>
+        <h3>{t('protein.title')}</h3>
+        <p>{bold(t('protein.askDoctor', { grams: d.proteinToday }))}</p>
       </Card>
     );
   }
@@ -105,61 +115,66 @@ function ProteinCard({ d }: { d: Derived }) {
   return (
     <Card>
       <div className="row between">
-        <h3>蛋白</h3>
+        <h3>{t('protein.title')}</h3>
         <span>
-          <b className="big">{d.proteinToday}</b> / {floor} 克
+          <b className="big">{d.proteinToday}</b> {t('protein.ofFloor', { floor })}
         </span>
       </div>
-      <div className="bar-track" aria-label={`完成 ${pct}%`}>
+      <div className="bar-track" aria-label={t('protein.done', { pct })}>
         <div className="bar-fill" style={{ width: `${pct}%` }} />
       </div>
       <p className="muted">
-        {gap > 0 ? `离最低线还差 ${gap} 克。` : '今天的最低线达到了。'}
-        {p.kind === 'auto' && ` 理想 ${p.idealLowG}–${p.idealHighG} 克。`}
+        {gap > 0 ? t('protein.gap', { gap }) : t('protein.reached')}
+        {p.kind === 'auto' && t('protein.ideal', { low: p.idealLowG, high: p.idealHighG })}
       </p>
     </Card>
   );
 }
 
 function LogRow({ it, profile, tz }: { it: TodayItem; profile: Profile; tz: string }) {
+  const t = useT();
+  const lang = t.lang;
   let label = '';
   let value = '';
   let table: 'doses' | 'foods' | 'weights' | 'symptoms' | 'workouts' = 'foods';
   switch (it.kind) {
     case 'dose': {
       const drug = drugById(it.row.drugId);
-      label = drug.route === 'oral' ? '吃药' : `打针${it.row.site ? ' · ' + SITE_LABEL[it.row.site] : ''}`;
-      value = `${it.row.amount} ${it.row.unit === 'clicks' ? '格' : it.row.unit}`;
+      label = drug.route === 'oral' ? t('log.pill') : it.row.site ? t('log.shotAt', { site: siteLabel(it.row.site, lang) }) : t('log.shot');
+      value = `${it.row.amount} ${doseUnitLabel(it.row.unit, lang)}`;
       table = 'doses';
       break;
     }
-    case 'food':
+    case 'food': {
+      const grams = Math.round(it.row.proteinG);
+      const wide = it.row.lowG !== undefined && it.row.highG !== undefined && it.row.highG - it.row.lowG >= 4;
       label = it.row.text;
-      value = it.row.lowG !== undefined && it.row.highG !== undefined && it.row.highG - it.row.lowG >= 4 ? `${Math.round(it.row.proteinG)} 克 ±${Math.round((it.row.highG - it.row.lowG) / 2)}` : `${Math.round(it.row.proteinG)} 克`;
+      value = wide ? t('log.gramsRange', { grams, spread: Math.round((it.row.highG! - it.row.lowG!) / 2) }) : t('log.grams', { grams });
       table = 'foods';
       break;
+    }
     case 'weight':
-      label = '体重';
-      value = fmtWeight(it.row.kg, profile.weightUnit);
+      label = t('log.weight');
+      value = fmtWeight(it.row.kg, profile.weightUnit, lang);
       table = 'weights';
       break;
     case 'symptom':
-      label = it.row.kind === 'other' ? (it.row.note ?? '不舒服') : symptomLabel(it.row.kind);
-      value = it.row.triageId ? '⚠ 已提醒' : GRADE_LABEL[it.row.grade] ?? '';
+      label = it.row.kind === 'other' ? (it.row.note ?? symptomLabel('other', lang)) : symptomLabel(it.row.kind, lang);
+      value = it.row.triageId ? t('log.alerted') : gradeLabel(it.row.grade, lang);
       table = 'symptoms';
       break;
     case 'workout':
-      label = `训练 · ${ROUTINES[it.row.routine].title}`;
-      value = it.row.variant === 'light' ? '轻量版' : '标准版';
+      label = t('log.workout', { routine: routineTitle(it.row.routine, lang) });
+      value = t(it.row.variant === 'light' ? 'workout.light' : 'workout.standard');
       table = 'workouts';
       break;
   }
   return (
     <li>
-      <span className="time">{fmtTime(it.row.occurredAt, tz)}</span>
+      <span className="time">{fmtTime(it.row.occurredAt, tz, lang)}</span>
       <span className="what">{label}</span>
       <span className="val">{value}</span>
-      <button className="icon-btn small" aria-label={`删除 ${label}`} onClick={() => void deleteRecord(table, it.row.id)}>
+      <button className="icon-btn small" aria-label={t('log.delete', { item: label })} onClick={() => void deleteRecord(table, it.row.id)}>
         ✕
       </button>
     </li>

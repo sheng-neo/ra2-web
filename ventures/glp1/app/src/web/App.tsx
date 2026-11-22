@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { htmlLang, langOrDefault, type Lang } from '../core/i18n';
 import type { Profile } from '../core/types';
 import { InputBar } from './components/InputBar';
 import { Sheets } from './components/Sheets';
@@ -10,24 +11,35 @@ import { Onboarding } from './screens/Onboarding';
 import { Today } from './screens/Today';
 import { Trends } from './screens/Trends';
 import { updateProfile } from './actions';
+import { I18nProvider, translate, useT } from './i18n';
 import { useDerived, useNow, useProfile, useRecords } from './useData';
 
-type Tab = 'today' | 'trends' | 'ask' | 'me';
-const TABS: { id: Tab; label: string }[] = [
-  { id: 'today', label: '今天' },
-  { id: 'trends', label: '趋势' },
-  { id: 'ask', label: '问问' },
-  { id: 'me', label: '我的' },
-];
+const TABS = ['today', 'trends', 'ask', 'me'] as const;
+type Tab = (typeof TABS)[number];
 
-export function App() {
+/**
+ * `bootLang` is the language of the saved profile, read before the first render (see main.tsx).
+ * It is only used until the profile itself has loaded.
+ */
+export function App({ bootLang }: { bootLang: Lang }) {
   const profile = useProfile();
-  if (profile === undefined) return <div className="loading">加载中…</div>;
+  if (profile === undefined) return <div className="loading">{translate(bootLang, 'app.loading')}</div>;
   if (profile === null || profile.onboardedAt === null) return <Onboarding existing={profile} />;
-  return <Main profile={profile} />;
+  return <Screens profile={profile} />;
+}
+
+/** The app for a profile that has finished setup. The interface language comes from that profile. */
+export function Screens({ profile }: { profile: Profile }) {
+  // A profile saved before the language field existed stays Chinese (see profileLang in core/i18n.ts).
+  return (
+    <I18nProvider lang={langOrDefault(profile)}>
+      <Main profile={profile} />
+    </I18nProvider>
+  );
 }
 
 function Main({ profile }: { profile: Profile }) {
+  const t = useT();
   const [tab, setTab] = useState<Tab>('today');
   const now = useNow();
   const rec = useRecords();
@@ -38,7 +50,7 @@ function Main({ profile }: { profile: Profile }) {
   }, [profile.largeText]);
 
   return (
-    <div className="app">
+    <div className="app" lang={htmlLang(t.lang)}>
       <main>
         {tab === 'today' && <Today profile={profile} d={d} now={now} onOpenTrends={() => setTab('trends')} onOpenMe={() => setTab('me')} />}
         {tab === 'trends' && <Trends profile={profile} d={d} rec={rec} now={now} />}
@@ -47,9 +59,9 @@ function Main({ profile }: { profile: Profile }) {
       </main>
       {(tab === 'today' || tab === 'ask') && <InputBar profile={profile} d={d} />}
       <nav className="tabs">
-        {TABS.map((t) => (
-          <button key={t.id} className={tab === t.id ? 'on' : ''} onClick={() => setTab(t.id)}>
-            {t.label}
+        {TABS.map((id) => (
+          <button key={id} className={tab === id ? 'on' : ''} onClick={() => setTab(id)}>
+            {t(`tab.${id}`)}
           </button>
         ))}
       </nav>

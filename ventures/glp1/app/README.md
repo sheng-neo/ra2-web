@@ -7,7 +7,7 @@ PRD：`../docs/prd-v2.0.md`。独立的 pnpm 项目，不属于外层红警游�
 ```bash
 cd ventures/glp1/app
 pnpm install
-pnpm test          # 100 个测试
+pnpm test
 pnpm typecheck
 pnpm build         # 前端构建到 dist/
 pnpm start         # 服务端：托管 dist/ + /api，默认端口 8787
@@ -48,3 +48,18 @@ AI 识别需要服务端环境变量 `ANTHROPIC_API_KEY`。没有它时 `/api/pa
 2. 用真实密钥跑通 `/api/parse`，建 150 条的中文评测集（PRD 第 3.2 节）。
 3. 部署（服务器、域名、HTTPS）。
 4. 隐私政策和条款页面。
+
+## Language (English first, Chinese kept)
+
+The first market is the United States, in English. Chinese keeps working for existing users.
+
+- `src/core/i18n.ts` defines `Lang = 'en' | 'hans' | 'hant'`. A profile's language is `profileLang(profile)`: its `lang` field if set, otherwise `'hans'`. A profile saved before `lang` existed therefore stays Chinese and looks exactly as it did (the older `script` field is not read for it, because the screens of that time never read it). A new profile starts with `lang: 'en'` and the region of the phone's time zone: `'US'` for American time zones, `'OTHER'` for a time zone the app does not know (`startRegion` in `src/core/profile.ts`). The region is never a fixed default, because for an unknown time zone it also picks the emergency number on the alert cards; `'OTHER'` shows "your local emergency number" and no call button.
+- Every core function that builds text for the user takes a `Lang`: triage cards, drug and brand names, units, dates and times, schedule and countdown text, calendar reminders, symptom, site and food names.
+- The Chinese text of the danger-symptom cards is locked by `src/core/triage.golden.hans.json`. The English cards and English phrase lists in `src/core/triage.ts` are translations that still need clinical review.
+- Drug numbers (dose ladder, maximum dose, half-life, Tmax) are never written from memory. A number may be added or changed only together with a `source` URL of the FDA label it was read from; a test enforces this. No entry has a `source` yet.
+- Screen copy lives in `src/web/i18n/`: `en.ts` (English, the source of the message keys) and `zh.ts` (the Chinese text the screens always had; Traditional falls back to it). A screen calls `const t = useT()` and then `t('key', { placeholder })`; the parameters a key needs are checked at compile time, and `t.lang` is the `Lang` to pass to core functions. `App` gives the screens their language from the saved profile through `<I18nProvider>`. Code outside React uses `translator(lang)` or passes a message reference made with `msg()` (toasts).
+- The longer content in `src/web/content/` (today's advice, coping cards, workouts, labels) holds both languages side by side. The Chinese text is locked by `src/web/content/content.golden.hans.json`. The English text is a translation that still needs clinical review. English copy makes no weight-loss or muscle claims; `src/web/copyRules.ts` lists the phrases the tests refuse.
+- The language can be chosen on the first setup screen and under Me. Setup starts in the region of the phone's time zone in either language. For a US time zone English setup therefore starts with the United States, pounds, feet and inches, and the US brand list; Chinese setup works as it did before. The medication step of English setup has one row per brand (rules in `src/web/setupChoice.ts`), and redoing setup starts from the saved medication and schedule.
+- `index.html` and `public/manifest.webmanifest` are English. For a Chinese profile the app switches the page language, title and manifest (`public/manifest.zh.webmanifest`) when it starts.
+- Not translated: the prompt in `server/parse.ts` (it asks the model for Chinese food labels) and the Chinese paragraphs of this README.
+

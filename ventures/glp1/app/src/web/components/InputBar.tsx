@@ -1,16 +1,19 @@
 import { useRef, useState } from 'react';
-import { drugById, drugLabel, needsDoseConfirm } from '../../core/catalog';
-import { foodById } from '../../core/foods';
+import { doseUnitLabel, drugById, drugShortName, needsDoseConfirm, regimenLabel } from '../../core/catalog';
+import { foodById, foodName, foodShortName } from '../../core/foods';
+import type { Lang } from '../../core/i18n';
 import { parseLocal } from '../../core/localParse';
-import { SITES, type Site } from '../../core/schedule';
+import { siteLabel, SITES, type Site } from '../../core/schedule';
+import { gradeLabel, symptomLabel } from '../../core/symptoms';
+import { fmtWhen } from '../../core/tz';
 import type { Profile } from '../../core/types';
 import { addDose, addFood, addQuestion, addSymptom, addWeight, checkTextTriage, updateProfile } from '../actions';
 import { AiUnavailable, compressImage, parseRemote, type AiEvent } from '../api';
-import { SITE_LABEL, symptomLabel } from '../content/labels';
 import type { Derived } from '../derive';
+import { bold, useT } from '../i18n';
+import { routeQuestion } from '../intent';
 import { setUi } from '../store';
 import { DoseForm, type DoseDraft } from './Sheets';
-import { fmtWhen } from './ui';
 
 type Pending =
   | { key: string; kind: 'dose'; draft: Partial<DoseDraft> }
@@ -21,14 +24,12 @@ type Pending =
   | { key: string; kind: 'unrecognized'; text: string; reason: 'ai_off' | 'ai_unavailable' | 'empty' }
   | { key: string; kind: 'consent'; text?: string; image?: File };
 
-/** 涉及加量、减量、停药、换药的问题：不回答，转成"想问医生的问题"。 */
-const DOSE_Q = /((加量|加到|加大|减量|減量|减到|減到|停药|停藥|换药|換藥|剂量|劑量|几毫克|幾毫克).{0,12}(吗|嗎|么|麼|呢|\?|？))|((能不能|可不可以|可以不可以|能否).{0,8}(加|减|減|停|换|換))/;
-const QUESTION = /([?？]|吗|嗎|么|麼|呢)\s*$|^(怎么|怎麼|为什么|為什麼|要不要|能不能|可不可以|how|what|why|can i|should i)/i;
-
 let seq = 0;
 const k = () => `p${++seq}`;
 
 export function InputBar({ profile, d }: { profile: Profile; d: Derived }) {
+  const t = useT();
+  const lang = t.lang;
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
   const [pending, setPending] = useState<Pending[]>([]);
@@ -36,9 +37,10 @@ export function InputBar({ profile, d }: { profile: Profile; d: Derived }) {
   const drop = (key: string) => setPending((ps) => ps.filter((p) => p.key !== key));
   const push = (...ps: Pending[]) => setPending((cur) => [...cur, ...ps]);
   const reg = profile.regimen;
+  const photo = t('common.photo');
 
   const context = () => ({
-    drug: reg ? drugLabel(drugById(reg.drugId), profile.region) : null,
+    drug: reg ? regimenLabel(reg, profile.region, lang) : null,
     doseUnit: reg?.doseUnit ?? 'mg',
     weightUnit: profile.weightUnit,
     localTime: new Date().toString(),
@@ -46,13 +48,13 @@ export function InputBar({ profile, d }: { profile: Profile; d: Derived }) {
 
   const handleAi = async (input: { text?: string; image?: File }) => {
     if (profile.aiConsent === null) return push({ key: k(), kind: 'consent', text: input.text, image: input.image });
-    if (profile.aiConsent === false) return push({ key: k(), kind: 'unrecognized', text: input.text ?? '照片', reason: 'ai_off' });
+    if (profile.aiConsent === false) return push({ key: k(), kind: 'unrecognized', text: input.text ?? photo, reason: 'ai_off' });
     setBusy(true);
     try {
       const events = await parseRemote(input.image ? { imageJpegBase64: await compressImage(input.image) } : { text: input.text }, context());
-      await applyAi(events, input.text ?? '照片');
+      await applyAi(events, input.text ?? photo);
     } catch (e) {
-      push({ key: k(), kind: 'unrecognized', text: input.text ?? '照片', reason: e instanceof AiUnavailable ? 'ai_unavailable' : 'empty' });
+      push({ key: k(), kind: 'unrecognized', text: input.text ?? photo, reason: e instanceof AiUnavailable ? 'ai_unavailable' : 'empty' });
     } finally {
       setBusy(false);
     }
@@ -73,13 +75,14 @@ export function InputBar({ profile, d }: { profile: Profile; d: Derived }) {
   };
 
   const submit = async () => {
-    const t = text.trim();
-    if (!t || busy) return;
+    const s = text.trim();
+    if (!s || busy) return;
     setText('');
-    if (await checkTextTriage(profile, t)) return;
-    if (DOSE_Q.test(t)) return push({ key: k(), kind: 'doctorq', text: t });
-    if (QUESTION.test(t)) return push({ key: k(), kind: 'question', text: t });
-    const { events, rest } = parseLocal(t, profile.weightUnit);
+    if (await checkTextTriage(profile, s)) return;
+    const route = routeQuestion(s);
+    if (route === 'doctor') return push({ key: k(), kind: 'doctorq', text: s });
+    if (route === 'question') return push({ key: k(), kind: 'question', text: s });
+    const { events, rest } = parseLocal(s, profile.weightUnit, lang);
     for (const e of events) {
       if (e.type === 'weight') await addWeight(e.kg, 'text');
       else if (e.type === 'food') for (const it of e.items) await addFood({ text: it.label, proteinG: it.proteinG, lowG: it.lowG, highG: it.highG, foodId: it.foodId }, 'text');
@@ -93,7 +96,7 @@ export function InputBar({ profile, d }: { profile: Profile; d: Derived }) {
     if (f) await handleAi({ image: f });
   };
 
-  const quickFoods = topFoods(d).slice(0, 3);
+  const quickFoods = topFoods(d, lang).slice(0, 3);
   const oral = reg ? drugById(reg.drugId).route === 'oral' : false;
 
   return (
@@ -108,10 +111,10 @@ export function InputBar({ profile, d }: { profile: Profile; d: Derived }) {
                 const fresh = { ...profile, aiConsent: true };
                 setBusy(true);
                 try {
-                  const events = await parseRemote(p.image ? { imageJpegBase64: await compressImage(p.image) } : { text: p.text }, { ...context(), drug: fresh.regimen ? drugLabel(drugById(fresh.regimen.drugId), fresh.region) : null });
-                  await applyAi(events, p.text ?? '照片');
+                  const events = await parseRemote(p.image ? { imageJpegBase64: await compressImage(p.image) } : { text: p.text }, { ...context(), drug: fresh.regimen ? regimenLabel(fresh.regimen, fresh.region, lang) : null });
+                  await applyAi(events, p.text ?? photo);
                 } catch (e) {
-                  push({ key: k(), kind: 'unrecognized', text: p.text ?? '照片', reason: e instanceof AiUnavailable ? 'ai_unavailable' : 'empty' });
+                  push({ key: k(), kind: 'unrecognized', text: p.text ?? photo, reason: e instanceof AiUnavailable ? 'ai_unavailable' : 'empty' });
                 } finally {
                   setBusy(false);
                 }
@@ -121,30 +124,30 @@ export function InputBar({ profile, d }: { profile: Profile; d: Derived }) {
         </div>
       )}
       <div className="quick">
-        <button className="qbtn" onClick={() => setUi({ sheet: 'dose' })}>{oral ? '记吃药' : '记一针'}</button>
-        <button className="qbtn" onClick={() => setUi({ sheet: 'weight' })}>体重</button>
-        <button className="qbtn" onClick={() => setUi({ sheet: 'symptom' })}>不舒服</button>
+        <button className="qbtn" onClick={() => setUi({ sheet: 'dose' })}>{t(oral ? 'action.logPill' : 'action.logShot')}</button>
+        <button className="qbtn" onClick={() => setUi({ sheet: 'weight' })}>{t('quick.weight')}</button>
+        <button className="qbtn" onClick={() => setUi({ sheet: 'symptom' })}>{t('quick.symptom')}</button>
         {quickFoods.map((f) => (
-          <button key={f.id} className="qbtn food" onClick={() => void addFood({ text: f.name, proteinG: f.proteinG, lowG: f.proteinG - f.spreadG, highG: f.proteinG + f.spreadG, foodId: f.id }, 'quick')}>
-            +{f.short} {f.proteinG}
+          <button key={f.id} className="qbtn food" onClick={() => void addFood({ text: foodName(f, lang), proteinG: f.proteinG, lowG: f.proteinG - f.spreadG, highG: f.proteinG + f.spreadG, foodId: f.id }, 'quick')}>
+            {t('quick.foodItem', { name: f.short, grams: f.proteinG })}
           </button>
         ))}
-        <button className="qbtn" onClick={() => setUi({ sheet: 'food' })}>+吃的</button>
+        <button className="qbtn" onClick={() => setUi({ sheet: 'food' })}>{t('quick.food')}</button>
       </div>
       <form className="bar" onSubmit={(e) => (e.preventDefault(), void submit())}>
         <input
           value={text}
           onChange={(e) => setText(e.target.value)}
-          placeholder={busy ? '识别中…' : '说一句，比如"刚打了 2.5 左腹"'}
-          aria-label="说一句"
+          placeholder={busy ? t('input.busy') : t(profile.largeText ? 'input.placeholderLarge' : 'input.placeholder')}
+          aria-label={t('input.aria')}
           enterKeyHint="send"
           disabled={busy}
         />
-        <button type="button" className="icon-btn" aria-label="拍照" onClick={() => fileRef.current?.click()} disabled={busy}>
+        <button type="button" className="icon-btn" aria-label={t('input.camera')} onClick={() => fileRef.current?.click()} disabled={busy}>
           📷
         </button>
         <button type="submit" className="send" disabled={!text.trim() || busy}>
-          记
+          {t('input.send')}
         </button>
         <input ref={fileRef} type="file" accept="image/*" capture="environment" hidden onChange={(e) => void onPhoto(e.target.files?.[0])} />
       </form>
@@ -152,7 +155,7 @@ export function InputBar({ profile, d }: { profile: Profile; d: Derived }) {
   );
 }
 
-function topFoods(d: Derived) {
+function topFoods(d: Derived, lang: Lang) {
   const count = new Map<string, number>();
   for (const f of Object.values(d.todayFoods)) if (f.foodId) count.set(f.foodId, (count.get(f.foodId) ?? 0) + 1);
   const ids = ['egg', 'soymilk', 'whey', 'milk'];
@@ -160,10 +163,12 @@ function topFoods(d: Derived) {
   return ranked
     .map((id) => foodById(id))
     .filter((f): f is NonNullable<typeof f> => !!f)
-    .map((f) => ({ ...f, short: f.name.replace(/（.*）/, '').replace('无糖', '') }));
+    .map((f) => ({ ...f, short: foodShortName(f, lang) }));
 }
 
 function PendingCard({ p, profile, d, onClose, onConsent }: { p: Pending; profile: Profile; d: Derived; onClose: () => void; onConsent: (yes: boolean) => void }) {
+  const t = useT();
+  const lang = t.lang;
   switch (p.kind) {
     case 'dose':
       return <DoseConfirm profile={profile} d={d} draft={p.draft} onClose={onClose} />;
@@ -176,16 +181,16 @@ function PendingCard({ p, profile, d, onClose, onConsent }: { p: Pending; profil
         <div className={`pcard ${p.ev.confidence < 0.7 ? 'unsure' : ''}`}>
           <div className="pcard-head">
             <b>{p.ev.label}</b>
-            <button className="icon-btn" onClick={onClose} aria-label="不记">✕</button>
+            <button className="icon-btn" onClick={onClose} aria-label={t('pending.dismiss')}>✕</button>
           </div>
           <p>
-            约 <b>{Math.round(p.ev.proteinG)}</b> 克蛋白（{Math.round(p.ev.lowG)}–{Math.round(p.ev.highG)}）
-            {p.ev.confidence < 0.7 && <span className="warn-text"> 不太确定，调一下份量</span>}
+            {bold(t('pending.food.estimate', { grams: Math.round(p.ev.proteinG), low: Math.round(p.ev.lowG), high: Math.round(p.ev.highG) }))}
+            {p.ev.confidence < 0.7 && <span className="warn-text">{t('pending.food.unsure')}</span>}
           </p>
           <div className="row">
-            <button className="btn primary" onClick={() => save(1)}>对</button>
-            <button className="btn" onClick={() => save(0.7)}>少一点</button>
-            <button className="btn" onClick={() => save(1.3)}>多一点</button>
+            <button className="btn primary" onClick={() => save(1)}>{t('pending.food.right')}</button>
+            <button className="btn" onClick={() => save(0.7)}>{t('pending.food.less')}</button>
+            <button className="btn" onClick={() => save(1.3)}>{t('pending.food.more')}</button>
           </div>
         </div>
       );
@@ -193,46 +198,42 @@ function PendingCard({ p, profile, d, onClose, onConsent }: { p: Pending; profil
     case 'symptom':
       return (
         <div className="pcard">
-          <p>
-            记下：<b>{symptomLabel(p.ev.kind)}</b>（{['', '轻', '中', '重'][p.ev.grade] ?? ''}）？
-          </p>
+          <p>{bold(t('pending.symptom.ask', { symptom: symptomLabel(p.ev.kind, lang), grade: p.ev.grade >= 1 ? gradeLabel(p.ev.grade, lang) : '' }))}</p>
           <div className="row">
-            <button className="btn primary" onClick={() => (void addSymptom(profile, p.ev.kind, p.ev.grade), onClose())}>记下</button>
-            <button className="btn" onClick={onClose}>不用</button>
+            <button className="btn primary" onClick={() => (void addSymptom(profile, p.ev.kind, p.ev.grade), onClose())}>{t('common.logIt')}</button>
+            <button className="btn" onClick={onClose}>{t('pending.symptom.no')}</button>
           </div>
         </div>
       );
     case 'doctorq':
       return (
         <div className="pcard">
-          <p>这个问题需要医生根据你的情况判断，我不回答剂量相关的问题。</p>
+          <p>{t('pending.doctorq.body')}</p>
           <p className="muted">"{p.text}"</p>
           <div className="row">
-            <button className="btn primary" onClick={() => (void addQuestion(p.text), onClose())}>存进"想问医生的问题"</button>
-            <button className="btn" onClick={onClose}>算了</button>
+            <button className="btn primary" onClick={() => (void addQuestion(p.text), onClose())}>{t('pending.doctorq.save')}</button>
+            <button className="btn" onClick={onClose}>{t('pending.doctorq.cancel')}</button>
           </div>
         </div>
       );
     case 'question':
       return (
         <div className="pcard">
-          <p>问答功能还在做。可以先看看应对卡，或者把问题存起来，复诊时问医生。</p>
+          <p>{t('pending.question.body')}</p>
           <p className="muted">"{p.text}"</p>
           <div className="row">
-            <button className="btn" onClick={() => (setUi({ coping: 'nausea' }), onClose())}>看应对卡</button>
-            <button className="btn primary" onClick={() => (void addQuestion(p.text), onClose())}>存起来</button>
+            <button className="btn" onClick={() => (setUi({ coping: 'nausea' }), onClose())}>{t('pending.question.cards')}</button>
+            <button className="btn primary" onClick={() => (void addQuestion(p.text), onClose())}>{t('pending.question.save')}</button>
           </div>
         </div>
       );
     case 'consent':
       return (
         <div className="pcard">
-          <p>
-            这部分要用 AI 识别。会把{p.image ? '这张照片' : `"${p.text}"`}和你用的药名、单位发给 AI 服务（Anthropic 的 Claude）识别，不用于训练模型，照片不在我们的服务器保存。
-          </p>
+          <p>{t('pending.consent.body', { what: p.image ? t('pending.consent.thisPhoto') : `"${p.text}"` })}</p>
           <div className="row">
-            <button className="btn primary" onClick={() => onConsent(true)}>同意并识别</button>
-            <button className="btn" onClick={() => onConsent(false)}>不用 AI，我手动记</button>
+            <button className="btn primary" onClick={() => onConsent(true)}>{t('pending.consent.yes')}</button>
+            <button className="btn" onClick={() => onConsent(false)}>{t('pending.consent.no')}</button>
           </div>
         </div>
       );
@@ -240,12 +241,14 @@ function PendingCard({ p, profile, d, onClose, onConsent }: { p: Pending; profil
       return (
         <div className="pcard">
           <p>
-            {p.reason === 'ai_unavailable' ? 'AI 识别暂时不可用' : p.reason === 'ai_off' ? '你关闭了 AI 识别' : '没认出来'}：<span className="muted">"{p.text}"</span>
+            {t(p.reason === 'ai_unavailable' ? 'pending.unrecognized.unavailable' : p.reason === 'ai_off' ? 'pending.unrecognized.off' : 'pending.unrecognized.empty')}
+            {t('common.colon')}
+            <span className="muted">"{p.text}"</span>
           </p>
           <div className="row">
-            <button className="btn" onClick={() => (setUi({ sheet: 'food' }), onClose())}>手动记吃的</button>
-            <button className="btn" onClick={() => (setUi({ sheet: 'symptom' }), onClose())}>记不舒服</button>
-            <button className="btn" onClick={onClose}>忽略</button>
+            <button className="btn" onClick={() => (setUi({ sheet: 'food' }), onClose())}>{t('pending.unrecognized.food')}</button>
+            <button className="btn" onClick={() => (setUi({ sheet: 'symptom' }), onClose())}>{t('pending.unrecognized.symptom')}</button>
+            <button className="btn" onClick={onClose}>{t('pending.unrecognized.ignore')}</button>
           </div>
         </div>
       );
@@ -254,19 +257,21 @@ function PendingCard({ p, profile, d, onClose, onConsent }: { p: Pending; profil
 
 /** 一句话记针的确认卡（PRD 2.1）：一行摘要，必须点"确认"才入库；超过最高剂量再确认一次。 */
 function DoseConfirm({ profile, d, draft, onClose }: { profile: Profile; d: Derived; draft: Partial<DoseDraft>; onClose: () => void }) {
+  const t = useT();
+  const lang = t.lang;
   const [editing, setEditing] = useState(false);
   const [overMax, setOverMax] = useState(false);
   const reg = profile.regimen;
   if (!reg) {
     return (
       <div className="pcard">
-        <p>先在"我的"里设置你用的药，再记针。</p>
-        <button className="btn" onClick={onClose}>好</button>
+        <p>{t('dose.setupFirst.thenLog')}</p>
+        <button className="btn" onClick={onClose}>{t('common.ok')}</button>
       </div>
     );
   }
   const drug = drugById(reg.drugId);
-  const name = drug.brands[profile.region]?.[0] ?? drug.generic.hans;
+  const name = drugShortName(drug, profile.region, lang, reg.brand);
   const amount = draft.amount ?? reg.doseAmount ?? 0;
   const unit = draft.unit ?? reg.doseUnit;
   const at = draft.occurredAt ?? Date.now();
@@ -275,8 +280,8 @@ function DoseConfirm({ profile, d, draft, onClose }: { profile: Profile; d: Deri
     return (
       <div className="pcard">
         <div className="pcard-head">
-          <b>改一下这条用药记录</b>
-          <button className="icon-btn" onClick={onClose} aria-label="不记">✕</button>
+          <b>{t('dose.edit.title')}</b>
+          <button className="icon-btn" onClick={onClose} aria-label={t('pending.dismiss')}>✕</button>
         </div>
         <DoseForm profile={profile} d={d} draft={draft} onDone={onClose} />
       </div>
@@ -290,16 +295,17 @@ function DoseConfirm({ profile, d, draft, onClose }: { profile: Profile; d: Deri
   return (
     <div className="pcard">
       <div className="pcard-head">
-        <b>确认用药记录</b>
-        <button className="icon-btn" onClick={onClose} aria-label="不记">✕</button>
+        <b>{t('dose.confirm.title')}</b>
+        <button className="icon-btn" onClick={onClose} aria-label={t('pending.dismiss')}>✕</button>
       </div>
       <p className="dose-line">
-        {name} <b>{amount} {unit === 'clicks' ? '格' : unit}</b> · {drug.route === 'oral' ? '口服' : site ? SITE_LABEL[site] : `没说部位（建议${SITE_LABEL[d.nextSite]}）`} · {fmtWhen(at, d.tz, Date.now())}
+        {name} <b>{amount} {doseUnitLabel(unit, lang)}</b> · {drug.route === 'oral' ? t('dose.byMouth') : site ? siteLabel(site, lang) : t('dose.noSite', { site: siteLabel(d.nextSite, lang) })} · {fmtWhen(at, d.tz, Date.now(), lang)}
       </p>
-      {overMax && <p className="warn">超过了这个药常见的最高剂量（{drug.maxMg} mg）。是不是多打了一位数？确认无误再点一次。</p>}
+      {/* The largest dose comes from the catalog and only guards against a typing slip. */}
+      {overMax && <p className="warn">{t('dose.overMax.card', { max: String(drug.maxMg) })}</p>}
       <div className="row">
-        <button className="btn primary" onClick={() => void confirm()}>{overMax ? '确认无误，记下' : '确认'}</button>
-        <button className="btn" onClick={() => setEditing(true)}>改一下</button>
+        <button className="btn primary" onClick={() => void confirm()}>{overMax ? t('dose.confirmSure') : t('common.confirm')}</button>
+        <button className="btn" onClick={() => setEditing(true)}>{t('dose.edit')}</button>
       </div>
     </div>
   );

@@ -1,6 +1,11 @@
 /**
  * "今天这样过"卡片的文案（PRD v2.0 第 2.2 节）。事先写好，【待审核】。
+ *
+ * English text: a translation of the Chinese text, PENDING CLINICAL REVIEW.
+ * It leaves out two Chinese phrases that promise a result for muscle ("helps you keep muscle",
+ * "the best time to build muscle back"): English copy makes no such claims.
  */
+import type { Lang } from '../../core/i18n';
 import type { Advice } from '../../core/today';
 import type { ProteinTarget } from '../../core/protein';
 
@@ -14,7 +19,12 @@ function floorOf(p: ProteinTarget): number | null {
   return p.kind === 'auto' || p.kind === 'manual' ? p.floorG : null;
 }
 
-export function adviceText(a: Advice, protein: ProteinTarget, opts: { oral: boolean }): AdviceText {
+export function adviceText(a: Advice, protein: ProteinTarget, opts: { oral: boolean; lang: Lang }): AdviceText {
+  return opts.lang === 'en' ? adviceTextEn(a, protein, opts) : adviceTextZh(a, protein, opts);
+}
+
+/** Chinese text. Do not edit without review; Traditional Chinese uses this text too. */
+function adviceTextZh(a: Advice, protein: ProteinTarget, opts: { oral: boolean }): AdviceText {
   const floor = floorOf(protein);
   const proteinLine = floor ? `先保住 ${floor} 克蛋白，分 3–4 次吃。` : '';
   switch (a.kind) {
@@ -39,5 +49,64 @@ export function adviceText(a: Advice, protein: ProteinTarget, opts: { oral: bool
       return a.train
         ? { title: '今天适合练一次', body: `15–25 分钟就够，每周 2–3 次，帮你守住肌肉。${proteinLine}`, tone: 'calm' }
         : { title: '今天照常过', body: `${proteinLine || '按平时的节奏吃饭。'}累了就散散步。`, tone: 'calm' };
+  }
+}
+
+/** English text. PENDING CLINICAL REVIEW. */
+function adviceTextEn(a: Advice, protein: ProteinTarget, opts: { oral: boolean }): AdviceText {
+  const floor = floorOf(protein);
+  // The protein sentence, with a trailing space so it can sit in front of the next sentence.
+  const proteinLine = floor ? `Get your ${floor} g of protein first, spread over 3–4 meals or snacks. ` : '';
+  switch (a.kind) {
+    case 'triage':
+      return {
+        title: 'Take care of your body first today',
+        body: 'What you logged today may need a doctor. Workout and food tips are paused for today. If you can drink, take small sips of water.',
+        tone: 'alert',
+      };
+    case 'dose_day':
+      if (a.status === 'overdue')
+        return {
+          title: 'Did you forget to log it?',
+          body: opts.oral
+            ? 'It is past your pill time and nothing is logged. If you took it, log it now. If you missed it, follow the instructions that came with your medication, or ask your doctor.'
+            : 'It is past your shot time and nothing is logged. If you took it, log it now. If you missed it, go by the instructions that came with your medication. If you are not sure, ask your doctor.',
+          tone: 'warn',
+        };
+      return {
+        title: opts.oral ? 'Remember your pill today' : 'Today is shot day',
+        body: opts.oral
+          ? 'Take it on time, then log it.'
+          : `Log your shot after you take it, and use a different site from last time. If your appetite is low for a day or two after the shot: ${floor ? `get your ${floor} g of protein first, spread over 3–4 meals or snacks.` : 'try smaller meals, more often.'}`,
+        tone: 'calm',
+      };
+    case 'escalation':
+      return {
+        title: `Day ${a.dayOfEscalation} after a dose increase`,
+        body: `Side effects are often more noticeable in the two weeks after a dose increase. Eat small meals more often and drink plenty of water. ${proteinLine}Switch your workout to the 15-minute light version.`,
+        tone: 'calm',
+      };
+    case 'high_symptom':
+      return {
+        title: 'Today may be a bit harder',
+        body: `Going by your logs from the past few weeks, side effects are often more noticeable on day ${a.offset} after your shot. ${proteinLine}Switch your workout to the light version, or move it to another day.`,
+        tone: 'calm',
+      };
+    case 'protein_low':
+      return {
+        title: 'Protein has been low the last few days',
+        body: `You have been under ${a.floorG} g for ${a.days} days in a row. Try eating the protein part of each meal first, or add a glass of milk or a scoop of protein powder.`,
+        tone: 'warn',
+      };
+    case 'stopped':
+      return {
+        title: a.daysSince !== null ? `Day ${a.daysSince + 1} off your medication` : 'After stopping your medication',
+        body: 'Weigh yourself 2–3 times a week and watch the 7-day average. Keep up your protein and workouts. Some weight regain is very common. It is how the body works, not a failure.',
+        tone: 'calm',
+      };
+    case 'normal':
+      return a.train
+        ? { title: 'A good day for a workout', body: `15–25 minutes is enough, 2–3 times a week. ${proteinLine}`.trim(), tone: 'calm' }
+        : { title: 'A regular day today', body: `${proteinLine || 'Eat the way you usually do. '}If you get tired, take an easy walk.`, tone: 'calm' };
   }
 }

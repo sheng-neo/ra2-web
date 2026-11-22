@@ -586,9 +586,22 @@ label.check input {
   background: var(--alert-bg);
   border: 2px solid var(--alert);
   border-radius: 20px;
-  padding: 18px;
+  /* The bottom padding belongs to the button row below, so the row can stick to the card's edge. */
+  padding: 18px 18px 0;
   max-width: 480px;
   width: 100%;
+  /* An alert taller than the screen scrolls inside the card instead of running off it. */
+  max-height: calc(100dvh - 32px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+/* The call and "got it" buttons stay in view while the alert scrolls. When the alert fits, the row sits where it always did. */
+.triage > .row {
+  position: sticky;
+  bottom: 0;
+  margin: -0.35rem -18px 0;
+  padding: 0.35rem 18px 18px;
+  background: inherit;
 }
 .triage h2 {
   color: var(--alert);
@@ -666,4 +679,75 @@ label.check input {
 .form {
   display: flex;
   flex-direction: column;
+}
+/* Long labels and rows of buttons wrap instead of squeezing their neighbours. */
+label.check input {
+  flex: none;
+}
+.pcard .row,
+.nav {
+  flex-wrap: wrap;
+}
+/* Feet and inches: two short inputs side by side, each followed by its unit. */
+.field {
+  margin: 10px 0 4px;
+}
+.unit-field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  margin: 4px 0 0;
+}
+/*
+ * English. Words are longer and the clock has AM/PM, so a few places get more room.
+ * Everything here is scoped to :lang(en); the Chinese layout is not touched.
+ */
+html:lang(en),
+.app:lang(en),
+.onboarding:lang(en) {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+}
+.app:lang(en) .log .time {
+  width: auto;
+  min-width: 4.7em;
+  white-space: nowrap;
+}
+.app:lang(en) .log .val {
+  text-align: right;
+  white-space: nowrap;
+}
+.app:lang(en) .log .what {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+/* Large text: the time gets its own line so the entry keeps enough width. */
+:root.large .app:lang(en) .log li {
+  flex-wrap: wrap;
+  row-gap: 0;
+}
+:root.large .app:lang(en) .log .time {
+  flex-basis: 100%;
+  font-size: 0.85rem;
+}
+.app:lang(en) .bar input {
+  text-overflow: ellipsis;
+}
+.app:lang(en) .grid3 {
+  grid-template-columns: repeat(2, 1fr);
+}
+.app:lang(en) .toast {
+  left: 16px;
+  right: 16px;
+  transform: none;
+  width: fit-content;
+  margin: 0 auto;
+  white-space: normal;
+  border-radius: 20px;
+}
+.app:lang(en) .toast span {
+  overflow: visible;
+}
+.app:lang(en) .toast button {
+  flex: none;
 }

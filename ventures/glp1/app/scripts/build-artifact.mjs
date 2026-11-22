@@ -11,12 +11,13 @@ const css = assets.filter((f) => f.endsWith('.css')).map((f) => readFileSync(joi
 const jsFiles = assets.filter((f) => f.endsWith('.js'));
 if (jsFiles.length !== 1) throw new Error(`expected one JS chunk, got ${jsFiles.join(', ')}`);
 const js = readFileSync(join(dir, 'assets', jsFiles[0]), 'utf8').replace(/<\/script/gi, '<\\/script');
-const page = `<title>稳瘦</title>
-<meta name="description" content="说中文的 GLP-1 用药伴侣">
+// English is the default. A Chinese profile gets its title and loading text from the app once it starts.
+const page = `<title>GLP-1 companion</title>
+<meta name="description" content="A GLP-1 medication companion">
 <style>
 ${css}
 </style>
-<div id="root"><div class="loading">加载中…</div></div>
+<div id="root"><div class="loading">Loading…</div></div>
 <script type="module">
 ${js}
 </script>

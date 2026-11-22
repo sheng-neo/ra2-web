@@ -3,11 +3,13 @@
  */
 import { useSyncExternalStore } from 'react';
 import type { TriageHit } from '../core/triage';
+import type { MsgRef } from './i18n/translate';
 
 export type SheetName = 'dose' | 'weight' | 'symptom' | 'food' | 'workout' | null;
 
 export interface UiState {
-  toast: { id: number; text: string; undo?: () => void } | null;
+  /** The message is kept as a key and turned into text when it is shown, in the language of the screen. */
+  toast: { id: number; msg: MsgRef; undo?: () => void } | null;
   triage: { hits: TriageHit[]; rowId: string | null } | null;
   sheet: SheetName;
   coping: string | null;
@@ -29,11 +31,12 @@ export function useUi(): UiState {
       return () => subs.delete(f);
     },
     () => state,
+    () => state,
   );
 }
 
-export function toast(text: string, undo?: () => void): void {
+export function toast(msg: MsgRef, undo?: () => void): void {
   if (toastTimer) clearTimeout(toastTimer);
-  setUi({ toast: { id: Date.now(), text, undo } });
+  setUi({ toast: { id: Date.now(), msg, undo } });
   toastTimer = setTimeout(() => setUi({ toast: null }), 5000);
 }

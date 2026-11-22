@@ -3,6 +3,8 @@
  * 按"打针后第几天"（0–6）分组，某一天平均症状分 ≥ 个人整体平均的 1.5 倍、
  * 且至少出现过 2 次，就标为高症状日。
  */
+import type { Lang } from './i18n';
+import type { SymptomKind } from './triage';
 import { dayDiff, dayKey } from './tz';
 
 export interface SymptomPoint {
@@ -59,4 +61,69 @@ function shift(key: string, n: number): string {
   const [y, m, d] = key.split('-').map(Number);
   const dt = new Date(Date.UTC(y, m - 1, d + n));
   return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, '0')}-${String(dt.getUTCDate()).padStart(2, '0')}`;
+}
+
+// ── Text ─────────────────────────────────────────────────────────────────────
+
+/** Symptoms in the order the quick-log grid shows them. */
+export const SYMPTOM_ORDER: SymptomKind[] = [
+  'nausea',
+  'vomiting',
+  'reflux',
+  'constipation',
+  'diarrhea',
+  'abdominal_pain',
+  'no_appetite',
+  'fatigue',
+  'dizziness',
+  'hair_loss',
+  'injection_site',
+  'mood',
+  'menstrual',
+];
+
+const SYMPTOM_ZH: Record<SymptomKind, string> = {
+  nausea: '恶心',
+  vomiting: '呕吐',
+  reflux: '反酸打嗝',
+  constipation: '便秘',
+  diarrhea: '腹泻',
+  abdominal_pain: '肚子疼',
+  no_appetite: '没胃口',
+  fatigue: '疲劳',
+  dizziness: '头晕',
+  hair_loss: '脱发',
+  injection_site: '注射部位红肿',
+  mood: '情绪低落',
+  menstrual: '月经变化',
+};
+
+const SYMPTOM_EN: Record<SymptomKind, string> = {
+  nausea: 'Nausea',
+  vomiting: 'Vomiting',
+  reflux: 'Heartburn or burping',
+  constipation: 'Constipation',
+  diarrhea: 'Diarrhea',
+  abdominal_pain: 'Stomach pain',
+  no_appetite: 'No appetite',
+  fatigue: 'Tiredness',
+  dizziness: 'Dizziness',
+  hair_loss: 'Hair loss',
+  injection_site: 'Redness or swelling where you inject',
+  mood: 'Low mood',
+  menstrual: 'Period changes',
+};
+
+/** Label for a symptom kind. Anything unknown (including 'other') gets a general label. */
+export function symptomLabel(kind: string, lang: Lang): string {
+  const table: Record<string, string> = lang === 'en' ? SYMPTOM_EN : SYMPTOM_ZH;
+  return table[kind] ?? (lang === 'en' ? 'Not feeling well' : '不舒服');
+}
+
+const GRADE_ZH = ['没有', '轻', '中', '重'];
+const GRADE_EN = ['None', 'Mild', 'Moderate', 'Severe'];
+
+/** Label for a symptom grade, 0 to 3. */
+export function gradeLabel(grade: number, lang: Lang): string {
+  return (lang === 'en' ? GRADE_EN : GRADE_ZH)[grade] ?? '';
 }

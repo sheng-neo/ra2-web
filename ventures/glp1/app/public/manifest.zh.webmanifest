@@ -1,0 +1,10 @@
+{
+  "name": "稳瘦 · GLP-1 伴侣",
+  "short_name": "稳瘦",
+  "lang": "zh-Hans",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f6f1ea",
+  "theme_color": "#f6f1ea",
+  "icons": [{ "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
+}

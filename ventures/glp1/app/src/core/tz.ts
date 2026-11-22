@@ -2,6 +2,7 @@
  * 时区工具：所有记录按 UTC 毫秒存储，展示和"今天"的划分按用户时区计算。
  * 只依赖 Intl，不引入时区库。
  */
+import type { Lang } from './i18n';
 
 export interface ZonedParts {
   year: number;
@@ -114,3 +115,56 @@ export function parseHHMM(s: string): { hour: number; minute: number } {
 }
 
 export { HOUR, DAY };
+
+// ── Text for dates and times ─────────────────────────────────────────────────
+// Names are written out here instead of asking Intl for them, so the output is the same on
+// every device and the Chinese text stays exactly as it was.
+
+const WEEKDAY_ZH = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+const WEEKDAY_EN_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const WEEKDAY_EN_LONG = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const MONTH_EN_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/** Weekday names, index 0 = Sunday. Chinese has one form; `style` only changes English. */
+export function weekdayLabels(lang: Lang, style: 'short' | 'long' = 'short'): string[] {
+  if (lang !== 'en') return WEEKDAY_ZH;
+  return style === 'long' ? WEEKDAY_EN_LONG : WEEKDAY_EN_SHORT;
+}
+
+export function weekdayLabel(weekday: number, lang: Lang, style: 'short' | 'long' = 'short'): string {
+  return weekdayLabels(lang, style)[((weekday % 7) + 7) % 7];
+}
+
+/** Clock time. English uses the 12-hour clock ("9:00 PM"); Chinese keeps "21:00". */
+export function fmtClock(hour: number, minute: number, lang: Lang): string {
+  if (lang !== 'en') return `${pad(hour)}:${pad(minute)}`;
+  const h12 = hour % 12 === 0 ? 12 : hour % 12;
+  return `${h12}:${pad(minute)} ${hour < 12 ? 'AM' : 'PM'}`;
+}
+
+/** A stored "HH:MM" schedule time, as text for the user. */
+export function fmtHHMM(time: string, lang: Lang): string {
+  const { hour, minute } = parseHHMM(time);
+  return fmtClock(hour, minute, lang);
+}
+
+export function fmtTime(ms: number, tz: string, lang: Lang): string {
+  const p = zonedParts(ms, tz);
+  return fmtClock(p.hour, p.minute, lang);
+}
+
+/** "Fri, Nov 20" in English, "11月20日 周五" in Chinese. */
+export function fmtDay(ms: number, tz: string, lang: Lang): string {
+  const p = zonedParts(ms, tz);
+  if (lang === 'en') return `${WEEKDAY_EN_SHORT[p.weekday]}, ${MONTH_EN_SHORT[p.month - 1]} ${p.day}`;
+  return `${p.month}月${p.day}日 ${WEEKDAY_ZH[p.weekday]}`;
+}
+
+/** "Today 9:00 PM" on the same calendar day as nowMs, otherwise the weekday: "Mon 9:00 PM". */
+export function fmtWhen(ms: number, tz: string, nowMs: number, lang: Lang): string {
+  const a = zonedParts(ms, tz);
+  const b = zonedParts(nowMs, tz);
+  const sameDay = a.year === b.year && a.month === b.month && a.day === b.day;
+  const day = sameDay ? (lang === 'en' ? 'Today' : '今天') : weekdayLabel(a.weekday, lang);
+  return `${day} ${fmtClock(a.hour, a.minute, lang)}`;
+}

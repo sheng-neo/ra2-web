@@ -2,7 +2,8 @@
  * 用药排期：下一次什么时候、有没有漏记、建议打哪个部位。
  * 间隔一律按绝对时间计算；"每周一 21:00"这类固定时刻按用户时区解释。
  */
-import { addDays, DAY, HOUR, parseHHMM, zonedParts, zonedToUtc } from './tz';
+import { plural, type Lang } from './i18n';
+import { addDays, DAY, fmtHHMM, HOUR, parseHHMM, weekdayLabel, zonedParts, zonedToUtc } from './tz';
 
 export type Schedule =
   | { kind: 'weekly'; weekday: number; time: string } // weekday 0 = 周日
@@ -73,4 +74,58 @@ export function suggestSite(recentSites: (Site | null | undefined)[]): Site {
   const last = [...recentSites].reverse().find((s): s is Site => !!s);
   if (!last) return SITES[0];
   return SITES[(SITES.indexOf(last) + 1) % SITES.length];
+}
+
+// ── Text ─────────────────────────────────────────────────────────────────────
+
+const SITE_ZH: Record<Site, string> = {
+  abd_l: '左腹',
+  abd_r: '右腹',
+  thigh_l: '左大腿',
+  thigh_r: '右大腿',
+  arm_l: '左上臂',
+  arm_r: '右上臂',
+};
+
+const SITE_EN: Record<Site, string> = {
+  abd_l: 'Left stomach area',
+  abd_r: 'Right stomach area',
+  thigh_l: 'Left thigh',
+  thigh_r: 'Right thigh',
+  arm_l: 'Left upper arm',
+  arm_r: 'Right upper arm',
+};
+
+export function siteLabel(site: Site, lang: Lang): string {
+  return (lang === 'en' ? SITE_EN : SITE_ZH)[site];
+}
+
+/** The schedule in words: "Every Monday at 9:00 PM", "Every day at 8:00 AM", "Every 3 days". */
+export function scheduleText(s: Schedule, lang: Lang): string {
+  if (lang === 'en') {
+    if (s.kind === 'weekly') return `Every ${weekdayLabel(s.weekday, lang, 'long')} at ${fmtHHMM(s.time, lang)}`;
+    if (s.kind === 'daily') return `Every day at ${fmtHHMM(s.time, lang)}`;
+    if (s.hours === 24) return 'Every day';
+    return s.hours % 24 === 0 ? `Every ${s.hours / 24} days` : `Every ${plural(s.hours, 'hour')}`;
+  }
+  if (s.kind === 'weekly') return `每${weekdayLabel(s.weekday, lang)} ${s.time}`;
+  if (s.kind === 'daily') return `每天 ${s.time}`;
+  return `每 ${s.hours / 24} 天`;
+}
+
+/** Time until (or since) a due time: "in 2 days 3 hours", "45 minutes ago", "now". */
+export function countdownText(dueMs: number, nowMs: number, lang: Lang): string {
+  const c = countdown(dueMs, nowMs);
+  if (lang === 'en') {
+    // Two units at most, and no "0 hours": "in 2 days", "in 3 hours 20 minutes", "now".
+    const units: [number, string][] = c.days > 0 ? [[c.days, 'day'], [c.hours, 'hour']] : [[c.hours, 'hour'], [c.minutes, 'minute']];
+    const span = units
+      .filter(([n]) => n > 0)
+      .map(([n, word]) => plural(n, word))
+      .join(' ');
+    if (!span) return 'now';
+    return c.past ? `${span} ago` : `in ${span}`;
+  }
+  const span = c.days > 0 ? `${c.days} 天 ${c.hours} 小时` : c.hours > 0 ? `${c.hours} 小时 ${c.minutes} 分` : `${c.minutes} 分钟`;
+  return c.past ? `已过 ${span}` : `还有 ${span}`;
 }

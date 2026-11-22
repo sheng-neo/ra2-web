@@ -1,9 +1,11 @@
 import type { CurvePoint } from '../../core/pk';
+import { useT } from '../i18n';
 
 /**
  * 药物水平曲线（相对指数）。实线是已经发生的，虚线是"按计划继续用"的估算。
  */
 export function Curve({ points, nowMs, doseTimes, height = 120, compact = false }: { points: CurvePoint[]; nowMs: number; doseTimes: number[]; height?: number; compact?: boolean }) {
+  const t = useT();
   if (points.length < 2) return null;
   const w = 340;
   const h = height;
@@ -18,7 +20,7 @@ export function Curve({ points, nowMs, doseTimes, height = 120, compact = false 
   const future = points.filter((p) => p.projected);
   if (past.length && future.length) future.unshift(past[past.length - 1]);
   return (
-    <svg className="curve" viewBox={`0 0 ${w} ${h}`} role="img" aria-label="药物水平估算曲线">
+    <svg className="curve" viewBox={`0 0 ${w} ${h}`} role="img" aria-label={t('curve.aria')}>
       <line x1="0" x2={w} y1={y(100)} y2={y(100)} className="curve-ref" />
       {!compact && (
         <text x="2" y={y(100) - 3} className="curve-label">

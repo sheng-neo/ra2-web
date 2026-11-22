@@ -5,12 +5,14 @@ import { drugById, type DoseUnit } from '../core/catalog';
 import type { Site } from '../core/schedule';
 import { triageSymptom, triageText, type SymptomKind, type TriageContext, type TriageHit } from '../core/triage';
 import type { FoodLog, Profile, Source } from '../core/types';
+import { storedKg } from '../core/units';
 import { base, db, requestPersist, restore, softDelete, type RecordTable } from './db';
+import { msg, type MsgRef } from './i18n/translate';
 import { setUi, toast } from './store';
 
-function undoable(table: RecordTable, id: string, text: string): void {
+function undoable(table: RecordTable, id: string, text: MsgRef): void {
   toast(text, () => {
-    void softDelete(table, id).then(() => toast('已撤销'));
+    void softDelete(table, id).then(() => toast(msg('toast.undone')));
   });
   void requestPersist();
 }
@@ -23,35 +25,38 @@ export async function addDose(p: Profile, d: { drugId: string; amount: number; u
   const row = { ...base(d.source, d.occurredAt), drugId: d.drugId, amount: d.amount, unit: d.unit, site: d.site, note: d.note };
   await db.doses.add(row);
   const drug = drugById(d.drugId);
-  undoable('doses', row.id, `已记下：${drug.route === 'oral' ? '吃药' : '打针'} ${d.amount} ${d.unit}`);
+  undoable('doses', row.id, msg(drug.route === 'oral' ? 'toast.dose.pill' : 'toast.dose.shot', { amount: d.amount, unit: d.unit }));
   // 记第一针时，"还没开始"自动切到"加量中"
   if (p.regimen && p.regimen.status === 'not_started') {
     await db.profile.update('me', { regimen: { ...p.regimen, status: 'escalating' } });
   }
 }
 
+// Every weight saved from the screens goes through storedKg (core/units.ts).
+export { storedKg };
+
 export async function addWeight(kg: number, source: Source, occurredAt = Date.now()): Promise<void> {
-  const row = { ...base(source, occurredAt), kg: Math.round(kg * 10) / 10 };
+  const row = { ...base(source, occurredAt), kg: storedKg(kg) };
   await db.weights.add(row);
-  undoable('weights', row.id, `已记下体重`);
+  undoable('weights', row.id, msg('toast.weight'));
 }
 
 export async function addFood(f: Omit<FoodLog, keyof ReturnType<typeof base>>, source: Source, occurredAt = Date.now()): Promise<void> {
   const row: FoodLog = { ...base(source, occurredAt), ...f };
   await db.foods.add(row);
-  undoable('foods', row.id, `已记下：${f.text} 约 ${Math.round(f.proteinG)} 克蛋白`);
+  undoable('foods', row.id, msg('toast.food', { food: f.text, grams: Math.round(f.proteinG) }));
 }
 
 export async function addWorkout(routine: 'bodyweight' | 'band' | 'dumbbell', variant: 'standard' | 'light'): Promise<void> {
   const row = { ...base('quick'), routine, variant };
   await db.workouts.add(row);
-  undoable('workouts', row.id, '练完了，很棒');
+  undoable('workouts', row.id, msg('toast.workout'));
 }
 
 export async function addQuestion(text: string): Promise<void> {
   const row = { ...base('text'), text, asked: false };
   await db.questions.add(row);
-  toast('已存进"想问医生的问题"');
+  toast(msg('toast.questionSaved'));
 }
 
 /** 快捷记录症状。重度时走分诊。 */
@@ -62,7 +67,7 @@ export async function addSymptom(p: Profile, kind: SymptomKind, grade: number): 
   await db.symptoms.add(row);
   if (top) setUi({ triage: { hits, rowId: row.id } });
   else {
-    toast('已记下', () => void softDelete('symptoms', row.id));
+    toast(msg('toast.logged'), () => void softDelete('symptoms', row.id));
     setUi({ coping: kind });
   }
   void requestPersist();
@@ -89,7 +94,7 @@ export async function ackTriage(rowId: string | null): Promise<void> {
 
 export async function deleteRecord(table: RecordTable, id: string): Promise<void> {
   await softDelete(table, id);
-  toast('已删除', () => void restore(table, id));
+  toast(msg('toast.deleted'), () => void restore(table, id));
 }
 
 export async function updateProfile(patch: Partial<Profile>): Promise<void> {

@@ -1,4 +1,5 @@
 import type { DoseUnit, Region } from './catalog';
+import type { Lang } from './i18n';
 import type { Schedule, Site } from './schedule';
 import type { SymptomKind, TriageId, TriageLevel } from './triage';
 import type { WeightUnit } from './units';
@@ -67,6 +68,12 @@ export interface Safety {
 
 export interface Regimen {
   drugId: string;
+  /**
+   * Brand the user picked (a canonical name from the catalog, for example "Zepbound").
+   * Several brands can share one catalog entry; this keeps them apart on screen.
+   * Missing on older profiles: the label then lists every brand of the region.
+   */
+  brand?: string | null;
   customName?: string;
   doseAmount: number | null;
   doseUnit: DoseUnit;
@@ -79,6 +86,12 @@ export interface Regimen {
 
 export interface Profile {
   id: 'me';
+  /**
+   * Interface language. Optional: profiles saved before this field existed have none and stay
+   * Chinese. Always read it through profileLang() in i18n.ts, never directly.
+   */
+  lang?: Lang;
+  /** Older field, kept for backward compatibility. New profiles set it with scriptFor(lang). */
   script: 'hans' | 'hant';
   region: Region;
   weightUnit: WeightUnit;

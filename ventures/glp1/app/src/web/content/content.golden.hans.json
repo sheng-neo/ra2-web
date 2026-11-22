@@ -1,0 +1,2162 @@
+{
+ "advice": [
+  {
+   "a": {
+    "kind": "triage",
+    "hit": {
+     "id": "dehydration",
+     "level": "urgent"
+    }
+   },
+   "p": {
+    "kind": "auto",
+    "floorG": 64,
+    "idealLowG": 77,
+    "idealHighG": 96,
+    "capG": 128,
+    "refWeightKg": 63.8
+   },
+   "oral": false,
+   "text": {
+    "title": "今天先照顾身体",
+    "body": "你今天记录的情况可能需要看医生。今天的训练和饮食建议先暂停，能喝就小口喝水。",
+    "tone": "alert"
+   }
+  },
+  {
+   "a": {
+    "kind": "triage",
+    "hit": {
+     "id": "dehydration",
+     "level": "urgent"
+    }
+   },
+   "p": {
+    "kind": "auto",
+    "floorG": 64,
+    "idealLowG": 77,
+    "idealHighG": 96,
+    "capG": 128,
+    "refWeightKg": 63.8
+   },
+   "oral": true,
+   "text": {
+    "title": "今天先照顾身体",
+    "body": "你今天记录的情况可能需要看医生。今天的训练和饮食建议先暂停，能喝就小口喝水。",
+    "tone": "alert"
+   }
+  },
+  {
+   "a": {
+    "kind": "triage",
+    "hit": {
+     "id": "dehydration",
+     "level": "urgent"
+    }
+   },
+   "p": {
+    "kind": "manual",
+    "floorG": 80
+   },
+   "oral": false,
+   "text": {
+    "title": "今天先照顾身体",
+    "body": "你今天记录的情况可能需要看医生。今天的训练和饮食建议先暂停，能喝就小口喝水。",
+    "tone": "alert"
+   }
+  },
+  {
+   "a": {
+    "kind": "triage",
+    "hit": {
+     "id": "dehydration",
+     "level": "urgent"
+    }
+   },
+   "p": {
+    "kind": "manual",
+    "floorG": 80
+   },
+   "oral": true,
+   "text": {
+    "title": "今天先照顾身体",
+    "body": "你今天记录的情况可能需要看医生。今天的训练和饮食建议先暂停，能喝就小口喝水。",
+    "tone": "alert"
+   }
+  },
+  {
+   "a": {
+    "kind": "triage",
+    "hit": {
+     "id": "dehydration",
+     "level": "urgent"
+    }
+   },
+   "p": {
+    "kind": "ask_doctor"
+   },
+   "oral": false,
+   "text": {
+    "title": "今天先照顾身体",
+    "body": "你今天记录的情况可能需要看医生。今天的训练和饮食建议先暂停，能喝就小口喝水。",
+    "tone": "alert"
+   }
+  },
+  {
+   "a": {
+    "kind": "triage",
+    "hit": {
+     "id": "dehydration",
+     "level": "urgent"
+    }
+   },
+   "p": {
+    "kind": "ask_doctor"
+   },
+   "oral": true,
+   "text": {
+    "title": "今天先照顾身体",
+    "body": "你今天记录的情况可能需要看医生。今天的训练和饮食建议先暂停，能喝就小口喝水。",
+    "tone": "alert"
+   }
+  },
+  {
+   "a": {
+    "kind": "triage",
+    "hit": {
+     "id": "dehydration",
+     "level": "urgent"
+    }
+   },
+   "p": {
+    "kind": "off"
+   },
+   "oral": false,
+   "text": {
+    "title": "今天先照顾身体",
+    "body": "你今天记录的情况可能需要看医生。今天的训练和饮食建议先暂停，能喝就小口喝水。",
+    "tone": "alert"
+   }
+  },
+  {
+   "a": {
+    "kind": "triage",
+    "hit": {
+     "id": "dehydration",
+     "level": "urgent"
+    }
+   },
+   "p": {
+    "kind": "off"
+   },
+   "oral": true,
+   "text": {
+    "title": "今天先照顾身体",
+    "body": "你今天记录的情况可能需要看医生。今天的训练和饮食建议先暂停，能喝就小口喝水。",
+    "tone": "alert"
+   }
+  },
+  {
+   "a": {
+    "kind": "dose_day",
+    "dueMs": 0,
+    "status": "upcoming"
+   },
+   "p": {
+    "kind": "auto",
+    "floorG": 64,
+    "idealLowG": 77,
+    "idealHighG": 96,
+    "capG": 128,
+    "refWeightKg": 63.8
+   },
+   "oral": false,
+   "text": {
+    "title": "今天是打针日",
+    "body": "打完记一下，部位换一换。打针后的一两天如果胃口差，先保住 64 克蛋白，分 3–4 次吃。",
+    "tone": "calm"
+   }
+  },
+  {
+   "a": {
+    "kind": "dose_day",
+    "dueMs": 0,
+    "status": "upcoming"
+   },
+   "p": {
+    "kind": "auto",
+    "floorG": 64,
+    "idealLowG": 77,
+    "idealHighG": 96,
+    "capG": 128,
+    "refWeightKg": 63.8
+   },
+   "oral": true,
+   "text": {
+    "title": "今天记得吃药",
+    "body": "按时吃，吃完记一下。",
+    "tone": "calm"
+   }
+  },
+  {
+   "a": {
+    "kind": "dose_day",
+    "dueMs": 0,
+    "status": "upcoming"
+   },
+   "p": {
+    "kind": "manual",
+    "floorG": 80
+   },
+   "oral": false,
+   "text": {
+    "title": "今天是打针日",
+    "body": "打完记一下，部位换一换。打针后的一两天如果胃口差，先保住 80 克蛋白，分 3–4 次吃。",
+    "tone": "calm"
+   }
+  },
+  {
+   "a": {
+    "kind": "dose_day",
+    "dueMs": 0,
+    "status": "upcoming"
+   },
+   "p": {
+    "kind": "manual",
+    "floorG": 80
+   },
+   "oral": true,
+   "text": {
+    "title": "今天记得吃药",
+    "body": "按时吃，吃完记一下。",
+    "tone": "calm"
+   }
+  },
+  {
+   "a": {
+    "kind": "dose_day",
+    "dueMs": 0,
+    "status": "upcoming"
+   },
+   "p": {
+    "kind": "ask_doctor"
+   },
+   "oral": false,
+   "text": {
+    "title": "今天是打针日",
+    "body": "打完记一下，部位换一换。打针后的一两天如果胃口差，先少量多餐。",
+    "tone": "calm"
+   }
+  },
+  {
+   "a": {
+    "kind": "dose_day",
+    "dueMs": 0,
+    "status": "upcoming"
+   },
+   "p": {
+    "kind": "ask_doctor"
+   },
+   "oral": true,
+   "text": {
+    "title": "今天记得吃药",
+    "body": "按时吃，吃完记一下。",
+    "tone": "calm"
+   }
+  },
+  {
+   "a": {
+    "kind": "dose_day",
+    "dueMs": 0,
+    "status": "upcoming"
+   },
+   "p": {
+    "kind": "off"
+   },
+   "oral": false,
+   "text": {
+    "title": "今天是打针日",
+    "body": "打完记一下，部位换一换。打针后的一两天如果胃口差，先少量多餐。",
+    "tone": "calm"
+   }
+  },
+  {
+   "a": {
+    "kind": "dose_day",
+    "dueMs": 0,
+    "status": "upcoming"
+   },
+   "p": {
+    "kind": "off"
+   },
+   "oral": true,
+   "text": {
+    "title": "今天记得吃药",
+    "body": "按时吃，吃完记一下。",
+    "tone": "calm"
+   }
+  },
+  {
+   "a": {
+    "kind": "dose_day",
+    "dueMs": 0,
+    "status": "due"
+   },
+   "p": {
+    "kind": "auto",
+    "floorG": 64,
+    "idealLowG": 77,
+    "idealHighG": 96,
+    "capG": 128,
+    "refWeightKg": 63.8
+   },
+   "oral": false,
+   "text": {
+    "title": "今天是打针日",
+    "body": "打完记一下，部位换一换。打针后的一两天如果胃口差，先保住 64 克蛋白，分 3–4 次吃。",
+    "tone": "calm"
+   }
+  },
+  {
+   "a": {
+    "kind": "dose_day",
+    "dueMs": 0,
+    "status": "due"
+   },
+   "p": {
+    "kind": "auto",
+    "floorG": 64,
+    "idealLowG": 77,
+    "idealHighG": 96,
+    "capG": 128,
+    "refWeightKg": 63.8
+   },
+   "oral": true,
+   "text": {
+    "title": "今天记得吃药",
+    "body": "按时吃，吃完记一下。",
+    "tone": "calm"
+   }
+  },
+  {
+   "a": {
+    "kind": "dose_day",
+    "dueMs": 0,
+    "status": "due"
+   },
+   "p": {
+    "kind": "manual",
+    "floorG": 80
+   },
+   "oral": false,
+   "text": {
+    "title": "今天是打针日",
+    "body": "打完记一下，部位换一换。打针后的一两天如果胃口差，先保住 80 克蛋白，分 3–4 次吃。",
+    "tone": "calm"
+   }
+  },
+  {
+   "a": {
+    "kind": "dose_day",
+    "dueMs": 0,
+    "status": "due"
+   },
+   "p": {
+    "kind": "manual",
+    "floorG": 80
+   },
+   "oral": true,
+   "text": {
+    "title": "今天记得吃药",
+    "body": "按时吃，吃完记一下。",
+    "tone": "calm"
+   }
+  },
+  {
+   "a": {
+    "kind": "dose_day",
+    "dueMs": 0,
+    "status": "due"
+   },
+   "p": {
+    "kind": "ask_doctor"
+   },
+   "oral": false,
+   "text": {
+    "title": "今天是打针日",
+    "body": "打完记一下，部位换一换。打针后的一两天如果胃口差，先少量多餐。",
+    "tone": "calm"
+   }
+  },
+  {
+   "a": {
+    "kind": "dose_day",
+    "dueMs": 0,
+    "status": "due"
+   },
+   "p": {
+    "kind": "ask_doctor"
+   },
+   "oral": true,
+   "text": {
+    "title": "今天记得吃药",
+    "body": "按时吃，吃完记一下。",
+    "tone": "calm"
+   }
+  },
+  {
+   "a": {
+    "kind": "dose_day",
+    "dueMs": 0,
+    "status": "due"
+   },
+   "p": {
+    "kind": "off"
+   },
+   "oral": false,
+   "text": {
+    "title": "今天是打针日",
+    "body": "打完记一下，部位换一换。打针后的一两天如果胃口差，先少量多餐。",
+    "tone": "calm"
+   }
+  },
+  {
+   "a": {
+    "kind": "dose_day",
+    "dueMs": 0,
+    "status": "due"
+   },
+   "p": {
+    "kind": "off"
+   },
+   "oral": true,
+   "text": {
+    "title": "今天记得吃药",
+    "body": "按时吃，吃完记一下。",
+    "tone": "calm"
+   }
+  },
+  {
+   "a": {
+    "kind": "dose_day",
+    "dueMs": 0,
+    "status": "overdue"
+   },
+   "p": {
+    "kind": "auto",
+    "floorG": 64,
+    "idealLowG": 77,
+    "idealHighG": 96,
+    "capG": 128,
+    "refWeightKg": 63.8
+   },
+   "oral": false,
+   "text": {
+    "title": "是不是忘了记？",
+    "body": "到了打针时间还没有记录。打过了就补记一下；漏打了怎么办，以说明书为准，拿不准就问医生。",
+    "tone": "warn"
+   }
+  },
+  {
+   "a": {
+    "kind": "dose_day",
+    "dueMs": 0,
+    "status": "overdue"
+   },
+   "p": {
+    "kind": "auto",
+    "floorG": 64,
+    "idealLowG": 77,
+    "idealHighG": 96,
+    "capG": 128,
+    "refWeightKg": 63.8
+   },
+   "oral": true,
+   "text": {
+    "title": "是不是忘了记？",
+    "body": "到了吃药时间还没有记录。吃过了就补记一下；漏吃了，按说明书或问医生。",
+    "tone": "warn"
+   }
+  },
+  {
+   "a": {
+    "kind": "dose_day",
+    "dueMs": 0,
+    "status": "overdue"
+   },
+   "p": {
+    "kind": "manual",
+    "floorG": 80
+   },
+   "oral": false,
+   "text": {
+    "title": "是不是忘了记？",
+    "body": "到了打针时间还没有记录。打过了就补记一下；漏打了怎么办，以说明书为准，拿不准就问医生。",
+    "tone": "warn"
+   }
+  },
+  {
+   "a": {
+    "kind": "dose_day",
+    "dueMs": 0,
+    "status": "overdue"
+   },
+   "p": {
+    "kind": "manual",
+    "floorG": 80
+   },
+   "oral": true,
+   "text": {
+    "title": "是不是忘了记？",
+    "body": "到了吃药时间还没有记录。吃过了就补记一下；漏吃了，按说明书或问医生。",
+    "tone": "warn"
+   }
+  },
+  {
+   "a": {
+    "kind": "dose_day",
+    "dueMs": 0,
+    "status": "overdue"
+   },
+   "p": {
+    "kind": "ask_doctor"
+   },
+   "oral": false,
+   "text": {
+    "title": "是不是忘了记？",
+    "body": "到了打针时间还没有记录。打过了就补记一下；漏打了怎么办，以说明书为准，拿不准就问医生。",
+    "tone": "warn"
+   }
+  },
+  {
+   "a": {
+    "kind": "dose_day",
+    "dueMs": 0,
+    "status": "overdue"
+   },
+   "p": {
+    "kind": "ask_doctor"
+   },
+   "oral": true,
+   "text": {
+    "title": "是不是忘了记？",
+    "body": "到了吃药时间还没有记录。吃过了就补记一下；漏吃了，按说明书或问医生。",
+    "tone": "warn"
+   }
+  },
+  {
+   "a": {
+    "kind": "dose_day",
+    "dueMs": 0,
+    "status": "overdue"
+   },
+   "p": {
+    "kind": "off"
+   },
+   "oral": false,
+   "text": {
+    "title": "是不是忘了记？",
+    "body": "到了打针时间还没有记录。打过了就补记一下；漏打了怎么办，以说明书为准，拿不准就问医生。",
+    "tone": "warn"
+   }
+  },
+  {
+   "a": {
+    "kind": "dose_day",
+    "dueMs": 0,
+    "status": "overdue"
+   },
+   "p": {
+    "kind": "off"
+   },
+   "oral": true,
+   "text": {
+    "title": "是不是忘了记？",
+    "body": "到了吃药时间还没有记录。吃过了就补记一下；漏吃了，按说明书或问医生。",
+    "tone": "warn"
+   }
+  },
+  {
+   "a": {
+    "kind": "escalation",
+    "dayOfEscalation": 1,
+    "currentMg": 5
+   },
+   "p": {
+    "kind": "auto",
+    "floorG": 64,
+    "idealLowG": 77,
+    "idealHighG": 96,
+    "capG": 128,
+    "refWeightKg": 63.8
+   },
+   "oral": false,
+   "text": {
+    "title": "加量第 1 天",
+    "body": "刚加量的两周反应常常更明显。少量多餐、多喝水；先保住 64 克蛋白，分 3–4 次吃。训练换成 15 分钟轻量版。",
+    "tone": "calm"
+   }
+  },
+  {
+   "a": {
+    "kind": "escalation",
+    "dayOfEscalation": 1,
+    "currentMg": 5
+   },
+   "p": {
+    "kind": "auto",
+    "floorG": 64,
+    "idealLowG": 77,
+    "idealHighG": 96,
+    "capG": 128,
+    "refWeightKg": 63.8
+   },
+   "oral": true,
+   "text": {
+    "title": "加量第 1 天",
+    "body": "刚加量的两周反应常常更明显。少量多餐、多喝水；先保住 64 克蛋白，分 3–4 次吃。训练换成 15 分钟轻量版。",
+    "tone": "calm"
+   }
+  },
+  {
+   "a": {
+    "kind": "escalation",
+    "dayOfEscalation": 1,
+    "currentMg": 5
+   },
+   "p": {
+    "kind": "manual",
+    "floorG": 80
+   },
+   "oral": false,
+   "text": {
+    "title": "加量第 1 天",
+    "body": "刚加量的两周反应常常更明显。少量多餐、多喝水；先保住 80 克蛋白，分 3–4 次吃。训练换成 15 分钟轻量版。",
+    "tone": "calm"
+   }
+  },
+  {
+   "a": {
+    "kind": "escalation",
+    "dayOfEscalation": 1,
+    "currentMg": 5
+   },
+   "p": {
+    "kind": "manual",
+    "floorG": 80
+   },
+   "oral": true,
+   "text": {
+    "title": "加量第 1 天",
+    "body": "刚加量的两周反应常常更明显。少量多餐、多喝水；先保住 80 克蛋白，分 3–4 次吃。训练换成 15 分钟轻量版。",
+    "tone": "calm"
+   }
+  },
+  {
+   "a": {
+    "kind": "escalation",
+    "dayOfEscalation": 1,
+    "currentMg": 5
+   },
+   "p": {
+    "kind": "ask_doctor"
+   },
+   "oral": false,
+   "text": {
+    "title": "加量第 1 天",
+    "body": "刚加量的两周反应常常更明显。少量多餐、多喝水；训练换成 15 分钟轻量版。",
+    "tone": "calm"
+   }
+  },
+  {
+   "a": {
+    "kind": "escalation",
+    "dayOfEscalation": 1,
+    "currentMg": 5
+   },
+   "p": {
+    "kind": "ask_doctor"
+   },
+   "oral": true,
+   "text": {
+    "title": "加量第 1 天",
+    "body": "刚加量的两周反应常常更明显。少量多餐、多喝水；训练换成 15 分钟轻量版。",
+    "tone": "calm"
+   }
+  },
+  {
+   "a": {
+    "kind": "escalation",
+    "dayOfEscalation": 1,
+    "currentMg": 5
+   },
+   "p": {
+    "kind": "off"
+   },
+   "oral": false,
+   "text": {
+    "title": "加量第 1 天",
+    "body": "刚加量的两周反应常常更明显。少量多餐、多喝水；训练换成 15 分钟轻量版。",
+    "tone": "calm"
+   }
+  },
+  {
+   "a": {
+    "kind": "escalation",
+    "dayOfEscalation": 1,
+    "currentMg": 5
+   },
+   "p": {
+    "kind": "off"
+   },
+   "oral": true,
+   "text": {
+    "title": "加量第 1 天",
+    "body": "刚加量的两周反应常常更明显。少量多餐、多喝水；训练换成 15 分钟轻量版。",
+    "tone": "calm"
+   }
+  },
+  {
+   "a": {
+    "kind": "escalation",
+    "dayOfEscalation": 12,
+    "currentMg": 5
+   },
+   "p": {
+    "kind": "auto",
+    "floorG": 64,
+    "idealLowG": 77,
+    "idealHighG": 96,
+    "capG": 128,
+    "refWeightKg": 63.8
+   },
+   "oral": false,
+   "text": {
+    "title": "加量第 12 天",
+    "body": "刚加量的两周反应常常更明显。少量多餐、多喝水；先保住 64 克蛋白，分 3–4 次吃。训练换成 15 分钟轻量版。",
+    "tone": "calm"
+   }
+  },
+  {
+   "a": {
+    "kind": "escalation",
+    "dayOfEscalation": 12,
+    "currentMg": 5
+   },
+   "p": {
+    "kind": "auto",
+    "floorG": 64,
+    "idealLowG": 77,
+    "idealHighG": 96,
+    "capG": 128,
+    "refWeightKg": 63.8
+   },
+   "oral": true,
+   "text": {
+    "title": "加量第 12 天",
+    "body": "刚加量的两周反应常常更明显。少量多餐、多喝水；先保住 64 克蛋白，分 3–4 次吃。训练换成 15 分钟轻量版。",
+    "tone": "calm"
+   }
+  },
+  {
+   "a": {
+    "kind": "escalation",
+    "dayOfEscalation": 12,
+    "currentMg": 5
+   },
+   "p": {
+    "kind": "manual",
+    "floorG": 80
+   },
+   "oral": false,
+   "text": {
+    "title": "加量第 12 天",
+    "body": "刚加量的两周反应常常更明显。少量多餐、多喝水；先保住 80 克蛋白，分 3–4 次吃。训练换成 15 分钟轻量版。",
+    "tone": "calm"
+   }
+  },
+  {
+   "a": {
+    "kind": "escalation",
+    "dayOfEscalation": 12,
+    "currentMg": 5
+   },
+   "p": {
+    "kind": "manual",
+    "floorG": 80
+   },
+   "oral": true,
+   "text": {
+    "title": "加量第 12 天",
+    "body": "刚加量的两周反应常常更明显。少量多餐、多喝水；先保住 80 克蛋白，分 3–4 次吃。训练换成 15 分钟轻量版。",
+    "tone": "calm"
+   }
+  },
+  {
+   "a": {
+    "kind": "escalation",
+    "dayOfEscalation": 12,
+    "currentMg": 5
+   },
+   "p": {
+    "kind": "ask_doctor"
+   },
+   "oral": false,
+   "text": {
+    "title": "加量第 12 天",
+    "body": "刚加量的两周反应常常更明显。少量多餐、多喝水；训练换成 15 分钟轻量版。",
+    "tone": "calm"
+   }
+  },
+  {
+   "a": {
+    "kind": "escalation",
+    "dayOfEscalation": 12,
+    "currentMg": 5
+   },
+   "p": {
+    "kind": "ask_doctor"
+   },
+   "oral": true,
+   "text": {
+    "title": "加量第 12 天",
+    "body": "刚加量的两周反应常常更明显。少量多餐、多喝水；训练换成 15 分钟轻量版。",
+    "tone": "calm"
+   }
+  },
+  {
+   "a": {
+    "kind": "escalation",
+    "dayOfEscalation": 12,
+    "currentMg": 5
+   },
+   "p": {
+    "kind": "off"
+   },
+   "oral": false,
+   "text": {
+    "title": "加量第 12 天",
+    "body": "刚加量的两周反应常常更明显。少量多餐、多喝水；训练换成 15 分钟轻量版。",
+    "tone": "calm"
+   }
+  },
+  {
+   "a": {
+    "kind": "escalation",
+    "dayOfEscalation": 12,
+    "currentMg": 5
+   },
+   "p": {
+    "kind": "off"
+   },
+   "oral": true,
+   "text": {
+    "title": "加量第 12 天",
+    "body": "刚加量的两周反应常常更明显。少量多餐、多喝水；训练换成 15 分钟轻量版。",
+    "tone": "calm"
+   }
+  },
+  {
+   "a": {
+    "kind": "high_symptom",
+    "offset": 1
+   },
+   "p": {
+    "kind": "auto",
+    "floorG": 64,
+    "idealLowG": 77,
+    "idealHighG": 96,
+    "capG": 128,
+    "refWeightKg": 63.8
+   },
+   "oral": false,
+   "text": {
+    "title": "今天可能会难受一点",
+    "body": "按你前几周的记录，打针后第 1 天反应常常更明显。先保住 64 克蛋白，分 3–4 次吃。训练换成轻量版或改天。",
+    "tone": "calm"
+   }
+  },
+  {
+   "a": {
+    "kind": "high_symptom",
+    "offset": 1
+   },
+   "p": {
+    "kind": "auto",
+    "floorG": 64,
+    "idealLowG": 77,
+    "idealHighG": 96,
+    "capG": 128,
+    "refWeightKg": 63.8
+   },
+   "oral": true,
+   "text": {
+    "title": "今天可能会难受一点",
+    "body": "按你前几周的记录，打针后第 1 天反应常常更明显。先保住 64 克蛋白，分 3–4 次吃。训练换成轻量版或改天。",
+    "tone": "calm"
+   }
+  },
+  {
+   "a": {
+    "kind": "high_symptom",
+    "offset": 1
+   },
+   "p": {
+    "kind": "manual",
+    "floorG": 80
+   },
+   "oral": false,
+   "text": {
+    "title": "今天可能会难受一点",
+    "body": "按你前几周的记录，打针后第 1 天反应常常更明显。先保住 80 克蛋白，分 3–4 次吃。训练换成轻量版或改天。",
+    "tone": "calm"
+   }
+  },
+  {
+   "a": {
+    "kind": "high_symptom",
+    "offset": 1
+   },
+   "p": {
+    "kind": "manual",
+    "floorG": 80
+   },
+   "oral": true,
+   "text": {
+    "title": "今天可能会难受一点",
+    "body": "按你前几周的记录，打针后第 1 天反应常常更明显。先保住 80 克蛋白，分 3–4 次吃。训练换成轻量版或改天。",
+    "tone": "calm"
+   }
+  },
+  {
+   "a": {
+    "kind": "high_symptom",
+    "offset": 1
+   },
+   "p": {
+    "kind": "ask_doctor"
+   },
+   "oral": false,
+   "text": {
+    "title": "今天可能会难受一点",
+    "body": "按你前几周的记录，打针后第 1 天反应常常更明显。训练换成轻量版或改天。",
+    "tone": "calm"
+   }
+  },
+  {
+   "a": {
+    "kind": "high_symptom",
+    "offset": 1
+   },
+   "p": {
+    "kind": "ask_doctor"
+   },
+   "oral": true,
+   "text": {
+    "title": "今天可能会难受一点",
+    "body": "按你前几周的记录，打针后第 1 天反应常常更明显。训练换成轻量版或改天。",
+    "tone": "calm"
+   }
+  },
+  {
+   "a": {
+    "kind": "high_symptom",
+    "offset": 1
+   },
+   "p": {
+    "kind": "off"
+   },
+   "oral": false,
+   "text": {
+    "title": "今天可能会难受一点",
+    "body": "按你前几周的记录，打针后第 1 天反应常常更明显。训练换成轻量版或改天。",
+    "tone": "calm"
+   }
+  },
+  {
+   "a": {
+    "kind": "high_symptom",
+    "offset": 1
+   },
+   "p": {
+    "kind": "off"
+   },
+   "oral": true,
+   "text": {
+    "title": "今天可能会难受一点",
+    "body": "按你前几周的记录，打针后第 1 天反应常常更明显。训练换成轻量版或改天。",
+    "tone": "calm"
+   }
+  },
+  {
+   "a": {
+    "kind": "high_symptom",
+    "offset": 3
+   },
+   "p": {
+    "kind": "auto",
+    "floorG": 64,
+    "idealLowG": 77,
+    "idealHighG": 96,
+    "capG": 128,
+    "refWeightKg": 63.8
+   },
+   "oral": false,
+   "text": {
+    "title": "今天可能会难受一点",
+    "body": "按你前几周的记录，打针后第 3 天反应常常更明显。先保住 64 克蛋白，分 3–4 次吃。训练换成轻量版或改天。",
+    "tone": "calm"
+   }
+  },
+  {
+   "a": {
+    "kind": "high_symptom",
+    "offset": 3
+   },
+   "p": {
+    "kind": "auto",
+    "floorG": 64,
+    "idealLowG": 77,
+    "idealHighG": 96,
+    "capG": 128,
+    "refWeightKg": 63.8
+   },
+   "oral": true,
+   "text": {
+    "title": "今天可能会难受一点",
+    "body": "按你前几周的记录，打针后第 3 天反应常常更明显。先保住 64 克蛋白，分 3–4 次吃。训练换成轻量版或改天。",
+    "tone": "calm"
+   }
+  },
+  {
+   "a": {
+    "kind": "high_symptom",
+    "offset": 3
+   },
+   "p": {
+    "kind": "manual",
+    "floorG": 80
+   },
+   "oral": false,
+   "text": {
+    "title": "今天可能会难受一点",
+    "body": "按你前几周的记录，打针后第 3 天反应常常更明显。先保住 80 克蛋白，分 3–4 次吃。训练换成轻量版或改天。",
+    "tone": "calm"
+   }
+  },
+  {
+   "a": {
+    "kind": "high_symptom",
+    "offset": 3
+   },
+   "p": {
+    "kind": "manual",
+    "floorG": 80
+   },
+   "oral": true,
+   "text": {
+    "title": "今天可能会难受一点",
+    "body": "按你前几周的记录，打针后第 3 天反应常常更明显。先保住 80 克蛋白，分 3–4 次吃。训练换成轻量版或改天。",
+    "tone": "calm"
+   }
+  },
+  {
+   "a": {
+    "kind": "high_symptom",
+    "offset": 3
+   },
+   "p": {
+    "kind": "ask_doctor"
+   },
+   "oral": false,
+   "text": {
+    "title": "今天可能会难受一点",
+    "body": "按你前几周的记录，打针后第 3 天反应常常更明显。训练换成轻量版或改天。",
+    "tone": "calm"
+   }
+  },
+  {
+   "a": {
+    "kind": "high_symptom",
+    "offset": 3
+   },
+   "p": {
+    "kind": "ask_doctor"
+   },
+   "oral": true,
+   "text": {
+    "title": "今天可能会难受一点",
+    "body": "按你前几周的记录，打针后第 3 天反应常常更明显。训练换成轻量版或改天。",
+    "tone": "calm"
+   }
+  },
+  {
+   "a": {
+    "kind": "high_symptom",
+    "offset": 3
+   },
+   "p": {
+    "kind": "off"
+   },
+   "oral": false,
+   "text": {
+    "title": "今天可能会难受一点",
+    "body": "按你前几周的记录，打针后第 3 天反应常常更明显。训练换成轻量版或改天。",
+    "tone": "calm"
+   }
+  },
+  {
+   "a": {
+    "kind": "high_symptom",
+    "offset": 3
+   },
+   "p": {
+    "kind": "off"
+   },
+   "oral": true,
+   "text": {
+    "title": "今天可能会难受一点",
+    "body": "按你前几周的记录，打针后第 3 天反应常常更明显。训练换成轻量版或改天。",
+    "tone": "calm"
+   }
+  },
+  {
+   "a": {
+    "kind": "protein_low",
+    "days": 3,
+    "floorG": 64
+   },
+   "p": {
+    "kind": "auto",
+    "floorG": 64,
+    "idealLowG": 77,
+    "idealHighG": 96,
+    "capG": 128,
+    "refWeightKg": 63.8
+   },
+   "oral": false,
+   "text": {
+    "title": "这几天蛋白吃少了",
+    "body": "已经连续 3 天没到 64 克。试试每餐先吃蛋白，或者加一杯牛奶、一勺蛋白粉。",
+    "tone": "warn"
+   }
+  },
+  {
+   "a": {
+    "kind": "protein_low",
+    "days": 3,
+    "floorG": 64
+   },
+   "p": {
+    "kind": "auto",
+    "floorG": 64,
+    "idealLowG": 77,
+    "idealHighG": 96,
+    "capG": 128,
+    "refWeightKg": 63.8
+   },
+   "oral": true,
+   "text": {
+    "title": "这几天蛋白吃少了",
+    "body": "已经连续 3 天没到 64 克。试试每餐先吃蛋白，或者加一杯牛奶、一勺蛋白粉。",
+    "tone": "warn"
+   }
+  },
+  {
+   "a": {
+    "kind": "protein_low",
+    "days": 3,
+    "floorG": 64
+   },
+   "p": {
+    "kind": "manual",
+    "floorG": 80
+   },
+   "oral": false,
+   "text": {
+    "title": "这几天蛋白吃少了",
+    "body": "已经连续 3 天没到 64 克。试试每餐先吃蛋白，或者加一杯牛奶、一勺蛋白粉。",
+    "tone": "warn"
+   }
+  },
+  {
+   "a": {
+    "kind": "protein_low",
+    "days": 3,
+    "floorG": 64
+   },
+   "p": {
+    "kind": "manual",
+    "floorG": 80
+   },
+   "oral": true,
+   "text": {
+    "title": "这几天蛋白吃少了",
+    "body": "已经连续 3 天没到 64 克。试试每餐先吃蛋白，或者加一杯牛奶、一勺蛋白粉。",
+    "tone": "warn"
+   }
+  },
+  {
+   "a": {
+    "kind": "protein_low",
+    "days": 3,
+    "floorG": 64
+   },
+   "p": {
+    "kind": "ask_doctor"
+   },
+   "oral": false,
+   "text": {
+    "title": "这几天蛋白吃少了",
+    "body": "已经连续 3 天没到 64 克。试试每餐先吃蛋白，或者加一杯牛奶、一勺蛋白粉。",
+    "tone": "warn"
+   }
+  },
+  {
+   "a": {
+    "kind": "protein_low",
+    "days": 3,
+    "floorG": 64
+   },
+   "p": {
+    "kind": "ask_doctor"
+   },
+   "oral": true,
+   "text": {
+    "title": "这几天蛋白吃少了",
+    "body": "已经连续 3 天没到 64 克。试试每餐先吃蛋白，或者加一杯牛奶、一勺蛋白粉。",
+    "tone": "warn"
+   }
+  },
+  {
+   "a": {
+    "kind": "protein_low",
+    "days": 3,
+    "floorG": 64
+   },
+   "p": {
+    "kind": "off"
+   },
+   "oral": false,
+   "text": {
+    "title": "这几天蛋白吃少了",
+    "body": "已经连续 3 天没到 64 克。试试每餐先吃蛋白，或者加一杯牛奶、一勺蛋白粉。",
+    "tone": "warn"
+   }
+  },
+  {
+   "a": {
+    "kind": "protein_low",
+    "days": 3,
+    "floorG": 64
+   },
+   "p": {
+    "kind": "off"
+   },
+   "oral": true,
+   "text": {
+    "title": "这几天蛋白吃少了",
+    "body": "已经连续 3 天没到 64 克。试试每餐先吃蛋白，或者加一杯牛奶、一勺蛋白粉。",
+    "tone": "warn"
+   }
+  },
+  {
+   "a": {
+    "kind": "stopped",
+    "daysSince": null
+   },
+   "p": {
+    "kind": "auto",
+    "floorG": 64,
+    "idealLowG": 77,
+    "idealHighG": 96,
+    "capG": 128,
+    "refWeightKg": 63.8
+   },
+   "oral": false,
+   "text": {
+    "title": "停药后的维持期",
+    "body": "每周称 2–3 次体重，看 7 天平均就好。蛋白和训练继续，这个阶段最适合把肌肉练回来。体重回升很常见，是生理现象，不是失败。",
+    "tone": "calm"
+   }
+  },
+  {
+   "a": {
+    "kind": "stopped",
+    "daysSince": null
+   },
+   "p": {
+    "kind": "auto",
+    "floorG": 64,
+    "idealLowG": 77,
+    "idealHighG": 96,
+    "capG": 128,
+    "refWeightKg": 63.8
+   },
+   "oral": true,
+   "text": {
+    "title": "停药后的维持期",
+    "body": "每周称 2–3 次体重，看 7 天平均就好。蛋白和训练继续，这个阶段最适合把肌肉练回来。体重回升很常见，是生理现象，不是失败。",
+    "tone": "calm"
+   }
+  },
+  {
+   "a": {
+    "kind": "stopped",
+    "daysSince": null
+   },
+   "p": {
+    "kind": "manual",
+    "floorG": 80
+   },
+   "oral": false,
+   "text": {
+    "title": "停药后的维持期",
+    "body": "每周称 2–3 次体重，看 7 天平均就好。蛋白和训练继续，这个阶段最适合把肌肉练回来。体重回升很常见，是生理现象，不是失败。",
+    "tone": "calm"
+   }
+  },
+  {
+   "a": {
+    "kind": "stopped",
+    "daysSince": null
+   },
+   "p": {
+    "kind": "manual",
+    "floorG": 80
+   },
+   "oral": true,
+   "text": {
+    "title": "停药后的维持期",
+    "body": "每周称 2–3 次体重，看 7 天平均就好。蛋白和训练继续，这个阶段最适合把肌肉练回来。体重回升很常见，是生理现象，不是失败。",
+    "tone": "calm"
+   }
+  },
+  {
+   "a": {
+    "kind": "stopped",
+    "daysSince": null
+   },
+   "p": {
+    "kind": "ask_doctor"
+   },
+   "oral": false,
+   "text": {
+    "title": "停药后的维持期",
+    "body": "每周称 2–3 次体重，看 7 天平均就好。蛋白和训练继续，这个阶段最适合把肌肉练回来。体重回升很常见，是生理现象，不是失败。",
+    "tone": "calm"
+   }
+  },
+  {
+   "a": {
+    "kind": "stopped",
+    "daysSince": null
+   },
+   "p": {
+    "kind": "ask_doctor"
+   },
+   "oral": true,
+   "text": {
+    "title": "停药后的维持期",
+    "body": "每周称 2–3 次体重，看 7 天平均就好。蛋白和训练继续，这个阶段最适合把肌肉练回来。体重回升很常见，是生理现象，不是失败。",
+    "tone": "calm"
+   }
+  },
+  {
+   "a": {
+    "kind": "stopped",
+    "daysSince": null
+   },
+   "p": {
+    "kind": "off"
+   },
+   "oral": false,
+   "text": {
+    "title": "停药后的维持期",
+    "body": "每周称 2–3 次体重，看 7 天平均就好。蛋白和训练继续，这个阶段最适合把肌肉练回来。体重回升很常见，是生理现象，不是失败。",
+    "tone": "calm"
+   }
+  },
+  {
+   "a": {
+    "kind": "stopped",
+    "daysSince": null
+   },
+   "p": {
+    "kind": "off"
+   },
+   "oral": true,
+   "text": {
+    "title": "停药后的维持期",
+    "body": "每周称 2–3 次体重，看 7 天平均就好。蛋白和训练继续，这个阶段最适合把肌肉练回来。体重回升很常见，是生理现象，不是失败。",
+    "tone": "calm"
+   }
+  },
+  {
+   "a": {
+    "kind": "stopped",
+    "daysSince": 0
+   },
+   "p": {
+    "kind": "auto",
+    "floorG": 64,
+    "idealLowG": 77,
+    "idealHighG": 96,
+    "capG": 128,
+    "refWeightKg": 63.8
+   },
+   "oral": false,
+   "text": {
+    "title": "停药第 1 天",
+    "body": "每周称 2–3 次体重，看 7 天平均就好。蛋白和训练继续，这个阶段最适合把肌肉练回来。体重回升很常见，是生理现象，不是失败。",
+    "tone": "calm"
+   }
+  },
+  {
+   "a": {
+    "kind": "stopped",
+    "daysSince": 0
+   },
+   "p": {
+    "kind": "auto",
+    "floorG": 64,
+    "idealLowG": 77,
+    "idealHighG": 96,
+    "capG": 128,
+    "refWeightKg": 63.8
+   },
+   "oral": true,
+   "text": {
+    "title": "停药第 1 天",
+    "body": "每周称 2–3 次体重，看 7 天平均就好。蛋白和训练继续，这个阶段最适合把肌肉练回来。体重回升很常见，是生理现象，不是失败。",
+    "tone": "calm"
+   }
+  },
+  {
+   "a": {
+    "kind": "stopped",
+    "daysSince": 0
+   },
+   "p": {
+    "kind": "manual",
+    "floorG": 80
+   },
+   "oral": false,
+   "text": {
+    "title": "停药第 1 天",
+    "body": "每周称 2–3 次体重，看 7 天平均就好。蛋白和训练继续，这个阶段最适合把肌肉练回来。体重回升很常见，是生理现象，不是失败。",
+    "tone": "calm"
+   }
+  },
+  {
+   "a": {
+    "kind": "stopped",
+    "daysSince": 0
+   },
+   "p": {
+    "kind": "manual",
+    "floorG": 80
+   },
+   "oral": true,
+   "text": {
+    "title": "停药第 1 天",
+    "body": "每周称 2–3 次体重，看 7 天平均就好。蛋白和训练继续，这个阶段最适合把肌肉练回来。体重回升很常见，是生理现象，不是失败。",
+    "tone": "calm"
+   }
+  },
+  {
+   "a": {
+    "kind": "stopped",
+    "daysSince": 0
+   },
+   "p": {
+    "kind": "ask_doctor"
+   },
+   "oral": false,
+   "text": {
+    "title": "停药第 1 天",
+    "body": "每周称 2–3 次体重，看 7 天平均就好。蛋白和训练继续，这个阶段最适合把肌肉练回来。体重回升很常见，是生理现象，不是失败。",
+    "tone": "calm"
+   }
+  },
+  {
+   "a": {
+    "kind": "stopped",
+    "daysSince": 0
+   },
+   "p": {
+    "kind": "ask_doctor"
+   },
+   "oral": true,
+   "text": {
+    "title": "停药第 1 天",
+    "body": "每周称 2–3 次体重，看 7 天平均就好。蛋白和训练继续，这个阶段最适合把肌肉练回来。体重回升很常见，是生理现象，不是失败。",
+    "tone": "calm"
+   }
+  },
+  {
+   "a": {
+    "kind": "stopped",
+    "daysSince": 0
+   },
+   "p": {
+    "kind": "off"
+   },
+   "oral": false,
+   "text": {
+    "title": "停药第 1 天",
+    "body": "每周称 2–3 次体重，看 7 天平均就好。蛋白和训练继续，这个阶段最适合把肌肉练回来。体重回升很常见，是生理现象，不是失败。",
+    "tone": "calm"
+   }
+  },
+  {
+   "a": {
+    "kind": "stopped",
+    "daysSince": 0
+   },
+   "p": {
+    "kind": "off"
+   },
+   "oral": true,
+   "text": {
+    "title": "停药第 1 天",
+    "body": "每周称 2–3 次体重，看 7 天平均就好。蛋白和训练继续，这个阶段最适合把肌肉练回来。体重回升很常见，是生理现象，不是失败。",
+    "tone": "calm"
+   }
+  },
+  {
+   "a": {
+    "kind": "stopped",
+    "daysSince": 9
+   },
+   "p": {
+    "kind": "auto",
+    "floorG": 64,
+    "idealLowG": 77,
+    "idealHighG": 96,
+    "capG": 128,
+    "refWeightKg": 63.8
+   },
+   "oral": false,
+   "text": {
+    "title": "停药第 10 天",
+    "body": "每周称 2–3 次体重，看 7 天平均就好。蛋白和训练继续，这个阶段最适合把肌肉练回来。体重回升很常见，是生理现象，不是失败。",
+    "tone": "calm"
+   }
+  },
+  {
+   "a": {
+    "kind": "stopped",
+    "daysSince": 9
+   },
+   "p": {
+    "kind": "auto",
+    "floorG": 64,
+    "idealLowG": 77,
+    "idealHighG": 96,
+    "capG": 128,
+    "refWeightKg": 63.8
+   },
+   "oral": true,
+   "text": {
+    "title": "停药第 10 天",
+    "body": "每周称 2–3 次体重，看 7 天平均就好。蛋白和训练继续，这个阶段最适合把肌肉练回来。体重回升很常见，是生理现象，不是失败。",
+    "tone": "calm"
+   }
+  },
+  {
+   "a": {
+    "kind": "stopped",
+    "daysSince": 9
+   },
+   "p": {
+    "kind": "manual",
+    "floorG": 80
+   },
+   "oral": false,
+   "text": {
+    "title": "停药第 10 天",
+    "body": "每周称 2–3 次体重，看 7 天平均就好。蛋白和训练继续，这个阶段最适合把肌肉练回来。体重回升很常见，是生理现象，不是失败。",
+    "tone": "calm"
+   }
+  },
+  {
+   "a": {
+    "kind": "stopped",
+    "daysSince": 9
+   },
+   "p": {
+    "kind": "manual",
+    "floorG": 80
+   },
+   "oral": true,
+   "text": {
+    "title": "停药第 10 天",
+    "body": "每周称 2–3 次体重，看 7 天平均就好。蛋白和训练继续，这个阶段最适合把肌肉练回来。体重回升很常见，是生理现象，不是失败。",
+    "tone": "calm"
+   }
+  },
+  {
+   "a": {
+    "kind": "stopped",
+    "daysSince": 9
+   },
+   "p": {
+    "kind": "ask_doctor"
+   },
+   "oral": false,
+   "text": {
+    "title": "停药第 10 天",
+    "body": "每周称 2–3 次体重，看 7 天平均就好。蛋白和训练继续，这个阶段最适合把肌肉练回来。体重回升很常见，是生理现象，不是失败。",
+    "tone": "calm"
+   }
+  },
+  {
+   "a": {
+    "kind": "stopped",
+    "daysSince": 9
+   },
+   "p": {
+    "kind": "ask_doctor"
+   },
+   "oral": true,
+   "text": {
+    "title": "停药第 10 天",
+    "body": "每周称 2–3 次体重，看 7 天平均就好。蛋白和训练继续，这个阶段最适合把肌肉练回来。体重回升很常见，是生理现象，不是失败。",
+    "tone": "calm"
+   }
+  },
+  {
+   "a": {
+    "kind": "stopped",
+    "daysSince": 9
+   },
+   "p": {
+    "kind": "off"
+   },
+   "oral": false,
+   "text": {
+    "title": "停药第 10 天",
+    "body": "每周称 2–3 次体重，看 7 天平均就好。蛋白和训练继续，这个阶段最适合把肌肉练回来。体重回升很常见，是生理现象，不是失败。",
+    "tone": "calm"
+   }
+  },
+  {
+   "a": {
+    "kind": "stopped",
+    "daysSince": 9
+   },
+   "p": {
+    "kind": "off"
+   },
+   "oral": true,
+   "text": {
+    "title": "停药第 10 天",
+    "body": "每周称 2–3 次体重，看 7 天平均就好。蛋白和训练继续，这个阶段最适合把肌肉练回来。体重回升很常见，是生理现象，不是失败。",
+    "tone": "calm"
+   }
+  },
+  {
+   "a": {
+    "kind": "normal",
+    "train": true,
+    "offset": 2
+   },
+   "p": {
+    "kind": "auto",
+    "floorG": 64,
+    "idealLowG": 77,
+    "idealHighG": 96,
+    "capG": 128,
+    "refWeightKg": 63.8
+   },
+   "oral": false,
+   "text": {
+    "title": "今天适合练一次",
+    "body": "15–25 分钟就够，每周 2–3 次，帮你守住肌肉。先保住 64 克蛋白，分 3–4 次吃。",
+    "tone": "calm"
+   }
+  },
+  {
+   "a": {
+    "kind": "normal",
+    "train": true,
+    "offset": 2
+   },
+   "p": {
+    "kind": "auto",
+    "floorG": 64,
+    "idealLowG": 77,
+    "idealHighG": 96,
+    "capG": 128,
+    "refWeightKg": 63.8
+   },
+   "oral": true,
+   "text": {
+    "title": "今天适合练一次",
+    "body": "15–25 分钟就够，每周 2–3 次，帮你守住肌肉。先保住 64 克蛋白，分 3–4 次吃。",
+    "tone": "calm"
+   }
+  },
+  {
+   "a": {
+    "kind": "normal",
+    "train": true,
+    "offset": 2
+   },
+   "p": {
+    "kind": "manual",
+    "floorG": 80
+   },
+   "oral": false,
+   "text": {
+    "title": "今天适合练一次",
+    "body": "15–25 分钟就够，每周 2–3 次，帮你守住肌肉。先保住 80 克蛋白，分 3–4 次吃。",
+    "tone": "calm"
+   }
+  },
+  {
+   "a": {
+    "kind": "normal",
+    "train": true,
+    "offset": 2
+   },
+   "p": {
+    "kind": "manual",
+    "floorG": 80
+   },
+   "oral": true,
+   "text": {
+    "title": "今天适合练一次",
+    "body": "15–25 分钟就够，每周 2–3 次，帮你守住肌肉。先保住 80 克蛋白，分 3–4 次吃。",
+    "tone": "calm"
+   }
+  },
+  {
+   "a": {
+    "kind": "normal",
+    "train": true,
+    "offset": 2
+   },
+   "p": {
+    "kind": "ask_doctor"
+   },
+   "oral": false,
+   "text": {
+    "title": "今天适合练一次",
+    "body": "15–25 分钟就够，每周 2–3 次，帮你守住肌肉。",
+    "tone": "calm"
+   }
+  },
+  {
+   "a": {
+    "kind": "normal",
+    "train": true,
+    "offset": 2
+   },
+   "p": {
+    "kind": "ask_doctor"
+   },
+   "oral": true,
+   "text": {
+    "title": "今天适合练一次",
+    "body": "15–25 分钟就够，每周 2–3 次，帮你守住肌肉。",
+    "tone": "calm"
+   }
+  },
+  {
+   "a": {
+    "kind": "normal",
+    "train": true,
+    "offset": 2
+   },
+   "p": {
+    "kind": "off"
+   },
+   "oral": false,
+   "text": {
+    "title": "今天适合练一次",
+    "body": "15–25 分钟就够，每周 2–3 次，帮你守住肌肉。",
+    "tone": "calm"
+   }
+  },
+  {
+   "a": {
+    "kind": "normal",
+    "train": true,
+    "offset": 2
+   },
+   "p": {
+    "kind": "off"
+   },
+   "oral": true,
+   "text": {
+    "title": "今天适合练一次",
+    "body": "15–25 分钟就够，每周 2–3 次，帮你守住肌肉。",
+    "tone": "calm"
+   }
+  },
+  {
+   "a": {
+    "kind": "normal",
+    "train": false,
+    "offset": null
+   },
+   "p": {
+    "kind": "auto",
+    "floorG": 64,
+    "idealLowG": 77,
+    "idealHighG": 96,
+    "capG": 128,
+    "refWeightKg": 63.8
+   },
+   "oral": false,
+   "text": {
+    "title": "今天照常过",
+    "body": "先保住 64 克蛋白，分 3–4 次吃。累了就散散步。",
+    "tone": "calm"
+   }
+  },
+  {
+   "a": {
+    "kind": "normal",
+    "train": false,
+    "offset": null
+   },
+   "p": {
+    "kind": "auto",
+    "floorG": 64,
+    "idealLowG": 77,
+    "idealHighG": 96,
+    "capG": 128,
+    "refWeightKg": 63.8
+   },
+   "oral": true,
+   "text": {
+    "title": "今天照常过",
+    "body": "先保住 64 克蛋白，分 3–4 次吃。累了就散散步。",
+    "tone": "calm"
+   }
+  },
+  {
+   "a": {
+    "kind": "normal",
+    "train": false,
+    "offset": null
+   },
+   "p": {
+    "kind": "manual",
+    "floorG": 80
+   },
+   "oral": false,
+   "text": {
+    "title": "今天照常过",
+    "body": "先保住 80 克蛋白，分 3–4 次吃。累了就散散步。",
+    "tone": "calm"
+   }
+  },
+  {
+   "a": {
+    "kind": "normal",
+    "train": false,
+    "offset": null
+   },
+   "p": {
+    "kind": "manual",
+    "floorG": 80
+   },
+   "oral": true,
+   "text": {
+    "title": "今天照常过",
+    "body": "先保住 80 克蛋白，分 3–4 次吃。累了就散散步。",
+    "tone": "calm"
+   }
+  },
+  {
+   "a": {
+    "kind": "normal",
+    "train": false,
+    "offset": null
+   },
+   "p": {
+    "kind": "ask_doctor"
+   },
+   "oral": false,
+   "text": {
+    "title": "今天照常过",
+    "body": "按平时的节奏吃饭。累了就散散步。",
+    "tone": "calm"
+   }
+  },
+  {
+   "a": {
+    "kind": "normal",
+    "train": false,
+    "offset": null
+   },
+   "p": {
+    "kind": "ask_doctor"
+   },
+   "oral": true,
+   "text": {
+    "title": "今天照常过",
+    "body": "按平时的节奏吃饭。累了就散散步。",
+    "tone": "calm"
+   }
+  },
+  {
+   "a": {
+    "kind": "normal",
+    "train": false,
+    "offset": null
+   },
+   "p": {
+    "kind": "off"
+   },
+   "oral": false,
+   "text": {
+    "title": "今天照常过",
+    "body": "按平时的节奏吃饭。累了就散散步。",
+    "tone": "calm"
+   }
+  },
+  {
+   "a": {
+    "kind": "normal",
+    "train": false,
+    "offset": null
+   },
+   "p": {
+    "kind": "off"
+   },
+   "oral": true,
+   "text": {
+    "title": "今天照常过",
+    "body": "按平时的节奏吃饭。累了就散散步。",
+    "tone": "calm"
+   }
+  }
+ ],
+ "coping": [
+  {
+   "id": "nausea",
+   "title": "恶心、想吐",
+   "forSymptoms": [
+    "nausea",
+    "vomiting",
+    "reflux"
+   ],
+   "tryFirst": [
+    "少量多餐，一次吃到\"刚好不饿\"就停，吃慢一点",
+    "选清淡、凉一点、气味小的食物：白粥、苏打饼、酸奶、豆腐",
+    "吃完别马上躺下，饭后至少隔 2 小时再睡",
+    "小口多次喝水"
+   ],
+   "avoid": [
+    "油腻、油炸、太辣、太甜的东西",
+    "一次喝大量饮料",
+    "吃撑"
+   ],
+   "seeDoctor": [
+    "吐得喝水都留不住，或尿很少",
+    "肚子剧烈疼，或疼到后背",
+    "加量后一直不缓解"
+   ],
+   "sources": [
+    "药品说明书：Wegovy、Zepbound 患者用药信息（FDA）",
+    "ACLM/ASN/OMA/TOS 2025 年 GLP-1 营养与生活方式联合建议"
+   ]
+  },
+  {
+   "id": "constipation",
+   "title": "便秘",
+   "forSymptoms": [
+    "constipation"
+   ],
+   "tryFirst": [
+    "多喝水，饮水量比平时多一些",
+    "纤维慢慢加：蔬菜、燕麦、豆类、水果，别一下子加很多",
+    "每天走一走，饭后散步 10–15 分钟"
+   ],
+   "avoid": [
+    "水喝太少",
+    "一次性大量补纤维（会更胀）"
+   ],
+   "seeDoctor": [
+    "超过 3 天没有排便，同时肚子疼、呕吐或明显腹胀",
+    "便里有血或黑便",
+    "用了通便方法还是不行，先问医生或药师"
+   ],
+   "sources": [
+    "药品说明书：Wegovy、Zepbound 患者用药信息（FDA）",
+    "ACLM/ASN/OMA/TOS 2025 年 GLP-1 营养与生活方式联合建议"
+   ]
+  },
+  {
+   "id": "no_appetite",
+   "title": "没胃口、吃不下",
+   "forSymptoms": [
+    "no_appetite"
+   ],
+   "tryFirst": [
+    "先吃蛋白：每餐先吃鸡蛋、豆腐、鱼肉，再吃主食",
+    "吃不下固体就喝：牛奶、无糖豆浆、蛋白粉",
+    "定时吃，每 3–4 小时吃一点，不等饿了才吃",
+    "先保住\"最低线\"，理想线以后再说"
+   ],
+   "avoid": [
+    "一整天不吃，晚上一次吃很多",
+    "只吃零食和主食"
+   ],
+   "seeDoctor": [
+    "连续好几天几乎吃不下",
+    "体重掉得太快（每周超过 1.5%），或总是头晕没力气"
+   ],
+   "sources": [
+    "药品说明书：Wegovy、Zepbound 患者用药信息（FDA）",
+    "ACLM/ASN/OMA/TOS 2025 年 GLP-1 营养与生活方式联合建议"
+   ]
+  },
+  {
+   "id": "fatigue",
+   "title": "疲劳、没力气",
+   "forSymptoms": [
+    "fatigue",
+    "dizziness"
+   ],
+   "tryFirst": [
+    "检查今天水喝够没有、蛋白吃够没有",
+    "训练换成轻量版或改天，散步也算",
+    "睡够，固定作息"
+   ],
+   "avoid": [
+    "空腹做高强度运动",
+    "起身太快"
+   ],
+   "seeDoctor": [
+    "站起来眼前发黑、心慌",
+    "在用胰岛素或磺脲类药，出现手抖出汗",
+    "疲劳一直不缓解或越来越重"
+   ],
+   "sources": [
+    "药品说明书：Wegovy、Zepbound 患者用药信息（FDA）",
+    "ACLM/ASN/OMA/TOS 2025 年 GLP-1 营养与生活方式联合建议"
+   ]
+  }
+ ],
+ "routines": {
+  "bodyweight": {
+   "title": "徒手",
+   "exercises": [
+    {
+     "name": "椅子坐站",
+     "how": "坐在椅子前沿，双手抱胸，站起来再慢慢坐下",
+     "standard": "3 组 × 10 次",
+     "light": "2 组 × 8 次"
+    },
+    {
+     "name": "靠墙俯卧撑",
+     "how": "双手撑墙，身体成一条直线，胸口靠近墙再推回",
+     "standard": "3 组 × 10 次",
+     "light": "2 组 × 8 次"
+    },
+    {
+     "name": "臀桥",
+     "how": "仰卧屈膝，脚踩地，把臀部抬起再放下",
+     "standard": "3 组 × 12 次",
+     "light": "2 组 × 10 次"
+    },
+    {
+     "name": "提踵",
+     "how": "扶着桌子站好，踮起脚尖再放下",
+     "standard": "3 组 × 15 次",
+     "light": "2 组 × 12 次"
+    },
+    {
+     "name": "平板支撑（跪姿也行）",
+     "how": "前臂撑地，身体保持一条直线",
+     "standard": "3 组 × 20 秒",
+     "light": "2 组 × 15 秒"
+    }
+   ]
+  },
+  "band": {
+   "title": "弹力带",
+   "exercises": [
+    {
+     "name": "弹力带深蹲",
+     "how": "脚踩弹力带，双手拉住放在肩前，下蹲再站起",
+     "standard": "3 组 × 10 次",
+     "light": "2 组 × 8 次"
+    },
+    {
+     "name": "弹力带划船",
+     "how": "弹力带绕过脚底或固定在门把手，向后拉到腰侧",
+     "standard": "3 组 × 12 次",
+     "light": "2 组 × 10 次"
+    },
+    {
+     "name": "弹力带推胸",
+     "how": "弹力带绕到背后，双手向前推",
+     "standard": "3 组 × 10 次",
+     "light": "2 组 × 8 次"
+    },
+    {
+     "name": "弹力带侧走",
+     "how": "弹力带套在膝盖上方，半蹲向侧面走",
+     "standard": "3 组 × 10 步",
+     "light": "2 组 × 8 步"
+    },
+    {
+     "name": "弹力带面拉",
+     "how": "弹力带固定在高处，向脸的方向拉开",
+     "standard": "3 组 × 12 次",
+     "light": "2 组 × 10 次"
+    }
+   ]
+  },
+  "dumbbell": {
+   "title": "哑铃",
+   "exercises": [
+    {
+     "name": "高脚杯深蹲",
+     "how": "双手捧一只哑铃在胸前，下蹲再站起",
+     "standard": "3 组 × 10 次",
+     "light": "2 组 × 8 次"
+    },
+    {
+     "name": "单臂划船",
+     "how": "一手撑椅子，另一手把哑铃拉到腰侧",
+     "standard": "3 组 × 10 次/侧",
+     "light": "2 组 × 8 次/侧"
+    },
+    {
+     "name": "哑铃推举",
+     "how": "坐着把哑铃从肩膀推到头顶",
+     "standard": "3 组 × 10 次",
+     "light": "2 组 × 8 次"
+    },
+    {
+     "name": "罗马尼亚硬拉",
+     "how": "膝盖微弯，臀部向后推，哑铃沿腿下放再站起",
+     "standard": "3 组 × 10 次",
+     "light": "2 组 × 8 次"
+    },
+    {
+     "name": "农夫走",
+     "how": "双手各拿一只哑铃，挺胸走",
+     "standard": "3 趟 × 30 秒",
+     "light": "2 趟 × 20 秒"
+    }
+   ]
+  }
+ },
+ "status": {
+  "not_started": "还没开始",
+  "escalating": "加量中",
+  "maintenance": "维持剂量",
+  "paused": "暂停中",
+  "stopped": "已停药"
+ },
+ "disclaimer": "内容仅供参考，不构成医疗建议；调整用药或训练前请咨询医生。"
+}
