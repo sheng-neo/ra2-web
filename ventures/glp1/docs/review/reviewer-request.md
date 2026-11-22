@@ -10,9 +10,9 @@ Before anyone uses the app, we want a US-licensed pharmacist or physician to go 
 
 **What we would send you**
 
-One document, the review packet (attached). It is about 37,600 words: about 99 pages in a compact print layout, or about 160 pages as a plain Word file. Most of it is tables. It has 653 coded items, so a comment can be as short as "M-17: change to ...". It holds:
+One document, the review packet (attached). It is about 44,700 words: about 118 pages in a compact print layout, or about 191 pages as a plain Word file. Most of it is tables. It has 692 coded items, so a comment can be as short as "M-17: change to ...". It holds:
 
-- 14 danger-symptom rules, with 16 card texts and 152 trigger patterns, and the example phrases they were tested with;
+- 14 danger-symptom rules, with 16 card texts and 187 trigger patterns, and the example phrases they were tested with;
 - 7 Medication Guide lists with 78 guide items: the "most important information" and the serious side effects of each FDA Medication Guide, copied word for word, as the app shows them, and two tables that set our rules against them;
 - 4 coping cards, 17 daily advice texts and 15 exercises, all switched off in the app until they have been reviewed;
 - the US medication list: 9 brands with 63 numbers (dose steps, highest dose, half-life, time to peak, wait after a pill). We read them from the current FDA labels ourselves. Each one has the label's own words, the label section and the label page next to it, for you to check;
