@@ -99,6 +99,9 @@ const MUST_TRIGGER: Record<string, string[]> = {
     'dizzy when I stand up',
     'threw up 6 times today',
     'everything I eat comes back up',
+    // nausea that does not go away is named in the Medication Guides next to vomiting and diarrhea
+    'constantly nauseous, no vomiting',
+    "nausea that won't go away",
   ],
   gallbladder: ['右上腹疼还发烧', '眼白发黄', '皮膚變黃', 'jaundice', 'my eyes look yellow', 'pain in my upper right abdomen', 'my skin is turning yellow', 'pain under my right ribs'],
   thyroid: ['脖子摸到一个肿块', '吞咽困难', '声音嘶哑好久了', 'lump in my neck', 'trouble swallowing', 'my voice has been hoarse for weeks', "it's hard to swallow", 'never had trouble swallowing until now'],
@@ -180,7 +183,6 @@ describe('triage — must stay quiet on ordinary logs', () => {
     'a little dizzy',
     'heart racing a bit',
     'threw up twice',
-    'constantly nauseous, no vomiting',
     'Took my shot this morning. Mild nausea. No vomiting.',
     'barely ate today',
     'skipped breakfast',
@@ -294,8 +296,16 @@ describe('triage — context', () => {
     expect(triageSymptom('vomiting', 3, ctx)).toEqual([{ id: 'dehydration', level: 'urgent' }]);
     expect(triageSymptom('vomiting', 2, ctx)).toEqual([]);
     expect(triageSymptom('abdominal_pain', 3, ctx)[0].id).toBe('abdominal_pain_severe');
-    expect(triageSymptom('dizziness', 3, ctx)).toEqual([]);
-    expect(triageSymptom('dizziness', 3, { ...ctx, insulinOrSU: true })[0].id).toBe('hypoglycemia');
+    // Severe nausea: the Medication Guides name it with vomiting and diarrhea.
+    expect(triageSymptom('nausea', 3, ctx)).toEqual([{ id: 'dehydration', level: 'urgent' }]);
+    expect(triageSymptom('nausea', 2, ctx)).toEqual([]);
+    // Severe dizziness raises the card for everyone ("fainting or feeling dizzy" in the guides);
+    // a person on insulin or a sulfonylurea gets the low-blood-sugar hit, as before.
+    expect(triageSymptom('dizziness', 3, ctx)).toEqual([{ id: 'dehydration', level: 'urgent' }]);
+    expect(triageSymptom('dizziness', 2, ctx)).toEqual([]);
+    expect(triageSymptom('dizziness', 3, { ...ctx, insulinOrSU: true })).toEqual([{ id: 'hypoglycemia', level: 'act_now' }]);
+    // Every other symptom raises nothing at any grade.
+    for (const kind of ['reflux', 'constipation', 'no_appetite', 'fatigue', 'hair_loss', 'injection_site', 'mood', 'menstrual'] as const) expect(triageSymptom(kind, 3, ctx), kind).toEqual([]);
   });
 
   it('cards show the local emergency number', () => {

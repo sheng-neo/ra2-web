@@ -51,6 +51,9 @@ describe('the default build and the additions made for launch', () => {
     const me = render('en', createElement(Me, { profile, d, onRedoSetup: () => undefined }));
     expect(me).not.toMatch(/Want Pro|Usage counts|Share usage counts/);
     expect(countingOn).toBe(false);
+    // The list of warning signs from the Medication Guide is in both builds.
+    expect(FULL.guideWarningSigns).toBe(true);
+    expect(me).toContain('Warning signs in the Medication Guide');
   });
 
   it('Trends has the weekly summary, in the language of the profile', () => {

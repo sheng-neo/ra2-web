@@ -13,10 +13,12 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { drugById } from '../core/catalog';
 import { LAUNCH } from '../core/features';
 import { langOrDefault } from '../core/i18n';
+import { guideItems, MED_GUIDE_LIST, MED_GUIDES, type MedGuide } from '../core/medGuide';
 import { zonedToUtc } from '../core/tz';
 import type { DoseEvent, Profile } from '../core/types';
 import { addQuestionFromList, addSymptom } from './actions';
 import { Screens } from './App';
+import { GuideSheet } from './components/GuideSheet';
 import { InputBar } from './components/InputBar';
 import { SetupQuestions } from './components/SetupQuestions';
 import { Sheets } from './components/Sheets';
@@ -167,6 +169,8 @@ describe('launch build: danger symptoms', () => {
       expect(text, hit.id).toMatch(/What you logged can be a sign of a serious problem\. Contact your doctor right away\. If it is an emergency, call (\d{3}|your local emergency number)\./);
       expect(text, hit.id).toContain('It is not a diagnosis.');
       expect(text, hit.id).toContain('Got it');
+      // The alert leads to the whole list of the Medication Guide. It names no item of it.
+      expect(text, hit.id).toContain('See the warning signs in the Medication Guide');
       // None of the detail cards' text.
       expect(text, hit.id).not.toMatch(/dehydration|pancreas|blood sugar|emergency room|Tell your doctor ahead of time|paused/i);
     }
@@ -190,6 +194,18 @@ describe('launch build: danger symptoms', () => {
     const text = alertText(english, { hits: [{ id: 'crisis', level: 'crisis' }], rowId: null });
     expect(text).toContain('You are not alone');
     expect(text).not.toContain('Contact your doctor right away');
+    // The crisis card is as it was: no button to the Medication Guide.
+    expect(text).not.toContain('Medication Guide');
+  });
+
+  it('an alert from a typed question says "What you wrote"; an alert from a log entry says "What you logged"', () => {
+    const hits = [{ id: 'chest_or_faint', level: 'emergency' }] as const;
+    const wrote = alertText(english, { hits: [...hits], rowId: null, wrote: true });
+    expect(wrote).toMatch(/What you wrote can be a sign of a serious problem\. Contact your doctor right away\./);
+    expect(wrote).not.toContain('What you logged');
+    const logged = alertText(english, { hits: [...hits], rowId: 'row' });
+    expect(logged).toMatch(/What you logged can be a sign of a serious problem\./);
+    expect(logged).not.toContain('What you wrote');
   });
 
   it('a severe symptom from the symptom sheet still triggers the alert', async () => {
@@ -221,6 +237,107 @@ describe('launch build: danger symptoms', () => {
     expect(lines).toContain('2026-11-20,09:20,America/New_York,Symptom,Stomach pain,3,Grade 0–3,Alert: Contact your doctor right away');
     expect(lines).toContain('2026-11-20,09:18,America/New_York,Symptom,x,3,Grade 0–3,Alert: You are not alone');
     await db.symptoms.clear();
+  });
+});
+
+describe('launch build: warning signs in the Medication Guide', () => {
+  const sheet = (profile: Profile): string => {
+    setUi({ guide: true });
+    const out = html(profile, createElement(GuideSheet, { profile }));
+    setUi({ guide: false });
+    return out;
+  };
+  const words = (markup: string) => visibleText(markup).replace(/\s+/g, ' ');
+  /** Every piece of the guide the screen shows, in the order the guide prints them. */
+  const inOrder = (g: MedGuide): string[] => [g.mostImportant, g.seriousSideEffects].flatMap((part) => [part.question, part.intro, ...part.items.flatMap((i) => [i.text, ...i.bullets, ...(i.after === undefined ? [] : [i.after])])]);
+  const withMed = (drugId: string, brand?: string): Profile => ({ ...english, regimen: { ...english.regimen!, drugId, brand } });
+
+  it('the switch is on, Me has the row that opens the list, and a closed list renders nothing', () => {
+    expect(features.guideWarningSigns).toBe(true);
+    expect(screens(english).me).toContain('Warning signs in the Medication Guide');
+    setUi({ guide: false });
+    expect(html(english, createElement(GuideSheet, { profile: english }))).toBe('');
+  });
+
+  it('says where the list is from, in the fixed words, and gives the page address as a link', () => {
+    const out = sheet(english);
+    expect(words(out)).toContain("From the Medication Guide for Zepbound, revised 08/2026. These are the manufacturer's words, approved by the FDA. Nothing here is written by this app.");
+    expect(out).toContain(`<a class="guide-link" href="${MED_GUIDES.zepbound.url}" target="_blank" rel="noopener noreferrer">${MED_GUIDES.zepbound.url}</a>`);
+    expect(words(out)).toContain('The full guide comes with your prescription.');
+    // An English screen has no line about a translation.
+    expect(words(out)).not.toContain('English original');
+  });
+
+  it('shows the whole list of the person\'s own guide, word for word and in the guide\'s order, for every brand', () => {
+    for (const g of MED_GUIDE_LIST) {
+      for (const [brand, drugId] of Object.entries(g.brands)) {
+        const out = sheet(withMed(drugId, brand));
+        const text = words(out);
+        expect(text, brand).toContain(`From the Medication Guide for ${brand}, `);
+        let at = 0;
+        for (const piece of inOrder(g)) {
+          const found = text.indexOf(piece, at);
+          expect(found, `${brand}: "${piece.slice(0, 60)}" is missing or out of order`).toBeGreaterThanOrEqual(0);
+          at = found + piece.length;
+        }
+        // Every item and every sub-bullet is a list entry of its own; none is left out.
+        expect(out.match(/<li>/g), brand).toHaveLength(guideItems(g).length + guideItems(g).reduce((n, i) => n + i.bullets.length, 0));
+        // Nothing is set in bold or coloured: the guide's words carry no emphasis of ours.
+        expect(out, brand).not.toMatch(/<(?:b|strong|em|i|mark)\b|style=/);
+        // Inside the guide's text there is no class at all: only headings, paragraphs and lists.
+        const guideText = out.slice(out.indexOf('<div class="guide-text" lang="en">') + '<div class="guide-text" lang="en">'.length);
+        expect(guideText, brand).not.toMatch(/class=/);
+        expect(guideText.replace(/<\/?(?:section|h3|p|ul|li|div)>/g, ''), brand).not.toMatch(/<[a-z]/);
+      }
+    }
+  });
+
+  it('two brands on one guide each get that guide under their own name', () => {
+    expect(words(sheet(withMed('semaglutide-oral-t2d', 'Rybelsus')))).toContain('From the Medication Guide for Rybelsus, revised 1/2026.');
+    expect(words(sheet(withMed('semaglutide-oral-t2d-ozempic', 'Ozempic pill')))).toContain('From the Medication Guide for Ozempic pill, revised 1/2026.');
+    expect(words(sheet(withMed('orforglipron', 'Foundayo')))).toContain('From the Medication Guide for Foundayo, issued 07/2026.');
+  });
+
+  it('a medication with no guide on file gets one honest line, and no list', () => {
+    const none = 'This app has no Medication Guide on file for your medication. The Medication Guide comes with your prescription.';
+    for (const profile of [withMed('custom'), { ...withMed('semaglutide-wl'), region: 'OTHER' as const }, { ...withMed('tirzepatide'), region: 'OTHER' as const }]) {
+      const out = sheet(profile);
+      expect(words(out)).toContain(none);
+      expect(out).not.toMatch(/<li>|<a /);
+      expect(words(out)).not.toMatch(/From the Medication Guide for|may cause serious side effects/);
+    }
+  });
+
+  it('tirzepatide without Zepbound or Mounjaro is asked to choose the brand, as the chart asks', () => {
+    const out = sheet(withMed('tirzepatide'));
+    expect(words(out)).toContain('The Medication Guides for Zepbound and Mounjaro are separate. So the list needs to know your brand. To choose it, go to Me and tap "Change medication or redo setup".');
+    expect(out).not.toMatch(/<li>|<a /);
+  });
+
+  it('with no medication set up it says so', () => {
+    const out = sheet({ ...english, regimen: null });
+    expect(words(out)).toContain('Set up your medication under Me first.');
+    expect(out).not.toMatch(/<li>/);
+  });
+
+  it('a Chinese profile sees the English original under one Chinese line', () => {
+    const zh: Profile = { ...chinese, region: 'US', regimen: { ...chinese.regimen!, brand: 'Zepbound' } };
+    const out = sheet(zh);
+    const text = words(out);
+    expect(text).toContain('下面是英文原文，没有翻译。');
+    expect(text).toContain('出自 Zepbound 的美国《用药指南》（Medication Guide），修订于 08/2026。');
+    expect(out).toContain('<div class="guide-text" lang="en">');
+    expect(text).toContain(MED_GUIDES.zepbound.seriousSideEffects.items[1].text);
+    // In Mainland China the brand is not a US brand: none on file.
+    expect(words(sheet(chinese))).toContain('本应用没有收录你这种药的《用药指南》。');
+  });
+
+  it('opened from an alert, it lies over the alert and still shows the whole list', () => {
+    setUi({ triage: { hits: [{ id: 'gallbladder', level: 'urgent' }], rowId: null, wrote: true }, guide: true });
+    const out = html(english, createElement(GuideSheet, { profile: english }));
+    setUi({ triage: null, guide: false });
+    expect(out).toContain('class="sheet-backdrop over-alert"');
+    expect(out.match(/<li>/g)).toHaveLength(guideItems(MED_GUIDES.zepbound).length + guideItems(MED_GUIDES.zepbound).reduce((n, i) => n + i.bullets.length, 0));
   });
 });
 
@@ -527,8 +644,21 @@ describe('launch build: questions for the doctor', () => {
   it('typed text is still checked for danger signs: the alert is shown, the question is kept, no symptom is logged', async () => {
     await addQuestionFromList(english, 'Is severe stomach pain going to my back normal?');
     expect((await db.questions.toArray()).map((q) => q.text)).toEqual(['Is severe stomach pain going to my back normal?']);
-    expect(visibleText(html(english, createElement(TriageModal, { profile: english })))).toContain('Contact your doctor right away');
+    const alert = visibleText(html(english, createElement(TriageModal, { profile: english })));
+    expect(alert).toContain('Contact your doctor right away');
+    // Nothing was logged, so the card does not say "What you logged".
+    expect(alert).toContain('What you wrote can be a sign of a serious problem.');
+    expect(alert).not.toContain('What you logged');
     expect(await db.symptoms.count()).toBe(0);
+  });
+
+  it('a general question that describes no symptom is saved and shows no alert', async () => {
+    const asked = ['What are the signs of low blood sugar?', 'Can Zepbound cause pancreatitis?', 'My dad had chest pain last year, is this safe for him?'];
+    for (const text of asked) {
+      await addQuestionFromList(english, text);
+      expect(html(english, createElement(TriageModal, { profile: english })), text).toBe('');
+    }
+    expect(await db.questions.count()).toBe(asked.length);
   });
 
   it('an ordinary question about an operation, birth control, pregnancy or breastfeeding is saved and shows no alert', async () => {

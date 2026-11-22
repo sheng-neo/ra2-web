@@ -10,12 +10,15 @@ export type SheetName = 'dose' | 'weight' | 'symptom' | 'food' | 'workout' | nul
 export interface UiState {
   /** The message is kept as a key and turned into text when it is shown, in the language of the screen. */
   toast: { id: number; msg: MsgRef; undo?: () => void } | null;
-  triage: { hits: TriageHit[]; rowId: string | null } | null;
+  /** `wrote`: the alert came from a typed question and nothing was logged (the fixed card then says "What you wrote"). */
+  triage: { hits: TriageHit[]; rowId: string | null; wrote?: boolean } | null;
   sheet: SheetName;
   coping: string | null;
+  /** The list of warning signs from the Medication Guide is open. It lies over everything, an alert included. */
+  guide: boolean;
 }
 
-let state: UiState = { toast: null, triage: null, sheet: null, coping: null };
+let state: UiState = { toast: null, triage: null, sheet: null, coping: null, guide: false };
 const subs = new Set<() => void>();
 let toastTimer: ReturnType<typeof setTimeout> | null = null;
 

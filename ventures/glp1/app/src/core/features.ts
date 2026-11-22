@@ -94,6 +94,12 @@ export interface Features {
    * server (the build variable VITE_COUNT_URL). Without one it asks nothing and sends nothing.
    */
   anonymousCounts: boolean;
+  /**
+   * The list of warning signs, in the words of the FDA Medication Guide of the person's own
+   * medication (core/medGuide.ts): a row under Me, and a button on a danger-symptom alert. The
+   * list is the guide's text as it stands; the app adds no words to it. On in both builds.
+   */
+  guideWarningSigns: boolean;
 }
 
 /** Everything the app has. This is the app as it was before build profiles existed. */
@@ -115,6 +121,7 @@ export const FULL: Features = {
   setupQuestions: false,
   proInterest: false,
   anonymousCounts: false,
+  guideWarningSigns: true,
 };
 
 /** The first public version. */
@@ -136,6 +143,7 @@ export const LAUNCH: Features = {
   setupQuestions: true,
   proInterest: true,
   anonymousCounts: true,
+  guideWarningSigns: true,
 };
 
 /**

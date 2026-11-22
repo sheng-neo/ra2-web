@@ -42,6 +42,24 @@ describe('fixed alert card', () => {
     expect(emergencyDial('OTHER')).toBeNull();
   });
 
+  it('says "What you wrote" when the alert came from a typed question, and is otherwise the same card', () => {
+    expect(fixedAlertCard('US', 'en', true)).toEqual({
+      title: 'Contact your doctor right away',
+      body: 'What you wrote can be a sign of a serious problem. Contact your doctor right away. If it is an emergency, call 911.',
+      showEmergency: true,
+      pauseCoaching: true,
+    });
+    for (const r of REGIONS) expect(fixedAlertCard(r, 'en', true).body, r).toBe(fixedAlertCard(r, 'en').body.replace('What you logged', 'What you wrote'));
+    expect(fixedAlertCard('US', 'en', false)).toEqual(fixedAlertCard('US', 'en'));
+    // The cards of an alert pass it on; a crisis card and the detail cards have no such word.
+    expect(alertCards([hit('dehydration', 'urgent')], 'US', 'en', false, true)[0].card.body).toMatch(/^What you wrote can be/);
+    expect(alertCards([hit('dehydration', 'urgent')], 'US', 'en', false)[0].card.body).toMatch(/^What you logged can be/);
+    expect(alertCards([CRISIS], 'US', 'en', false, true)).toEqual(alertCards([CRISIS], 'US', 'en', false));
+    expect(alertCards([hit('dehydration', 'urgent')], 'US', 'en', true, true)).toEqual(alertCards([hit('dehydration', 'urgent')], 'US', 'en', true));
+    // The Chinese card has one wording. It is not changed without review.
+    expect(fixedAlertCard('CN', 'hans', true)).toEqual(fixedAlertCard('CN', 'hans'));
+  });
+
   it('says nothing about what the problem might be, in any region', () => {
     for (const r of REGIONS) {
       const c = fixedAlertCard(r, 'en');
@@ -153,7 +171,7 @@ describe('matching is the same with and without detail cards', () => {
   const ctx: TriageContext = { insulinOrSU: true, drugId: 'tirzepatide', region: 'US' };
 
   it('a severe symptom from the symptom sheet still triggers, and shows the fixed card', () => {
-    for (const kind of ['vomiting', 'diarrhea', 'abdominal_pain', 'dizziness'] as const) {
+    for (const kind of ['nausea', 'vomiting', 'diarrhea', 'abdominal_pain', 'dizziness'] as const) {
       const hits = triageSymptom(kind, 3, ctx);
       expect(hits.length, kind).toBeGreaterThan(0);
       expect(alertCards(hits, 'US', 'en', false).map((c) => c.card.title), kind).toEqual(['Contact your doctor right away']);

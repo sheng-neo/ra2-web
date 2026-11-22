@@ -4,7 +4,7 @@
 import { alertHits } from '../core/alert';
 import { drugById, type DoseUnit } from '../core/catalog';
 import type { Site } from '../core/schedule';
-import { triageSymptom, triageText, type SymptomKind, type TriageContext, type TriageHit } from '../core/triage';
+import { storedHit, triageSymptom, triageText, type SymptomKind, type TriageContext, type TriageHit } from '../core/triage';
 import type { FoodLog, Profile, Source } from '../core/types';
 import { storedKg } from '../core/units';
 import { base, db, requestPersist, restore, softDelete, type RecordTable } from './db';
@@ -71,14 +71,14 @@ export async function addQuestion(text: string): Promise<void> {
 export async function addQuestionFromList(p: Profile, text: string): Promise<void> {
   const hits = alertHits(triageText(text, triageCtx(p)), features.triageDetailCards);
   await addQuestion(text);
-  if (hits.length) setUi({ triage: { hits, rowId: null } });
+  if (hits.length) setUi({ triage: { hits, rowId: null, wrote: true } });
 }
 
 /** 快捷记录症状。重度时走分诊。 */
 export async function addSymptom(p: Profile, kind: SymptomKind, grade: number): Promise<TriageHit[]> {
   const hits = alertHits(triageSymptom(kind, grade, triageCtx(p)), features.triageDetailCards);
   const top = hits[0] ?? null;
-  const row = { ...base('quick'), kind, grade, triageId: top?.id ?? null, triageLevel: top?.level ?? null };
+  const row = { ...base('quick'), kind, grade, ...storedHit(top) };
   await db.symptoms.add(row);
   if (top) setUi({ triage: { hits, rowId: row.id } });
   else {
@@ -93,7 +93,7 @@ export async function addSymptom(p: Profile, kind: SymptomKind, grade: number): 
 export async function checkTextTriage(p: Profile, text: string): Promise<boolean> {
   const hits = alertHits(triageText(text, triageCtx(p)), features.triageDetailCards);
   if (!hits.length) return false;
-  const row = { ...base('text'), kind: 'other' as const, grade: 3, note: text, triageId: hits[0].id, triageLevel: hits[0].level };
+  const row = { ...base('text'), kind: 'other' as const, grade: 3, note: text, ...storedHit(hits[0]) };
   await db.symptoms.add(row);
   setUi({ triage: { hits, rowId: row.id } });
   if (hits.some((h) => h.id === 'pregnancy') && p.goalWeightKg) {

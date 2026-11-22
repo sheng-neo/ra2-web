@@ -425,6 +425,21 @@ export const en = {
   'triage.call': 'Call {number}',
   'triage.ack': 'Got it',
 
+  // ── Warning signs in the Medication Guide ──
+  // The list itself is not in this file. It is the guide's own text, word for word (core/medGuide.ts).
+  // These are the few words of ours around it. They must not describe, rank or sum up what the guide says.
+  'guide.title': 'Warning signs in the Medication Guide',
+  // The button on a danger-symptom alert. It opens the whole list, never one item.
+  'guide.open': 'See the warning signs in the Medication Guide',
+  // Fixed wording. {brand} is the person's medication. {dated} is the guide's own date line: "revised 06/2026", "issued 07/2026".
+  'guide.source': "From the Medication Guide for {brand}, {dated}. These are the manufacturer's words, approved by the FDA. Nothing here is written by this app.",
+  'guide.parts': 'These are two parts of the guide: the most important information and the serious side effects. The full guide comes with your prescription. It is also at this address:',
+  'guide.none': 'This app has no Medication Guide on file for your medication. The Medication Guide comes with your prescription.',
+  // {brands} is "Zepbound and Mounjaro". The chart asks for the brand in the same way (curve.chooseBrand).
+  'guide.chooseBrand': 'The Medication Guides for {brands} are separate. So the list needs to know your brand. To choose it, go to Me and tap "{button}".',
+  // Shown above the list on a Chinese screen only: the list stays in English.
+  'guide.original': 'The text below is the English original. It has not been translated.',
+
   // ── Notice ──
   // Fixed wording. It also takes the place of the older disclaimer line where it is shown.
   'notice.loggingTool': 'This app is a logging tool. It is not a medical device and does not give medical advice. Talk to your doctor before making decisions about your medication. Not affiliated with any drug maker.',

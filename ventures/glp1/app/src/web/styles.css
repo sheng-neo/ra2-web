@@ -846,3 +846,40 @@ html:lang(en),
   overflow-wrap: anywhere;
   user-select: all;
 }
+/* The warning signs from the Medication Guide. The sheet lies over an alert, and fills the height so a long list reads like a page. */
+.sheet-backdrop.over-alert {
+  z-index: 50;
+}
+.sheet.guide {
+  max-height: 100dvh;
+  height: 100dvh;
+  border-radius: 0;
+  padding-top: calc(12px + env(safe-area-inset-top));
+}
+/* The page address is one long word: it may break anywhere. */
+.guide-link {
+  color: var(--brand);
+  overflow-wrap: anywhere;
+}
+/* The guide's own text: plain, in the guide's order. No colour and no weight of ours. */
+.guide-text h3 {
+  margin: 18px 0 6px;
+}
+.guide-text ul {
+  padding-left: 1.2em;
+  margin: 6px 0;
+}
+.guide-text li {
+  margin: 8px 0;
+  overflow-wrap: break-word;
+}
+.guide-text li li {
+  margin: 3px 0;
+}
+.guide-text li p {
+  margin: 6px 0 0;
+}
+/* The button on an alert that opens that list. */
+.triage .guide-open {
+  margin: 4px 0 10px;
+}

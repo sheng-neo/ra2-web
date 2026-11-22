@@ -2,16 +2,16 @@
 
 # Questions for a US lawyer
 
-We are asking for a fixed-fee quote to answer five questions before we submit a health-related app to the US app stores. This brief gives the facts first, then the questions.
+We are asking for a fixed-fee quote to answer six questions before we submit a health-related app to the US app stores. This brief gives the facts first, then the questions.
 
 Where this brief says "as we understand it", we have read summaries only, not the law itself. Please correct us.
 
 ## What we are asking for
 
-1. A fixed fee for short written answers to the five questions. For each one: the answer, the reason in a few lines, and what we should change.
+1. A fixed fee for short written answers to the six questions. For each one: the answer, the reason in a few lines, and what we should change.
 2. A markup of the attached drafts (listed under question 4).
 3. A note of anything urgent that we did not ask about.
-4. Please tell us which questions fall outside your practice (questions 1 and 2 are about a national-security data rule, question 5 is about trademarks) and whether you can bring someone in.
+4. Please tell us which questions fall outside your practice (questions 1 and 2 are about a national-security data rule, question 5 is about trademarks, question 6 is about copyright and drug labeling) and whether you can bring someone in.
 
 Timing: we need the answers before we submit to the stores. Target date: [TARGET SUBMISSION DATE]. Our first test users in the United States start before that, on [BETA START DATE]. Please tell us which items must be in place before the first test user.
 
@@ -33,6 +33,11 @@ Contact: [CONTACT EMAIL]
   - [TO CONFIRM] The chart is not drawn from logged doses alone. If the user says at setup that they have been on their dose for some weeks, the chart assumes earlier doses of the same amount (8 at most). It also draws the next 7 days, on the assumption that the user takes each planned dose from now on. A planned dose that is overdue and not logged is not counted. The app gives no advice about a missed dose.
   - [TO CONFIRM against the store build] The "how this is calculated" page names its source. It says that the two numbers the chart uses, the half-life and the time to peak, come from the pharmacokinetics section of the US prescribing information for the user's medication. It names that medication and gives the two numbers. It says how one number is chosen: where that section gives a single value or a median, it is used as it is, and where that section gives only a range, the middle of the range. So four of the eight numbers are the middle of a range, a figure the label does not print (for example a half-life of 132 hours for Zepbound, whose label says "approximately 5-6 days" in that section and "approximately 5 days" in another). The page does not call the numbers averages. It says the same two numbers are used for every person on the medication and are not measured in the user. It does not show the label's date or a link to it.
 - If the user logs certain serious symptoms, it shows one fixed message: contact your doctor right away, or call 911. If what the user types suggests self-harm, it shows a crisis-line message (988) instead. The only place to type in the launch version is a box for questions to ask the doctor; what is typed there is checked too.
+- It shows a list of warning signs for the user's own medication. The list is text from the FDA-approved Medication Guide of that medication, copied word for word: the part headed "What is the most important information I should know about ...?" and the serious side effects from the part headed "What are the possible side effects of ...?". We copied the text on 2026-11-22 from the label files that the National Library of Medicine publishes on DailyMed, for seven Medication Guides that cover nine brands (Wegovy and Wegovy tablets, Ozempic, Rybelsus and Ozempic tablets, Zepbound, Mounjaro, Saxenda, Foundayo). Four facts about the list as the app stands today:
+  - The app adds no word to the guide's text, and does not shorten, reorder or highlight it. It shows these two parts only, not the whole guide, and says so. Runs of spaces are written as one, and the guide's bold type is not kept.
+  - Above the list the app says: "From the Medication Guide for [brand], revised [date]. These are the manufacturer's words, approved by the FDA. Nothing here is written by this app." Under that it gives the address of the label's page on DailyMed as a link. [TO CONFIRM: the wording of these two lines is ours and has not been reviewed.]
+  - The user opens the list from the settings screen, or from a button on the fixed message above. The list is always the whole list; the app does not point to one item.
+  - A medication with no Medication Guide in the app shows no list, only: "This app has no Medication Guide on file for your medication. The Medication Guide comes with your prescription." [TO CONFIRM: a clinical reviewer has not compared our copies with the guides yet. Labels change, so check before submission that none has changed since 2026-11-22.]
 - Besides the two chart numbers above, the app shows three more drug numbers of its own. All were read from the US prescribing information on 2026-11-22. At setup, the first dose step on the label is shown as a grey example of how to type a dose. When a dose in mg above the highest dose on the label is typed, at setup or when a dose is logged, the app asks once whether an extra digit was typed, then lets the user go on. The question names the number as "the highest dose in the US prescribing information for" a US brand, for example Wegovy; a user whose medication has another brand name, or none, is shown the US brand of the same medication. After a pill, the app shows the wait where the label states one, in the label's words: "wait at least 30 minutes before you eat, drink or take other oral medications" (Wegovy pill, Rybelsus and Ozempic pill; none for Foundayo). It says nothing else about how to take a tablet. A medication whose numbers do not all have their label source in the app shows none of these and can only be logged. [TO CONFIRM: a clinical reviewer has not confirmed these numbers yet.]
 - It exports all records to a file, and restores from that file.
 
@@ -140,9 +145,26 @@ Please tell us:
 3. Is "GLP-1" in the app name safe?
 4. Is there any problem with generic drug names in the subtitle?
 
+## Question 6. May the app show Medication Guide text word for word, with that attribution?
+
+Facts: see "It shows a list of warning signs" under "What the launch version does". The text was written by the drug makers (Novo Nordisk and Eli Lilly) and approved by the FDA as part of each product's labeling. We took it from the public label files on DailyMed. We have no agreement with either company. The app is free at launch; a paid plan is planned for later, and this list would stay free.
+
+As we understand it: a Medication Guide is written by the manufacturer, not by the government, so it is not a US government work, and we have found no statement that it is in the public domain. The label files on DailyMed are public, but we have read only general descriptions of the terms for reusing them, not the terms themselves. Each guide ends with the sentence "This Medication Guide has been approved by the U.S. Food and Drug Administration."
+
+Please tell us:
+
+1. May we reproduce these two parts of each Medication Guide word for word inside the app? Does it matter that we show two parts and not the whole guide, and that we drop the bold type?
+2. Do we need permission from the manufacturers, or does a rule, a license or fair use cover this? If permission is needed, from whom, and is there a usual way to ask?
+3. Do the terms of DailyMed or of the National Library of Medicine put conditions on copying label text into an app, such as a notice, a date, or a link back?
+4. The attribution line names the manufacturer and the FDA: "These are the manufacturer's words, approved by the FDA. Nothing here is written by this app." Could it suggest that the manufacturer or the FDA endorses, approves or is connected with our app? What wording would you use? Should the line name the company?
+5. Brand names appear in the guide text itself, many times, in capital letters. Does that change your answer to question 5?
+6. Showing the manufacturer's safety text could look like we are giving out drug labeling. Does it bring any duty with it, for example to keep the text current within a set time after a label changes, or to show the whole guide? Does it move the app toward being a medical device, or toward any FDA rule on labeling or promotion?
+7. If a guide changes and our copy is out of date for a time, what is our exposure? We show the guide's own revision date and the link to the current label.
+8. Our draft terms say the app "does not give medical advice" and "does not tell you what dose to take, when to change your dose or whether to stop" (`terms.md`). The guide text we show contains sentences such as "Stop using ... and call your healthcare provider right away if ...". They are the manufacturer's words and are marked as such. Do the terms, the store listing or the in-app notice need a sentence about this quoted text? The store listing and the promise page do not mention the list yet. [TO CONFIRM: add it to both once this question is answered.]
+
 ## Not asked now
 
-These are outside the five questions. Please flag any that you think cannot wait.
+These are outside the six questions. Please flag any that you think cannot wait.
 
 - Whether the estimated medication level chart could make the app a medical device under FDA rules.
 - Subscription and automatic-renewal laws. We will ask before the paid plan goes on sale.

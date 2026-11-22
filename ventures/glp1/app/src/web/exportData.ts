@@ -6,7 +6,7 @@ import { DEFAULT_REGION, doseUnitLabel, drugById, drugLabel, regimenLabel, type 
 import type { Lang } from '../core/i18n';
 import { siteLabel, type Site } from '../core/schedule';
 import { symptomLabel } from '../core/symptoms';
-import type { TriageId, TriageLevel } from '../core/triage';
+import type { TriageHit, TriageId, TriageLevel } from '../core/triage';
 import type { Profile } from '../core/types';
 import { zonedParts } from '../core/tz';
 import { fromKg, unitLabel, type WeightUnit } from '../core/units';
@@ -70,7 +70,7 @@ export async function buildCsv(lang: Lang): Promise<string> {
     if (!r.triageId) return '';
     if (!english) return t('csv.alert', { alert: String(r.triageId) });
     // The card this build shows for the alert: the card of its rule, or the fixed card (core/alert.ts).
-    const hit = { id: r.triageId as TriageId, level: (r.triageLevel ?? 'urgent') as TriageLevel };
+    const hit: TriageHit = { id: r.triageId as TriageId, level: (r.triageLevel ?? 'urgent') as TriageLevel, ...(r.triageFixed === true ? { fixedCard: true as const } : {}) };
     // A hit that shows no card in this build (the row came in with a restored backup) gets no note.
     if (!showsAlert(hit, features.triageDetailCards)) return '';
     return t('csv.alert', { alert: alertTitle(hit, profile?.region ?? DEFAULT_REGION, lang, features.triageDetailCards) ?? String(r.triageId) });

@@ -19,7 +19,7 @@ import type { Derived } from '../derive';
 import { BackupError, buildBackup, buildCsv, download, importBackup } from '../exportData';
 import { features } from '../features';
 import { LANGUAGE_NAMES, msg, useT } from '../i18n';
-import { toast } from '../store';
+import { setUi, toast } from '../store';
 
 export function Me({ profile, d, onRedoSetup }: { profile: Profile; d: Derived; onRedoSetup: () => void }) {
   const t = useT();
@@ -115,6 +115,17 @@ export function Me({ profile, d, onRedoSetup }: { profile: Profile; d: Derived; 
           }}
         />
       </Card>
+
+      {features.guideWarningSigns && (
+        <Card>
+          <button className="card-btn row-link" onClick={() => setUi({ guide: true })}>
+            <h3>{t('guide.title')}</h3>
+            <span className="muted" aria-hidden="true">
+              ›
+            </span>
+          </button>
+        </Card>
+      )}
 
       <Card>
         <h3>{t('me.reminder.title')}</h3>

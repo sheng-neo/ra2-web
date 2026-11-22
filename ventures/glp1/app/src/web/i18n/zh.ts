@@ -8,6 +8,10 @@
  * dose.overMax.card, dose.overMax.form, input.placeholder, input.placeholderLarge, and the new
  * curve.chooseBrand and curve.twoLabels.
  *
+ * Added on 2026-11-22 with the list of warning signs from the FDA Medication Guides, and NOT YET
+ * READ BY A CLINICAL REVIEWER: the guide.* messages. The list itself is shown in English, as the
+ * guide prints it; these messages only say where it is from.
+ *
  * 'hant' overrides single messages for Traditional Chinese. Anything not listed falls back to
  * 'hans', which is how the app has always treated Traditional users (only drug names differ).
  */
@@ -391,6 +395,15 @@ export const hans: Messages = {
 
   // ── Notice ──
   'notice.loggingTool': '本应用是记录工具，不是医疗器械，也不提供医疗建议。做用药决定之前，请先咨询医生。与任何药厂都没有关联。',
+
+  // ── Warning signs in the Medication Guide ──
+  'guide.title': '《用药指南》里的警示症状',
+  'guide.open': '看《用药指南》里的警示症状',
+  'guide.source': '出自 {brand} 的美国《用药指南》（Medication Guide），{dated}。这些是药厂的原话，经美国食品药品监督管理局（FDA）批准。这里没有一句是本应用写的。',
+  'guide.parts': '这里是指南的两部分：最重要的信息和严重副作用。完整的指南随处方药一起给你，也可以在这个网址看到：',
+  'guide.none': '本应用没有收录你这种药的《用药指南》。《用药指南》随处方药一起给你。',
+  'guide.chooseBrand': '{brands} 各有一份《用药指南》，所以要先知道你用的是哪一个。请到"我的"里点"{button}"，选一下品牌。',
+  'guide.original': '下面是英文原文，没有翻译。',
 
   // ── Toasts ──
   'toast.undone': '已撤销',

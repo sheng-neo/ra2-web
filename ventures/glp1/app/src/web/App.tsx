@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { thirdTab } from '../core/features';
 import { htmlLang, langOrDefault, type Lang } from '../core/i18n';
 import type { Profile } from '../core/types';
+import { GuideSheet } from './components/GuideSheet';
 import { InputBar } from './components/InputBar';
 import { Sheets } from './components/Sheets';
 import { TriageModal } from './components/TriageModal';
@@ -70,6 +71,7 @@ function Main({ profile }: { profile: Profile }) {
       </nav>
       <Sheets profile={profile} d={d} />
       <TriageModal profile={profile} />
+      {features.guideWarningSigns && <GuideSheet profile={profile} />}
       <Toast />
     </div>
   );

@@ -44,6 +44,7 @@ describe('switches of the full build', () => {
       setupQuestions: false,
       proInterest: false,
       anonymousCounts: false,
+      guideWarningSigns: true,
     };
     expect(FULL).toEqual(expected);
   });
@@ -61,6 +62,11 @@ describe('switches of the launch build', () => {
 
   it('turns on the launch rules', () => {
     for (const k of ['curveNeedsSource', 'under18EndsSetup', 'loggingToolNotice'] as const) expect(LAUNCH[k], k).toBe(true);
+  });
+
+  it('shows the warning signs of the Medication Guide, as the full build does', () => {
+    expect(LAUNCH.guideWarningSigns).toBe(true);
+    expect(FULL.guideWarningSigns).toBe(true);
   });
 
   it('asks the three setup questions, has the Pro row and may count anonymously', () => {

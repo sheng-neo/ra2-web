@@ -47,6 +47,8 @@ export interface SymptomLog extends BaseRecord {
   note?: string;
   triageId?: TriageId | null;
   triageLevel?: TriageLevel | null;
+  /** The hit showed the fixed card (TriageHit.fixedCard), so opening the alert again shows that card again. */
+  triageFixed?: boolean;
 }
 
 export interface WorkoutLog extends BaseRecord {

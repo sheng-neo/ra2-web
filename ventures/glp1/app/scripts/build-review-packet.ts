@@ -22,7 +22,9 @@
  *   the sentence is dropped and a note is printed, and a new place where typed text is checked
  *   stops the build;
  * - every comment in src/core and src/web/content that marks something as waiting for review
- *   must be matched by an open question in section 7.
+ *   must be matched by an open question in section 7;
+ * - the words of the FDA Medication Guides come from src/core/medGuide.ts, and the table that
+ *   ties the rules to them from src/core/guideCoverage.ts. Neither is typed here a second time.
  *
  * Nothing under src/ is changed. The English trigger patterns in src/core/triage.ts are not
  * exported, so they are read from a temporary copy of that file with one export line added.
@@ -39,6 +41,7 @@ import { createServer } from 'vite';
 
 import type { DrugEntry, DrugNumbers, PkParams } from '../src/core/catalog';
 import type { LabelDoc, LabelFact, LabelField, StatedTime } from '../src/core/labelFacts';
+import type { GuideAction, GuideItemId, GuideSection, MedGuide, MedGuideKey } from '../src/core/medGuide';
 import type { MgDose } from '../src/core/pk';
 import type { Advice } from '../src/core/today';
 import type { SymptomKind, TriageCard, TriageContext, TriageHit, TriageId, TriageLevel } from '../src/core/triage';
@@ -83,11 +86,13 @@ async function load<T>(rel: string): Promise<T> {
   return (await appLoader.ssrLoadModule(`/${rel}`)) as T;
 }
 
-const { alertCards, fixedAlertCard, showsAlert } = await load<typeof import('../src/core/alert')>('src/core/alert.ts');
+const { alertCards, fixedAlertCard } = await load<typeof import('../src/core/alert')>('src/core/alert.ts');
 const { brandNumbers, brandOptions, CATALOG, hasLabelSource } = await load<typeof import('../src/core/catalog')>('src/core/catalog.ts');
 const { curveAvailable, FULL, labelFactsShown, LAUNCH, safetyQuestions, thirdTab } = await load<typeof import('../src/core/features')>('src/core/features.ts');
 const { FOODS, foodName, foodUnit } = await load<typeof import('../src/core/foods')>('src/core/foods.ts');
 const { hoursFromLabel, labelFact, LABELS_READ_ON, PK_RULE } = await load<typeof import('../src/core/labelFacts')>('src/core/labelFacts.ts');
+const { guideDated, guideItems, MED_GUIDE_LIST, MED_GUIDE_OTHER, MED_GUIDES_READ_ON } = await load<typeof import('../src/core/medGuide')>('src/core/medGuide.ts');
+const { BUTTONS_THAT_RAISE_NOTHING, buttonItems, buttonRules, GENERAL_SIGN, guidesWithItem, ITEM_COVERAGE, NOT_FROM_A_GUIDE, OTHER_COVERAGE, reminderFor, ruleItems, showsLaunchCard } = await load<typeof import('../src/core/guideCoverage')>('src/core/guideCoverage.ts');
 const { parseLocal } = await load<typeof import('../src/core/localParse')>('src/core/localParse.ts');
 const { bateman, concentration, exposureIndexAt, modelFor, steadyStatePeak } = await load<typeof import('../src/core/pk')>('src/core/pk.ts');
 const { bmi, proteinTarget } = await load<typeof import('../src/core/protein')>('src/core/protein.ts');
@@ -337,18 +342,24 @@ interface TriageInternals {
   EN: Record<string, RegExp[]>;
   EN_CRISIS: RegExp;
   EN_LOW_SUGAR_SIGNS: RegExp[];
+  EN_LOW_SUGAR_COMMON: RegExp[];
   RULES: InternalRule[];
   lists: Record<string, string>;
   negation: Record<string, string | RegExp>;
+  /** The pieces that decide whether a match is about the person's own state now. */
+  own: Record<string, string | RegExp>;
 }
 
 const TRIAGE_FILE = 'src/core/triage.ts';
 const TRIAGE_TEST_FILE = 'src/core/triage.test.ts';
+const CORPUS_TEST_FILE = 'src/core/triage.en.corpus.test.ts';
 
 /** Word lists the trigger patterns are built from, by the name they have in triage.ts. */
-const LIST_NAMES = ['EN_SEVERE', 'EN_BELLY', 'EN_HURT', 'EN_SORE', 'EN_VOMIT', 'EN_RUNS', 'EN_TO_BACK', 'EN_LONG_OR_OFTEN', 'EN_DIZZY', 'EN_RUQ', 'EN_CANT_SEE', 'EN_SEE', 'EN_NOT_EAT', 'EN_DAYS'];
+const LIST_NAMES = ['EN_SEVERE', 'EN_BELLY', 'EN_HURT', 'EN_SORE', 'EN_VOMIT', 'EN_RUNS', 'EN_NAUSEA', 'EN_WONT_GO_AWAY', 'EN_MILD', 'EN_TO_BACK', 'EN_LONG_OR_OFTEN', 'EN_DIZZY', 'EN_RUQ', 'EN_CANT_SEE', 'EN_SEE', 'EN_NOT_EAT', 'EN_DAYS'];
 /** The pieces that decide whether a "no" or "not" in front of a symptom counts. */
 const NEGATION_NAMES = ['EN_STILL_THERE', 'EN_FILL_HAVE', 'EN_FILL_NO', 'EN_NOT', 'EN_NEGATED', 'EN_STILL_TRUE', 'EN_BUT_NOW', 'EN_NOT_FOR_LONG', 'EN_ASKS_ABOUT', 'EN_ONLY_AUX_NOT'];
+/** The pieces that decide whether a match is about someone else, a time long past, a general question or the size of a pill. */
+const OWN_NAMES = ['EN_KIN', 'EN_SOMEONE_ELSE', 'EN_FIRST_PERSON', 'EN_REPORTS', 'EN_ME_AND', 'EN_CLAUSE_BREAK', 'EN_IN_THE_FAMILY', 'EN_LONG_AGO', 'EN_NOW', 'EN_DET', 'EN_IT', 'EN_CAUSE', 'EN_GENERAL_QUESTION', 'EN_IS_IT', 'EN_A_SIDE_EFFECT', 'EN_OWN_STATE', 'EN_I_HAVE_IT', 'EN_PILL', 'EN_PILL_AFTER', 'EN_PILL_BEFORE'];
 
 /**
  * The pattern tables of triage.ts. They are module-private there, so this loads a temporary
@@ -357,7 +368,7 @@ const NEGATION_NAMES = ['EN_STILL_THERE', 'EN_FILL_HAVE', 'EN_FILL_NO', 'EN_NOT'
  */
 async function loadTriageInternals(): Promise<TriageInternals> {
   const coreDir = join(APP_DIR, 'src', 'core');
-  const exportLine = `\nexport const __reviewInternals = { EN, EN_CRISIS, EN_LOW_SUGAR_SIGNS, RULES, lists: { ${LIST_NAMES.join(', ')} }, negation: { ${NEGATION_NAMES.join(', ')}, GAP: gap(1) } };\n`;
+  const exportLine = `\nexport const __reviewInternals = { EN, EN_CRISIS, EN_LOW_SUGAR_SIGNS, EN_LOW_SUGAR_COMMON, RULES, lists: { ${LIST_NAMES.join(', ')} }, negation: { ${NEGATION_NAMES.join(', ')}, GAP: gap(1) }, own: { ${OWN_NAMES.join(', ')} } };\n`;
   // Relative imports must still point at src/core from where the copy is.
   const copy = source(TRIAGE_FILE).replace(/from '\.\/([^']+)'/g, (_whole, name: string) => `from '${pathToFileURL(join(coreDir, `${name}.ts`)).href}'`) + exportLine;
   const dir = mkdtempSync(join(tmpdir(), 'review-packet-'));
@@ -367,7 +378,7 @@ async function loadTriageInternals(): Promise<TriageInternals> {
     const loaded = (await import(pathToFileURL(file).href)) as { __reviewInternals: TriageInternals };
     return loaded.__reviewInternals;
   } catch (e) {
-    throw new Error(`Could not read the pattern tables of ${TRIAGE_FILE}. If a table was renamed there, update LIST_NAMES, NEGATION_NAMES and the export line in scripts/build-review-packet.ts.\n${String(e)}`);
+    throw new Error(`Could not read the pattern tables of ${TRIAGE_FILE}. If a table was renamed there, update LIST_NAMES, NEGATION_NAMES, OWN_NAMES and the export line in scripts/build-review-packet.ts.\n${String(e)}`);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -449,7 +460,7 @@ interface RuleGloss {
 
 const TRIGGERS: Record<string, RuleGloss> = {
   pancreatitis: {
-    fp: 'e448b41b',
+    fp: 'e2ce23ac',
     triggers: [
       { says: `A **severe word**, then (within about 20 characters) a **stomach word** joined to a **pain word**.`, examples: ['severe stomach pain', 'really bad bellyache'] },
       { says: `A **severe word**, then "pain", "ache", "cramp" or "cramping", then "in", "around" or "across", then a **stomach word**.`, examples: ['terrible pain in my upper abdomen'] },
@@ -459,28 +470,44 @@ const TRIGGERS: Record<string, RuleGloss> = {
       },
       { says: `"Doubled over", then a **stomach word**.`, examples: ['doubled over with belly cramps'] },
       { says: `A **stomach word** and a **pain word**, then a **reaches-the-back phrase**, in the same sentence or the next one.`, examples: ['belly pain that goes through to my back', 'Bad stomach pain. It goes to my back.'] },
-      { says: `A **pain word**, then "in", "around" or "across" and a **stomach word**, then a **reaches-the-back phrase**.`, examples: ['pain in my stomach that goes to my back'] },
+      { says: `A **pain word**, then "in", "around", "across" or "from" and a **stomach word**, then a **reaches-the-back phrase**.`, examples: ['pain in my stomach that goes to my back', 'pain from my abdomen to my back'] },
       { says: `A **stomach word** and a **pain word**, then "but", then a **reaches-the-back phrase**. So "not severe, but it goes to my back" still triggers.`, examples: ['stomach pain, not severe, but it goes to my back'] },
       { says: `A **stomach word**, then "in so much pain" or "in too much pain".`, examples: ['my stomach is in so much pain'] },
       { says: `"So much" or "too much" plus "pain" or "cramping", then "in", "around" or "across", then a **stomach word**.`, examples: ['so much pain in my belly'] },
       { says: `"Stabbing", "sharp", "shooting" or "tearing", directly followed by a **stomach word** joined to a **pain word**.`, examples: ['sharp stomach pain'] },
       { says: `"Stabbing", "sharp", "shooting" or "tearing", then "pain", "cramp" or "cramping", then "in", "around" or "across" and a **stomach word** ("upper" or "lower" may stand before it).`, examples: ['stabbing pain in my stomach', 'sharp cramps in my lower belly'] },
+      { says: `The word "pancreatitis".`, examples: ['I think I have pancreatitis'] },
     ],
   },
   chest_or_faint: {
-    fp: 'eb612ae8',
+    fp: 'c0f18241',
     triggers: [
       { says: `"Chest pain" or "chest pains".`, examples: ['chest pain since this morning'] },
       { says: `"Pain", "ache", "pressure", "tightness", "squeezing", "heaviness" or "heavy feeling", then "in", "on" or "across" "my chest" or "the chest".`, examples: ['pressure in my chest', 'heavy feeling on my chest'] },
-      { says: `"Chest" followed by "hurts", "is hurting", "pressure", "tightness", "is tight", "feels tight" or "feels heavy".`, examples: ['my chest hurts', 'my chest feels tight'] },
-      { says: `"Passed out" or "blacked out".`, examples: ['I passed out after the shot'] },
-      { says: `"Fainted" or "fainting".`, examples: ['I fainted in the shower'] },
+      { says: `"Chest" followed by "hurts", "is hurting", "pressure", "tightness", "is tight", "feels tight" or "feels heavy". Or "tight chest".`, examples: ['my chest hurts', 'my chest feels tight', 'tight chest'] },
+      {
+        says: `"Pass out" or "black out" in any form ("passed out", "passing out", "blacked out"). It does not count when "flyers", "candy", "papers", "samples", "invitations", "cards", "treats", "pamphlets" or "snacks" follows.`,
+        examples: ['I passed out after the shot', 'I keep passing out'],
+      },
+      {
+        says: `"Fainted", "fainting" or "faints". Or "faint" after "did", "might", "may", "could", "gonna", "to", "almost", "nearly", "will" or "would" ("going to faint"). Or "faint" after "feel", "feeling", "felt", "I'm", "I am", "I was", "I got", "I get" or "getting" ("so", "very" or "really" may stand in between).`,
+        examples: ['I fainted in the shower', 'I feel faint', 'I think I am going to faint'],
+      },
       { says: `"Lost consciousness".`, examples: ['I lost consciousness for a minute'] },
       { says: `"Unconscious".`, examples: ['I was unconscious'] },
+      {
+        says: `"Heart", "pulse", "heartbeat" or "heart rate", then (within about 20 characters) a word for fast or hard: "racing" (also "race", "races", "raced"), "pounding", "fluttering", "thumping", "hammering", "skipping beats", "beating fast", "beating hard", "beating quickly", "beating out of my chest", "fast", "rapid", "elevated", "so high" (also "really", "very", "too", "super" or "way too" high), "going crazy", "going nuts", "going so fast", "going a mile a minute" or "through the roof". It does not count when a **slight word** stands right before that word, or when "a bit", "a little", "a tad" or "slightly" follows it.`,
+        examples: ['my heart is racing', 'heart pounding in my chest', 'my pulse is really fast'],
+      },
+      {
+        says: `"Racing", "pounding", "rapid", "fast", "fluttering" or "thumping", followed by "heart", "heartbeat", "heart rate" or "pulse" (not when "a bit", "a little", "a tad" or "slightly" follows). Or "high" or "elevated", followed by "heart rate" or "pulse".`,
+        examples: ['very rapid heartbeat', 'racing pulse', 'high heart rate'],
+      },
+      { says: `"Palpitation" or "palpitations" (also after "heart"), "tachycardia", "heart flutter" or "heart flutters".`, examples: ['heart palpitations again tonight'] },
     ],
   },
   anaphylaxis: {
-    fp: '288f6bcd',
+    fp: 'dd5715df',
     triggers: [
       {
         says: `"Throat", "lip", "lips", "tongue", "face", "eyelid" or "eyelids", then (within about 15 characters) a swelling word: "swell", "swells", "swelled", "swelling", "swollen", "puffed up", "puffing up", "closing up" or "is closing".`,
@@ -496,10 +523,37 @@ const TRIGGERS: Record<string, RuleGloss> = {
       { says: `"Can't catch my breath".`, examples: ["I can't catch my breath"] },
       { says: `"Hives", "rash" or "welts", then "all over", "everywhere", "whole body" or "entire body". "All over" one body part does not count ("rash all over my thigh").`, examples: ['hives all over my body', 'rash everywhere'] },
       { says: `"All over", "whole body", "entire body" or "covered in", then "hives", "rash" or "welts".`, examples: ['covered in hives'] },
+      {
+        says: `"Problem", "problems", "issue", "issues", "hard time", "tough time", "struggle", "struggles" or "struggling", followed by "breathing" ("with" and "my" may stand in between). Or "breathing" followed by "problem", "problems", "issue", "issues", "trouble", "difficulty" or "difficulties". Or "breathing" plus "is", "feels", "got", "has been" or "was", plus "hard", "harder", "difficult", "labored", "tight", "shallow", "heavy", "rough", "bad" or "worse".`,
+        examples: ['problems breathing', 'my breathing is getting worse'],
+      },
+      {
+        says: `"Wheeze", "wheezes", "wheezing" or "wheezy"; "gasping"; "out of breath"; "breathless" or "breathlessness"; "can't get a breath" or "can't take a breath" (also "a full breath", "a deep breath", "a good breath"); "can't get air", "can't get any air" or "can't get enough air".`,
+        examples: ['wheezing', "I can't get enough air"],
+      },
+      { says: `"Throat", then (within about 15 characters) "tight", "tightening", "tightness" or a word that starts with "constrict". Or "tight", "tightness" or "tightening", then "throat".`, examples: ['my throat feels tight', 'tightness in my throat'] },
+      {
+        says: `"Throat", "lip", "lips", "tongue", "face", "eyelid", "eyelids" or "mouth", then "puffy", "puffed", "ballooned", "blown up", "blew up" or "swole". Or "puffy" or "swole", followed by one of those body parts.`,
+        examples: ['my face is all puffy', 'puffy lips'],
+      },
+      {
+        says: `"Severe", "bad", "terrible", "horrible", "awful", "really bad", "nasty", "huge", "spreading", "worst", "intense", "unbearable" or "extreme", followed by "rash", "rashes", "hives", "itch", "itching", "itchiness" or "welts".`,
+        examples: ['severe rash', 'severe itching'],
+      },
+      {
+        says: `"Rash", "rashes", "hives", "itch", "itching", "itchiness", "itchy" or "welts", then (within about 20 characters) "severe", "unbearable", "spreading", "getting worse", "so bad", "really bad", "very bad", "extremely bad", "out of control", "driving me crazy" (also "nuts" or "insane"), "won't stop" or "nonstop".`,
+        examples: ['my rash is spreading', 'the itching is driving me crazy'],
+      },
+      {
+        says: `"Itch", "itching", "itchy", "itchiness" or "itches", then "all over", "everywhere", "whole body", "entire body" or "head to toe". Or those words first, then a word that starts with "itch". "All over" one body part does not count.`,
+        examples: ['itching all over', 'my whole body is itchy'],
+      },
+      { says: `"Hives". Or "broke out in", "breaking out in", "broken out in" or "break out in", followed by "rash", "a rash", "a bad rash" or "welts".`, examples: ['I have hives', 'I broke out in a rash'] },
+      { says: `"Allergic reaction", "anaphylaxis" or "anaphylactic".`, examples: ['I think I am having an allergic reaction'] },
     ],
   },
   vision: {
-    fp: '74e89044',
+    fp: 'a677b6fc',
     triggers: [
       { says: `"Sudden", "suddenly" or "all of a sudden", then (within about 30 characters) a **vision word**, or "went dark" or "went black".`, examples: ["suddenly I can't see clearly", 'sudden vision loss in one eye'] },
       { says: `A **vision word**, then "sudden", "suddenly" or "all of a sudden".`, examples: ['my vision went blurry all of a sudden'] },
@@ -507,7 +561,7 @@ const TRIGGERS: Record<string, RuleGloss> = {
       { says: `"Left eye" or "right eye", then a **cannot-see word**, "dark", "black" or "fuzzy". The word "vision" alone is not enough here.`, examples: ['my right eye is blurry'] },
       { says: `A **cannot-see word**, then "one eye", "left eye" or "right eye".`, examples: ['blurry in my left eye'] },
       {
-        says: `"Vision loss", "loss of vision", "loss of sight", "lost my vision", "lost some vision", "lost my sight", "losing my vision", "losing my sight", "went blind", "going blind" or "gone blind".`,
+        says: `"Vision loss", "loss of vision", "loss of sight", "lost my vision", "lost some vision", "lost my sight", "losing my vision", "losing my sight", "went blind", "going blind" or "gone blind". It does not count when "of my", "of the", "of what", "of why", "of how", "of it", "of that" or "of this" follows ("lost sight of my goals").`,
         examples: ['losing my sight', 'I think I am going blind'],
       },
       {
@@ -515,24 +569,52 @@ const TRIGGERS: Record<string, RuleGloss> = {
         examples: ['part of my vision is missing'],
       },
       { says: `"Blind spot". Or "dark" or "black" plus "spot", "curtain", "shadow" or "area", then "vision", "eye" or "sight".`, examples: ['a blind spot', 'a dark curtain over my vision'] },
+      {
+        says: `"Blurry", "blurred", "blurring", "blurriness", "fuzzy", "hazy", "cloudy", "double" or "foggy", followed by "vision", "eyesight" or "sight". Or "vision", "eyesight" or "sight", then (within about 20 characters) a word that starts with "blur", or "fuzzy", "hazy", "cloudy", "foggy", "double", "doubled", "worse", "worsening", "changed" or "changing".`,
+        examples: ['my vision is blurry', 'double vision', 'my eyesight is getting worse'],
+      },
+      {
+        says: `"Vision", "eyesight" or "sight", plus "is", "was", "seems", "feels", "got", "gets", "looks", "has been", "went", "goes", "keeps getting" or "keeps going", plus "off", "weird", "strange", "funny", "messed up", "dim", "dimmer", "dark", "darker", "spotty", "bad" or "terrible".`,
+        examples: ['my vision seems off'],
+      },
+      {
+        says: `"Eye" or "eyes", then a word that starts with "blur", or "fuzzy", "hazy" or "cloudy". Or "blurry", "blurred", "fuzzy", "hazy" or "cloudy", followed by "eye" or "eyes". Or "everything" plus "looks", "is", "seems", "went" or "got", plus a word that starts with "blur", or "fuzzy" or "hazy".`,
+        examples: ['my eyes are blurry', 'everything looks fuzzy'],
+      },
+      {
+        says: `"Change", "changes", "changing", "difference" or "decline", followed by "in vision", "in my vision", "in eyesight" or "in sight". Or "vision", "eyesight" or "sight", followed by "change", "changes", "problem", "problems", "issue", "issues" or "trouble".`,
+        examples: ['changes in my vision', 'vision problems'],
+      },
+      {
+        says: `"Seeing" plus "double", "spots", "floaters", "flashes", "flashing lights", "halos" or "two of everything" (not when "on my" or "on the" follows, as in spots on the skin); "floaters"; "flashes of light"; "trouble seeing", "difficulty seeing", "hard time seeing" or "problems seeing"; "hard to see"; "can't see" plus "well", "clearly", "right", "straight", "properly" or "out of".`,
+        examples: ['seeing double', 'I see floaters', "can't see well out of my left eye"],
+      },
     ],
   },
   hypoglycemia: {
-    fp: '2c627043',
+    fp: 'b81e08e3',
     triggers: [
       { says: `A word that starts with "hypoglyc" ("hypoglycemia", "hypoglycemic").`, examples: ['I think this is hypoglycemia'] },
       { says: `"Low blood sugar" or "low blood glucose".`, examples: ['low blood sugar'] },
       { says: `"Blood sugar" or "blood glucose", then (within about 15 characters) "low", "dropped", "crash", "crashed", "crashing", "tanked" or "bottomed".`, examples: ['I think my blood sugar is low'] },
-      { says: `"Sugar" or "glucose", then "is", "was", "got", "went" or "feels", then "low". "Very", "too", "really", "so" or "super" may stand before "low".`, examples: ['my sugar is really low'] },
+      { says: `"Sugar" or "glucose", then "is", "was", "got", "went" or "feels", then "low". "Very", "too", "really", "so" or "super" may stand before "low". It does not count when "normal", "carb", "fat" or "cal" follows "low".`, examples: ['my sugar is really low'] },
       { says: `"Sugar" or "glucose" (with or without "level" or "levels"), then "dropped", "dropping", "crashed", "crashing", "tanked", "plummeted" or "bottomed out".`, examples: ['my glucose dropped', 'sugar crashed'] },
+      {
+        says: `"Low glucose" or "low sugars". Or "a", "my", "another", "having", "had" or "got", followed by "low sugar", unless a word for a food or a diet follows ("a low sugar yogurt", "a low sugar week").`,
+        examples: ['having low sugars a lot', 'I had low sugar this morning'],
+      },
+      {
+        says: `"Sugar", "sugars", "glucose", "BG" or "blood sugar", plus "is", "are", "was", "were", "got", "went", "feels", "running", "runs", "ran", "reading", "keeps" or "kept" (then perhaps "running", "reading", "going", "getting", "dropping" or "trending"), plus "low". "Very", "too", "really", "so", "super", "way too" or "pretty" may stand before "low". Or "hypo" after "a", "having", "had" or "another".`,
+        examples: ['my sugars are running low', 'having a hypo'],
+      },
     ],
   },
   dehydration: {
-    fp: '0781eec9',
+    fp: 'a1429db5',
     triggers: [
       {
-        says: `A word that says it keeps happening ("keep", "keeps", "kept", "can't stop", "cannot stop", "won't stop", "constant", "constantly", "nonstop", "over and over", "again and again", "repeatedly"), then a **vomiting word** or a **diarrhea word**.`,
-        examples: ['I keep throwing up', 'constant diarrhea'],
+        says: `A word that says it keeps happening ("keep", "keeps", "kept", "can't stop", "can't I stop", "cannot stop", "won't stop", "constant", "constantly", "nonstop", "over and over", "again and again", "repeatedly"), then a **vomiting word** or a **diarrhea word**.`,
+        examples: ['I keep throwing up', 'constant diarrhea', "why can't I stop throwing up"],
       },
       { says: `A **vomiting word** or a **diarrhea word**, then a **long-or-often phrase**.`, examples: ["I've been throwing up all day", 'threw up 6 times today', 'diarrhea nonstop since last night'] },
       {
@@ -554,10 +636,26 @@ const TRIGGERS: Record<string, RuleGloss> = {
       { says: `"Can't pee" or "can't urinate".`, examples: ["I can't pee"] },
       { says: `"Stand up", "stands up", "standing up", "stood up", "get up", "getting up", "got up" or "standing", then a **dizzy phrase**.`, examples: ['when I stand up I get dizzy', 'got up and everything went black'] },
       { says: `A **dizzy phrase**, then "when", "whenever", "every time", "each time", "if", "after" or "as soon as", then "I stand", "I stood", "I get" or "I got".`, examples: ['dizzy when I stand up', 'lightheaded every time I get up'] },
+      { says: `A **nausea word**, then (within about 30 characters) a **does-not-go-away phrase**.`, examples: ["nausea that won't go away", 'nauseous for 4 days'] },
+      { says: `"Constant", "constantly", "nonstop", "persistent" or "never-ending", then a **nausea word**.`, examples: ['constantly nauseous'] },
+      { says: `A **vomiting word** or a **diarrhea word**, then a **does-not-go-away phrase**.`, examples: ['diarrhea that does not go away', "vomiting that won't go away"] },
+      { says: `A **severe word**, then a **nausea word**, a **vomiting word** or a **diarrhea word**.`, examples: ['severe nausea', 'really bad diarrhea'] },
+      {
+        says: `A **nausea word**, a **vomiting word** or a **diarrhea word**, then "is", "are", "was", "got", "getting" or "been", plus "severe", "unbearable", "awful", "terrible", "horrible", "intense", "out of control", "so bad" (also "really", "very", "extremely", "super" or "real" bad) or "the worst".`,
+        examples: ['the diarrhea is out of control'],
+      },
+      {
+        says: `"Dizzy", "dizziness", "lightheaded" (also "light-headed", "light headed", "lightheadedness"), "woozy" or "vertigo". It does not count when a **slight word** stands right before it ("a little dizzy"), or when "a bit", "a little", "a tad" or "slightly" follows. Or "room", "everything" or "head", plus "spinning" ("is", "was", "keeps" or "started" may stand in between).`,
+        examples: ['feeling dizzy', 'the room is spinning'],
+      },
+      {
+        says: `"Dehydrated" after "so", "very", "really", "severely", "badly", "super", "extremely" or "pretty", or after "I'm", "I am", "I think I'm", "feel", "feeling", "felt", "got" or "getting". Or "severe dehydration".`,
+        examples: ["I think I'm dehydrated"],
+      },
     ],
   },
   gallbladder: {
-    fp: '3a2e6029',
+    fp: 'bdf64099',
     triggers: [
       { says: `A word that starts with "jaundice".`, examples: ['jaundice'] },
       { says: `"Yellow", "yellowing" or "yellowish", followed by "skin", "eye", "eyes", "eyeball" or "eyeballs" ("of", "my" or "the" may stand in between).`, examples: ['yellowing of my skin', 'yellow eyes'] },
@@ -565,19 +663,52 @@ const TRIGGERS: Record<string, RuleGloss> = {
       { says: `A **pain or soreness word**, then (within about 30 characters) an **upper-right phrase**.`, examples: ['pain in my upper right abdomen', 'pain under my right ribs'] },
       { says: `An **upper-right phrase**, then a **pain or soreness word**.`, examples: ['my upper right side hurts', 'right rib cage is sore'] },
       { says: `"Right upper pain" or "right upper abdominal pain".`, examples: ['right upper abdominal pain'] },
+      {
+        says: `A **pain or soreness word**, then (within about 30 characters) "upper", "top of my" or "upper part of my" and a **stomach word** ("middle", "central", "mid", "left" or "right" may stand before it). Or "upper" and a **stomach word** first, then a **pain or soreness word**.`,
+        examples: ['pain in my upper stomach', 'upper abdominal pain after I eat'],
+      },
+      {
+        says: `A **pain or soreness word**, then "under", "below", "beneath" or "behind", plus "my ribs", "my rib cage", "my breastbone" or "my sternum". Or those words first, then a **pain or soreness word**.`,
+        examples: ['sore right under my ribs'],
+      },
+      { says: `"I'm", "I am", "I look", "I looked", "I turned", "I'm looking" or "I'm turning", followed by "yellow" or "jaundiced" ("a bit", "a little", "kind of", "kinda", "really" or "so" may stand in between).`, examples: ['I look yellow'] },
+      {
+        says: `"Fever", "fevers" or "feverish". Not "hay fever", "cabin fever" and the like, and not "fever dream", "fever pitch", "fever blister" or "fever tree". Or "running", "have", "having", "had", "got", "spiked" or "spiking", followed by "a temp" or "a temperature". Or "temp" or "temperature" with a number from 100 to 109, or from 38 to 41 ("is", "was", "of", "at", "hit", "reached", "up to" or "went to" may stand in between).`,
+        examples: ['I have a fever', 'my temp is 101.2'],
+      },
+      {
+        says: `"Clay", "pale", "light", "gray", "grey", "white", "whitish", "chalky" or "putty" (with or without "colored"), followed by "stool", "stools", "poop", "poops", "poo", "bowel movement", "bowel movements", "BM" or "BMs". Or one of those words for stool first, then "clay", "pale", "light-colored", "light in color", "gray", "grey", "white", "whitish", "chalky" or "putty".`,
+        examples: ['clay colored stools', 'my poop is pale'],
+      },
+      { says: `"Gallstone" or "gallstones" (also written "gall stones"). Or "gallbladder" followed by "attack", "pain", "problem", "problems", "issue", "issues" or "infection".`, examples: ['I think I have gallstones'] },
     ],
   },
   thyroid: {
-    fp: 'cd70f861',
+    fp: 'da0c1061',
     triggers: [
       { says: `"Lump", "bump", "swelling", "mass", "nodule", "knot" or "growth", then "in", "on", "at" or "around" "my neck" or "the front of my neck".`, examples: ['lump in my neck', 'a swelling on the front of my neck'] },
       { says: `"Neck" followed by "lump", "swelling", "swollen", "mass" or "nodule" ("is", "looks" or "feels" may stand in between).`, examples: ['my neck is swollen'] },
-      { says: `"Trouble", "difficulty", "difficult", "hard time", "problem", "problems", "hard", "can't", "cannot" or "unable to", followed by a word that starts with "swallow".`, examples: ['trouble swallowing', "it's hard to swallow"] },
+      {
+        says: `"Trouble", "difficulty", "difficult", "hard time", "problem", "problems", "issue", "issues", "hard", "harder", "tough", "can't", "cannot", "can barely", "can hardly", "unable to", "struggle", "struggles" or "struggling", followed by a word that starts with "swallow" ("to" or "with" may stand in between). It does not count when it is said of a pill (section 2.3).`,
+        examples: ['trouble swallowing', "it's hard to swallow"],
+      },
       {
         says: `"Hoarse", "hoarseness", "raspy" or "lost my voice", then words that say it has lasted: "for weeks", "for months", "for a long time", "for a while", "for a month", "for ages", "won't go away", "not getting better", "not improving", "still", "all the time" or "constantly".`,
         examples: ['my voice has been hoarse for weeks', "hoarse and it won't go away"],
       },
       { says: `"For weeks", "for months", "for a long time", "still", "always" or "constantly", then "hoarse" or "raspy".`, examples: ['still hoarse'] },
+      {
+        says: `"Hoarse", "hoarseness", "raspy", "croaky", "lost my voice" or "losing my voice". Or "voice" followed by "hoarse", "raspy", "croaky", "gone" or "scratchy" ("is", "has been", "sounds", "got", "keeps getting" or "went" may stand in between). It does not count when a **slight word** stands right before it ("a little hoarse").`,
+        examples: ['my voice is hoarse', 'I lost my voice'],
+      },
+      {
+        says: `"Swallowing" plus "is", "feels", "got", "has been", "was" or "has gotten", plus "hard", "harder", "difficult", "tough" or "a struggle". Or "food", "drink", "drinks", "water", "liquid" or "liquids", plus "gets stuck", "keeps getting stuck", "got stuck", "is getting stuck" or "feels stuck". Or "choke", "chokes", "choked" or "choking", followed by "on" or "when".`,
+        examples: ['swallowing is getting harder', 'food keeps getting stuck'],
+      },
+      {
+        says: `"Swollen", "lumpy", "enlarged" or "bulging", followed by "neck" or "thyroid". Or "lump", "bump", "mass", "nodule", "knot" or "growth", then "in my thyroid" or "on my thyroid". Or "swollen glands", "swollen nodes" or "swollen lymph nodes", then "neck". Or "goiter".`,
+        examples: ['swollen glands in my neck', 'a nodule on my thyroid'],
+      },
     ],
   },
   pregnancy: {
@@ -619,6 +750,34 @@ const TRIGGERS: Record<string, RuleGloss> = {
       { says: `A **days phrase**, then (within about 30 characters) a **not-eating phrase**.`, examples: ["for the last few days I can't eat anything"] },
     ],
   },
+  abdominal_pain_severe: {
+    fp: '6aa2557c',
+    triggers: [
+      { says: `A **stomach word** and a **pain word**, then (within about 30 characters) a **does-not-go-away phrase**.`, examples: ["stomach pain that won't go away", 'my stomach has hurt for 5 days'] },
+      { says: `A **pain word**, then "in", "around" or "across" and a **stomach word**, then a **does-not-go-away phrase**.`, examples: ['pain in my belly for 3 days'] },
+      { says: `"Constant", "nonstop", "persistent", "lingering", "ongoing", "continuous", "never-ending" or "unrelenting", then a **stomach word** joined to a **pain word**.`, examples: ['constant stomach pain'] },
+      {
+        says: `A **severe word**, then "constipation", "constipated", "bloating", "bloated", "heartburn", "acid reflux", "reflux", "indigestion", "gas pain", "gas pains", or a **stomach word** plus "problem", "problems", "issue", "issues", "trouble", "troubles" or "upset".`,
+        examples: ['severe constipation', 'severe stomach problems'],
+      },
+      {
+        says: `"Constipation", "bloating", "heartburn", "acid reflux", "reflux", "indigestion", "gas pain", "gas pains", or a **stomach word** plus "problem", "problems", "issue", "issues", "trouble" or "troubles"; then "is", "are", "was", "were", "got" or "getting", plus "severe", "unbearable", "awful", "terrible", "horrible", "intense", "out of control", "so bad" (also "really", "very", "extremely", "super" or "real" bad) or "the worst".`,
+        examples: ['stomach problems that are severe', 'my heartburn is terrible'],
+      },
+      {
+        says: `A **stomach word**, "digestive" or "GI", plus "problem", "problems", "issue", "issues", "trouble", "troubles" or "upset"; or "upset" plus a **stomach word**; or "constipated", "constipation", "bloated", "bloating", "heartburn", "acid reflux", "reflux" or "indigestion". Then a **does-not-go-away phrase**.`,
+        examples: ['stomach problems that will not go away', 'constipated for a week'],
+      },
+      {
+        says: `A **vomiting word** followed by "blood" ("up", "bright red", "a lot of", "some" or "dark" may stand in between). Or "pooping" or "pooped", followed by "blood". Or "blood", then "in" or "with", plus "vomit", "puke", "throw up", "stool", "stools", "poop", "poo", "bowel movement", "bowel movements", "BM" or "diarrhea".`,
+        examples: ['vomited blood', 'blood in my stool'],
+      },
+      {
+        says: `"Bloody", "black", "tarry", "black tarry", "black and tarry" or "maroon", followed by "stool", "stools", "poop", "poops", "poo", "vomit", "diarrhea", "bowel movement" or "bowel movements". Or "stool", "stools", "poop", "poops", "poo", "vomit" or "puke", then "is", "was", "are", "were", "looks", "look" or "looked", plus "black", "bloody", "tarry" or "like coffee grounds".`,
+        examples: ['black tarry stool', 'my poop is black'],
+      },
+    ],
+  },
 };
 
 /** The self-harm rule is one pattern with many alternatives. It has no check for "no" or "not". */
@@ -656,16 +815,28 @@ const CRISIS_GLOSS = {
   ],
 };
 
-/** The four sign groups of the low-blood-sugar rule, in the order of EN_LOW_SUGAR_SIGNS. */
+/** The sign groups of the low-blood-sugar rule: `signs` in the order of EN_LOW_SUGAR_SIGNS, `common` in the order of EN_LOW_SUGAR_COMMON. */
 const SIGN_GLOSS = {
-  fp: '1ae6f93b',
+  fp: '48ed649c',
   signs: [
-    { says: `Shaking: "shaky", "shaking", "shakes", "tremble", "trembles", "trembling", "tremor", "tremors", "jittery".`, example: 'I feel shaky' },
-    { says: `Sweating: "cold sweat", "cold sweats", "clammy", "sweaty", "sweating".`, example: 'in a cold sweat' },
-    { says: `Racing heart: a word that starts with "palpitat"; "heart" or "pulse" plus "racing", "pounding", "fluttering" or "beating fast"; "racing heart", "pounding heart".`, example: 'my heart is racing' },
-    { says: `Confusion: a word that starts with "confus"; "disoriented"; "dazed".`, example: 'I feel confused' },
+    { says: `Shakiness: "shaky", "shaking", "shakes", "shakiness", "tremble", "trembles", "trembling", "tremor", "tremors", "jittery", "jitters". Not "protein shakes", "milk shakes" or "meal replacement shakes".`, example: 'I feel shaky' },
+    { says: `Sweating: "cold sweat", "cold sweats", "clammy", "sweaty", "sweating", "drenched in sweat".`, example: 'in a cold sweat' },
+    { says: `Fast heartbeat: a word that starts with "palpitat"; "heart" or "pulse" plus "racing", "pounding", "fluttering" or "beating fast"; "racing", "pounding", "fast" or "rapid" plus "heart", "heartbeat" or "pulse".`, example: 'my heart is racing' },
+    { says: `Confusion or drowsiness: a word that starts with "confus"; "disoriented"; "dazed"; "drowsy", "drowsiness"; "can't think straight".`, example: 'I feel confused' },
+    { says: `Dizziness or light-headedness: "dizzy", "dizziness", "lightheaded" (also "light-headed", "light headed", "lightheadedness"), "woozy".`, example: 'so dizzy' },
+    { says: `Blurred vision: "blurry" or "blurred" plus "vision", "eyesight" or "sight"; "vision", "eyesight" or "sight" plus "blurry" or "blurred" ("is", "was", "got", "went" or "gets" may stand in between); "seeing double".`, example: 'blurred vision' },
+    { says: `Slurred speech: "slurred", "slurring", "slurry"; "can't talk" or "can't speak" plus "right", "properly", "straight" or "clearly".`, example: 'slurred speech' },
   ],
-  examples: ['shaky and in a cold sweat', 'heart racing and I feel confused'],
+  commonFp: '1c3ed2e0',
+  common: [
+    { says: `Weakness: "weak", "weakness".`, example: 'I feel weak' },
+    { says: `Headache: "headache", "headaches", "migraine", "migraines", "head hurts", "head is pounding", "head is killing me", "head aches".`, example: 'a headache' },
+    { says: `Hunger: "hungry", "hunger", "starving", "ravenous", "famished".`, example: 'so hungry' },
+    { says: `Anxiety, irritability or mood changes: "anxious", "anxiety", "irritable", "irritability", "mood swing", "mood swings", "mood change", "mood changes", "moody".`, example: 'irritable' },
+  ],
+  examples: ['shaky and in a cold sweat', 'heart racing and I feel confused', 'shaky and hungry', 'sweating and a headache'],
+  /** One sign alone, and two of the common ones alone: quiet. */
+  quiet: ['feeling shaky after coffee', 'so hungry today', 'hungry with a headache', 'weak and hungry before lunch'],
 };
 
 interface WordList {
@@ -682,7 +853,25 @@ const WORD_LISTS: WordList[] = [
   { name: 'EN_HURT', label: 'pain word' },
   { name: 'EN_SORE', label: 'pain or soreness word' },
   { name: 'EN_VOMIT', label: 'vomiting word' },
-  { name: 'EN_RUNS', label: 'diarrhea word' },
+  {
+    name: 'EN_RUNS',
+    label: 'diarrhea word',
+    fp: 'c77b28ef',
+    says: `"diarrhea", also misspelled ("diarrea", "diarhea", "diarrhoea"); "the runs"; "the squirts"; "loose", "watery" or "liquid" plus "stool", "stools", "poop", "poops", "bowel movement" or "bowel movements".`,
+  },
+  { name: 'EN_NAUSEA', label: 'nausea word', fp: 'f5c90133', says: `"nausea", "nauseous", "nauseated" (also misspelled "nausious", "nauseus", "nasuea"); "queasy", "queasiness"; "sick to my stomach".` },
+  {
+    name: 'EN_WONT_GO_AWAY',
+    label: 'does-not-go-away phrase',
+    fp: 'd7c6c0f7',
+    says: `"won't", "will not", "doesn't", "does not", "isn't", "is not", "hasn't", "has not", "not" or "never", followed by "go away" (also "going away", "gone away"), "stop", "let up", "ease", "ease up", "quit", "end", "get better" or "improve"; "constant", "constantly", "nonstop", "persistent", "never-ending"; "all the time"; "day and night"; "every day"; "for days" or "for weeks", with or without a count ("for 3 days", "for a few weeks"); "for a week", "for over a week", "for the past week"; "all week"; a count of days plus "straight", "in a row", "now" or "running"; "been 3 days" (any count); "since" plus a day of the week; "since last week". One day is not on this list: "all day" and "since yesterday" do not count here.`,
+  },
+  {
+    name: 'EN_MILD',
+    label: 'slight word',
+    fp: '74c70a82',
+    says: `"a little", "a little bit", "a tiny bit", "a bit", "a tad", "a touch", "slightly", "mildly", "mild", "kind of", "kinda", "sort of", "somewhat", "less", "not too", "not very", "not that", "not so", "not really", "not as" ("just" or "only" may stand before it). A pattern that names this list stays quiet when one of these words stands right before the symptom.`,
+  },
   {
     name: 'EN_TO_BACK',
     label: 'reaches-the-back phrase',
@@ -720,6 +909,8 @@ const WORD_LISTS: WordList[] = [
 
 /** Fingerprint of everything that decides how "no" and "not" are read (see negationSection). */
 const NEGATION_FP = '7127c5e7';
+/** Fingerprint of everything that decides whether a match is about the person's own state now (see ownStateLines). */
+const OWN_FP = '0d451019';
 
 /**
  * Phrases from the test file that this packet points out, with why. The script checks that each
@@ -737,17 +928,17 @@ const TEST_PHRASES_THAT_FIRE_ON_PURPOSE: [string, string][] = [
 
 const TEST_PHRASES_THAT_STAY_QUIET: [string, string][] = [
   ['threw up twice', 'Vomiting triggers only when it keeps going, lasts long, or is counted 5 or more times.'],
-  ['a little dizzy', 'Dizziness triggers only together with standing up.'],
-  ['heart racing a bit', 'One low-blood-sugar sign alone is not enough. Two sign groups are needed.'],
+  ['a little dizzy', 'Dizziness that the person calls slight stays quiet.'],
+  ['heart racing a bit', 'A racing heart that the person calls slight stays quiet.'],
   ['feeling shaky after coffee', 'One low-blood-sugar sign alone is not enough.'],
   ['had a sugar crash after lunch', '"Sugar crash" as a figure of speech does not match the low-blood-sugar phrases.'],
-  ['mild stomach ache after dinner', 'Stomach pain triggers only with a severe word or when it reaches the back.'],
+  ['mild stomach ache after dinner', 'Stomach pain triggers only with a severe word, when it reaches the back, or when the person says it does not go away.'],
   ['my stomach pain is back', '"Is back" is not read as pain reaching the back.'],
   ['stomach pain, but not to my back', 'The person says it does not reach the back.'],
   ['barely ate today', 'Eating too little triggers only when it has gone on for days.'],
-  ['rash at the injection site', 'A rash triggers only when it is all over the body.'],
+  ['rash at the injection site', 'A rash triggers only when the person calls it severe or spreading, when it is all over the body, or when it is hives.'],
   ['itchy rash all over my thigh', '"All over" one body part does not count.'],
-  ['sore throat', 'Only swelling or closing of the throat triggers.'],
+  ['sore throat', 'Only swelling, closing or tightness of the throat triggers.'],
   ["can't breathe through my nose", 'A blocked nose is not read as trouble breathing.'],
 ];
 
@@ -756,40 +947,40 @@ const TEST_PHRASES_THAT_STAY_QUIET: [string, string][] = [
  * each one today; whether that is right is the reviewer's call.
  */
 const EXTRA_PROBES: string[] = [
-  'my sister is pregnant',
-  'my mom is having surgery next week',
-  'my dad had chest pain last year',
-  'I fainted once as a kid',
-  'hard to swallow this big pill',
+  // a cause the person names themselves
   'short of breath after climbing stairs',
+  'heart was pounding after cardio',
+  'hoarse from cheering at the game',
+  'drank too much and passed out on the couch',
   'really bad stomach cramps from my period',
+  'itchy all over after the shower',
+  'wheezing from my asthma',
+  'poop is black from iron pills',
+  // not about the person's own state now
   'watched a show about suicide prevention',
   'sedated at the dentist last month',
-  'I feel faint',
-  'I keep passing out',
-  'my vision is blurry',
-  'double vision',
-  "stomach pain that won't go away",
-  'constant stomach pain',
+  'my son can\'t breathe',
+  'how do I know if it is an allergic reaction',
+  // signs no guide names, or names only in a list
+  'nauseous all day',
   'throwing up and stomach pain',
-  'fever and stomach pain',
   'threw up 4 times',
   'throwing up everything',
-  'vomited blood',
-  'black tarry stool',
-  'clay colored stools',
   'dark urine',
   "can't pass gas and my belly is swollen",
   'no bowel movement for a week',
-  'my throat feels tight',
-  'itching all over',
-  'wheezing',
-  'very fast heartbeat',
-  'dizzy and confused',
+  'a rash on my arms and chest',
+  'slurred speech',
+  'I feel confused',
   'my blood sugar was 60 this morning',
   'feeling hopeless',
   'feeling depressed',
+  // events the guides have an instruction for, and the app has no rule for
+  'I took a double dose by mistake',
+  'I think I took too much',
+  'I missed my shot two weeks in a row',
 ];
+
 
 // ── Fingerprints: tying the words in this file to the code they describe ─────
 
@@ -806,7 +997,11 @@ function checkFingerprint(what: string, actual: string, expected: string, howToF
 const DESCRIBED_CODE: [string, string, string, string][] = [
   ['src/core/triage.ts', 'const RANK', '807d4453', 'section 2 (levels)'],
   ['src/core/triage.ts', 'function negatedEn(', '8464d29b', 'section 2.3 (how "no" and "not" are read)'],
-  ['src/core/triage.ts', 'function anyEn(', 'b4d1f1a3', 'section 2.3'],
+  ['src/core/triage.ts', 'function anyEn(', '7d25768a', 'section 2.3'],
+  ['src/core/triage.ts', 'function notOwnNowEn(', '14a0f363', 'section 2.3 (someone else, long ago, a general question, the size of a pill)'],
+  ['src/core/triage.ts', 'export function triageSymptom(', '7ae36f3f', 'sections 2.2 and 2.8 (what the symptom buttons raise)'],
+  ['src/core/alert.ts', 'export function fixedAlertCard(', 'fa19d9f9', 'section 2.1 (the two wordings of the fixed card)'],
+  ['src/core/medGuide.ts', 'export function guideChoice(', 'f878ec6c', 'section 2.6 (which guide a person sees)'],
   ['src/core/triage.ts', 'export function triageText(', 'f9b32e83', 'section 2.3'],
   ['src/core/pk.ts', 'export function kaFromTmax(', 'ca06c69a', 'section 5'],
   ['src/core/pk.ts', 'export function modelFor(', '1c38897f', 'section 5'],
@@ -1056,7 +1251,7 @@ function reminderLines(buttonRows: QuickLogRow[]): string[] {
   // The reminder is built from today's symptom rows that carry an alert.
   const fromRows = screenCodeHas('src/web/derive.ts', /const openRow = \[\.\.\.todaySymptoms\]\.reverse\(\)\.find\(\(s\) => s\.triageId && s\.triageLevel && !s\.ack\)/, 'the reminder that stays on the main screen after an alert');
   const staysIfPausing = screenCodeHas('src/web/derive.ts', /const pausedRow = \[\.\.\.todaySymptoms\]\.reverse\(\)\.find\(\(s\) => s\.triageId && s\.triageLevel && pausesCoaching\(/, 'which reminders stay after the alert is closed');
-  const questionLogsNothing = screenCodeHas('src/web/actions.ts', /export async function addQuestionFromList\((?:(?!\n\}\n)[\s\S])*setUi\(\{ triage: \{ hits, rowId: null \} \}\)/, 'what an alert from the questions box leaves behind');
+  const questionLogsNothing = screenCodeHas('src/web/actions.ts', /export async function addQuestionFromList\((?:(?!\n\}\n)[\s\S])*setUi\(\{ triage: \{ hits, rowId: null, wrote: true \} \}\)/, 'what an alert from the questions box leaves behind');
   if (!fromRows) return [];
   const typedNote = LAUNCH.freeTextNote ? ' or a typed note' : FULL.freeTextNote ? ' or, in the full test version, a typed note' : '';
   const lines: string[] = [];
@@ -1103,6 +1298,14 @@ function dangerSymptomSection(internals: TriageInternals, counts: TriageCounts):
   for (const id of Object.keys(internals.EN)) if (!TRIGGERS[id]) problems.push(`Rule "${id}" has English patterns in ${TRIAGE_FILE} but no glosses in this script. Add TRIGGERS.${id}.`);
   checkFingerprint(`${TRIAGE_FILE} · EN_CRISIS`, hash8(internals.EN_CRISIS.source), CRISIS_GLOSS.fp, 'Re-read EN_CRISIS, correct CRISIS_GLOSS, then update its fp.');
   checkFingerprint(`${TRIAGE_FILE} · EN_LOW_SUGAR_SIGNS`, hash8(internals.EN_LOW_SUGAR_SIGNS.map((p) => p.source).join('\n')), SIGN_GLOSS.fp, 'Re-read EN_LOW_SUGAR_SIGNS, correct SIGN_GLOSS, then update its fp.');
+  checkFingerprint(`${TRIAGE_FILE} · EN_LOW_SUGAR_COMMON`, hash8(internals.EN_LOW_SUGAR_COMMON.map((p) => p.source).join('\n')), SIGN_GLOSS.commonFp, 'Re-read EN_LOW_SUGAR_COMMON, correct SIGN_GLOSS.common, then update commonFp.');
+  if (internals.EN_LOW_SUGAR_SIGNS.length !== SIGN_GLOSS.signs.length || internals.EN_LOW_SUGAR_COMMON.length !== SIGN_GLOSS.common.length) problems.push(`The low-blood-sugar sign lists of ${TRIAGE_FILE} have ${internals.EN_LOW_SUGAR_SIGNS.length} and ${internals.EN_LOW_SUGAR_COMMON.length} groups, SIGN_GLOSS has ${SIGN_GLOSS.signs.length} and ${SIGN_GLOSS.common.length}.`);
+  checkFingerprint(
+    `${TRIAGE_FILE} · the pieces that read someone else, long ago, a general question and the size of a pill`,
+    hash8(OWN_NAMES.map((n) => String(internals.own[n] instanceof RegExp ? (internals.own[n] as RegExp).source : internals.own[n])).join('\n')),
+    OWN_FP,
+    'Re-read them, correct section 2.3 (ownStateLines), then update OWN_FP.',
+  );
   checkFingerprint(
     `${TRIAGE_FILE} · the pieces that read "no" and "not"`,
     hash8([...NEGATION_NAMES, 'GAP'].map((n) => String(internals.negation[n] instanceof RegExp ? (internals.negation[n] as RegExp).source : internals.negation[n])).join('\n')),
@@ -1151,6 +1354,18 @@ function dangerSymptomSection(internals: TriageInternals, counts: TriageCounts):
     out.push('Until the cards in section 2.4 are reviewed, an alert shows one fixed card. It names no cause.', '');
     out.push(...cardLines(fixed));
     out.push(`This card ${cardExtras(fixed)}.`, '');
+    const wrote = fixedAlertCard('US', 'en', true);
+    if (wrote.body !== fixed.body && typedTextPlaces().some((p) => p.where === TYPED_TEXT_PLACES.addQuestionFromList.where && p.atLaunch)) {
+      const [was, now] = [fixed.body.split(' can be')[0], wrote.body.split(' can be')[0]];
+      if (wrote.body.replace(now, was) !== fixed.body) problems.push('The two wordings of the fixed card differ in more than their first words. Re-read section 2.1.');
+      out.push(`When the alert comes from a question typed into the list of questions for the doctor, nothing was logged, so the card begins ${q(now)} in place of ${q(was)}. Nothing else changes.`, '');
+    }
+    if (LAUNCH.guideWarningSigns && screenCodeHas('src/web/components/TriageModal.tsx', /features\.guideWarningSigns && cards\.some\(\(c\) => c\.key !== 'crisis'\)/, 'the button on an alert that opens the Medication Guide list')) {
+      out.push(
+        `Under the card there is one more button, ${q(screenText('guide.open'))}. It opens the list of section 2.6 for the person's own medication: always the whole list, never one item of it, because the app does not say which item a person may have. The crisis card has no such button.`,
+        '',
+      );
+    }
     const atLaunch = rules.flatMap((r) => r.levels.map((l) => ({ rule: r, level: l.level, card: launchCardFor({ id: r.id, level: l.level }) })));
     const fixedLevels = levelsInUse.filter((level) => atLaunch.some((x) => x.level === level && x.card?.title === fixed.title));
     out.push(`The fixed card is shown for a rule at ${fixedLevels.length === 1 ? 'level' : 'one of the levels'} ${fixedLevels.map((l) => `\`${l}\``).join(', ')}.`, '');
@@ -1237,6 +1452,7 @@ function dangerSymptomSection(internals: TriageInternals, counts: TriageCounts):
     ),
   );
   out.push(...negationLines(tests));
+  out.push(...ownStateLines(rules));
 
   // 2.4 The rules, one by one.
   out.push('### 2.4 The rules, one by one', '');
@@ -1301,11 +1517,20 @@ function dangerSymptomSection(internals: TriageInternals, counts: TriageCounts):
         SIGN_GLOSS.signs.forEach((sign, i) => {
           if (!new RegExp(internals.EN_LOW_SUGAR_SIGNS[i]?.source ?? '$^', 'i').test(sign.example)) problems.push(`SIGN_GLOSS.signs[${i}]: the example "${sign.example}" does not match its sign pattern.`);
         });
+        SIGN_GLOSS.common.forEach((sign, i) => {
+          if (!new RegExp(internals.EN_LOW_SUGAR_COMMON[i]?.source ?? '$^', 'i').test(sign.example)) problems.push(`SIGN_GLOSS.common[${i}]: the example "${sign.example}" does not match its sign pattern.`);
+        });
         for (const example of SIGN_GLOSS.examples) checkExample(example, null, 'SIGN_GLOSS');
-        out.push('It also triggers when the text has signs from **two or more** of these four groups. One group alone is not enough.', '');
-        out.push(...table(['Code', 'Sign group'], SIGN_GLOSS.signs.map((s, i) => [`${ruleCode.get(rule.id)}.S${i + 1}`, s.says]), [1, 12]));
-        out.push(`Examples that trigger (checked): ${SIGN_GLOSS.examples.map(q).join(', ')}.`, '');
-        counts.triggers += SIGN_GLOSS.signs.length;
+        for (const phrase of SIGN_GLOSS.quiet) expectOutcome(phrase, null, 'SIGN_GLOSS.quiet');
+        out.push(
+          'It also triggers on the signs of low blood sugar that the Medication Guides list (section 2.6), when the text has **two or more** of them. One sign alone is not enough. The signs are in two tables. Two signs of the first table trigger. A sign of the second table counts only next to a sign of the first.',
+          '',
+        );
+        out.push(...table(['Code', 'Sign'], SIGN_GLOSS.signs.map((s, i) => [`${ruleCode.get(rule.id)}.S${i + 1}`, s.says]), [1, 12]));
+        out.push('Signs that count only next to a sign of the table above, because many people on these medications have two of them on an ordinary day:', '');
+        out.push(...table(['Code', 'Sign'], SIGN_GLOSS.common.map((s, i) => [`${ruleCode.get(rule.id)}.C${i + 1}`, s.says]), [1, 12]));
+        out.push(`Examples that trigger (checked): ${SIGN_GLOSS.examples.map(q).join(', ')}. Examples that stay quiet (checked): ${SIGN_GLOSS.quiet.map(q).join(', ')}.`, '');
+        counts.triggers += SIGN_GLOSS.signs.length + SIGN_GLOSS.common.length;
       }
       if (rule.id === 'pregnancy') out.push('A "not" in front does not stop this rule when "yet" follows, or "but" or "though" with "trying", "hoping" or "planning". The card is also meant for people who are trying to get pregnant.', '');
       if (rule.id === 'procedure') out.push('A "not" in front does not stop this rule when "yet" follows: the procedure is still ahead.', '');
@@ -1359,6 +1584,49 @@ function negationLines(tests: TestPhrases): string[] {
   return out;
 }
 
+/**
+ * The other reasons a match does not count: someone else, long ago, a general question, the
+ * size of a pill, a symptom called slight. Every phrase named here is run through the rules.
+ */
+function ownStateLines(rules: RuleView[]): string[] {
+  const out: string[] = [];
+  const quiet = (phrases: string[]) => {
+    for (const p of phrases) expectOutcome(p, null, 'Section 2.3 (own state)');
+    return phrases.map(q).join(', ');
+  };
+  const firing = (phrases: string[]) => {
+    for (const p of phrases) if (alertCards(triageText(p, US_CONTEXT), 'US', 'en', LAUNCH.triageDetailCards).length === 0) problems.push(`Section 2.3 (own state): "${p}" no longer raises an alert in the first public version.`);
+    return phrases.map(q).join(', ');
+  };
+  const reminders = rules.filter((r) => !showsLaunchCard(r.id)).map((r) => ruleRef(r.id));
+  out.push('A rule is raised when the text describes the person\'s own state, now or recently. Besides a denial, a match does not count only in the cases below. When in doubt, the rule is raised. The self-harm rule makes none of these checks.', '');
+  out.push(
+    ...list([
+      `**Someone else.** The words before the symptom, in the same part of the sentence, name another person as the one who has it: "my dad", "my sister's", "she", "a friend of mine", "people". Stays quiet: ${quiet(['my dad had chest pain last year', 'my sister is pregnant', 'she passed out at the gym', 'some people get hives from it', 'pancreatitis runs in my family'])}. It counts again when "I", "me", "my" or "we" comes after that person, or stands with them ("me and my husband"), or when a word for saying, noticing or finding follows: ${firing(['my dad had chest pain and now I have chest pain', 'me and my husband have been throwing up all day', 'my wife noticed my eyes look yellow', 'they said my blood sugar was low'])}. "Anyone else" is read as the writer too: ${firing(['has anyone else had chest pain on this'])}.`,
+      `**Long ago.** The sentence names a time long past: "last year", "years ago", "in 2019", "in college", "as a kid", "when I was younger", "growing up", "used to", "a history of". Stays quiet: ${quiet(['I fainted once as a kid', 'i had pancreatitis in 2019', 'i used to get palpitations'])}. Days, weeks and months ago still count: ${firing(['I passed out last week', 'two weeks ago I started having trouble swallowing'])}. The time must stand in the same part of the sentence as the symptom, or alone right before it; a symptom in another part of the sentence counts: ${firing(['I had my gallbladder out last year and I have severe stomach pain'])}. It also counts again when the sentence has a word for now ("now", "today", "again", "still", "since", "is back"): ${firing(['had chest pain last year and again today'])}.`,
+      `**A general question.** The words lead straight up to the symptom as a question about it in general: "what are the signs of ...", "what is ...", "what does ... feel like", "can it cause ...", "can you get ...", "how do I know ...", "how common is ...", "what should I do if I get ...", "I read that ...", "worried about getting ...", "how to prevent ...", "is ... a side effect". Stays quiet: ${quiet(['What are the signs of low blood sugar?', 'can ozempic cause chest pain', 'is fainting a side effect', 'what should i do if i get low blood sugar'])}. It counts again when the sentence says the person has it ("my", "I have", "I'm", "this pain", "now", "again", "still"), or the next sentence does: ${firing(['what are the signs of low blood sugar? I feel shaky and sweaty', 'can ozempic cause the chest pain I have now', 'does this cause chest pain? i have it now'])}. Other questions are not on the list and count: ${firing(["isn't chest pain serious?", 'Is severe stomach pain going to my back normal?', 'what should I do about this chest pain'])}. A statement is not a question and counts: ${firing(['the shot did cause severe stomach pain', 'showing symptoms of low blood sugar'])}.${reminders.length ? ` This check is not made for ${reminders.join(', ')}: a question is what those reminders are for.` : ''}`,
+      `**The size of a pill.** Trouble swallowing does not count when it is said of a pill, tablet, capsule or vitamin. Stays quiet: ${quiet(['hard to swallow this big pill', 'these pills are hard to swallow'])}. Still counts: ${firing(['trouble swallowing food', 'since starting my medication I have trouble swallowing'])}.`,
+      `**Slight.** Three signs stay quiet when the person calls them slight (the **slight word** list): dizziness, a racing heart and hoarseness. Stays quiet: ${quiet(['a little dizzy', 'heart racing a bit', 'a little hoarse'])}. Counts: ${firing(['dizzy', 'my heart is racing', 'my voice is hoarse'])}.`,
+    ]),
+  );
+  return out;
+}
+
+/** The phrase lists of the corpus test, read as text. */
+function readCorpus(): { positive: Record<string, string[]>; negative: Record<string, string[]> } {
+  const src = source(CORPUS_TEST_FILE);
+  const literalAfter = (marker: string): { [key: string]: Literal } => {
+    const at = src.indexOf(marker);
+    if (at < 0) throw new Error(`"${marker}" was not found in ${CORPUS_TEST_FILE}`);
+    return readLiteral(src, src.indexOf('{', src.indexOf(' = ', at))).value as { [key: string]: Literal };
+  };
+  const families = { ...literalAfter('const GUIDE_FAMILIES'), ...literalAfter('const OTHER_FAMILIES') };
+  const positive = Object.fromEntries(Object.entries(families).map(([family, v]) => [family, strings((v as { phrases: Literal }).phrases)]));
+  const negative = Object.fromEntries(Object.entries(literalAfter('const NEGATIVE')).map(([why, v]) => [why, strings(v)]));
+  if (!Object.keys(positive).length || !Object.keys(negative).length) throw new Error(`No phrases could be read from ${CORPUS_TEST_FILE}`);
+  return { positive, negative };
+}
+
 function triggeringLines(tests: TestPhrases, counts: TriageCounts): string[] {
   const out: string[] = [];
   const testSource = source(TRIAGE_TEST_FILE);
@@ -1395,6 +1663,36 @@ function triggeringLines(tests: TestPhrases, counts: TriageCounts): string[] {
   out.push(`All ${tests.quiet.length} English phrases the test suite requires to stay quiet: ${tests.quiet.map(q).join('; ')}.`, '');
   counts.testPhrases += tests.quiet.length + tests.negation.reduce((n, g) => n + g.phrases.length, 0);
 
+  // The corpus: where the line sits, family by family.
+  const corpus = readCorpus();
+  const leadOf = (family: string): string => (family in ITEM_NAMES ? `Guide item (2.6): ${md(ITEM_NAMES[family as GuideItemId].toLowerCase())}` : family === 'crisis' ? 'Not from a guide: self-harm' : 'Chest pain (not from a guide) and passing out');
+  out.push('**From the test suite: the corpus**', '');
+  out.push(
+    `A second test file holds phrases as people type them on a phone: lower case, no punctuation, misspellings, slang. Each phrase in the first table must raise the alert of section 2.1. Each phrase in the second table must raise nothing. The script that built this packet ran every one of them.`,
+    '',
+  );
+  out.push(
+    ...table(
+      ['Code', 'What the phrases are about', 'Phrases that must raise the alert'],
+      Object.entries(corpus.positive).map(([family, phrases]) => {
+        for (const p of phrases) if (alertCards(triageText(p, { ...US_CONTEXT, drugId: 'tirzepatide' }), 'US', 'en', LAUNCH.triageDetailCards).length === 0) problems.push(`${CORPUS_TEST_FILE}: "${p}" raises no alert.`);
+        return [code('Y'), leadOf(family), phrases.map(q).join('; ')];
+      }),
+      [1, 4, 12],
+    ),
+  );
+  out.push(
+    ...table(
+      ['Code', 'Why it must raise nothing', 'Phrases'],
+      Object.entries(corpus.negative).map(([why, phrases]) => {
+        for (const p of phrases) expectOutcome(p, null, CORPUS_TEST_FILE);
+        return [code('Z'), sentenceCase(why), phrases.map(q).join('; ')];
+      }),
+      [1, 4, 12],
+    ),
+  );
+  counts.testPhrases += Object.values(corpus.positive).flat().length + Object.values(corpus.negative).flat().length;
+
   out.push('**Not in the test suite: extra phrases tried while building this packet**', '');
   out.push('Nobody has decided yet what these should do. The table shows what the rules do with each one today.', '');
   const firing = EXTRA_PROBES.filter((p) => triageText(p, US_CONTEXT).length > 0);
@@ -1409,6 +1707,228 @@ function triggeringLines(tests: TestPhrases, counts: TriageCounts): string[] {
     ),
   );
   counts.probes = EXTRA_PROBES.length;
+  return out;
+}
+
+// ── Sections 2.6 to 2.8: the Medication Guides and how the rules stand against them ──
+
+/** What every row about the guides' words says about its own state. */
+const COPIED_FROM_GUIDE = `Copied from the FDA Medication Guide on ${MED_GUIDES_READ_ON}; not yet confirmed by a reviewer`;
+
+/** Short names for the items of the guides, for the tables of 2.7 and 2.8. The guides' own words are in 2.6. */
+const ITEM_NAMES: Record<GuideItemId, string> = {
+  thyroid_tumors: 'Thyroid tumors',
+  thyroid_do_not_use: 'The "Do not use" statement about thyroid cancer',
+  see_most_important: 'The pointer back to the first part of the guide',
+  pancreatitis: 'Inflammation of the pancreas (pancreatitis)',
+  gallbladder: 'Gallbladder problems',
+  low_blood_sugar: 'Low blood sugar',
+  kidney_dehydration: 'Dehydration leading to kidney problems',
+  severe_stomach: 'Severe stomach problems',
+  allergic_reaction: 'Serious allergic reactions',
+  vision_changes: 'Changes in vision',
+  heart_rate: 'Increased heart rate',
+  aspiration_anesthesia: 'Food or liquid getting into the lungs during surgery or other procedures',
+};
+
+const ACTION_WORDS: Record<GuideAction, string> = {
+  emergency: 'get medical help, or go to an emergency room, "right away"',
+  right_away: 'tell or call the healthcare provider "right away"',
+  tell: 'tell, call or talk to the healthcare provider (no "right away")',
+  none: 'no instruction to contact anyone',
+};
+
+/** The brand names of a guide, as the app lists them. */
+const brandsOf = (g: MedGuide): string => Object.keys(g.brands).join(', ');
+const guideByKey = (key: string): MedGuide => {
+  const g = MED_GUIDE_LIST.find((x) => x.key === key);
+  if (!g) throw new Error(`no Medication Guide with the key "${key}"`);
+  return g;
+};
+/** "all seven guides", or the brands of the guides named. */
+function guidesWords(keys: string[]): string {
+  return keys.length === MED_GUIDE_LIST.length ? `all ${MED_GUIDE_LIST.length} guides` : keys.map((k) => brandsOf(guideByKey(k))).join('; ');
+}
+
+interface GuideCounts {
+  guides: number;
+  items: number;
+  signs: number;
+}
+
+/** Item code of each guide item as section 2.6 prints it, by guide key and item id. Section 2.7 points back with it. */
+const guideItemCode = new Map<string, string>();
+
+function guideSections(counts: GuideCounts): string[] {
+  const out: string[] = [];
+  const ref = ruleRef;
+
+  // 2.6 The lists, word for word.
+  out.push('### 2.6 The warning signs shown in the app: the words of the Medication Guides', '');
+  out.push(
+    `The app has one screen named ${q(screenText('guide.title'))}. A person opens it from the ${q(screenText('tab.me'))} tab, or with the button on an alert (2.1). It shows two parts of the FDA Medication Guide of the person's own medication: the "most important information" and the serious side effects. The text is the guide's own, in the guide's order, with its sub-bullets as bullets. The app adds no word to the list, sets nothing in bold and marks no item as more urgent than another.`,
+    '',
+  );
+  out.push(`**Status of everything quoted in this section:** ${COPIED_FROM_GUIDE}. A script took the words from the label files published on DailyMed, and a second script checked every one of them against those files. No person outside our team has compared them with the guides.`, '');
+  out.push('Above the list the screen says where it is from. These words are ours:', '');
+  const example = MED_GUIDE_LIST[0];
+  const exampleBrand = Object.keys(example.brands)[0];
+  out.push(
+    ...table(
+      ['Code', 'Where', 'Screen text'],
+      [
+        [code('T'), 'First line, for every guide', q(screenText('guide.source', { brand: '[brand]', dated: '[revised or issued, and the date of the guide]' }))],
+        [code('T'), `The same line for ${exampleBrand}`, q(screenText('guide.source', { brand: exampleBrand, dated: guideDated(example, 'en') }))],
+        [code('T'), 'Second line, followed by the page address as a link', q(screenText('guide.parts'))],
+        [code('T'), 'A medication with no guide in the app: "Other / custom", a medication with no US brand, a brand of another country', q(screenText('guide.none'))],
+        [code('T'), 'Tirzepatide when the person has not said whether it is Zepbound or Mounjaro', q(screenText('guide.chooseBrand', { brands: 'Zepbound and Mounjaro', button: screenText('me.med.change') }))],
+      ],
+      [1, 6, 10],
+    ),
+  );
+  out.push(
+    `The copy keeps the label file's punctuation, capital letters and spacing, also where a space is missing or one too many. Runs of spaces are written as one, and bold type is dropped. Sub-bullets are in the order the label file stores them; the printed guides set them in columns.`,
+    '',
+  );
+  for (const g of MED_GUIDE_LIST) {
+    out.push(`#### ${code('G')} · Medication Guide for ${brandsOf(g)}`, '');
+    out.push(
+      ...list([
+        `**Title:** ${q(g.title)}`,
+        `**Date line of the guide:** ${q(g.revised)}, after ${q(g.approval)}`,
+        `**Label on DailyMed:** set id ${g.setid}, version ${g.version}, effective ${isoDay(g.effective)}. ${g.url}`,
+        `**Status:** ${COPIED_FROM_GUIDE}`,
+      ]),
+    );
+    const part = (section: GuideSection): string[] => {
+      const lines = [`**${md(section.question)}**`, '', md(section.intro), ''];
+      for (const item of section.items) {
+        const itemCode = code('I');
+        guideItemCode.set(`${g.key}/${item.id}`, itemCode);
+        lines.push(`- \`${itemCode}\` ${md(item.text)}`);
+        for (const b of item.bullets) lines.push(`  - ${md(b)}`);
+        if (item.after !== undefined) lines.push('', `  ${md(item.after)}`);
+        counts.items += 1;
+      }
+      return [...lines, ''];
+    };
+    out.push(...part(g.mostImportant), ...part(g.seriousSideEffects));
+    counts.guides += 1;
+  }
+
+  // 2.7 From the guides to the rules.
+  out.push('### 2.7 From the guides to the rules: which rule stands for each item', '');
+  out.push(
+    `This table is our reading, not the guides'. For each item of section 2.6 it gives what the guides tell the patient to do, each sign the item names (in the guides' words), and the rule that raises the alert when a person describes that sign as their own. Where no rule does, the last column says why. The script that built this packet typed each sign into the rules, with "your" changed to "my", and checked the outcome.`,
+    '',
+  );
+  const actionsOf = (item: GuideItemId): string => {
+    const byAction = new Map<GuideAction, string[]>();
+    for (const g of MED_GUIDE_LIST) {
+      const found = guideItems(g).find((i) => i.id === item);
+      if (found) byAction.set(found.action, [...(byAction.get(found.action) ?? []), g.key]);
+    }
+    return [...byAction.entries()].map(([action, keys]) => (byAction.size === 1 ? `${sentenceCase(ACTION_WORDS[action])} (${guidesWords(keys)})` : `${sentenceCase(ACTION_WORDS[action])}: ${keys.map((k) => brandsOf(guideByKey(k))).join('; ')}`)).join('. ');
+  };
+  const stopOf = (item: GuideItemId): string => (MED_GUIDE_LIST.some((g) => guideItems(g).some((i) => i.id === item && i.stopUsing)) ? ' The instruction begins "Stop using" or "Stop taking".' : '');
+  const rows: string[][] = [];
+  for (const row of ITEM_COVERAGE) {
+    const codes = MED_GUIDE_LIST.map((g) => guideItemCode.get(`${g.key}/${row.item}`)).filter((c): c is string => c !== undefined);
+    const itemCell = `${md(ITEM_NAMES[row.item])} (${codes.join(', ')})`;
+    const actionCell = `${actionsOf(row.item)}.${stopOf(row.item)}`;
+    if (row.signs.length === 0) {
+      rows.push([code('K'), itemCell, actionCell, 'Names no sign', row.reminder ? `No alert. The reminder rule ${ref(row.reminder)} matches such text; it shows no alert in the first public version (2.1)` : 'No rule', md(row.reason ?? '')]);
+      continue;
+    }
+    row.signs.forEach((sign, i) => {
+      const typed = sign.words.map((w) => w.replace(/\byour\b/g, 'my'));
+      for (const t of typed) {
+        const fired = triageText(t, { ...US_CONTEXT, drugId: 'tirzepatide' }).map((h) => h.id);
+        if (sign.alone && !fired.some((id) => sign.rules.includes(id))) problems.push(`Section 2.7: "${t}" does not raise ${sign.rules.join(' or ')} (it raises ${fired.join(', ') || 'nothing'}).`);
+      }
+      const buttons = (sign.buttons ?? []).map((b) => `the "${symptomLabel(b, 'en')}" button at "${gradeLabel(3, 'en')}"`);
+      const ruleCell = sign.alone
+        ? `${sign.rules.map(ref).join(', ')}${buttons.length ? `; ${buttons.join(', ')}` : ''}`
+        : `Alone: nothing. With another sign of the list: ${sign.rules.map(ref).join(', ')}`;
+      rows.push([code('K'), i === 0 ? itemCell : '', i === 0 ? actionCell : '', sign.words.map((w) => q(w)).join(' / '), ruleCell, md([sign.reason, sign.note].filter(Boolean).join(' '))]);
+      counts.signs += 1;
+    });
+  }
+  out.push(...table(['Code', 'Item of the guides (codes in 2.6)', 'What the guides tell the patient to do', 'Sign, in the guides\' words', 'What raises the alert', 'Reason or note'], rows, [1, 5, 5, 5, 5, 7]));
+
+  out.push('**The other instructions of the guides.** Outside the two parts, the guides tell the patient in a few more places to tell, call or talk to someone. None of these names a sign a person can notice. The app does not show them and raises no alert for them:', '');
+  const kinds = Object.keys(OTHER_COVERAGE) as (keyof typeof OTHER_COVERAGE)[];
+  out.push(
+    ...table(
+      ['Code', 'Kind of instruction', 'In the guides for', 'Example, word for word', 'What the app does'],
+      kinds.map((kind) => {
+        const keys = MED_GUIDE_LIST.filter((g) => MED_GUIDE_OTHER[g.key as MedGuideKey].some((o) => o.kind === kind)).map((g) => g.key);
+        const first = guideByKey(keys[0]);
+        const example = MED_GUIDE_OTHER[first.key as MedGuideKey].find((o) => o.kind === kind)!;
+        const actions = [...new Set(MED_GUIDE_LIST.flatMap((g) => MED_GUIDE_OTHER[g.key as MedGuideKey].filter((o) => o.kind === kind).map((o) => o.action)))];
+        const does = OTHER_COVERAGE[kind];
+        return [
+          code('K'),
+          `${sentenceCase(kind.replace(/_/g, ' '))} (${actions.map((a) => ACTION_WORDS[a]).join('; ')})`,
+          guidesWords(keys),
+          `${brandsOf(first)}: ${example.under ? `under ${q(example.under)}: ` : ''}${q(example.text)}`,
+          `${does.reminder ? `No alert. The reminder rule ${ref(does.reminder)} matches such text; it shows no alert in the first public version. ` : 'No rule. '}${md(does.reason)}`,
+        ];
+      }),
+      [1, 4, 3, 9, 6],
+    ),
+  );
+  const overdose = MED_GUIDE_LIST.map((g) => ({ g, o: MED_GUIDE_OTHER[g.key as MedGuideKey].find((x) => x.kind === 'overdose') })).filter((x) => x.o);
+  if (overdose.length) {
+    out.push('The one instruction among them that names an emergency room is the sentence about taking too much. In every guide, word for word:', '');
+    out.push(...table(['Code', 'Guide', 'The guide\'s words', 'Status'], overdose.map(({ g, o }) => [code('K'), brandsOf(g), q(o!.text), COPIED_FROM_GUIDE]), [1, 3, 10, 4]));
+  }
+
+  // 2.8 From the rules to the guides.
+  out.push('### 2.8 From the rules to the guides: the basis of each rule', '');
+  out.push(
+    `Every rule that shows an alert in the first public version must stand for an item of the guides, or carry the mark "${GENERAL_SIGN}" with the reason it is kept. A rule with neither would be taken out of the first public version. Today none is. An item is named here by a short name of ours; where it is not in every guide, the guides that have it follow in brackets.`,
+    '',
+  );
+  const itemWords = (item: GuideItemId) => `${md(ITEM_NAMES[item])}${guidesWithItem(item).length === MED_GUIDE_LIST.length ? '' : ` (${guidesWords(guidesWithItem(item))})`}`;
+  out.push(
+    ...table(
+      ['Rule', 'Alert in the first public version', 'Guide items it stands for', 'Parts with no guide behind them'],
+      [...ruleCode.keys()].map((id) => {
+        const rule = id as TriageId;
+        const items = ruleItems(rule);
+        const reminders = reminderFor(rule);
+        const without = NOT_FROM_A_GUIDE.filter((n) => n.rule === rule);
+        if (showsLaunchCard(rule) && items.length === 0 && !without.some((n) => n.whole)) problems.push(`Rule "${rule}" shows an alert in the first public version but has no guide item and no mark. See src/core/guideCoverage.ts.`);
+        const itemsCell = items.length
+          ? items.map(itemWords).join('; ')
+          : reminders.length
+            ? `None as an alert. As a reminder it matches text about: ${reminders.map((r) => r.replace(/_/g, ' ')).join(', ')} (2.7)`
+            : 'None';
+        return [
+          ref(rule),
+          showsLaunchCard(rule) ? (rule === 'crisis' ? 'Its own card' : 'The fixed card') : 'None',
+          itemsCell,
+          without.length ? without.map((n) => `**${showsLaunchCard(rule) ? sentenceCase(GENERAL_SIGN) : 'Not from a Medication Guide'}**: ${md(n.part)}. ${md(n.reason)}`).join(' ') : '',
+        ];
+      }),
+      [3, 3, 8, 8],
+    ),
+  );
+  out.push(`**The symptom buttons at "${gradeLabel(3, 'en')}"** (2.2), checked against the guides one by one:`, '');
+  out.push(
+    ...table(
+      ['Code', 'Button', 'Rule it raises', 'Guide items it stands for, or why it raises nothing'],
+      SYMPTOM_ORDER.map((kind) => {
+        const items = buttonItems(kind);
+        const rules = buttonRules(kind);
+        const why = BUTTONS_THAT_RAISE_NOTHING[kind];
+        if ((items.length === 0) !== (rules.length === 0) || (items.length === 0 && !why)) problems.push(`Symptom button "${kind}" is not accounted for in src/core/guideCoverage.ts.`);
+        return [code('K'), md(symptomLabel(kind, 'en')), rules.length ? rules.map(ref).join(', ') : 'None', items.length ? items.map(itemWords).join('; ') : md(why ?? '')];
+      }),
+      [1, 3, 4, 10],
+    ),
+  );
   return out;
 }
 
@@ -2211,6 +2731,14 @@ const QUESTIONS_FROM_COMMENTS: OpenQuestion[] = [
     ask: 'The crisis line on the self-harm card is marked as still to be verified. For a US user the card says "crisis line 988". Is that the right line, and the right way to name it?',
   },
   {
+    from: ['src/core/medGuide.ts#50e49c83'],
+    ask: `Section 2.6 holds the warning signs of each Medication Guide as the app shows them. A script copied them from the label files on ${MED_GUIDES_READ_ON} and a second script checked the copy; no reviewer has compared them with the guides. Please check each list against the current guide. Is any item missing, changed or out of order? Is any guide out of date?`,
+  },
+  {
+    from: ['src/core/guideCoverage.ts#95b1fe40'],
+    ask: 'The tables in sections 2.7 and 2.8 are our reading of the guides: how we read each instruction ("right away" or not), which rule stands for which sign, and the reason where no rule does. Which rows are wrong?',
+  },
+  {
     from: ['src/web/content/coping.ts#e0c53e8a', 'src/web/content/coping.ts#0200cb1b'],
     ask: 'The coping cards in section 3.1 must be reviewed before they are shown. Is any line wrong or unsafe? Is anything missing under "See a doctor if"? Are the two sources named under each card the right ones to name?',
   },
@@ -2287,7 +2815,40 @@ function openQuestionsSection(internals: TriageInternals): string[] {
       `An alert raised from the box for questions for the doctor leaves no reminder on the main screen once it is closed (section 2), while an alert from a symptom button stays at the top for the rest of the day. ${LAUNCH.freeTextNote ? '' : `In the first public version that box is the only way to raise ${onlyTyped}. `}Is it acceptable that these alerts are shown once and then gone?`,
     );
   }
-  extra.push(`Please compare the rules in section 2 with the "call your healthcare provider right away" items in the current Medication Guides of the medications in section 4. Which items on the guides have no rule here?`);
+  // Judgements made when the rules were set against the Medication Guides. Each states only what the code does.
+  const onlyTell = [...new Set(ITEM_COVERAGE.filter((c) => c.signs.some((sg) => sg.alone) && MED_GUIDE_LIST.some((g) => guideItems(g).some((i) => i.id === c.item && i.action === 'tell'))).map((c) => c.item))];
+  const stopItems = [...new Set(MED_GUIDE_LIST.flatMap((g) => guideItems(g).filter((i) => i.stopUsing).map((i) => i.id)))];
+  if (!LAUNCH.triageDetailCards) {
+    extra.push(
+      `The first public version shows one fixed card for every sign: "${fixedAlertCard('US', 'en').title}", with the call button (2.1). For these items the guides say only "tell your healthcare provider", for some medications or for all (2.7), so the card says more than the guide: ${onlyTell.map((i) => ITEM_NAMES[i].toLowerCase()).join('; ')}. Is one card for all of them acceptable? And is "contact your doctor right away" strong enough where the guides say "get medical help right away" (serious allergic reactions)?`,
+    );
+    if (stopItems.length) extra.push(`For ${stopItems.map((i) => ITEM_NAMES[i].toLowerCase()).join(' and for ')} the guides' instruction begins "Stop using" or "Stop taking". The fixed card does not say that: the app gives no advice about doses. The button under the card opens the guide's own words (2.6). Is that enough?`);
+  }
+  extra.push(
+    'The app shows two parts of each Medication Guide: the most important information and the serious side effects (2.6). Is that the right selection? Should it also show the sentence about taking too much (2.7), or the list of the most common side effects, so that a person does not take the short list for the whole guide?',
+  );
+  const marks = NOT_FROM_A_GUIDE.filter((n) => showsLaunchCard(n.rule));
+  if (marks.length) extra.push(`These rules, or parts of rules, raise an alert although no Medication Guide names the sign (2.8): ${marks.map((n) => `${ruleRef(n.rule)}: ${md(n.part)}`).join('; ')}. Is each of them right to keep? Is a sign of this kind missing?`);
+  extra.push(
+    `For low blood sugar the guides list signs but, for most medications, give no instruction to call anyone. The rule ${ruleRef('hypoglycemia')} fires on the words "low blood sugar" and on two signs together; hunger, headache, weakness and anxiety or mood changes count only next to another sign (2.4). Is two the right number? Should any single sign raise the alert on its own, for example slurred speech or confusion? Should a blood sugar reading raise it, and below what number ("my blood sugar was 60" stays quiet today)?`,
+  );
+  extra.push(
+    'Where a guide names a sign without saying how bad it must be, the rules fire on the plain word: any fever, any hoarseness, any dizziness, a racing heart, any change in vision (2.4). Dizziness, a racing heart and hoarseness stay quiet only when the person calls them slight. Is that too wide, or right for a reminder that is meant to come once too often?',
+  );
+  extra.push(
+    'For nausea, vomiting and diarrhea the guides say "that does not go away". The rules read that as: vomiting or diarrhea that keeps on, lasts all day, or comes five times or more; nausea only with words for more than one day ("nauseous all day" stays quiet, "nauseous for 4 days" fires). Are these lines in the right place?',
+  );
+  extra.push(
+    `Two symptom buttons were added to the ones that raise an alert at "${gradeLabel(3, 'en')}" (2.2, 2.8): nausea, because the guides name it with vomiting and diarrhea, and dizziness for every person, because "fainting or feeling dizzy" is a sign of a serious allergic reaction in every guide and no other button leads there. Severe nausea is common on these medications. Is an alert for it right? The buttons for constipation and acid reflux raise nothing, while the typed words "severe constipation" do. Which way should both go?`,
+  );
+  extra.push(
+    'A match does not count when the text is about someone else, about a time long past, or a general question (2.3). So "my son can\'t breathe" and "what are the signs of low blood sugar?" raise nothing. Is that acceptable? The lists in section 2.5 show where the line sits.',
+  );
+  extra.push(
+    'The guides tell the patient to call the healthcare provider or the Poison Help line, or to go to an emergency room, right away after taking too much, and to call after missing doses for some time (2.7). The app has no rule for either, and typed words such as "I took a double dose" raise nothing. Should they raise the alert? The fixed card does not name the Poison Help line.',
+  );
+  const tablets = MED_GUIDE_LIST.find((g) => guideItems(g).some((i) => /andOZEMPIC/.test(i.text)));
+  if (tablets) extra.push(`The label file of the guide for ${brandsOf(tablets)} has a space missing in one sentence the app shows ("RYBELSUS andOZEMPIC tablets"), and the app shows it as the file has it. Should the app keep it so, or is there a cleaner official text to copy from?`);
   const breath = triageText('short of breath', US_CONTEXT)[0];
   if (breath) {
     extra.push(
@@ -2382,6 +2943,7 @@ function introSection(): string[] {
     ...list([
       '**No dosing advice.** It never says how much to take, when to change a dose, or what to do about a missed dose. It answers no questions about doses.',
       '**No diagnosis.** When a person logs a danger sign, it shows a short card that tells them to contact their doctor or call 911.',
+      '**No warning text of its own.** The list of warning signs it shows is the text of the FDA Medication Guide of the person\'s medication, word for word (section 2.6).',
       '**No unit conversion, no selling of medication, no service for people under 18.**',
     ]),
   );
@@ -2451,7 +3013,8 @@ async function main(): Promise<void> {
 
   // Sections are built in reading order, because the item codes count up as they go.
   const intro = introSection();
-  const section2 = dangerSymptomSection(internals, triage);
+  const guides: GuideCounts = { guides: 0, items: 0, signs: 0 };
+  const section2 = [...dangerSymptomSection(internals, triage), ...guideSections(guides)];
   const section3 = hiddenTextsSection(hidden);
   const section4 = medicationSection(meds);
   const section5 = curveSection(curve);
@@ -2465,7 +3028,7 @@ async function main(): Promise<void> {
   }
 
   const questions = coded('Q');
-  const items = triage.rules + triage.triggers + coded('B') + coded('L') + coded('O') + coded('U') + coded('X') + hidden.copingLines + coded('A') + hidden.exercises + coded('M') + coded('P') + coded('S') + coded('N') + coded('F') + questions;
+  const items = triage.rules + triage.triggers + coded('B') + coded('L') + coded('O') + coded('U') + coded('X') + coded('Y') + coded('Z') + coded('T') + coded('I') + coded('K') + hidden.copingLines + coded('A') + hidden.exercises + coded('M') + coded('P') + coded('S') + coded('N') + coded('F') + questions;
   const launchCurveBrands = usBrands().filter((b) => curveAvailable(b.entry, LAUNCH, b.brand)).map((b) => b.brand);
   const contents = table(
     ['Section', 'What it holds', 'Size', 'In the first public version'],
@@ -2474,8 +3037,8 @@ async function main(): Promise<void> {
       [
         '2',
         'Danger-symptom rules',
-        `${plural(triage.rules, 'rule')}, ${plural(triage.cards, 'card text')}, ${plural(triage.triggers, 'trigger pattern')}, ${plural(triage.testPhrases + triage.probes, 'example phrase')}`,
-        `${LAUNCH.triageDetailCards ? 'Each rule shows its own card' : silentAtLaunch.length ? `Alerts show one fixed card; ${plural(silentAtLaunch.length, 'rule')} of a mild level ${silentAtLaunch.length === 1 ? 'shows' : 'show'} nothing (2.1)` : 'Alerts show one fixed card (2.1)'}. They come from the symptom buttons (2.2)${typedAtLaunch() ? ' and from typed text (2.3)' : ' only'}`,
+        `${plural(triage.rules, 'rule')}, ${plural(triage.cards, 'card text')}, ${plural(triage.triggers, 'trigger pattern')}, ${plural(triage.testPhrases + triage.probes, 'example phrase')}; ${plural(guides.guides, 'Medication Guide list')} with ${plural(guides.items, 'item')}, and ${plural(guides.signs, 'sign')} set against the rules`,
+        `${LAUNCH.triageDetailCards ? 'Each rule shows its own card' : silentAtLaunch.length ? `Alerts show one fixed card; ${plural(silentAtLaunch.length, 'rule')} of a mild level ${silentAtLaunch.length === 1 ? 'shows' : 'show'} nothing (2.1)` : 'Alerts show one fixed card (2.1)'}. They come from the symptom buttons (2.2)${typedAtLaunch() ? ' and from typed text (2.3)' : ' only'}${LAUNCH.guideWarningSigns ? '. The Medication Guide lists (2.6) are shown' : ''}`,
       ],
       ['3', 'Coping cards, daily advice, workouts', `${plural(hidden.copingCards, 'coping card')} (${plural(hidden.copingLines, 'line')}), ${plural(hidden.adviceTexts, 'daily advice text')}, ${plural(hidden.routines, 'workout')} (${plural(hidden.exercises, 'exercise')})`, !LAUNCH.copingCards && !LAUNCH.dailyAdvice && !LAUNCH.workouts ? 'Hidden until reviewed' : 'See each part'],
       [
@@ -2522,7 +3085,11 @@ async function main(): Promise<void> {
     if (hit >= 0) problems.push(`The packet would contain ${what} (line ${hit + 1}: ${packetLines[hit].slice(0, 160)}).`);
   }
   const launchCard = fixedAlertCard('US', 'en');
-  if (launchCard.title !== 'Contact your doctor right away' || launchCard.body !== 'What you logged can be a sign of a serious problem. Contact your doctor right away. If it is an emergency, call 911.') {
+  if (
+    launchCard.title !== 'Contact your doctor right away' ||
+    launchCard.body !== 'What you logged can be a sign of a serious problem. Contact your doctor right away. If it is an emergency, call 911.' ||
+    fixedAlertCard('US', 'en', true).body !== 'What you wrote can be a sign of a serious problem. Contact your doctor right away. If it is an emergency, call 911.'
+  ) {
     problems.push('The fixed launch card in src/core/alert.ts no longer has the wording set by the launch plan. If the plan changed, update this check in scripts/build-review-packet.ts.');
   }
 
@@ -2562,6 +3129,8 @@ async function main(): Promise<void> {
     `about ${pagesAsWord} pages`,
     `${triage.rules} danger-symptom rules`,
     `${triage.cards} card texts`,
+    `${guides.guides} Medication Guide lists`,
+    `${guides.items} guide items`,
     `${triage.triggers} trigger patterns`,
     `${hidden.copingCards} coping cards`,
     `${hidden.adviceTexts} daily advice texts`,
@@ -2581,7 +3150,7 @@ async function main(): Promise<void> {
   if (existsSync(README_FILE)) {
     // The owner's guide quotes the same sizes in its own words, so only the figures are looked for.
     const readme = readFileSync(README_FILE, 'utf8');
-    const figures = [words.toLocaleString('en-US'), items, pages, pagesAsWord, triage.rules, hidden.adviceTexts, hidden.exercises, meds.brands, questions].map(String);
+    const figures = [words.toLocaleString('en-US'), items, pages, pagesAsWord, triage.rules, hidden.adviceTexts, hidden.exercises, meds.brands, questions, guides.items].map(String);
     const missing = figures.filter((n) => !new RegExp(`(?<![\\d,])${n}(?![\\d,])`).test(readme));
     if (missing.length) notices.push(`README.md in docs/review does not quote these current sizes of the packet: ${missing.join(', ')}. Update it by hand.`);
   }
