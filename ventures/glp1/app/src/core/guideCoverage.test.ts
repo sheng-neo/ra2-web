@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { alertCards, alertHits, fixedAlertCard } from './alert';
-import { BUTTONS_THAT_RAISE_NOTHING, buttonItems, buttonRules, GENERAL_SIGN, guidesWithItem, ITEM_COVERAGE, NOT_FROM_A_GUIDE, OTHER_COVERAGE, reminderFor, ruleItems, showsLaunchCard } from './guideCoverage';
+import { BUTTONS_THAT_RAISE_NOTHING, buttonItems, buttonRules, GENERAL_SIGN, guidesWithItem, ITEM_COVERAGE, NOT_FROM_A_GUIDE, OTHER_COVERAGE, otherFor, QUIET_ON_PURPOSE, reminderFor, ruleItems, showsLaunchCard } from './guideCoverage';
 import { guideItems, MED_GUIDE_LIST, MED_GUIDE_OTHER, type GuideItemId, type GuideOtherKind, type MedGuideKey } from './medGuide';
 import { SYMPTOM_ORDER } from './symptoms';
 import { triageRuleLevels, triageSymptom, triageText, type TriageContext, type TriageId } from './triage';
@@ -108,6 +108,7 @@ describe('from the guides to the rules', () => {
       expect(oneSentence(row.reason), kind).toBe(true);
       // A reminder rule shows no card in the first public version.
       if (row.reminder) expect(showsLaunchCard(row.reminder), kind).toBe(false);
+      if (row.rule) expect(showsLaunchCard(row.rule), kind).toBe(true);
     }
     expect(reminderFor('pregnancy')).toEqual(['pregnancy', 'pregnancy_registry', 'breastfeeding'] satisfies GuideOtherKind[]);
     expect(reminderFor('procedure')).toEqual(['aspiration_anesthesia']);
@@ -120,7 +121,7 @@ describe('from the rules to the guides', () => {
     expect(GENERAL_SIGN).toBe('general emergency sign, not from a Medication Guide');
     for (const rule of ALL_RULES) {
       const whole = NOT_FROM_A_GUIDE.some((n) => n.rule === rule && n.whole);
-      const accounted = ruleItems(rule).length > 0 || reminderFor(rule).length > 0 || whole;
+      const accounted = ruleItems(rule).length > 0 || reminderFor(rule).length > 0 || otherFor(rule).length > 0 || whole;
       expect(accounted, rule).toBe(true);
       // A rule marked as a whole stands for no guide item, and the other way round.
       if (whole) expect(ruleItems(rule), rule).toEqual([]);
@@ -134,10 +135,11 @@ describe('from the rules to the guides', () => {
 
   it('a rule that shows a card in the first public version has a guide item behind it, or the mark with a reason', () => {
     const withCard = ALL_RULES.filter(showsLaunchCard);
-    expect(withCard.sort()).toEqual(['abdominal_pain_severe', 'anaphylaxis', 'chest_or_faint', 'crisis', 'dehydration', 'gallbladder', 'hypoglycemia', 'pancreatitis', 'thyroid', 'vision']);
-    for (const rule of withCard) expect(ruleItems(rule).length > 0 || NOT_FROM_A_GUIDE.some((n) => n.rule === rule && n.whole), rule).toBe(true);
-    // The only card rule with no guide item at all is the crisis rule, which keeps its own card.
-    expect(withCard.filter((rule) => ruleItems(rule).length === 0)).toEqual(['crisis']);
+    expect(withCard.sort()).toEqual(['abdominal_pain_severe', 'anaphylaxis', 'chest_or_faint', 'crisis', 'dehydration', 'gallbladder', 'hypoglycemia', 'overdose', 'pancreatitis', 'thyroid', 'vision']);
+    for (const rule of withCard) expect(ruleItems(rule).length > 0 || otherFor(rule).length > 0 || NOT_FROM_A_GUIDE.some((n) => n.rule === rule && n.whole), rule).toBe(true);
+    // The card rules with no guide item: the crisis rule, which keeps its own card, and the rule for taking too much, which stands for the guides' sentence about it.
+    expect(withCard.filter((rule) => ruleItems(rule).length === 0)).toEqual(['crisis', 'overdose']);
+    expect(otherFor('overdose')).toEqual(['overdose']);
     // The rules that show no card are the four reminders.
     expect(ALL_RULES.filter((r) => !showsLaunchCard(r)).sort()).toEqual(['contraception', 'eating_too_little', 'pregnancy', 'procedure']);
   });
@@ -154,7 +156,25 @@ describe('from the rules to the guides', () => {
       gallbladder: ['gallbladder'],
       thyroid: ['thyroid_tumors', 'allergic_reaction'],
       abdominal_pain_severe: ['pancreatitis', 'gallbladder', 'severe_stomach'],
+      overdose: [],
     });
+  });
+
+  it('the rule for taking too much stands for the guides\' sentence about it, and shows the fixed card in every build', () => {
+    const fixed = fixedAlertCard('US', 'en');
+    for (const typed of ['I think I took too much', 'double dosed', 'took my shot twice today']) {
+      const hits = triageText(typed, ctx);
+      expect(hits.map((h) => h.id), typed).toContain('overdose');
+      expect(hits.find((h) => h.id === 'overdose')?.fixedCard, typed).toBe(true);
+      for (const detail of [false, true]) expect(alertCards(alertHits(hits, detail), 'US', 'en', detail).map((c) => c.card), `${typed} / detail ${detail}`).toEqual([fixed]);
+    }
+  });
+
+  it('text that raises nothing on purpose has a reason, and really raises nothing', () => {
+    for (const q of QUIET_ON_PURPOSE) {
+      expect(oneSentence(q.reason), q.what).toBe(true);
+      for (const typed of q.examples) expect(triageText(typed, ctx), typed).toEqual([]);
+    }
   });
 
   it('the parts kept without a guide behind them really are in no guide', () => {

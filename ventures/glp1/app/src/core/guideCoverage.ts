@@ -8,8 +8,11 @@
  *   reason is written down, in one sentence;
  * - from the rules to the guides: which items each rule stands for (ruleBasis). A rule, or a
  *   part of a rule, that no guide item stands behind is listed in NOT_FROM_A_GUIDE with the
- *   reason it is kept. A rule that shows a card in the first public version must have one or
- *   the other; guideCoverage.test.ts fails otherwise.
+ *   reason it is kept. The rule for taking too much stands for one of the guides' other
+ *   instructions instead (OTHER_COVERAGE, `rule`). A rule that shows a card in the first public
+ *   version must have one of these; guideCoverage.test.ts fails otherwise.
+ * - text that raises nothing on purpose, though a reviewer may expect a card, is listed in
+ *   QUIET_ON_PURPOSE with the reason (low mood without words about self-harm).
  *
  * The rules are the English text rules and the symptom buttons at "Severe". The Chinese
  * phrase lists are not covered here.
@@ -168,6 +171,8 @@ export const ITEM_COVERAGE: ItemCoverage[] = [
 export interface OtherCoverage {
   /** A reminder rule that matches text about it. It shows no card in the first public version. */
   reminder?: TriageId;
+  /** A rule that raises the card when a person says it has happened to them. */
+  rule?: TriageId;
   /** Why no rule raises the card for it, in one sentence. */
   reason: string;
 }
@@ -181,7 +186,10 @@ export const OTHER_COVERAGE: Record<GuideOtherKind, OtherCoverage> = {
   birth_control: { reminder: 'contraception', reason: 'Not a sign: something to talk over with the healthcare provider. The reminder rule applies to tirzepatide only.' },
   medicines: { reason: 'Not a sign: the patient is asked to tell the healthcare provider about other medicines.' },
   diabetes_medicines: { reason: 'Not a sign: the patient is asked to talk about low blood sugar and diabetes medicines before starting.' },
-  overdose: { reason: 'Taking too much is an event, not a sign, and the app has no rule for it. The screen shows the sentence word for word as a third part. The guides say to call the healthcare provider or the Poison Help line, or to go to the nearest emergency room, right away.' },
+  overdose: {
+    rule: 'overdose',
+    reason: 'Taking too much is an event, not a sign; the rule for it raises the fixed card when a person writes that they took too much, and the screen shows the sentence word for word as a third part. The guides say to call the healthcare provider or the Poison Help line, or to go to the nearest emergency room, right away.',
+  },
   missed_doses: { reason: 'Not a sign. The app gives no advice about missed doses and has no rule for them.' },
   side_effects_general: { reason: 'A general instruction about side effects, with no sign of its own.' },
 };
@@ -215,9 +223,9 @@ export const NOT_FROM_A_GUIDE: NotFromAGuide[] = [
   },
   {
     rule: 'dehydration',
-    part: 'passing very little urine',
+    part: 'passing very little urine, and dark brown urine',
     whole: false,
-    reason: 'The guides warn of "dehydration leading to kidney problems" but name no sign about urine; passing very little urine is kept as a sign of that dehydration.',
+    reason: 'The guides warn of "dehydration leading to kidney problems" but name no sign about urine; passing very little urine, and urine as dark as tea or cola, are kept as signs of that dehydration.',
   },
   {
     rule: 'abdominal_pain_severe',
@@ -230,6 +238,24 @@ export const NOT_FROM_A_GUIDE: NotFromAGuide[] = [
     part: 'the whole rule',
     whole: true,
     reason: 'No guide has an item about eating very little for days; the rule is a reminder of the full test build and shows no card in the first public version.',
+  },
+];
+
+export interface QuietOnPurpose {
+  /** What a person may write. */
+  what: string;
+  /** Phrases of that kind, each of which raises nothing today. */
+  examples: string[];
+  /** Why no rule raises the card for it, in one sentence. */
+  reason: string;
+}
+
+/** Kinds of text that raise nothing on purpose, though a reviewer may expect a card. */
+export const QUIET_ON_PURPOSE: QuietOnPurpose[] = [
+  {
+    what: 'Low mood or depression, without words about harming oneself',
+    examples: ['I feel hopeless', 'depressed', 'Feeling very depressed lately, can\'t get out of bed', 'feel so down, crying all the time since starting'],
+    reason: 'No item of the seven guides names low mood or depression (only "irritability or mood changes", as a sign of low blood sugar), and the self-harm rule is kept to words about ending one\'s life or harming oneself, so the app raises no card; the reviewer is asked whether it should.',
   },
 ];
 
@@ -261,6 +287,11 @@ export function ruleItems(rule: TriageId): GuideItemId[] {
 export function reminderFor(rule: TriageId): (GuideItemId | GuideOtherKind)[] {
   const kinds = (Object.keys(OTHER_COVERAGE) as GuideOtherKind[]).filter((k) => OTHER_COVERAGE[k].reminder === rule);
   return [...ITEM_COVERAGE.filter((c) => c.reminder === rule).map((c) => c.item), ...kinds];
+}
+
+/** The other instructions of the guides a rule raises the card for (OTHER_COVERAGE). */
+export function otherFor(rule: TriageId): GuideOtherKind[] {
+  return (Object.keys(OTHER_COVERAGE) as GuideOtherKind[]).filter((k) => OTHER_COVERAGE[k].rule === rule);
 }
 
 /** Whether a rule shows a card in the first public version, at any level it can have. */

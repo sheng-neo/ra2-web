@@ -3,6 +3,7 @@
  * 原则：宁可多提醒，不可漏掉。文案统一为"可能需要尽快看医生"，不做诊断。
  * 【上线前必须由医生或药师审核】关键词、级别和卡片文案。
  */
+import { fixedAlertCard } from './alert';
 import type { Region } from './catalog';
 import type { Lang } from './i18n';
 
@@ -22,7 +23,8 @@ export type TriageId =
   | 'procedure'
   | 'contraception'
   | 'eating_too_little'
-  | 'abdominal_pain_severe';
+  | 'abdominal_pain_severe'
+  | 'overdose';
 
 export interface TriageContext {
   /** 在用胰岛素或磺脲类降糖药。 */
@@ -120,9 +122,9 @@ const fx = (re: RegExp): RegExp => {
  * match Chinese text.
  */
 const EN_SPELLING: [RegExp, string][] = [
-  [/\b(?:passd|pased|past)\s+out\b(?!\s+of\b)/gi, 'passed out'],
+  [/\b(?:passd|pased|past)\s+out\b(?!\s+(?:of|the|front|back|to)\b)/gi, 'passed out'],
   [/\bpassed-out\b/gi, 'passed out'],
-  [/\b(?:fanted|fainetd|faintd|feinted)\b/gi, 'fainted'],
+  [/\b(?:fanted|fainetd|faintd)\b/gi, 'fainted'],
   [/\blost\s+(?:my\s+)?conscience\b/gi, 'lost consciousness'],
   [/\b(?:conciousness|consiousness|conciousnes|consciousnes|conscousness)\b/gi, 'consciousness'],
   [/\buncon(?:c|s)ious\b/gi, 'unconscious'],
@@ -135,12 +137,14 @@ const EN_SPELLING: [RegExp, string][] = [
   [/\bswol+en\b/gi, 'swollen'],
   [/\bswel+ing\b/gi, 'swelling'],
   [/\b(?:throte|throath|thoat|troat)\b/gi, 'throat'],
-  [/\bbreth(e|ing)?\b/gi, 'breath$1'],
+  [/\bbre+th(e|ing)?\b/gi, 'breath$1'],
   [/\bvom+it+ing\b/gi, 'vomiting'],
   [/\bvom+it+ed\b/gi, 'vomited'],
   [/\bthrowin\b'?/gi, 'throwing'],
+  [/\bthrone\s+up\b/gi, 'threw up'],
   [/\bpukin\b'?/gi, 'puking'],
   [/\bd[iy]a+h?r+h*o?[ei]+a+h?\b/gi, 'diarrhea'],
+  [/\b(?:die|dia|dye)\s+(?:a\s+)?rh?ea[rh]?\b/gi, 'diarrhea'],
   [/\b(?:naseous|nasious|nautious|nauseas|nauscious|nausous|nasueous|nauesous|nauseaous)\b/gi, 'nauseous'],
   [/\b(?:nausia|nasea|nausa|nausua|nausae)\b/gi, 'nausea'],
   [/\b(?:servere|sevre|sevear|seveer|severre|sevier)\b/gi, 'severe'],
@@ -154,11 +158,26 @@ const EN_SPELLING: [RegExp, string][] = [
   [/\b(?:horsness|hoarsness|horseness)\b/gi, 'hoarseness'],
   [/\bhivs\b/gi, 'hives'],
   [/\bpanc?r[ei]at[ia]t[iue]s\b/gi, 'pancreatitis'],
-  [/\b(?:siezure|seisure|seizer|seziure)(s?)\b/gi, 'seizure$1'],
+  [/\b(?:siezure|seisure|seziure)(s?)\b/gi, 'seizure$1'],
   [/\bdizy\b/gi, 'dizzy'],
   [/\bdizz?[iy]ness\b/gi, 'dizziness'],
   [/\b(?:stomac|stumach|stomich|stomack|stomch|stomahc)\b/gi, 'stomach'],
+  [/\bstumm?y\b/gi, 'tummy'],
+  [/\b(stomach|belly|tummy|abdomen|chest)\s+(?:pane|paint|payne)(s?)\b/gi, '$1 pain$2'],
   [/\babdomin\b/gi, 'abdomen'],
+  [/\byella\b/gi, 'yellow'],
+  // A short list of Spanish words for the key signs, as people mix them into English.
+  [/\bdolor\s+de\s+pecho\b/gi, 'chest pain'],
+  [/\bdolor\s+de\s+(?:est[oó]mago|barriga|panza)\b/gi, 'stomach pain'],
+  [/\b(?:me\s+)?duele\s+(?:mucho|demasiado)\b/gi, 'hurts so bad'],
+  [/\best[oó]mago\b/gi, 'stomach'],
+  [/\bvomitando\b/gi, 'vomiting'],
+  [/\btodo\s+el\s+d[ií]a\b/gi, 'all day'],
+  [/\b(?:(?:los|mis)\s+)?ojos\s+amarillos\b|\bamarillos?\s+(?:(?:los|mis)\s+)?ojos\b/gi, 'yellow eyes'],
+  [/\bhipoglucemia\b/gi, 'hypoglycemia'],
+  [/\bsudando\b/gi, 'sweating'],
+  [/\bno\s+puedo\s+respirar\b/gi, "I can't breathe"],
+  [/\bme\s+desmay[eé]\b/gi, 'I fainted'],
 ];
 
 /** The text with those spellings read as the words that were meant. */
@@ -190,7 +209,7 @@ const gap = (n: number) => String.raw`(?:(?!\b(?:no|not|never|without|${EN_NT})\
  * "not feeling", "no more". The lists are short on purpose. "no, I'm having chest pain" and
  * "I don't think it's chest pain" are not on them, so those still trigger.
  */
-const EN_FILL_HAVE = String.raw`(?:(?:have|having|had|has|got|get|getting|been|feel|feeling|felt|experiencing|experienced|any|a|an|the|my|more|really|actually|currently|new|sign|signs|kind|sort|of|in|with) )*`;
+const EN_FILL_HAVE = String.raw`(?:(?:have|having|had|has|got|get|getting|been|feel|feeling|felt|experiencing|experienced|take|took|taken|taking|inject|injected|give|gave|myself|any|a|an|the|my|more|really|actually|currently|new|sign|signs|kind|sort|of|in|with) )*`;
 const EN_FILL_NO = String.raw`(?:(?:more|new|real|any|longer|sign|signs|kind|sort|history|of|have|having|had|get|getting|feel|feeling) )*`;
 const EN_NOT = String.raw`(?:not|never|without|cannot|denies|denied|deny|[a-z]+n't|dont|doesnt|didnt|havent|hasnt|hadnt|isnt|wasnt|arent)`;
 const EN_NEGATED = new RegExp(
@@ -248,7 +267,7 @@ function negatedEn(text: string, index: number, end: number, alsoTrue?: RegExp):
 }
 
 /** Close family, friends and pets: the people a note is most often about when it is not about the writer. */
-const EN_KIN = String.raw`(?:dad|daddy|father|mom|mommy|mum|mother|husband|hubby|wife|spouse|partner|boyfriend|girlfriend|bf|gf|fiance|fiancee|son|daughter|kid|kids|kiddo|child|children|baby|toddler|brother|sister|sibling|aunt|auntie|uncle|cousin|niece|nephew|grandma|grandmother|granny|nana|grandpa|grandfather|granddad|grandson|granddaughter|friend|buddy|bestie|roommate|coworker|co-worker|colleague|boss|neighbor|neighbour|dog|cat|puppy|patient|client|student|classmate|teammate|customer|mother-in-law|father-in-law|parents?|family)`;
+const EN_KIN = String.raw`(?:dad|daddy|father|mom|mommy|mum|mother|husband|hubby|wife|spouse|partner|boyfriend|girlfriend|bf|gf|fiance|fiancee|son|daughter|kid|kids|kiddo|child|children|baby|toddler|brother|sister|sibling|aunt|auntie|uncle|cousin|niece|nephew|grandma|grandmother|granny|nana|grandpa|grandfather|granddad|grandson|granddaughter|friend|buddy|bestie|roommate|coworker|co-worker|colleague|boss|neighbor|neighbour|dog|cat|puppy|patient|client|student|classmate|teammate|customer|mother-in-law|father-in-law|sister-in-law|brother-in-law|in-laws?|stepdad|stepmom|stepson|stepdaughter|godmother|godfather|pastor|priest|minister|rabbi|teacher|coach|trainer|manager|landlord|landlady|tenant|grandparents?|parents?|family)`;
 /** Family words people write without "my": "mom has chest pain", "hubby's lips are swollen". */
 const EN_KIN_BARE = String.raw`(?:dad|daddy|father|mom|mommy|mum|mama|mother|husband|hubby|wife|wifey|sister|sis|brother|daughter|kiddo|grandma|granny|nana|grandpa|granddad|boyfriend|girlfriend|bf|gf|fiance|fiancee|neighbou?r|coworker|roommate|boss|cousin|aunt|auntie|uncle|niece|nephew)`;
 /**
@@ -261,7 +280,7 @@ const EN_SOMEONE_ELSE = new RegExp(
     String.raw`|\bthey(?:'re|'ve|'d)?(?![a-z'])` +
     String.raw`|\b${EN_KIN_BARE}(?:'s|s)?(?![a-z'])` +
     String.raw`|\b(?<theirs>his|her|their)(?![a-z'])` +
-    String.raw`|\b(?:a|this|that|some|one)\s+(?:friend|coworker|co-worker|colleague|neighbor|neighbour|relative|family\s+member|guy|man|woman|lady|girl|boy|person|stranger)(?:\s+of\s+(?:mine|ours))?(?![a-z])` +
+    String.raw`|\b(?:a|this|that|some|one|another)\s+(?:friend|coworker|co-worker|colleague|neighbor|neighbour|relative|family\s+member|guy|man|woman|lady|girl|boy|person|stranger|member|patient|kid|child|student|pastor|teacher|coach)(?:\s+of\s+(?:mine|ours))?(?![a-z])` +
     String.raw`|\bthe\s+(?:dog|cat|puppy|kitten|baby|kids?|toddler|wife|husband|hubby|missus)(?:'s|s)?(?![a-z])` +
     String.raw`|\b(?:(?:some|most|many|other)\s+)?(?:people|patients|users|folks)(?![a-z])` +
     String.raw`|\b(?:any|some|every)(?:one|body)(?![a-z])(?!\s+else)`,
@@ -272,6 +291,8 @@ const EN_FIRST_PERSON = /(?:^|[^a-z'])(?:i|i'm|i've|i'd|i'll|im|ive|me|my|mine|m
 /** Verbs after which the symptom is usually the writer's again: "my wife noticed ...", "they found ...". */
 const EN_REPORTS = /\b(?:sa(?:id|ys?)|told|tells?|thinks?|thought|notic(?:e|es|ed)|saw|sees?|ask(?:s|ed)?|mention(?:s|ed)?|worr(?:y|ies|ied)|concerned|scared|afraid|diagnosed|found|finds?|checked|tested|measured|suspect(?:s|ed)?|believes?|warn(?:s|ed)?|wants?|wanted|sent|rushed|took|drove|called|gave|made)\b/i;
 
+/** "in my group", "from my work", "at my church": a place the other person belongs to. */
+const EN_MY_PLACE = /\b(?:in|from|at|of|on|with)\s+my\s+(?:[a-z]+\s+)?(?:group|class|church|work|office|team|gym|building|street|neighborhood|neighbourhood|school|program|club|support\s+group|unit|ward|department|family|circle)\b/gi;
 /** "me and my husband", "I and my kids": the writer is one of them. Looked for right before the other person. */
 const EN_ME_AND = /(?:^|[^a-z'])(?:i|me|myself|both\s+of\s+us|we|us)\s+(?:and|&|plus|or)\s+$/i;
 /**
@@ -309,7 +330,7 @@ const EN_LONG_AGO = new RegExp(
   String.raw`\blast\s+(?:year|summer|winter|spring|autumn|christmas)\b|(?:\b(?<mine>my|a|the|that|another|one|bad|nasty)\s+)?\blast\s+fall\b` +
     String.raw`|\b(?:\d+|a|one|two|three|four|five|six|ten|few|couple(?:\s+of)?|several|many|some)\s+(?:years?|yrs?|decades?)\s+(?:ago|back)\b|\byears\s+ago\b` +
     String.raw`|\b(?:a\s+)?long\s+time\s+ago\b|\bages\s+ago\b|\b(?:back\s+)?in\s+(?<year>(?:19|20)\d\d)\b` +
-    String.raw`|\b(?:back\s+)?in\s+(?:college|high\s+school)\b|\bback\s+in\s+(?:school|the\s+day)\b|\bas\s+a\s+(?:kid|child|teen|teenager|baby|toddler)\b` +
+    String.raw`|\b(?:back\s+)?in\s+(?:college|high\s+school)\b|\bback\s+in\s+(?:school|the\s+day)\b|\bas\s+an?\s+(?:kid|child|teen|teenager|baby|toddler|newborn|infant|preteen|youngster|little\s+(?:kid|girl|boy))\b|\bat\s+birth\b|\bwhen\s+i\s+was\s+(?:born|pregnant\s+(?:with|before)\b)|\b(?:during|in)\s+my\s+(?:first|second|third|last|previous|other|earlier)\s+pregnanc(?:y|ies)\b` +
     String.raw`|\bwhen\s+i\s+was\s+(?:(?:a|in)\s+)?(?:kid|child|young|younger|little|teen|teenager|college|high\s+school|school|\d{1,2}\b(?!\s*(?:min|mins|minutes?|hours?|hrs?|miles?|mi\b|days?|weeks?|months?|lbs?|pounds?|kg|mg|units?|steps|reps|%|percent)))|\bgrowing\s+up\b`,
   'gi',
 );
@@ -318,7 +339,7 @@ const EN_USED_TO = /\bused\s+to\s+(?:get|have|be)\b|\bhistory\s+of\b/i;
 /** Words that put it in the present after all: "... last year and again today". */
 const EN_NOW = /\b(?:now|today|tonight|again|still|currently|lately|recently|yesterday|since|this\s+(?:morning|afternoon|evening|week|time)|last\s+night|earlier|is\s+back|are\s+back|came\s+back|come\s+back|same\s+(?:thing|pain|feeling))\b/i;
 /** "healed now", "fine now": the word "now" here says it is over. Taken out before EN_NOW is looked for. */
-const EN_OVER_NOW = /\b(?:all\s+)?(?:healed|fine|better|gone|ok|okay|good|resolved|well|recovered|normal|clear|cleared\s+up)\s+now\b|\bnow\s+(?:i'?m\s+|it'?s\s+)?(?:all\s+)?(?:healed|fine|better|ok|okay|good|gone)\b/gi;
+const EN_OVER_NOW = /\b(?:none|nothing|not\s+(?:once|one|any)|never\s+again|no\s+more|no\s+problems?|no\s+issues?|fine\s+ever)\s+since\b|\bhaven'?t\s+had\s+(?:one|any|it|them|another)\s+since\b|\b(?:all\s+)?(?:healed|fine|better|gone|ok|okay|good|resolved|well|recovered|normal|clear|cleared\s+up)\s+now\b|\bnow\s+(?:i'?m\s+|it'?s\s+)?(?:all\s+)?(?:healed|fine|better|ok|okay|good|gone)\b/gi;
 /** A verb in the present: "my stomach hurts", "I have", "can't". Used to tell a story of long ago from what is here now. */
 const EN_PRESENT = /\b(?:i'?m|i\s+am|i\s+have|i'?ve|is|are|am|can'?t|cannot|won'?t|doesn'?t|don'?t|hurts|keeps?|feels?|has|have|getting|having|feeling)\b/i;
 /** A verb in the past: "had", "couldn't", "vomited". */
@@ -380,7 +401,7 @@ const EN_GENERAL_QUESTION = new RegExp(
     // "I read that ...", "I heard about ...", "reading about ...", "googled ..."
     String.raw`|\bi\s+(?:read|heard|saw|was\s+told|keep\s+(?:reading|hearing|seeing))\s+(?:that|about|somewhere|online|(?:some\s+)?people|an?\s+(?:article|post|video|story))\b[^.;!?\n]*?` +
     String.raw`|\b(?:reading|read\s+up|googl(?:e|ed|ing)|research(?:ed|ing)?|look(?:ed|ing)\s+(?:up|into)|learn(?:ed|ing)\s+about)\b[^.;!?\n]*?` +
-    String.raw`|\b(?:read|saw|watched|heard)\s+(?:an?\s+|this\s+|that\s+|some\s+)?(?:article|post|video|story|study|thread|news|tiktok|podcast|documentary)\b[^.;!?\n]*?` +
+    String.raw`|\b(?:read|reading|saw|seeing|watched|watching|watch|heard|hearing|listening\s+to|listened\s+to)\s+(?:an?\s+|this\s+|that\s+|some\s+|the\s+)?(?:article|post|video|story|study|thread|news|tiktok|podcast|documentary|show|movie|film|episode|series|program|programme|lecture|talk|book)\b[^.;!?\n]*?` +
     // "people on reddit say it causes ...", "someone told me it can cause ..."
     String.raw`|\b(?:sa(?:y|ys|id)|told\s+(?:me|us)|claims?|heard|read|saw)\s+(?:that\s+)?${EN_IT}(?:(?:can|could|does|will|would|might|may)\s+)?${EN_CAUSE}\s+${EN_DET}` +
     // "how to prevent ..."
@@ -402,6 +423,8 @@ const EN_OWN_STATE = new RegExp(String.raw`\b(?:${EN_OWN_MY}|${EN_OWN_WORDS})\b`
 /** The same without "my": for the words after the symptom, where "my" may belong to anything ("passing out during my flight"). */
 const EN_OWN_SAID = new RegExp(String.raw`\b(?:${EN_OWN_WORDS})\b`, 'i');
 
+/** "know if I'm", "tell whether I am": the person asks how to tell, and says nothing about having it. */
+const EN_IF_I_AM = /\b(?:know|tell|sure|recogni[sz]e|check)\s+(?:if|whether)\s+(?:i'?m|im|i\s+am|i'?ve\s+got|i\s+have)\b/gi;
 /** After a general question, a sentence that says the person has it: "Does this cause chest pain? I have it now." */
 const EN_I_HAVE_IT = /\b(?:mine\s+(?:is|are|does|did|has|feels)\b|i\s+(?:have|had|get|got|feel)\s+(?:it|that|this|them|one|some)\b|i\s+think\s+i\s+(?:do|have|am)\b|i\s+do(?:\s+(?:get|have)\b|\s*(?:$|[.,;!?\n]))|having\s+(?:it|that|one|them)\b|(?:it|that)\s+(?:is|'s)\s+happening\b|me\s+too\b)/i;
 
@@ -447,6 +470,8 @@ const EN_NOT_YET = new RegExp(
     String.raw`|\b(?:don'?t|do\s+not|never)\s+(?:want|wanna)\s+(?:to\s+)?(?:end\s+up\s+with|get|develop|risk|deal\s+with)\b`,
   'gi',
 );
+/** "a lump in my neck someday": the time to come, said after the symptom. */
+const EN_SOMEDAY = /\b(?:someday|some\s+day|in\s+the\s+future|down\s+the\s+(?:road|line)|eventually|later\s+on|in\s+the\s+long\s+run)\b/i;
 /** "if I pass out call my wife", "if my throat swells I'll go to the ER": the "if" before the symptom, the instruction after it. */
 const EN_IF_BEFORE = /\bif\s+(?:i|my)\b(?:\s+[a-z']+){0,3}\s*$/i;
 const EN_THEN_AFTER = /^[a-z]*(?:\s+up|\s+out)?\s*,?\s*(?:then\s+)?(?:please\s+)?(?:call|tell|take\s+me|give\s+me|get\s+(?:me|my|help)|use\s+(?:my|the)|i'?ll|ill|i\s+will|i\s+would|i'?d)\b/i;
@@ -458,6 +483,8 @@ const EN_PILL = String.raw`(?:pills?|tablets?|capsules?|vitamins?|supplements?|m
 const EN_PILL_AFTER = new RegExp(String.raw`^[a-z]*\s+(?:(?:this|that|these|those|the|my|a|an|such|any|big|huge|large|giant|whole|bigger|larger|new|daily|morning|chalky|dry)\s+){0,4}${EN_PILL}\b`, 'i');
 const EN_PILL_BEFORE = new RegExp(String.raw`\b${EN_PILL}\s+(?:is|are|was|were|seems?|feels?|looks?|gets?|got)\b[^.;!?\n]{0,30}$`, 'i');
 /** "hard to swallow pills and food": food or drink is named too, so it is about swallowing after all. */
+/** Words that say swallowing has changed, so it is not about the size of a pill: "hard to swallow pills lately, feels like something stuck". */
+const EN_SWALLOW_NOW = /\b(?:lately|recently|now|still|stuck|anymore|any\s+more|these\s+days|getting\s+harder|harder\s+and\s+harder|since\s+(?:starting|i\s+started|last)|never\s+used\s+to)\b/i;
 const EN_FOOD_TOO = /\b(?:and|or|even|plus|also)\s+(?:even\s+|also\s+|now\s+)?(?:my\s+)?(?:food|water|liquids?|drinks?|anything|everything|saliva|spit)\b|\b(?:food|water|liquids?|drinks?)\s+(?:and|or|too|as\s+well)\b|\bso\s+does\s+(?:food|water)\b/i;
 
 /**
@@ -465,7 +492,7 @@ const EN_FOOD_TOO = /\b(?:and|or|even|plus|also)\s+(?:even\s+|also\s+|now\s+)?(?
  * "breathless with joy", "almost fainted when I saw the price".
  */
 const EN_FIGURE_AFTER =
-  /^[a-z]*\s+(?:with|from|in|of)\s+(?:all\s+the\s+|pure\s+|sheer\s+)?(?:excitement|joy|laughter|laughing|happiness|anticipation|delight|pride|relief)\b|^[a-z]*\s+(?:when|after)\s+i\s+(?:saw|heard|read|opened|looked\s+at|got)\s+(?:the|my|that|how\s+much)\s+(?:[a-z]+\s+)?(?:price|bill|cost|total|receipt|invoice|copay|co-pay|charge|weight|scale|number)\b|^[a-z]*\s+(?:at|over|from)\s+(?:the|that|this)\s+(?:price|bill|cost)\b|^[a-z]*\s+(?:i'?m|i\s+am)\s+so\s+excited\b|^[a-z]*\s+in\s+(?:these|this|my)\s+(?:jeans|pants|dress|bra|shirt|shapewear|corset)\b/i;
+  /^[a-z]*\s+(?:with|from|in|of)\s+(?:all\s+the\s+|pure\s+|sheer\s+)?(?:excitement|joy|laughter|laughing|happiness|anticipation|delight|pride|relief)\b|^[a-z]*\s+(?:when|after)\s+i\s+(?:saw|heard|read|opened|looked\s+at|got)\s+(?:the|my|that|how\s+much)\s+(?:[a-z]+\s+)?(?:price|bill|cost|total|receipt|invoice|copay|co-pay|charge|weight|scale|number)\b|^[a-z]*\s+(?:at|over|from)\s+(?:the|that|this)\s+(?:price|bill|cost)\b|^[a-z]*\s+(?:i'?m|i\s+am)\s+so\s+excited\b|^[a-z]*\s+in\s+(?:these|this|my)\s+(?:jeans|pants|dress|bra|shirt|shapewear|corset)\b|^[a-z]*\s+(?:after|from|on)\s+(?:the\s+|that\s+|a\s+|this\s+)?(?:spinning\s+|carnival\s+|fair\s+)?(?:ride|rides|roller\s?coaster|merry-go-round|carousel|teacups|tilt-a-whirl|swings?)\b|^[a-z]*\s+from\s+spinning\b/i;
 /** The same, said before the symptom: "laughing so hard I couldn't breathe", "that movie had my heart pounding". */
 const EN_FIGURE_BEFORE = /\b(?:laugh(?:ed|ing)|cried|crying)\s+so\s+hard\b[^.;!?\n]{0,15}$|\b(?:movie|show|game|book|ride|roller\s?coaster|trailer|episode)\s+(?:had|has|got|made)\s+my\s+$/i;
 /**
@@ -473,7 +500,7 @@ const EN_FIGURE_BEFORE = /\b(?:laugh(?:ed|ing)|cried|crying)\s+so\s+hard\b[^.;!?
  * breath and a pounding heart ("out of breath after my run"). Climbing stairs and walking are
  * not on the list.
  */
-const EN_EXERTION_AFTER = /^[a-z]*\s+(?:after|from|during|while|on)\s+(?:(?:my|the|a|that|this|some|an?\s+hour\s+of)\s+)?(?:(?:long|hard|morning|evening|quick|tough|intense)\s+)?(?:run|running|jog|jogging|workout|working\s+out|gym|cardio|sprint\w*|hiit|spin\s+class|treadmill|peloton|hike|hiking|leg\s+day|lifting|crossfit|zumba|burpees)\b/i;
+const EN_EXERTION_AFTER = /^[a-z]*\s+(?:after|from|during|while|on)\s+(?:(?:my|the|a|that|this|some|an?\s+hour\s+of)\s+)?(?:(?:long|hard|morning|evening|quick|tough|intense)\s+)?(?:run|running|jog|jogging|workout|working\s+out|gym|cardio|sprint\w*|hiit|spin\s+class|treadmill|peloton|hike|hiking|leg\s+day|lifting|crossfit|zumba|burpees|\d+\s?k|half\s+marathon|marathon|race|swim|swimming|bike\s+ride|cycling|spin|soccer|basketball|tennis|football|hockey|practice|training\s+session|dance\s+class|boxing|kickboxing|rowing)\b/i;
 
 /**
  * True when a match is clearly not about the person's own state now: it is about someone else,
@@ -481,7 +508,7 @@ const EN_EXERTION_AFTER = /^[a-z]*\s+(?:after|from|during|while|on)\s+(?:(?:my|t
  * warning, a fear, a plan), or about the size of a pill. Deliberately narrow, like negatedEn:
  * anything that is not one of these counts as the person's own.
  */
-function notOwnNowEn(text: string, index: number, end: number, questionsCount: boolean): boolean {
+function notOwnNowEn(text: string, index: number, end: number, questionsCount: boolean, crisis = false): boolean {
   const sentenceStart = Math.max(text.lastIndexOf('.', index - 1), text.lastIndexOf(';', index - 1), text.lastIndexOf('!', index - 1), text.lastIndexOf('?', index - 1), text.lastIndexOf('\n', index - 1)) + 1;
   const before = text.slice(sentenceStart, index);
   const after = text.slice(end).split(/[.;!?\n]/)[0];
@@ -505,7 +532,23 @@ function notOwnNowEn(text: string, index: number, end: number, questionsCount: b
     // "my husband cooked dinner and then severe stomach pain": after "and" a symptom named as a
     // thing, with no "has" or "had" before it to tie it to the person, starts a new statement.
     const newStatement = EN_AND_THEN.test(since) && !EN_HAS.test(since) && !EN_VERB_FIRST.test(text.slice(index, end));
-    if (about && !withMe && !newStatement && since.length <= 60 && !EN_FIRST_PERSON.test(since) && !EN_REPORTS.test(since) && !EN_I_HAVE_IT.test(said)) return true;
+    // "a lady in my group", "a guy from my work": "my" there belongs to the place, not to the writer.
+    const sinceOwn = since.replace(EN_MY_PLACE, ' ');
+    if (about && !withMe && !newStatement && since.length <= 60 && !EN_FIRST_PERSON.test(sinceOwn) && !EN_REPORTS.test(since) && !EN_I_HAVE_IT.test(said)) return true;
+  }
+
+  // Someone else as the subject of the part before a comma, and a symptom that goes on about them
+  // with no subject of its own: "My husband has the flu, throwing up all night, I'm fine."
+  if (clause.trim() === '' && !EN_FIRST_PERSON.test(text.slice(index, end)) && /^[a-z]+ing\b/i.test(text.slice(index, end))) {
+    const parts = before.split(/[,:()]/);
+    const prev = parts.length >= 2 ? parts[parts.length - 2] : '';
+    for (const other of prev.matchAll(new RegExp(EN_SOMEONE_ELSE.source, 'gi'))) {
+      const lead = prev.slice(0, other.index);
+      const since = prev.slice(other.index + other[0].length);
+      const subject = other.groups?.pronoun !== undefined || EN_SUBJECT_LEAD.test(lead);
+      if (subject && !EN_ME_AND.test(lead) && !EN_FIRST_PERSON.test(since.replace(EN_MY_PLACE, ' ')) && !EN_REPORTS.test(since) && !EN_I_HAVE_IT.test(said)) return true;
+      break;
+    }
   }
 
   if (EN_IN_THE_FAMILY.test(after)) return true;
@@ -516,7 +559,7 @@ function notOwnNowEn(text: string, index: number, end: number, questionsCount: b
   // A sentence that opens with the time and goes on in the past, with no verb in the present,
   // is a story of long ago ("back in 2020 I had covid and couldn't breathe").
   const nowSaid = EN_NOW.test(sentence.replace(EN_OVER_NOW, ' '));
-  if (!nowSaid) {
+  if (!nowSaid && !crisis) {
     const parts = before.split(EN_CLAUSE_BREAK);
     const ownPart = (parts.pop() ?? '') + text.slice(index, end) + after.split(EN_CLAUSE_BREAK)[0];
     const lead = parts.pop() ?? '';
@@ -530,7 +573,8 @@ function notOwnNowEn(text: string, index: number, end: number, questionsCount: b
   if (!questionsCount) {
     // A general question, unless the rest of the sentence says the person has it.
     const question = EN_GENERAL_QUESTION.exec(before) ?? (EN_A_SIDE_EFFECT.test(after) ? EN_IS_IT.exec(before) : null);
-    if (question && !EN_OWN_STATE.test(sentence) && !EN_I_HAVE_IT.test(said)) return true;
+    // In "how do I know if I'm dehydrated" the "I'm" belongs to the question.
+    if (question && !EN_OWN_STATE.test(sentence.replace(EN_IF_I_AM, ' ')) && !EN_I_HAVE_IT.test(said)) return true;
 
     // A warning, a thing to watch for, a note to ask about a topic, a fear: unless the words after it say the person has it.
     // A frame may end inside the match ("afraid I might faint": the symptom pattern starts at "might").
@@ -545,15 +589,17 @@ function notOwnNowEn(text: string, index: number, end: number, questionsCount: b
       if (!/\sbut\s/i.test(before.slice(topicEnd)) && !own && !EN_I_HAVE_IT.test(said)) return true;
     }
 
+    if (crisis) return false;
     // Something that has not happened: unless the sentence has words for the present.
     let notYet = false;
     for (const m of upTo.matchAll(new RegExp(EN_NOT_YET.source, 'gi'))) if (m.index < before.length) notYet = !/\sbut\s/i.test(before.slice(m.index + m[0].length));
     if (!notYet) notYet = EN_IF_BEFORE.test(before) && EN_THEN_AFTER.test(text.slice(end));
+    if (!notYet) notYet = EN_SOMEDAY.test(after);
     if (notYet && !EN_HERE_NOW.test(sentence) && !EN_I_HAVE_IT.test(said)) return true;
   }
 
   // The size of a pill.
-  if (/swallow/i.test(text.slice(index, end)) && (EN_PILL_AFTER.test(text.slice(end)) || EN_PILL_BEFORE.test(before)) && !EN_FOOD_TOO.test(sentence)) return true;
+  if (/swallow/i.test(text.slice(index, end)) && (EN_PILL_AFTER.test(text.slice(end)) || EN_PILL_BEFORE.test(before)) && !EN_FOOD_TOO.test(sentence) && !EN_SWALLOW_NOW.test(text.slice(sentenceStart, end + after.length + 60))) return true;
   // A figure of speech.
   if (EN_FIGURE_AFTER.test(text.slice(end)) || EN_FIGURE_BEFORE.test(before)) return true;
   // Out of breath, or a pounding heart, from hard exercise.
@@ -571,7 +617,7 @@ function notOwnNowEn(text: string, index: number, end: number, questionsCount: b
  * ahead, birth control pills, eating very little). A general question counts for them: "can I
  * get pregnant while taking this?" is what the reminder is for.
  */
-function anyEn(text: string, res: RegExp[], alsoTrue?: RegExp, reminder = false): false | 'card' | 'fixed' {
+function anyEn(text: string, res: RegExp[], alsoTrue?: RegExp, reminder = false, keepWhenOver = false): false | 'card' | 'fixed' {
   let found: false | 'fixed' = false;
   for (const re of res) {
     const fixed = FIXED_CARD.has(re);
@@ -580,7 +626,7 @@ function anyEn(text: string, res: RegExp[], alsoTrue?: RegExp, reminder = false)
     let m: RegExpExecArray | null;
     while ((m = g.exec(text))) {
       const end = m.index + m[0].length;
-      if (m.groups?.skip === undefined && !negatedEn(text, m.index, end, alsoTrue) && !notOwnNowEn(text, m.index, end, reminder)) {
+      if (m.groups?.skip === undefined && !negatedEn(text, m.index, end, alsoTrue) && !notOwnNowEn(text, m.index, end, reminder) && (keepWhenOver || !overAfter(text, end))) {
         if (!fixed) return 'card';
         found = 'fixed';
         break;
@@ -591,7 +637,28 @@ function anyEn(text: string, res: RegExp[], alsoTrue?: RegExp, reminder = false)
   return found;
 }
 
-const EN_BELLY = String.raw`(?:stomache?|abdomen|abdominal|belly|tummy|gut|abd|epigastric)`;
+/**
+ * Words right after a symptom that say it is over: "dizziness passed", "blurry vision went away
+ * after I rested", "the nausea stopped". Not when a negation stands in front of them ("hasn't
+ * stopped") or the symptom comes back ("went away then came back"). The rules for chest pain or
+ * fainting and for a serious allergic reaction do not look for these words: such a sign counts
+ * even when it has passed.
+ */
+const EN_OVER = /\b(?:passed(?!\s+(?:out|a|an|the|my|blood|gas|stool|stools|it|them)\b)|went\s+away|go(?:ne|es)\s+away|(?:is|was|has|had|'s)\s+(?:all\s+)?gone|gone\s+now|resolved|cleared\s+up|stopped(?!\s+(?:[a-z]+ing|me|my|the|it|to|for)\b)|eased(?:\s+(?:off|up))?|subsided|settled(?:\s+down)?|wore\s+off|got\s+better|is\s+better|faded|disappeared|(?:is|was)\s+over|over\s+now|went\s+back\s+to\s+normal|(?:came|went|is|got)\s+back\s+up|back\s+(?:up\s+)?to\s+normal|back\s+in\s+range|(?:then|now|and)\s+(?:i'?m\s+|i\s+feel\s+|felt\s+|was\s+|feeling\s+)?(?:fine|ok|okay|better|good|normal))\b/gi;
+/** A negation right before those words: "hasn't stopped", "never went away". */
+const EN_OVER_NOT = /(?:\b(?:not|never|no|nt|hasnt|havent|hadnt|didnt|wont|isnt|wasnt|doesnt)|n't)\s+(?:(?:really|even|yet|fully|completely|totally|quite|been|had)\s+)*$/i;
+function overAfter(text: string, end: number): boolean {
+  const rest = text.slice(end).split(/[.;!?\n]/)[0];
+  for (const m of rest.matchAll(new RegExp(EN_OVER.source, 'gi'))) {
+    if (m.index > 30) break;
+    if (EN_OVER_NOT.test(rest.slice(0, m.index))) continue;
+    // "went away then came back", "stopped but it is back again"
+    return !/\b(?:came\s+back|comes\s+back|coming\s+back|is\s+back|back\s+again|again|returned|worse|still)\b/i.test(rest.slice(m.index + m[0].length));
+  }
+  return false;
+}
+
+const EN_BELLY = String.raw`(?:stomache?|abdomen|abdominal|belly|tummy|gut|abd|epigastric|pancreas|pancreatic)`;
 const EN_SEVERE = String.raw`(?:severe|severely|unbearable|excruciating|terrible|horrible|awful|intense|extreme|agonizing|horrendous|brutal|really bad|very bad|so bad|super bad|real bad|extremely bad|worst)`;
 const EN_HURT = String.raw`(?:pains?|aches?|aching|hurts?|hurting|cramps?|cramping)`;
 const EN_TO_BACK = String.raw`(?:\b(?:to|into|through|toward|towards|in|around|round)\s+(?:my\s+|the\s+)?(?:upper\s+|lower\s+|middle\s+|mid\s+)?back\b(?!\s+(?:yard|seat|room|door|porch|office)\b)|\b(?:and|plus|with|also)\s+(?:now\s+|then\s+|also\s+)?(?:in\s+|to\s+)?(?:my\s+)?(?:upper\s+|lower\s+|middle\s+|mid\s+)?back\b(?!\s+(?:to|from|at|on|home|again|in)\b)|\bback\s+(?:also\s+|too\s+|is\s+)?(?:hurts?|hurting|aches?|aching|pain)\b)`;
@@ -599,7 +666,7 @@ const EN_TO_BACK = String.raw`(?:\b(?:to|into|through|toward|towards|in|around|r
 const EN_NEXT_SENTENCE = String.raw`(?:[.;:!?\n]+\s*${gap(40)})?`;
 const EN_VOMIT = String.raw`(?:vomit(?:s|ed|ing)?|throw(?:s|ing)?\s+up|threw\s+up|thrown\s+up|puk(?:e|es|ed|ing)|barf(?:s|ed|ing)?|hurl(?:s|ed|ing)|retch(?:es|ed|ing)?|dry\s+heav(?:e|es|ed|ing))`;
 /** "diarrhea" with the misspellings people type ("diarrea", "diarhea", "diarreah"), and the everyday words for it. */
-const EN_RUNS = String.raw`(?:diar+h?o?e+a+h?|the\s+runs|the\s+squirts|(?:loose|watery|liquid)\s+(?:stools?|poops?|bowel\s+movements?)|pooping\s+(?:water|liquid))`;
+const EN_RUNS = String.raw`(?:diar+h?o?e+a+h?|the\s+runs|the\s+squirts|(?:loose|watery|liquid)\s+(?:stools?|poops?|bowel\s+movements?)|pooping\s+(?:water|liquid)|(?:running|run|ran|rushing|rushed)\s+to\s+the\s+(?:bathroom|toilet|restroom|loo))`;
 const EN_NAUSEA = String.raw`(?:naus(?:ea|eous|eated|ious|eus)|nasuea|queas(?:y|iness)|sick\s+to\s+my\s+stomach)`;
 /** A count of days or weeks: "3 days", "two weeks", "a few days". */
 const EN_N_DAYS = String.raw`(?:(?:(?:x\s?)?\d+|two|three|four|five|six|seven|a\s+few|several|a\s+couple(?:\s+of)?)\s+(?:days|weeks))`;
@@ -610,13 +677,13 @@ const EN_DAY_N = String.raw`(?:day\s+(?:\d+|two|three|four|five|six|seven)\b|(?:
  * and "that does not go away". One day ("all day") is not on this list.
  */
 const EN_WONT_GO_AWAY = String.raw`(?:\b(?:won'?t|will\s+not|doesn'?t|does\s+not|don'?t|do\s+not|didn'?t|isn'?t|is\s+not|hasn'?t|has\s+not|haven'?t|have\s+not|ain'?t|not|never)\s+(?:been\s+able\s+to\s+|seem\s+to\s+)?(?:go(?:ing|ne|es)?\s+away|stop(?:s|ped|ping)?|let(?:ting)?\s+up|eas(?:e|ed|ing)(?:\s+up)?|quit(?:ting)?|end(?:ed|ing)?|slow(?:ed|ing)?\s+down|(?:get(?:ting)?\s+|gotten\s+)?(?:any\s+)?better|improv(?:e|ed|ing))\b|\bstill\s+(?:there|here|going|the\s+same)\b|\b(?:constant(?:ly)?|non-?stop|persistent|never-?ending)\b|\ball\s+the\s+time\b|\bday\s+and\s+night\b|\bevery\s+(?:single\s+)?day\b|\bfor\s+(?:(?:\d+|two|three|four|five|six|seven|a\s+few|several|many|a\s+couple(?:\s+of)?)\s+)?(?:days|weeks)\b|\bfor\s+(?:a|over\s+a|more\s+than\s+a|about\s+a|almost\s+a|the\s+(?:past|last|whole|entire))\s+week\b|\ball\s+week\b|\b(?:\d+|two|three|four|five|six|seven)\s+days\s+(?:straight|in\s+a\s+row|now|running)\b|\bbeen\s+(?:over\s+|almost\s+|about\s+)?(?:\d+|two|three|four|five|six|seven|a\s+few|several)\s+days\b|\bsince\s+(?:last\s+)?(?:mon|tues|wednes|thurs|fri|satur|sun)day\b|\bsince\s+last\s+week(?:end)?\b)`;
-/** Words that call a symptom slight. A pattern reads them into its `skip` group, and the match then does not count. */
-const EN_MILD = String.raw`(?:(?:just\s+|only\s+)?(?:a\s+(?:little|tiny|wee)(?:\s+bit)?|(?:tiny|little|wee)\s+bit|a\s+bit|a\s+tad|a\s+touch|slightly|mildly|mild|kind\s+of|kinda|sort\s+of|somewhat|less|not\s+(?:too|very|that|so|really|as))(?:\s+(?:less|more))?)`;
+/** Words that call a symptom slight. A pattern reads them into its `skip` group, and the match then does not count. "A little more dizzy" says worse, not slight: "more" is not on the list. */
+const EN_MILD = String.raw`(?:(?:just\s+|only\s+)?(?:a\s+(?:little|tiny|wee)(?:\s+bit)?|(?:tiny|little|wee)\s+bit|a\s+bit|a\s+tad|a\s+touch|slightly|mildly|mild|kind\s+of|kinda|sort\s+of|somewhat|less|not\s+(?:too|very|that|so|really|as))(?:\s+less)?)`;
 /** The same, said after the symptom: "heart racing a bit". */
 const EN_MILD_AFTER = String.raw`(?!\s+(?:a\s+(?:little\s+)?bit|a\s+little|a\s+tad|slightly)\b)`;
 /** "less out of breath than before", "not as short of breath": better, not worse. */
 const EN_LESS = String.raw`(?:less|not\s+as|not\s+so|no\s+longer)`;
-const EN_LONG_OR_OFTEN = String.raw`(?:\ball\s+(?:day|night|morning|afternoon|evening|week|weekend)\b|\bevery\s+(?:hour|half\s+hour|(?:\d+|few|couple(?:\s+of)?)\s+(?:minutes|mins?|hours))\b|\bnon-?stop\b|\bconstantly\b|\b(?:won'?t|can'?t|cannot)\s+stop\b|\bover\s+and\s+over\b|\bfor\s+(?:(?:\d+|two|three|four|five|six|seven|a\s+few|several|many)\s+)?days\b|\b(?:24|48|72)\s+hours\b|\bsince\s+(?:yesterday|last\s+night)\b|\b(?:[5-9]|\d{2,}|five|six|seven|eight|nine|ten|several|many|multiple|countless|so\s+many)\s+times\b)`;
+const EN_LONG_OR_OFTEN = String.raw`(?:\ball\s+(?:day|night|morning|afternoon|evening|week|weekend)\b|\bfor\s+(?:(?:\d+|two|three|four|five|six|several|many|a\s+few|a\s+couple(?:\s+of)?)\s+)?hours\b|\bsince\s+(?:last\s+)?(?:mon|tues|wednes|thurs|fri|satur|sun)day\b|\b(?:[5-9]|\d{2,})\s?x\b|\bx\s?(?:[5-9]|\d{2,})\b|\bevery\s+(?:hour|half\s+hour|(?:\d+|few|couple(?:\s+of)?)\s+(?:minutes|mins?|hours))\b|\bnon-?stop\b|\bconstantly\b|\b(?:won'?t|can'?t|cannot)\s+stop\b|\bover\s+and\s+over\b|\bfor\s+(?:(?:\d+|two|three|four|five|six|seven|a\s+few|several|many)\s+)?days\b|\b(?:24|48|72)\s+hours\b|\bsince\s+(?:yesterday|last\s+night)\b|\b(?:[5-9]|\d{2,}|five|six|seven|eight|nine|ten|several|many|multiple|countless|so\s+many)\s+times\b)`;
 const EN_DIZZY = String.raw`(?:\bdizzy\b|\blight-?\s?headed\b|\bblack(?:s|ed)?\s+out\b|\b(?:vision|everything)\s+(?:goes|went|going|gets|got)\s+(?:dark|black|dim)\b|\bsee(?:ing)?\s+(?:black|stars|spots)\b|\b(?:almost|nearly)\s+(?:pass(?:ed)?\s+out|faint(?:ed)?)\b)`;
 const EN_RUQ = String.raw`(?:(?:upper\s+right|right\s+upper|top\s+right)\s+(?:(?:side|part|area)\s+of\s+(?:my\s+|the\s+)?)?(?:stomach|abdomen|abdominal|belly|tummy|quadrant)\b|(?:upper\s+right|right\s+upper)\s+side\b(?!\s+of\s+(?:my\s+|the\s+)?(?:arm|leg|thigh|back|chest|neck|head|face|shoulder|hip|knee))|right\s+(?:side\s+)?rib(?:s|\s*cage)?\b|right\s+side\s+(?:just\s+)?(?:under|below|beneath|by|near)\s+(?:my\s+|the\s+)?rib(?:s|\s*cage)?\b|(?:under|below|beneath)\s+(?:my\s+|the\s+)?rib(?:s|\s*cage)?\s+on\s+(?:my\s+|the\s+)?right\b)`;
 const EN_ALL_OVER = String.raw`all\s+over\b(?!\s+(?:my|the|one|both|this|that)\s+(?!(?:whole\s+|entire\s+)?body\b))`;
@@ -631,29 +698,60 @@ const EN_VERY = String.raw`(?:(?:so|really|very|pretty|quite|getting|just|still|
 const EN_IS_SEVERE = String.raw`(?:${EN_AUX}\s+${EN_VERY}(?:severe|unbearable|excruciating|awful|terrible|horrible|intense|insane|agonizing|brutal|out\s+of\s+control|off\s+the\s+charts|through\s+the\s+roof|the\s+worst)\b|${EN_AUX}\s+(?:(?:getting|just|still)\s+)*(?:so|really|very|extremely|super|real|pretty)\s+bad\b)`;
 /** The same for pain, where plain "bad" and "worse" count too: "my stomach pain is bad", "getting worse and worse". */
 const EN_IS_BAD = String.raw`(?:${EN_IS_SEVERE}|${EN_AUX}\s+${EN_VERY}(?:bad|worse(?:\s+and\s+worse)?)\b|\bgetting\s+worse\b)`;
+/** Words between "heart rate" or "pulse" and a number: "pulse is 130", "heart rate keeps going over 120". */
+const HR_FILL = String.raw`(?:\s+(?:is|was|at|of|over|above|around|about|like|keeps|kept|going|went|goes|up|to|reading|reads|says|said|showing|shows|showed|hit|hits|stays|staying|still|currently|now|always|already|constantly))*`;
 /** A place in the belly, or on the chest: "the middle of my", "the left side of my". */
 const EN_PART_OF = String.raw`(?:the\s+)?(?:(?:left|right|middle|center|centre|upper|lower|whole)\s+)?(?:(?:side|part)\s+)?(?:of\s+)?(?:my\s+|the\s+)?`;
 
-/** No negation check here on purpose: "I don't want to die" still gets the support card. */
+/**
+ * Words about ending one's life or harming oneself. Every alternative stands as whole words
+ * ("I want to diet" is not "want to die", "blend it all" is not "end it all"). A plain "no" or
+ * "not" in front does not stop it: "I don't want to die" still gets the support card. Only the
+ * narrow cases in crisisCounts() do (CRISIS_NOT_OWN).
+ */
 const EN_CRISIS = new RegExp(
-  '(' +
-    String.raw`suicid|kill(?:ing|ed)?\s+my\s?self|(?:to|gonna|wanna|will|could|should|might)\s+off\s+my\s?self|unalive` +
-    String.raw`|end(?:ing)?\s+my\s+(?:own\s+)?life|tak(?:e|ing)\s+my\s+(?:own\s+)?life` +
-    String.raw`|want(?:ed)?\s+to\s+die|wanna\s+die|wish\s+i\s+(?:was|were)\s+dead|better\s+off\s+(?:dead|without\s+me)` +
-    String.raw`|(?:don'?t|do\s+not)\s+want\s+to\s+(?:live|be\s+alive)` +
-    String.raw`|no\s+(?:reason|point)\s+(?:to\s+live|in\s+living)|(?:don'?t|do\s+not|can'?t|cannot)\s+see\s+(?:the|a|any)\s+point\s+(?:in|of|to)\s+(?:living|life|going\s+on|being\s+(?:here|alive))|what'?s\s+the\s+point\s+(?:in|of)\s+(?:living|life|going\s+on)` +
-    String.raw`|life\s+is(?:n'?t|\s+not)\s+worth\s+(?:living|it)|not\s+worth\s+living` +
-    String.raw`|(?:want(?:ed)?\s+to|going\s+to|thinking\s+(?:about|of)|thoughts\s+of|urge\s+to|tr(?:y|ied|ying)\s+to|attempt(?:ed|ing)?\s+to)\s+(?:hurt|harm|kill)(?:ing)?\s+my\s?self|self[-\s]?harm` +
-    String.raw`|cutting\s+my\s?self\b(?!\s+(?:off|some\s+slack|shaving|a\s+(?:slice|piece)))|(?:cut|hurt|harm(?:ed)?|burn(?:ed|t)?)\s+my\s?self\s+(?:on\s+purpose|deliberately|intentionally)|(?:on\s+purpose|deliberately|intentionally)\s+(?:cut|hurt|harmed|burned)\s+my\s?self` +
-    String.raw`|pills\s+on\s+purpose|overdos(?:e|ed|ing)\s+on\s+purpose` +
-    String.raw`|end(?:ing)?\s+it\s+all` +
+  String.raw`\b(?:` +
+    String.raw`suicid\w*\b(?!\s+(?:squad|prevention|awareness|hotline|helpline|lines?|risk|risks|warning|warnings|rates?|statistics|stats|bomb\w*|doors?|mission|run)\b)|kill(?:ing|ed)?\s+my\s?self\b|(?:to|gonna|wanna|will|could|should|might)\s+off\s+my\s?self\b|unaliv\w*|kms\b(?<!\d\s?kms)|kys\b` +
+    String.raw`|end(?:ing)?\s+my\s+(?:own\s+)?life\b|tak(?:e|ing)\s+my\s+(?:own\s+)?life\b(?!\s+(?:back|in\s+(?:my\s+own\s+)?hands|seriously|one\s+day|a\s+day))` +
+    String.raw`|want(?:ed)?\s+to\s+die\b|wanna\s+die\b|wish\s+i\s+(?:was|were)\s+dead\b|better\s+off\s+(?:dead|without\s+me)\b` +
+    String.raw`|(?:don'?t|do\s+not)\s+want\s+to\s+(?:live|be\s+alive)\b` +
+    String.raw`|no\s+(?:reason|point)\s+(?:to\s+live|in\s+living)\b|(?:don'?t|do\s+not|can'?t|cannot)\s+see\s+(?:the|a|any)\s+point\s+(?:in|of|to)\s+(?:living|life|going\s+on|being\s+(?:here|alive))\b|what'?s\s+the\s+point\s+(?:in|of)\s+(?:living|life|going\s+on)\b` +
+    String.raw`|life\s+is(?:n'?t|\s+not)\s+worth\s+(?:living|it)\b|not\s+worth\s+living\b` +
+    String.raw`|(?:want(?:ed)?\s+to|going\s+to|thinking\s+(?:about|of)|thoughts\s+of|urges?\s+to|tr(?:y|ied|ying)\s+to|attempt(?:ed|ing)?\s+to|(?:felt|feel|feeling|feels)\s+like|tempted\s+to)\s+(?:hurt|harm|kill)(?:ing)?\s+my\s?self\b|self[-\s]?harm\w*` +
+    String.raw`|cutting\s+my\s?self\b(?!\s+(?:off|some\s+slack|shaving|a\s+(?:slice|piece)|short))|(?:been|started|start|keep|kept|back\s+to)\s+cutting(?:\s+my\s?self)?\s+again\b|relapsed\b[^.;!?\n]{0,20}\bcutting\b|(?:cut|hurt|harm(?:ed)?|burn(?:ed|t)?)\s+my\s?self\s+(?:on\s+purpose|deliberately|intentionally)\b|(?:on\s+purpose|deliberately|intentionally)\s+(?:cut|hurt|harmed|burned)\s+my\s?self\b` +
+    String.raw`|pills\s+on\s+purpose\b|overdos(?:e|ed|ing)\s+on\s+purpose\b|(?:thinking\s+(?:about|of)|thought\s+(?:about|of)|want\s+to|wanna|going\s+to|gonna|tempted\s+to|urge\s+to|could\s+just|might\s+just)\s+(?:tak(?:e|ing)|swallow(?:ing)?)\s+(?:all|the\s+whole\s+(?:bottle|box|pack))\s+(?:of\s+)?(?:my\s+|the\s+|these\s+)?(?:pills|meds|medication|tablets|sleeping\s+pills)\b` +
+    String.raw`|end(?:ing)?\s+it\s+all\b` +
+    String.raw`|(?:go\s+to\s+sleep|fall\s+asleep|sleep)\s+and\s+(?:never|not)\s+wake\s+(?:up|back\s+up)\b|(?:wish|want)\s+i\s+(?:would(?:n'?t|\s+not)|could\s+not|wouldnt)\s+wake\s+up\b` +
+    String.raw`|giv(?:e|ing|en)\s+up\s+on\s+(?:life|living)\b|giv(?:e|ing|en)\s+up\s+on\b[^.;!?\n]{0,30}?\beven\s+(?:life|living)\b|dark\s+thoughts\b` +
     String.raw`|(?:don'?t|do\s+not)\s+(?:want\s+to|wanna)\s+be\s+(?:here|around|alive)\s*(?:any\s?more\b|$|[.,;!?\n])` +
-    String.raw`|(?:want(?:ed)?\s+to|wanna|going\s+to|gonna|thinking\s+(?:about|of)|ready\s+to)\s+end(?:ing)?\s+(?:it|things)\b` +
-    String.raw`|want\s+to\s+disappear\s+forever` +
-    String.raw`|can(?:'?t|not)\s+go\s+on(?:\s+(?:like\s+this|any\s?more|living|any\s+longer|much\s+longer))?\s*(?:$|[.,;!?\n])` +
+    String.raw`|(?:want(?:ed)?\s+to|wanna|going\s+to|gonna|thinking\s+(?:about|of)|ready\s+to)\s+end(?:ing)?\s+(?:it|things)\b(?!\s+(?:with|between)\b)` +
+    String.raw`|want\s+to\s+disappear\s+forever\b` +
+    String.raw`|can(?:'?t|not)\s+go\s+on(?:\s+(?:like\s+this|this\s+way|any\s?more|living|any\s+longer|much\s+longer)){0,3}\s*(?:$|[.,;!?\n])` +
     ')',
   'i',
 );
+/** "wanna die laughing", "I want to die of embarrassment": a figure of speech, said right after "die". */
+const EN_DIE_FIGURE = /^\s+(?:laughing|of\s+(?:laughter|embarrassment|shame|boredom|cuteness)|from\s+(?:laughing|embarrassment|cuteness)|for\s+(?:a|an|this|that|some|these)\b)/i;
+
+/**
+ * Whether the self-harm words count. Deliberately few exceptions, fewer than for the other rules:
+ * a figure of speech right after "die" ("wanna die laughing"); a plain denial right before the
+ * words ("not suicidal", "no thoughts of hurting myself"); words about someone else ("it made her
+ * suicidal"); a general question or a warning ("does this drug cause suicidal thoughts"). A time
+ * long past, a plan or a fear do not stop it.
+ */
+function crisisCounts(text: string): boolean {
+  for (const m of text.matchAll(new RegExp(EN_CRISIS.source, 'gi'))) {
+    const end = m.index + m[0].length;
+    if (/die$/i.test(m[0]) && EN_DIE_FIGURE.test(text.slice(end))) continue;
+    if (CRISIS_DENIAL.test(text.slice(0, m.index).split(/[.,;:!?()\n]/).pop() ?? '') || EN_NO_AFTER.test(text.slice(end))) continue;
+    if (notOwnNowEn(text, m.index, end, false, true)) continue;
+    return true;
+  }
+  return false;
+}
+/** A plain denial right before the self-harm words: "not", "no", "never", "denies", "without". "I don't want to die" is not one: there the words themselves begin with the negation. */
+const CRISIS_DENIAL = /(?:^|[^a-z'])(?:(?<!\b(?:do|does|did|would|will|could|should|can|i)\s)not|no|never|denies|denied|deny|without|zero|none)\s+(?:(?:any|more|real|been|had|have|having|feeling|feel|currently|really|actually)\s+)*$/i;
 
 /**
  * Signs of low blood sugar, in the words of the Medication Guides ("Signs and symptoms of low
@@ -696,7 +794,7 @@ const EN = {
     // "terrible pain in my upper abdomen", "severe pain on the left side of my stomach"
     en`\b${EN_SEVERE}\b${gap(12)}\b(?:pains?|aches?|cramps?|cramping)\b${gap(20)}\b(?:in|around|across|on|at|near)\b${gap(30)}\b${EN_BELLY}\b`,
     // "my stomach hurts so bad", "stomach pain is unbearable", "belly has been killing me"
-    en`\b${EN_BELLY}\b${gap(30)}(?:${EN_HURT}\s+(?:is\s+|are\s+|was\s+|got\s+)?(?:so|really|very|extremely|super)\s+(?:bad|badly|much)\b|\b(?:is|are|was|were|has\s+been|have\s+been|been|keeps)\s+killing\s+me\b|\bunbearable\b|\bexcruciating\b|\bcan'?t\s+(?:stand|take|bear)\s+(?:it|this|the\s+pain)\b|\bdoubled\s+over\b|\bcan'?t\s+stand\s+up\s+straight\b|\bworst\s+pain\b)`,
+    en`\b${EN_BELLY}\b${gap(30)}(?:${EN_HURT}\s+(?:is\s+|are\s+|was\s+|got\s+)?(?:so|really|very|extremely|super)\s+(?:bad|badly|much|severe|intense|unbearable|painful)\b|\bin\s+(?:(?:so\s+much|such|total|complete|absolute|pure)\s+)?agony\b|\b(?:is|are|was|were|has\s+been|have\s+been|been|keeps)\s+killing\s+me\b|\bunbearable\b|\bexcruciating\b|\bcan'?t\s+(?:stand|take|bear)\s+(?:it|this|the\s+pain)\b|\bdoubled\s+over\b|\bcan'?t\s+stand\s+up\s+straight\b|\bworst\s+pain\b)`,
     en`\bdoubled\s+over\b${gap(20)}\b${EN_BELLY}\b`,
     // stomach pain that reaches the back
     en`\b${EN_BELLY}\b${gap(30)}${EN_HURT}${gap(40)}${EN_NEXT_SENTENCE}${EN_TO_BACK}`,
@@ -709,8 +807,8 @@ const EN = {
     // "stabbing pain in my stomach", "sharp stomach pain"
     en`\b(?:stabbing|sharp|shooting|tearing)\s+${EN_BELLY}\s*-?\s*${EN_HURT}`,
     en`\b(?:stabbing|sharp|shooting|tearing)\s+(?:pains?|cramps?|cramping)\s+(?:in|around|across)\s+(?:my\s+|the\s+)?(?:upper\s+|lower\s+)?${EN_BELLY}\b`,
-    // the illness by name: "I think I have pancreatitis"
-    en`\bpancreatitis\b`,
+    // the illness by name: "I think I have pancreatitis", "pancreas pain"
+    en`\bpancreatitis\b|\bpancrea(?:s|tic)\s+(?:pains?|hurts?|hurting|aches?|aching|attack)\b`,
     // how bad, said after the pain: "my stomach pain is severe", "the pain in my stomach is awful"
     en`\b${EN_BELLY}\b${gap(30)}${EN_HURT}${gap(20)}\b${EN_IS_BAD}`,
     en`\b${EN_HURT}${gap(20)}\b(?:in|around|across|on|at)\b${gap(30)}\b${EN_BELLY}\b${gap(15)}\b${EN_IS_BAD}`,
@@ -720,6 +818,8 @@ const EN = {
     en`\b${EN_BELLY}\b${gap(30)}\b${EN_SEVERE}\s+(?:pains?|aches?|cramps?|cramping)\b|\b${EN_BELLY}\s*-?\s*${EN_HURT}\s+(?:severe|unbearable|excruciating|terrible|horrible|awful|intense)\b|\bcan'?t\s+(?:stand|take|bear|handle|deal\s+with)\s+(?:the|this)\s+(?:pain|cramps?|cramping)\b${gap(15)}\b(?:in|around)\b${gap(15)}\b${EN_BELLY}\b`,
     // "my stomach hurts bad", "stomach hurts a lot", "belly hurts like hell"
     en`\b${EN_BELLY}\b${gap(20)}\b(?:hurts?|hurting|aches?|aching)\s+(?:(?:so|really|real|very|pretty|super|just)\s+)*(?:bad|badly|a\s+lot|like\s+(?:hell|crazy)|so\s+much|terribly|horribly)\b`,
+    // a pain that bores, shoots or spreads into the back, wherever the person says it is: "the pain in my middle is boring into my back"
+    en`\b(?:pains?|aches?|hurts?|hurting)\b${gap(40)}\b(?:boring|bores|bored|radiat(?:es|ed|ing)|shoot(?:s|ing)|spread(?:s|ing)|goes|going|went|travel(?:s|ed|led|ing|ling)|wraps?|wrapping|wrapped|moves?|moving)\s+(?:right\s+|straight\s+|all\s+the\s+way\s+)?(?:in)?to\s+(?:my\s+|the\s+)?(?:upper\s+|mid\s+|middle\s+)?back\b`,
   ],
   chest_or_faint: [
     en`\bchest\s+pains?\b`,
@@ -728,7 +828,7 @@ const EN = {
     // "my chest hurts", "chest has been hurting", "my chest is killing me", "chest feels tight"
     en`\bchest\s+(?:(?:really|still|just|so|very|super|kind\s+of|kinda|has\s+been|have\s+been|been|is|was|keeps|started|starts|began)\s+)*(?:hurts?|hurting|ach(?:es|ing|y)|sore|killing\s+me|pressure|tightness|tight|feels\s+(?:(?:really|so|very|weird\s+and)\s+)*(?:tight|heavy|painful|sore))\b|\btight\s+chest\b`,
     // "passed out", "keep passing out", "about to pass out"; not "passed out flyers"
-    en`\b(?:pass(?:ed|ing|es)?|black(?:ed|ing|s)?)\s+out\b(?!\s+(?:(?:the|some|my|our|all\s+the|a\s+few)\s+)?(?:flyers|fliers|candy|papers|samples|invitations|cards|treats|pamphlets|snacks)\b)`,
+    en`\b(?:pass(?:ed|ing|es)?|black(?:ed|ing|s)?)\s+out\b(?!\s+(?:(?:the|some|my|our|all\s+the|a\s+few|these|those|homemade|free)\s+)?(?:flyers|fliers|candy|papers|samples|invitations|cards|treats|pamphlets|snacks|cookies|cupcakes|brownies|food|water|drinks|gifts|presents|programs|tickets|copies|leaflets|menus|ballots|bags|goodie\s+bags|gift\s+bags|coupons|stickers|flowers|masks|shirts|t-shirts|handouts|worksheets|tests|forms|windows?|curtains|blinds|screens?|names|dates|lines|sections?|parts|text)\b)`,
     // "fainted", "I feel faint", "going to faint"; not "a faint smell", "faint of heart", "fainting goat"
     en`\bfaint(?:ed|ing|s)\b(?!\s+(?:goats?|couch(?:es)?)\b)|\b(?:did|might|may|could|gonna|to|almost|nearly|will|would)\s+faint\b|\b(?:feel(?:s|ing)?|felt|i'?m|i\s+am|i\s+was|i\s+got|i\s+get|getting)\s+(?:so\s+|very\s+|really\s+)?faint\b(?!\s+of\s+heart\b)`,
     en`\blost\s+consciousness\b`,
@@ -744,18 +844,22 @@ const EN = {
     // pain in the left arm or jaw, together with another sign
     fx(en`\b(?:pain|ache|aching|numb(?:ness)?|tingling|pressure)\b${gap(20)}\b(?:left\s+arm|jaw)\b${gap(30)}\b(?:and|with|plus)\b${gap(15)}\b(?:jaw|left\s+arm|sweat\w*|short\w*\s+of\s+breath|nause\w*|dizz\w*|chest)\b`),
     // the emergency by name: a heart attack, a stroke
-    fx(en`\bheart\s+attack\b|\b(?:having|had|have|think\s+it'?s|another|a|mini)\s+(?:a\s+|another\s+)?(?:mini[-\s]?)?stroke\b(?!\s+of\b)|\bstroke\s+(?:symptoms?|signs?)\b|\b(?:signs?|symptoms?)\s+of\s+(?:a\s+)?stroke\b`),
+    fx(en`(?:\b(?<skip>gave|give|gives|giving|nearly\s+gave|almost\s+gave|about\s+gave)\s+(?:me|him|her|us|you|them|everyone|my\s+\w+)\s+(?:a\s+)?(?:mini[-\s]?)?)?\bheart\s+attack\b|\b(?:having|had|have|think\s+it'?s|another|a|mini)\s+(?:a\s+|another\s+)?(?:mini[-\s]?)?stroke\b(?!\s+of\b)|\bstroke\s+(?:symptoms?|signs?)\b|\b(?:signs?|symptoms?)\s+of\s+(?:a\s+)?stroke\b`),
     // a seizure
-    fx(en`\bseizures?\b|\bseizing\b|\bconvuls(?:ion|ions|ing|ed)\b`),
+    fx(en`\bseizures?\b(?!\s+(?:warnings?|posters?|signs?|alerts?|precautions?|safety|awareness|training|dogs?|medicines?|medications?|meds|drugs?|disorders?\s+(?:awareness|foundation)|threshold|risk)\b)|\bseizing\b|\bconvuls(?:ion|ions|ing|ed)\b|\bhad\s+(?:a|another)\s+fit\b(?!\s+(?:of|about|over|when|because|at|with)\b)|\bbit\s+my\s+tongue\b(?=[^.;!?\n]{0,40}\b(?:fit|seiz\w*|shak(?:ing|ed)|woke\s+up|passed\s+out|blacked\s+out|on\s+the\s+floor)\b)`),
     // a collapse: "I collapsed", "woke up on the bathroom floor", "don't remember falling"
-    fx(en`(?:\b(?<skip>veins?|tent|chair|table|bed|shelf|roof|ceiling|market|plan|deal|lungs?|it|that|which|building|bridge|economy|arch(?:es)?|stock)\s+(?:has\s+|have\s+|had\s+|just\s+|almost\s+|nearly\s+|is\s+|was\s+)?)?\bcollaps(?:ed?|ing)\b(?!\s+(?:veins?|lungs?|on\s+the\s+(?:couch|bed|sofa)|in(?:to)?\s+(?:my\s+)?bed)\b)|\b(?:woke\s+up|came\s+to|found\s+myself|ended\s+up|was\s+found)\s+(?:lying\s+|laying\s+|face\s*down\s+)?on\s+the\s+(?:[a-z]+\s+)?(?:floor|ground)\b|\bfound\s+me\s+(?:passed\s+out\s+|lying\s+|laying\s+|unconscious\s+)?on\s+the\s+(?:[a-z]+\s+)?(?:floor|ground)\b|\bhit\s+the\s+(?:floor|ground)\b|\b(?:don'?t|do\s+not|can'?t|cannot)\s+remember\s+(?:falling|how\s+i\s+(?:fell|got\s+(?:here|there|on\s+the\s+floor)))\b`),
+    fx(en`(?:\b(?<skip>veins?|tent|chair|table|bed|shelf|roof|ceiling|market|plan|deal|lungs?|it|that|which|building|bridge|economy|arch(?:es)?|stock)\s+(?:has\s+|have\s+|had\s+|just\s+|almost\s+|nearly\s+|is\s+|was\s+)?)?\bcollaps(?:ed?|ing)\b(?!\s+(?:veins?|lungs?|on\s+the\s+(?:couch|bed|sofa)|in(?:to)?\s+(?:my\s+)?bed)\b)|\b(?:woke\s+up|came\s+to|found\s+myself|ended\s+up|was\s+found)\s+(?:lying\s+|laying\s+|face\s*down\s+)?on\s+the\s+(?:[a-z]+\s+)?(?:floor|ground)\b|\bfound\s+me\s+(?:passed\s+out\s+|lying\s+|laying\s+|unconscious\s+)?on\s+the\s+(?:[a-z]+\s+)?(?:floor|ground)\b|\bhit\s+the\s+(?:floor|ground)\b|\bkeel(?:ed|s|ing)?\s+over\b|\b(?:don'?t|do\s+not|can'?t|cannot)\s+remember\s+(?:falling|how\s+i\s+(?:fell|got\s+(?:here|there|on\s+the\s+floor)))\b`),
     // signs of a stroke: a drooping face, one side numb or weak, an arm that will not move
     fx(en`\b(?:face|mouth|smile|eyelid)\b${gap(15)}\b(?:droop(?:ing|s|ed|y)?|sagging|lopsided)\b|\bdroop(?:ing|y|ed)?\s+(?:face|mouth|eyelid)\b|\bfacial\s+droop`),
     fx(en`\b(?:numb(?:ness)?|weak(?:ness)?|paraly[sz]ed)\b${gap(25)}\b(?:one|left|right)\s+side\b|\b(?:one|left|right)\s+side\b${gap(25)}\b(?:numb|weak|paraly[sz]ed|limp|went\s+dead)\b|\bcan'?t\s+(?:move|lift|raise|feel)\s+(?:my\s+)?(?:left\s+|right\s+)?(?:arm|leg|hand|side|face)\b`),
     // slurred speech, or sudden confusion
-    fx(en`\bslurr(?:ed|ing|y)?\b|\bcan'?t\s+(?:talk|speak)\s+(?:right|properly|straight|clearly)\b|\bcan'?t\s+(?:find|get)\s+my\s+words\b|\b(?:don'?t|do\s+not)\s+know\s+where\s+i\s+am\b|\b(?:sudden(?:ly)?|all\s+of\s+a\s+sudden|out\s+of\s+nowhere)\b${gap(20)}\b(?:confus\w+|disoriented)\b`),
+    fx(en`\bslurr(?:ed|ing|y)?\b|\bgarbled\b|\b(?:speech|words|talking)\b${gap(15)}\b(?:jumbled|coming\s+out\s+(?:wrong|weird|jumbled))\b|\bcan'?t\s+(?:talk|speak)\s+(?:right|properly|straight|clearly)\b|\bcan'?t\s+(?:find|get)\s+my\s+words\b|\b(?:don'?t|do\s+not)\s+know\s+where\s+i\s+am\b|\b(?:sudden(?:ly)?|all\s+of\s+a\s+sudden|out\s+of\s+nowhere)\b${gap(20)}\b(?:confus\w+|disoriented)\b`),
     // "I need an ambulance", "calling 911"
     fx(en`\b(?:need(?:ed)?\s+(?:to\s+call\s+)?|call(?:ed|ing)\s+|dial(?:ed|ing)\s+|should\s+i\s+call\s+)(?:an?\s+|the\s+)?(?:ambulance|911|paramedics|ems)\b`),
+    // the worst headache of one's life, a sign of bleeding in the brain
+    fx(en`\bworst\s+headache\s+(?:of\s+my\s+(?:entire\s+|whole\s+)?life|ever|i'?ve\s+ever\s+had|i\s+have\s+ever\s+had)\b|\bthunderclap\s+headache\b`),
+    // a heart rate of 120 or more at rest: "pulse 130 sitting still", "resting heart rate 125"
+    fx(en`\b(?:heart\s*rate|pulse|hr|bpm|heartbeat)\b${HR_FILL}\s+(?:1[2-9]\d|2[0-4]\d)\b(?!\s*(?:lbs?|pounds|kg|mg|steps|cal|kcal|%))(?=[^.;!?\n]{0,40}\b(?:rest|resting|at\s+rest|sitting|sat|lying|laying|in\s+bed|on\s+the\s+couch|doing\s+nothing|still|asleep|sleeping|woke|watching)\b)|\b(?:rest|resting|at\s+rest|sitting|sat|lying|laying|in\s+bed|on\s+the\s+couch|doing\s+nothing|asleep|sleeping)\b${gap(25)}\b(?:heart\s*rate|pulse|hr|bpm|heartbeat)\b${HR_FILL}\s+(?:1[2-9]\d|2[0-4]\d)\b(?!\s*(?:lbs?|pounds|kg|mg|steps|cal|kcal|%))`),
   ],
   anaphylaxis: [
     // One more word may stand before the swelling: "my lips are tingling and swelling".
@@ -801,13 +905,13 @@ const EN = {
     en`\b(?:part|half|piece|some|a\s+section)\s+of\s+(?:my\s+|the\s+)?(?:vision|sight|visual\s+field|view)\b${gap(12)}\b(?:missing|gone|dark|black|blocked|cut\s+off)\b`,
     en`\bblind\s+spot\b|\b(?:dark|black)\s+(?:spot|curtain|shadow|area)\b${gap(20)}\b(?:vision|eye|sight)\b`,
     // "changes in vision": blurry, double, worse, different
-    fx(en`\b(?:blurr?(?:y|ed|ing|iness)|fuzzy|hazy|cloudy|double|foggy)\s+(?:vision|eyesight|sight)\b|\b(?:vision|eyesight|sight)\b${gap(20)}\b(?:blurr?\w*|fuzzy|hazy|cloudy|foggy|doubled?|worse|worsening|changed|changing)\b`),
+    fx(en`\b(?:blurr?(?:y|ed|ing|iness)|fuzzy|hazy|cloudy|double|foggy)\s+(?:vision|eyesight|sight)\b(?!\s+(?:mode|setting|filter|effect|level|power|glitch|cheat)\b)|\b(?:vision|eyesight|sight)\b${gap(20)}\b(?:blurr?\w*|fuzzy|hazy|cloudy|foggy|doubled?|worse|worsening|changed|changing)\b`),
     fx(en`\b(?:vision|eyesight|sight)\s+(?:is|was|seems|feels|got|gets|looks|has\s+been|went|goes|keeps\s+(?:getting|going))\s+(?:a\s+(?:little|bit)\s+|kind\s+of\s+|kinda\s+|really\s+|so\s+|very\s+|getting\s+)?(?:off|weird|strange|funny|messed\s+up|dim(?:mer)?|dark(?:er)?|spotty|bad|terrible)\b`),
-    fx(en`\beyes?\b${gap(15)}\b(?:blurr?\w*|fuzzy|hazy|cloudy)\b|\b(?:blurr?(?:y|ed)|fuzzy|hazy|cloudy)\s+eyes?\b|\beverything\s+(?:looks?|is|seems|went|got)\s+(?:so\s+|really\s+|all\s+)?(?:blurr?\w*|fuzzy|hazy)\b`),
+    fx(en`\beyes?\b${gap(15)}\b(?:blurr?\w*|fuzzy|hazy|cloudy)\b|\b(?:blurr?(?:y|ed)|fuzzy|hazy|cloudy)\s+eyes?\b|\beverything\s+(?:(?:looks?|is|'s|seems|went|got|was|has\s+been|looking|going)\s+)?(?:so\s+|really\s+|all\s+|kind\s+of\s+|kinda\s+)?(?:blurr?\w*|fuzzy|hazy)\b`),
     fx(en`\b(?:changes?|changing|difference|decline)\s+in\s+(?:my\s+)?(?:vision|eyesight|sight)\b|\b(?:vision|eyesight|sight)\s+(?:changes?|problems?|issues?|trouble)\b`),
-    fx(en`\bseeing\s+(?:double|spots|floaters|flashes|flashing\s+lights|halos|two\s+of\s+everything)\b(?!\s+on\s+(?:my|the)\b)|\bfloaters\b|\bflashes\s+of\s+light\b|\b(?:trouble|difficulty|hard\s+time|problems?)\s+seeing\b|\bhard\s+to\s+see\b|\bcan'?t\s+see\s+(?:well|clearly|right|straight|properly|out\s+of)\b`),
+    fx(en`\bseeing\s+(?:double|spots|floaters|flashes|flashing\s+lights|halos|two\s+of\s+everything)\b(?!\s+on\s+(?:my|the)\b)|\bfloaters\b|\bflashes\s+of\s+light\b|\b(?:trouble|difficulty|hard\s+time|problems?)\s+seeing\b|\bhard\s+to\s+see\b|\bcan'?t\s+see\s+(?:(?:as|very|that|so)\s+)?(?:well|clearly|good|right|straight|properly|out\s+of)\b`),
     // more words for a change in vision: "keeps going in and out", "things look wavy", "I see double", "its all blurry"
-    fx(en`\b(?:vision|eyesight|sight)\s+(?:keeps\s+)?(?:going|goes|went|cutting)\s+in\s+and\s+out\b|\b(?:vision|eyesight|sight)\s+comes\s+and\s+goes\b|\b(?:things|everything|lines|words|letters|text)\s+(?:look|looks|looked|are|is|seem|seems|went|got)\s+(?:so\s+|all\s+|really\s+)?(?:wavy|distorted|warped|double)\b|\b(?:see|saw)\s+double\b|\bflashing\s+lights\b|\bcan'?t\s+see\s*(?:$|[.,;!?\n]|anything\b(?!\s+(?:wrong|different|on|in|about|that)\b)|at\s+all\b|right\s+now\b|a\s+thing\b)|(?:^|[.;!?\n]\s*)(?:it'?s\s+|its\s+|things\s+are\s+|everything\s+is\s+)?(?:all\s+|so\s+|really\s+|very\s+)?blurr?y\s*(?:$|[.,;!?\n])`),
+    fx(en`\b(?:vision|eyesight|sight)\s+(?:keeps\s+)?(?:going|goes|went|cutting)\s+in\s+and\s+out\b|\b(?:vision|eyesight|sight)\s+comes\s+and\s+goes\b|\b(?:things|everything|lines|words|letters|text)\s+(?:look|looks|looked|are|is|seem|seems|went|got)\s+(?:so\s+|all\s+|really\s+)?(?:wavy|distorted|warped|double)\b|\b(?:see|saw)\s+double\b|\bflashing\s+lights\b|\b(?:wavy|distorted|warped|bent|squiggly)\s+(?:lines|vision|edges)\b|\bcan'?t\s+see\s*(?:$|[.,;!?\n]|anything\b(?!\s+(?:wrong|different|on|in|about|that)\b)|at\s+all\b|right\s+now\b|a\s+thing\b)|(?:^|[.;!?\n]\s*)(?:it'?s\s+|its\s+|things\s+are\s+|everything\s+is\s+)?(?:all\s+|so\s+|really\s+|very\s+)?blurr?y\s*(?:$|[.,;!?\n])`),
   ],
   hypoglycemia: [
     en`\bhypoglyc`,
@@ -821,7 +925,9 @@ const EN = {
     // the short ways people with a meter write it: "low bg", "sugars low", "went low last night", "had a bad low"
     en`\blow\s+(?:bg|bgs|bgl|blood\s+sugars)\b|\b(?:sugars?|bg|bgs)\s+low\b(?![-\s]+(?:normal|carb|fat|cal))|\b(?:went|going|dropped|dropping)\s+low\b(?!\s+(?:on|carb|key|and\s+slow)\b)|(?:^|[.;!?\n]\s*)low\s+sugar\s*(?:$|[,.;!?\n]|(?:and|again|today|tonight|this)\b)|\b(?:had|having|have)\s+a\s+(?:bad\s+|scary\s+|another\s+)?low\b(?!\s+(?:point|moment|day|week|mood|bar|opinion|tolerance|carb|energy|grade|score)\b)`,
     // a reading under 70: "blood sugar 48", "glucose was 55", "cgm says 49", "sugar is in the 40s", "meter read LO"
-    fx(en`\b(?:blood\s+sugars?|blood\s+glucose|glucose|bg|bgl|bs|cgm|dexcom|libre|meter|my\s+sugars?|sugars?(?=\s+(?:is|was|are|were|at|dropped|went|got|hit|reads?|reading)\b))\b(?:\s+(?:is|was|were|at|of|reads?|reading|says?|said|showed|shows|dropped|went|down|got|to|hit|level|levels|alarming|alarmed|low|lo|currently|now|just|only|about|around|like))*\s+[1-6]\d\b(?!\s*(?:%|g\b|grams?|carbs?|mg\b(?!\/)|units?|lbs?|kg|\.\d|:\d|minutes?|mins?|hours?|hrs?|days?|weeks?|years?|times?|am\b|pm\b|points?))|\b(?:blood\s+sugars?|sugars?|glucose|bg)\b${gap(15)}\bin\s+the\s+[2-6]0'?s\b|\b(?:meter|cgm|dexcom|libre|reading)\s+(?:reads?|says?|said|showed|shows|is|was)\s+(?:lo|low)\b`),
+    fx(en`\b(?:blood\s+sugars?|blood\s+glucose|glucose|bg|bgl|bs|cgm|dexcom|libre|meter|my\s+sugars?|sugars?(?=\s+(?:is|was|are|were|at|dropped|went|got|hit|reads?|reading|[1-6]\d)\b))\b(?:\s+(?:is|was|were|at|of|reads?|reading|says?|said|showed|shows|dropped|went|down|got|to|hit|level|levels|alarm|alarms|alarming|alarmed|alert|alerted|went\s+off|beeped|low|lo|currently|now|just|only|about|around|like),?)*\s+(?:[1-6]\d\b|(?:[0-2]\.\d|3\.[0-8])(?!\d))(?!\s*(?:%|g\b|grams?|carbs?|mg\b(?!\/)|units?|lbs?|kg|oz|tsp|tbsp|teaspoons?|tablespoons?|cups?|\.\d|:\d|minutes?|mins?|hours?|hrs?|days?|weeks?|years?|times?|am\b|pm\b|points?))|\b(?:blood\s+sugars?|sugars?|glucose|bg)\b${gap(15)}\bin\s+the\s+[2-6]0'?s\b|\b(?:meter|cgm|dexcom|libre|reading)\s+(?:reads?|says?|said|showed|shows|is|was)\s+(?:lo|low)\b`),
+    // lows, and a hypo, by the short words: "I keep having lows at night", "hypo last night", "low alarm went off"
+    en`\b(?:having|had|have|getting|get|got|keep\s+(?:having|getting)|been\s+(?:having|getting)|more|frequent|bad|scary|lots\s+of|a\s+lot\s+of)\s+(?:(?:a\s+lot\s+of|lots\s+of|more|frequent|bad|scary|so\s+many|many)\s+)?lows\b|\bhypos?\b|\b(?:cgm|dexcom|libre|meter|pump)\b${gap(10)}\b(?:urgent\s+)?low\s+(?:alarm|alert|warning)s?\b|\b(?:urgent\s+)?low\s+(?:alarm|alert)s?\s+(?:went\s+off|going\s+off|keeps?\s+going\s+off|again)\b`,
   ],
   dehydration: [
     // keeps happening: "keep throwing up", "have not stopped throwing up", "still vomiting"
@@ -862,11 +968,17 @@ const EN = {
     en`\b(?:${EN_VOMIT}|${EN_RUNS})\b[^.;!?\n]{0,30}?\bstill\s+(?:going|happening|at\s+it|sick)\b`,
     // cannot drink, said with vomiting, diarrhea or nausea
     en`\b(?:${EN_VOMIT}|${EN_RUNS}|${EN_NAUSEA})\b[^.;!?\n]{0,40}?\b(?:can'?t|cannot|can\s+not|couldn'?t|unable\s+to)\s+(?:even\s+)?(?:drink|eat\s+or\s+drink)\s+(?:any\s?thing|water|fluids?|liquids?)\b`,
+    // a stomach bug that does not go away or lasts long: "stomach flu like symptoms that will not go away"
+    fx(en`\b(?:(?:stomach|tummy)\s+(?:flu|bug|virus)|gastro(?:enteritis)?|norovirus)\b${gap(30)}(?:${EN_WONT_GO_AWAY}|${EN_LONG_OR_OFTEN})`),
+    // little urine, said after it: "pee is dark brown and barely any"
+    en`\b(?:pee|urine)\b${gap(25)}\b(?:barely|hardly|very\s+little|almost\s+no|not\s+much)(?:\s+(?:any|comes?\s+out|coming\s+out))?\b`,
+    // dark brown urine, the colour of tea or cola
+    fx(en`\b(?:dark\s+brown|brown|tea[-\s]colou?red|cola[-\s]colou?red)\s+(?:urine|pee)\b|\b(?:urine|pee)\b(?:\s+(?:is|was|looks|has\s+been|turned|got|went))?\s+(?:really\s+|very\s+|so\s+)?(?:dark\s+brown|brown|the\s+colou?r\s+of\s+(?:tea|cola|coke))\b`),
   ],
   gallbladder: [
     en`\bjaundice`,
     en`\byellow(?:ing|ish)?\s+(?:of\s+)?(?:my\s+|the\s+)?(?:skin|eyes?|eyeballs?)\b`,
-    en`\b(?:skin|eyes?|whites\s+of\s+(?:my|the)\s+eyes)\s+(?:(?:is|are|has|have|looks?|turned|turning|got|getting|went|going|gone|seems?)\s+){1,2}(?:a\s+bit\s+|a\s+little\s+|kind\s+of\s+|slightly\s+|really\s+|very\s+)?yellow`,
+    en`\b(?:skin|eyes?|whites\s+of\s+(?:my|the)\s+eyes)\s+(?:(?:is|are|has|have|looks?|turned|turning|got|getting|went|going|gone|seems?)\s+){0,2}(?:a\s+bit\s+|a\s+little\s+|kind\s+of\s+|slightly\s+|really\s+|very\s+)?yellow`,
     en`\b${EN_SORE}\b${gap(30)}\b${EN_RUQ}`,
     en`\b${EN_RUQ}${gap(30)}\b${EN_SORE}\b`,
     en`\bright\s+upper\s+(?:abdominal\s+)?pain\b`,
@@ -897,6 +1009,12 @@ const EN = {
     // "a lump or swelling in your neck", in other words
     en`\b(?:swollen|lumpy|enlarged|bulging)\s+(?:neck|thyroid)\b|\b(?:lump|bump|mass|nodule|knot|growth)\b${gap(15)}\b(?:in|on)\s+(?:my\s+)?thyroid\b|\bswollen\s+(?:lymph\s+)?(?:nodes?|glands?)\b${gap(15)}\bneck\b|\bgoit(?:er|re)\b`,
     en`\b(?:swollen|swelling|puffy|enlarged)\b${gap(25)}\b(?:front|side|base)\s+of\s+(?:my\s+|the\s+)?neck\b|\b(?:neck|thyroid)\s+(?:is|feels|looks|seems|got)\s+(?:so\s+|really\s+|a\s+bit\s+|kind\s+of\s+|a\s+little\s+)?(?:swollen|puffy|enlarged|thick|bigger|lumpy)\b|\b(?:lump|bump|mass|knot)\b${gap(15)}\bin\s+my\s+throat(?:\s+area)?\b${gap(25)}(?:${EN_WONT_GO_AWAY}|\bwhen\s+i\s+swallow\b)`,
+    // a lump on the throat or near the Adam's apple: "found a bump on my throat", "lump near my adams apple"
+    en`\b(?:lump|bump|swelling|mass|nodule|knot|growth)\b${gap(15)}\b(?:on|near|by|under|below|above|beside|next\s+to)\s+(?:my\s+|the\s+)?(?:throat|adam'?s\s+apple|windpipe|collarbone)\b|\b(?:lump|bump|swelling|mass|nodule|knot|growth)\b${gap(15)}\b(?:in|at|on)\s+(?:my\s+|the\s+)?adam'?s\s+apple\b`,
+    // a lump felt on swallowing, something stuck: "feels like there's a lump when I swallow", "feels like something stuck"
+    en`\b(?:feels?|felt|feeling)\s+like\s+(?:there'?s\s+|there\s+is\s+|i\s+have\s+)?(?:a\s+)?(?:lump|something(?:'s|\s+is)?(?:\s+(?:stuck|caught|lodged))?)\b${gap(30)}\b(?:when|whenever|every\s+time|each\s+time|if)\s+i\s+swallow|\b(?:feels?|felt|feeling)\s+like\s+(?:there'?s\s+|there\s+is\s+)?something(?:'s|\s+is)?\s+(?:stuck|caught|lodged)\b|\bsomething\s+(?:is\s+|'s\s+|keeps\s+getting\s+)?(?:stuck|caught|lodged)\s+in\s+my\s+throat\b`,
+    // swallowing that hurts: "it hurts to swallow", "painful to swallow"
+    en`\b(?:hurts?|hurting|painful|pain|pains|sore|burns?|burning)\s+(?:to|when\s+i|whenever\s+i|every\s+time\s+i|while\s+i|while)\s+swallow`,
   ],
   pregnancy: [
     en`\bpregnan`,
@@ -944,6 +1062,20 @@ const EN = {
     // "extremely bloated", "severe cramps"
     fx(en`\b(?:extremely|severely|incredibly|painfully|unbearably|insanely)\s+(?:bloated|constipated|backed\s+up|gassy)\b|\b(?:constipation|bloating|heartburn|acid\s+reflux|reflux|indigestion|gas\s+pains?)\s+so\s+bad\b|\b${EN_SEVERE}\s+(?:cramps?|cramping)\b(?!\s+in\s+(?:my\s+)?(?:legs?|calf|calves|foot|feet|toes?|hands?|thighs?|arms?)\b)`),
   ],
+  // Taking too much of the medication (every guide: call the healthcare provider or Poison Help, or go to the nearest emergency room, right away).
+  // Every pattern shows the fixed card: the rule has no card of its own. Not "double checked"; "on purpose" belongs to the self-harm rule.
+  overdose: [
+    fx(en`\bdouble[-\s]?dos(?:e|es|ed|ing)\b|(?:\b(?<skip>doctor|dr|doc|provider|endo|endocrinologist|np|pa|nurse|pcp|they|she|he)\s+(?:just\s+|has\s+|had\s+|have\s+)?)?\bdoubled?\s+(?:up\s+)?(?:on\s+)?(?:my\s+|the\s+|a\s+)?(?:dose|doses|dosage|shot|shots|injection|pills?|meds|medication|tablets?)\b`),
+    fx(en`\b(?:took|taken|take|taking|injected|inject|injecting|used|gave\s+myself|given\s+myself|dosed|shot\s+myself\s+with)\s+(?:way\s+|far\s+|much\s+|a\s+lot\s+|a\s+bit\s+|slightly\s+|a\s+little\s+)?too\s+much\b(?!\s+(?:time|of\s+(?:my|the|a|an)\s+(?:time|day|break)|off|on\s+(?:my|the)\s+plate|for\s+granted)\b)`),
+    fx(en`\b(?:took|taken|injected|did|gave\s+myself|used|dosed|shot)\s+(?:(?:my|the|a|this\s+week'?s|today'?s|it|myself)\s+)?(?:(?:weekly|daily|morning|evening|usual|regular)\s+)?(?:(?:shot|dose|injection|pill|tablet|meds|medication|pen|ozempic|wegovy|zepbound|mounjaro|rybelsus|saxenda|foundayo)\s+)?twice\b(?!\s+(?:a|per|each|every)\s+(?:day|week)\b|\s+(?:daily|weekly)\b)`),
+    fx(en`\b(?:took|taken|injected|did|gave\s+myself|used|had)\s+(?:2|two|3|three|4|four|both)\s+(?:of\s+(?:my|the)\s+)?(?:[a-z]+\s+)?(?:shots|doses|injections|pens|ozempics?|wegovys?|zepbounds?|mounjaros?|rybelsus|saxendas?|foundayos?)\b|\b(?:took|taken|swallowed|had)\s+(?:2|two|3|three|4|four|both)\s+(?:of\s+(?:my|the)\s+)?(?:[a-z]+\s+)?(?:pills|tablets)\b(?=[^.;!?\n]*\b(?:instead|by\s+mistake|accidentally|by\s+accident|on\s+accident|forgot|extra|already)\b)|\b(?:2|two|3|three|double|twice)\b[^.;!?\n]{0,30}?\binstead\s+of\s+(?:1|one|a\s+single|the\s+usual|my\s+usual)\b`),
+    fx(en`\b(?:injected|used|took|gave\s+myself|emptied|shot)\s+(?:the\s+|my\s+)?(?:whole|entire|full|all\s+(?:of\s+)?(?:the|my))\s+(?:pen|vial|syringe|cartridge|box)\b|\b(?:clicked|turned|dialed|dialled)\s+(?:the\s+)?(?:dial|pen|dose)\s+all\s+the\s+way\b`),
+    fx(en`\boverdos(?:e|ed|es|ing)\b(?!\s+on\s+(?:sugar|carbs|chocolate|coffee|caffeine|candy|cake|pizza|sweets|junk|tv|netflix|love|cuteness|sleep|food|fun|vitamin\s+c)\b)|\bod'?d\b|\bo\.d\.'?d\b`),
+    fx(en`\b(?:took|taken|injected|gave\s+myself|did|used|had)\s+(?:an?\s+|one\s+)?(?:extra|additional)\s+(?:shot|dose|injection|pill|tablet)\b`),
+    fx(en`\b(?:more|higher|bigger|larger|stronger)\s+(?:dose\s+)?than\s+(?:(?:i\s+(?:was|am)\s+|what\s+(?:i\s+was|was)\s+)?prescribed|my\s+(?:dose|prescription|doctor\s+(?:said|prescribed))|i\s+(?:should|was\s+supposed\s+to)(?:\s+have)?)\b|\bwrong\s+dose\b[^.;!?\n]{0,30}?\b(?:more|higher|too\s+much|extra|double|bigger)\b|\btoo\s+(?:high|big|large|strong)\s+(?:a\s+)?dose\b`),
+    fx(en`\b(?:accidentally|by\s+accident|by\s+mistake|mistakenly|on\s+accident)\b${gap(40)}\b(?:took|taken|injected|did|dosed|gave\s+myself)\b[^.;!?\n]{0,30}?\b(?:again|twice|extra|another|second|double|too\s+much)\b|\b(?:took|taken|injected|did|dosed|gave\s+myself)\b[^.;!?\n]{0,40}?\b(?:again|twice|extra|another|second|double)\b[^.;!?\n]{0,30}?\b(?:accidentally|by\s+accident|by\s+mistake|mistakenly|on\s+accident)\b`),
+    fx(en`\bon\s+top\s+of\s+(?:mine|my\s+(?:own\s+|usual\s+|regular\s+|normal\s+)?(?:dose|shot|pill|injection))\b`),
+  ],
 } satisfies Partial<Record<TriageId, RegExp[]>>;
 
 /**
@@ -955,7 +1087,7 @@ const RULES: { id: TriageId; level: TriageLevel | ((c: TriageContext) => TriageL
     id: 'crisis',
     level: 'crisis',
     test: (t) =>
-      /(想死|不想活|自杀|自殺|轻生|輕生|结束生命|結束生命|活着没意思|活著沒意思|活着没有意义|活著沒有意義)/.test(t) || EN_CRISIS.test(t),
+      /(想死|不想活|自杀|自殺|轻生|輕生|结束生命|結束生命|活着没意思|活著沒意思|活着没有意义|活著沒有意義)/.test(t) || crisisCounts(t),
   },
   {
     id: 'pancreatitis',
@@ -969,7 +1101,7 @@ const RULES: { id: TriageId; level: TriageLevel | ((c: TriageContext) => TriageL
     id: 'chest_or_faint',
     level: 'emergency',
     test: (t) =>
-      any(t, [/(胸痛|胸口(剧痛|劇痛|疼得|痛得|压着疼|壓著痛|像压|像壓))/, /(晕倒|暈倒|昏过去|昏過去|失去意识|失去意識|昏迷)/]) || anyEn(t, EN.chest_or_faint),
+      any(t, [/(胸痛|胸口(剧痛|劇痛|疼得|痛得|压着疼|壓著痛|像压|像壓))/, /(晕倒|暈倒|昏过去|昏過去|失去意识|失去意識|昏迷)/]) || anyEn(t, EN.chest_or_faint, undefined, false, true),
   },
   {
     id: 'anaphylaxis',
@@ -979,7 +1111,7 @@ const RULES: { id: TriageId; level: TriageLevel | ((c: TriageContext) => TriageL
         /(嘴唇|喉咙|喉嚨|舌头|舌頭|脸|臉|眼皮).{0,4}(肿|腫)/,
         /(喘不上气|喘不上氣|喘不过气|喘不過氣|呼吸困难|呼吸困難|透不过气|透不過氣|上不来气|上不來氣)/,
         /全身.{0,4}(起疹|疹子|风团|風團|荨麻疹|蕁麻疹)/,
-      ]) || anyEn(t, EN.anaphylaxis),
+      ]) || anyEn(t, EN.anaphylaxis, undefined, false, true),
   },
   {
     id: 'vision',
@@ -1064,7 +1196,14 @@ const RULES: { id: TriageId; level: TriageLevel | ((c: TriageContext) => TriageL
     level: 'urgent',
     test: (t) => anyEn(t, EN.abdominal_pain_severe),
   },
+  {
+    // English only. Taking too much on purpose is left to the self-harm rule, which shows the crisis card.
+    id: 'overdose',
+    level: 'emergency',
+    test: (t) => (EN_ON_PURPOSE.test(t) && crisisCounts(t) ? false : anyEn(t, EN.overdose, undefined, false, true)),
+  },
 ];
+const EN_ON_PURPOSE = /\b(?:on\s+purpose|deliberately|intentionally)\b/i;
 
 export function triageText(text: string, ctx: TriageContext): TriageHit[] {
   // Phones type curly apostrophes ("can’t"); the English patterns expect straight ones. Common
@@ -1220,6 +1359,7 @@ function cardFlags(hit: TriageHit): CardFlags {
     case 'anaphylaxis':
     case 'vision':
     case 'dehydration':
+    case 'overdose':
       return { showEmergency: true, pauseCoaching: true };
     case 'hypoglycemia':
       return { showEmergency: hit.level === 'act_now', pauseCoaching: true };
@@ -1251,7 +1391,10 @@ export function pausesCoaching(hit: TriageHit): boolean {
 type CardText = Pick<TriageCard, 'title' | 'body'>;
 
 /** Chinese card text. Do not edit without clinical review; 'hant' uses this text too. */
-function cardTextZh(hit: TriageHit, region: Region): CardText {
+/** The rules that have a card of their own. The rule for taking too much has none: it always shows the fixed card (alert.ts). */
+type OwnCardHit = TriageHit & { id: Exclude<TriageId, 'overdose'> };
+
+function cardTextZh(hit: OwnCardHit, region: Region): CardText {
   const em = EMERGENCY_NUMBER[region];
   switch (hit.id) {
     case 'crisis':
@@ -1293,7 +1436,7 @@ function cardTextZh(hit: TriageHit, region: Region): CardText {
  * PENDING CLINICAL REVIEW: this English text has not been reviewed by a clinician yet. Do not
  * add, soften or strengthen a medical statement here without that review.
  */
-function cardTextEn(hit: TriageHit, region: Region): CardText {
+function cardTextEn(hit: OwnCardHit, region: Region): CardText {
   const em = emergencyNumber(region, 'en');
   // Where the Chinese card puts the number in brackets after an instruction. A region without
   // one number gets a short instruction there, so the brackets never hold a bare phrase.
@@ -1382,6 +1525,9 @@ function cardTextEn(hit: TriageHit, region: Region): CardText {
  * decides which emergency number the card shows.
  */
 export function triageCard(hit: TriageHit, region: Region, lang: Lang): TriageCard {
-  const text = lang === 'en' ? cardTextEn(hit, region) : cardTextZh(hit, region);
+  // The rule for taking too much has no card of its own: it shows the fixed card, word for word.
+  if (hit.id === 'overdose') return { ...fixedAlertCard(region, lang), ...cardFlags(hit) };
+  const own = hit as OwnCardHit;
+  const text = lang === 'en' ? cardTextEn(own, region) : cardTextZh(own, region);
   return { ...text, ...cardFlags(hit) };
 }
