@@ -2,12 +2,25 @@
 <html lang="zh-Hant">
   <head>
     <meta charset="UTF-8" />
+    <script>
+      // 生产服务器对 /central（无结尾斜杠）直接回 index.html、不做 301。补一个 <base>，
+      // 让 ./assets/ 与 city/ 仍按 /central/ 解析；必须在 Vite 注入的脚本与样式之前执行。
+      if (!/(\/|\.html)$/.test(location.pathname)) {
+        const base = document.createElement('base');
+        base.href = location.pathname + '/';
+        document.head.append(base);
+      }
+    </script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no" />
     <meta name="theme-color" content="#0b0820" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <title>中環急件 Central Rush</title>
   </head>
   <body>
     <div id="app"></div>
+    <noscript>《中環急件》需要啟用 JavaScript 與 WebGL 2。</noscript>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

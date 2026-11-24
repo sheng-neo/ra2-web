@@ -21,6 +21,9 @@ const MIME: Record<string, string> = {
   '.ogg': 'audio/ogg',
   '.wav': 'audio/wav',
   '.m4a': 'audio/mp4',
+  '.txt': 'text/plain; charset=utf-8',
+  '.bin': 'application/octet-stream',
+  '.gz': 'application/gzip',
 };
 
 /**

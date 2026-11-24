@@ -32,6 +32,9 @@ jobs:
       - name: Test
         run: pnpm test
 
+      - name: Check city data is up to date
+        run: pnpm citymap --check
+
       - name: Build client
         run: pnpm --filter @ra2web/client build
 

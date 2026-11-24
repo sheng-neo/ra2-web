@@ -1,0 +1,25 @@
+central.json — Open Database License (ODbL) v1.0 notice
+
+The ODbL part of central.json is a Derivative Database of OpenStreetMap data (© OpenStreetMap contributors) and some TomTom road segments, both ODbL-1.0,
+obtained through the Overture Maps Foundation release 2026-11-18.0. It is made available
+under the Open Database License v1.0:
+  https://opendatacommons.org/licenses/odbl/1-0/
+Any rights in individual contents of the database are licensed under the Database Contents
+License v1.0: https://opendatacommons.org/licenses/dbcl/1-0/
+
+Scope:
+* ODbL: the roads, rails, water, zones and props arrays of central.json.
+* Not ODbL: the buildings and landmarks arrays of central.json (Lands Department data) and terrain.bin
+  (CEDD LiDAR DTM) are independent HKSAR Government data used under the CSDI terms (see ATTRIBUTION.txt).
+  They are kept as separate whole layers, combined with the ODbL layers only as a collective work.
+
+Derived database and how it is produced (ODbL section 4.6):
+* The derived database is central.json in this directory (central/client/public/city/central.json
+  in the source repository).
+* Source repository: https://github.com/sheng-neo/ra2-web/tree/main/central
+* Its generation method is the open-source pipeline in central/citymap/ of the same repository
+  (run `pnpm citymap`), applied to the raw snapshots committed under
+  central/citymap/data-raw/overture-2026-11-18.0/ and central/citymap/data-raw/landsd/
+  (each sources.json lists every file with its sha256). The pipeline reproduces the files byte for byte.
+
+No technical restrictions (DRM) are applied to this data.

@@ -1,0 +1,95 @@
+/**
+ * 管线编排：快照 → 各阶段 → CityFile + 地形网格。只读输入、不写盘，CLI 和测试共用。
+ *
+ * 图层与来源（每层只用一个来源，PLAN §3.2）：
+ * - 道路、电车轨、海面、区域、道具点：Overture（OSM 派生，少量路段来自 TomTom；均为 ODbL）；
+ * - 建筑（及由建筑轮廓得出的地标摆放）：默认地政总署 Building（CSDI 条款），可整层换回 Overture；
+ * - 地形：CEDD 2020 LiDAR DTM（CSDI 条款），单独写 terrain.bin。
+ */
+import { CITY_FORMAT, CITY_FORMAT_VERSION, type CityFile, type SourceRef } from '@central/data';
+import { EXTENT, LANDSD_DIR, MVP_RECT, ORIGIN, PIPELINE_VERSION, RAW_DIR } from './config';
+import { groundOf } from './geo/ground';
+import { sha256Hex } from './geo/hash';
+import { LANDMARKS } from './overrides/landmarks';
+import { landsdBuildingSource } from './sources/landsd-buildings';
+import { readOverture } from './sources/overture';
+import { overtureBuildingSource } from './sources/overture-buildings';
+import { REF_OSM, REF_OVERTURE } from './sources/refs';
+import { buildBuildings } from './stages/buildings';
+import { placeLandmarks } from './stages/landmarks';
+import { buildProps } from './stages/props';
+import { projectRectBounds, unproject } from './stages/project';
+import { buildRails } from './stages/rails';
+import { buildRoads } from './stages/roads';
+import { loadSnapshot } from './stages/snapshot';
+import { buildTerrain, type TerrainBuild } from './stages/terrain';
+import { readLandsdBuildings } from './stages/terrain-buildings';
+import { REF_CEDD_DTM } from './stages/terrain-refs';
+import { buildWater } from './stages/water';
+import { buildZones } from './stages/zones';
+
+/** 建筑图层的来源：整层二选一，绝不逐栋混合。 */
+export type BuildingsFrom = 'landsd' | 'overture';
+
+export interface BuildOptions {
+  /** Overture 快照目录（含 sources.json），默认仓库里的快照。 */
+  rawDir?: string;
+  /** 港府数据快照目录（地形 + LandsD 建筑），默认 data-raw/landsd。 */
+  landsdDir?: string;
+  /** 建筑图层来源，默认 'landsd'。 */
+  buildings?: BuildingsFrom;
+}
+
+export interface CityBuild {
+  city: CityFile;
+  /** terrain.bin 的内容来源（网格、陆地掩膜、统计报告）。 */
+  terrain: TerrainBuild;
+}
+
+export async function buildCity(opts: BuildOptions = {}): Promise<CityBuild> {
+  const snapshot = loadSnapshot(opts.rawDir ?? RAW_DIR);
+  const gov = loadSnapshot(opts.landsdDir ?? LANDSD_DIR);
+  const ovt = await readOverture(snapshot.files);
+  const extent = projectRectBounds(EXTENT);
+  const terrain = buildTerrain(gov);
+  const ground = groundOf(terrain.grid);
+
+  const source =
+    (opts.buildings ?? 'landsd') === 'landsd'
+      ? landsdBuildingSource(readLandsdBuildings(gov.files))
+      : overtureBuildingSource(ovt.buildings);
+  const built = buildBuildings(await source.load(), source.src, extent, ground);
+  const { landmarks, buildings } = placeLandmarks(LANDMARKS, built.buildings, ground);
+
+  const roads = buildRoads(ovt.segments, extent);
+  const zones = buildZones(ovt.landUse, ovt.buildings, MVP_RECT);
+
+  const sources = new Map<string, SourceRef>([[REF_OSM.id, REF_OSM], [REF_OVERTURE.id, REF_OVERTURE]]);
+  for (const ref of [...roads.refs, ...built.refs]) sources.set(ref.id, ref);
+  sources.set(REF_CEDD_DTM.id, REF_CEDD_DTM);
+
+  const [lon, lat] = unproject(0, 0);
+  const city: CityFile = {
+    format: CITY_FORMAT,
+    version: CITY_FORMAT_VERSION,
+    meta: {
+      origin: { e: ORIGIN.e, n: ORIGIN.n, lon: Math.round(lon * 1e7) / 1e7, lat: Math.round(lat * 1e7) / 1e7 },
+      crs: 'EPSG:2326',
+      unit: 'dm',
+      bbox: [extent[0], extent[1], extent[2], extent[3]],
+      sources: [...sources.values()],
+      build: {
+        pipelineVersion: PIPELINE_VERSION,
+        inputsDigest: sha256Hex(`overture ${snapshot.inputsDigest}\nlandsd ${gov.inputsDigest}`),
+      },
+    },
+    buildings,
+    roads: roads.roads,
+    rails: buildRails(ovt.segments, extent),
+    water: buildWater(ovt.water),
+    zones,
+    props: buildProps(ovt.infrastructure, ovt.land, extent, zones.sensitive),
+    landmarks,
+  };
+  return { city, terrain };
+}

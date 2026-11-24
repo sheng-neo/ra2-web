@@ -1,0 +1,3 @@
+# 生成的地图数据须逐字节一致（pnpm citymap --check），禁止换行符转换
+central/client/public/city/** -text
+central/citymap/data-raw/** -text

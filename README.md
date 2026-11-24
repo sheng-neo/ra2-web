@@ -138,3 +138,7 @@ docker run -p 8080:8080 ra2web
 
 注意：MIT 仅覆盖**本仓库的代码**。游戏美术/音效/字体等版权素材**不在本仓库内、不随本项目分发**；
 玩家需自备原版游戏文件，或使用 EA 官方免费开放的素材。本项目与 EA 无关。
+
+例外：`central/`（《中環急件》）里的地图数据**不是 MIT**。`central/citymap/data-raw/` 与
+`central/client/public/city/` 含 ODbL（OpenStreetMap / Overture）和香港特区政府 CSDI 条款的数据，
+各自的许可与署名见 [central/citymap/data-raw/README.md](central/citymap/data-raw/README.md)。

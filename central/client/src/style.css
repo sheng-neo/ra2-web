@@ -1,0 +1,333 @@
+:root {
+  --safe-t: env(safe-area-inset-top, 0px);
+  --safe-r: env(safe-area-inset-right, 0px);
+  --safe-b: env(safe-area-inset-bottom, 0px);
+  --safe-l: env(safe-area-inset-left, 0px);
+  --ink: #ece8ff;
+  --muted: #a49cc8;
+  --glass: rgba(16, 12, 40, 0.66);
+  --line: rgba(190, 170, 255, 0.22);
+  --accent: #ff4f8b;
+  --accent2: #3fe0ff;
+  color-scheme: dark;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: #0b0820;
+  color: var(--ink);
+  overflow: hidden;
+  overscroll-behavior: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-text-size-adjust: 100%;
+  font-family: system-ui, -apple-system, 'PingFang HK', 'Noto Sans HK', 'Microsoft JhengHei', sans-serif;
+}
+
+#app canvas {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  touch-action: none;
+}
+
+.badge {
+  position: fixed;
+  top: calc(var(--safe-t) + 10px);
+  left: calc(var(--safe-l) + 12px);
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: var(--glass);
+  border: 1px solid var(--line);
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  pointer-events: none;
+}
+.badge b {
+  color: var(--accent);
+  font-weight: 700;
+}
+.badge span {
+  color: var(--muted);
+}
+
+.chip {
+  appearance: none;
+  min-height: 36px;
+  padding: 0 14px;
+  border-radius: 18px;
+  border: 1px solid var(--line);
+  background: var(--glass);
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  white-space: nowrap;
+}
+.chip:hover {
+  border-color: rgba(255, 255, 255, 0.45);
+}
+.chip[aria-pressed='true'] {
+  border-color: var(--accent2);
+  color: #fff;
+  box-shadow: 0 0 0 1px var(--accent2) inset;
+}
+
+/* 底部：机位按钮 + 常驻地图署名，竖排居中 */
+.dock {
+  position: fixed;
+  left: calc(var(--safe-l) + 8px);
+  right: calc(var(--safe-r) + 8px);
+  bottom: calc(var(--safe-b) + 6px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  pointer-events: none;
+}
+.presets {
+  display: flex;
+  gap: 8px;
+  pointer-events: auto;
+}
+.map-credit span {
+  white-space: nowrap;
+}
+.map-credit {
+  appearance: none;
+  border: 0;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgba(5, 4, 16, 0.45);
+  color: var(--muted);
+  font: inherit;
+  font-size: 10px;
+  line-height: 1.35;
+  text-align: center;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.notice {
+  position: fixed;
+  top: 38%;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 30;
+  max-width: calc(100% - 32px);
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: rgba(16, 12, 40, 0.92);
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  pointer-events: none;
+}
+.notice.tappable {
+  pointer-events: auto;
+  cursor: pointer;
+  border-color: var(--accent);
+}
+.notice[hidden] {
+  display: none;
+}
+
+.credits-btn {
+  position: fixed;
+  top: calc(var(--safe-t) + 10px);
+  right: calc(var(--safe-r) + 12px);
+  min-height: 32px;
+  font-size: 13px;
+}
+
+.hint {
+  position: fixed;
+  top: calc(var(--safe-t) + 52px);
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 5px 10px;
+  border-radius: 6px;
+  background: var(--glass);
+  color: var(--muted);
+  font-size: 12px;
+  pointer-events: none;
+  transition: opacity 0.8s;
+  display: none;
+}
+@media (orientation: portrait) {
+  .hint {
+    display: block;
+  }
+}
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(5, 4, 16, 0.78);
+  padding: calc(var(--safe-t) + 12px) calc(var(--safe-r) + 12px) calc(var(--safe-b) + 12px) calc(var(--safe-l) + 12px);
+  box-sizing: border-box;
+  z-index: 10;
+}
+.overlay[hidden] {
+  display: none;
+}
+.panel {
+  width: min(560px, 100%);
+  max-height: 100%;
+  overflow: auto;
+  box-sizing: border-box;
+  padding: 16px 18px;
+  border-radius: 12px;
+  background: #140f30;
+  border: 1px solid var(--line);
+  font-size: 13px;
+  line-height: 1.55;
+  -webkit-user-select: text;
+  user-select: text;
+}
+.panel h2 {
+  margin: 0 0 8px;
+  font-size: 16px;
+}
+.panel ul {
+  margin: 6px 0 10px;
+  padding-left: 18px;
+}
+.panel li {
+  /* 港府数据署名是英文一行、繁中一行 */
+  white-space: pre-line;
+  margin-bottom: 4px;
+}
+.panel a {
+  color: var(--accent2);
+}
+.panel .note {
+  color: var(--muted);
+}
+.panel .close {
+  float: right;
+}
+
+.loading {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  background: radial-gradient(120% 90% at 50% 110%, #3a1f55 0%, #120c2c 55%, #070614 100%);
+  transition: opacity 0.6s;
+  padding: 24px;
+  box-sizing: border-box;
+  text-align: center;
+}
+.loading.done {
+  opacity: 0;
+  pointer-events: none;
+}
+.loading h1 {
+  margin: 0;
+  font-size: 28px;
+  letter-spacing: 0.12em;
+}
+.loading h1 small {
+  display: block;
+  margin-top: 4px;
+  font-size: 13px;
+  letter-spacing: 0.3em;
+  color: var(--muted);
+}
+.bar {
+  width: min(320px, 70vw);
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+}
+.bar i {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: linear-gradient(90deg, var(--accent), var(--accent2));
+  transition: width 0.2s;
+}
+.bar.indeterminate i {
+  width: 30%;
+  animation: slide 1.1s linear infinite;
+}
+@keyframes slide {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(340%);
+  }
+}
+.loading .status {
+  font-size: 13px;
+  color: var(--muted);
+  min-height: 1.4em;
+}
+.loading .status.error {
+  color: #ff8a8a;
+}
+.loading .attrib {
+  position: absolute;
+  bottom: calc(var(--safe-b) + 12px);
+  left: 0;
+  right: 0;
+  padding: 0 16px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.perf {
+  position: fixed;
+  right: calc(var(--safe-r) + 12px);
+  top: calc(var(--safe-t) + 50px);
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.55);
+  font: 11px/1.35 ui-monospace, SFMono-Regular, Menlo, monospace;
+  white-space: pre;
+  pointer-events: none;
+}
+
+@media (max-height: 420px) {
+  .badge {
+    font-size: 12px;
+    padding: 4px 8px;
+  }
+  .chip {
+    min-height: 32px;
+    font-size: 13px;
+    padding: 0 12px;
+  }
+  .dock {
+    bottom: calc(var(--safe-b) + 4px);
+    gap: 4px;
+  }
+}
+
+/* 窄屏（≤ 380 px，如 360 px 宽的 Android 竖屏）：标题牌与鸣谢按钮各收短，避免重叠 */
+@media (max-width: 380px) {
+  .badge .stage,
+  .credits-btn .en {
+    display: none;
+  }
+}

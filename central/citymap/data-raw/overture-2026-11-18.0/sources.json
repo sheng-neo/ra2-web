@@ -1,0 +1,168 @@
+{
+  "dataset": "Overture Maps Foundation",
+  "release": "2026-11-18.0",
+  "attribution": [
+    "© OpenStreetMap contributors",
+    "Overture Maps Foundation",
+    "TomTom (some road segments, ODbL-1.0)",
+    "building.parquet only: building footprints from Shi, Q. et al. (2024), Journal of Remote Sensing, doi:10.5281/zenodo.8174931, CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/)"
+  ],
+  "notes": "Rows whose bbox overlaps the extent, sorted by id. Non-point geometries in infrastructure/land_use/water/land are clipped to the extent (bbox column updated); buildings/segments/connectors are untouched. base/land keeps subtype=tree only.",
+  "files": [
+    {
+      "file": "building.parquet",
+      "layer": "buildings/building",
+      "s3": "s3://overturemaps-us-west-2/release/2026-11-18.0/theme=buildings/type=building/",
+      "release": "2026-11-18.0",
+      "licenses": [
+        "ODbL-1.0 (OpenStreetMap)",
+        "CC-BY-4.0 (rows with sources[].dataset = doi:10.5281/zenodo.8174931, East Asian building footprints: Shi, Q. et al. 2024, Journal of Remote Sensing)"
+      ],
+      "sha256": "0c92705bdc9056bdeef62d7e7a1685fccf7a2685b42432f990081a22f568f1bd",
+      "bytes": 694618,
+      "rows": 2692,
+      "clipped": 0,
+      "filter": "bbox overlap",
+      "fetched": "2026-11-24",
+      "bbox": {
+        "west": 114.147,
+        "south": 22.274,
+        "east": 114.171,
+        "north": 22.291,
+        "crs": "EPSG:4326"
+      }
+    },
+    {
+      "file": "segment.parquet",
+      "layer": "transportation/segment",
+      "s3": "s3://overturemaps-us-west-2/release/2026-11-18.0/theme=transportation/type=segment/",
+      "release": "2026-11-18.0",
+      "licenses": [
+        "ODbL-1.0 (OpenStreetMap; TomTom-contributed rows are also ODbL-1.0 per sources[].license)"
+      ],
+      "sha256": "4ca2c82de4fb27f22f70dd7f3a1c2f9871876e475ffe585ba14b9249eb6db2f0",
+      "bytes": 1452461,
+      "rows": 4726,
+      "clipped": 0,
+      "filter": "bbox overlap",
+      "fetched": "2026-11-24",
+      "bbox": {
+        "west": 114.147,
+        "south": 22.274,
+        "east": 114.171,
+        "north": 22.291,
+        "crs": "EPSG:4326"
+      }
+    },
+    {
+      "file": "connector.parquet",
+      "layer": "transportation/connector",
+      "s3": "s3://overturemaps-us-west-2/release/2026-11-18.0/theme=transportation/type=connector/",
+      "release": "2026-11-18.0",
+      "licenses": [
+        "ODbL-1.0 (OpenStreetMap)"
+      ],
+      "sha256": "1efd47d9ec1921a089bcb968cc7f428554e879826d689e4d4cfef3325946939d",
+      "bytes": 552223,
+      "rows": 6553,
+      "clipped": 0,
+      "filter": "bbox overlap",
+      "fetched": "2026-11-24",
+      "bbox": {
+        "west": 114.147,
+        "south": 22.274,
+        "east": 114.171,
+        "north": 22.291,
+        "crs": "EPSG:4326"
+      }
+    },
+    {
+      "file": "infrastructure.parquet",
+      "layer": "base/infrastructure",
+      "s3": "s3://overturemaps-us-west-2/release/2026-11-18.0/theme=base/type=infrastructure/",
+      "release": "2026-11-18.0",
+      "licenses": [
+        "ODbL-1.0 (OpenStreetMap)"
+      ],
+      "sha256": "5de41cc136e45987e5fb570b202c4e3bf153951093cd01608a5a2d8102ea7e7e",
+      "bytes": 571939,
+      "rows": 3451,
+      "clipped": 24,
+      "filter": "bbox overlap",
+      "fetched": "2026-11-24",
+      "bbox": {
+        "west": 114.147,
+        "south": 22.274,
+        "east": 114.171,
+        "north": 22.291,
+        "crs": "EPSG:4326"
+      }
+    },
+    {
+      "file": "land_use.parquet",
+      "layer": "base/land_use",
+      "s3": "s3://overturemaps-us-west-2/release/2026-11-18.0/theme=base/type=land_use/",
+      "release": "2026-11-18.0",
+      "licenses": [
+        "ODbL-1.0 (OpenStreetMap)"
+      ],
+      "sha256": "13c8502a77bb8d6be5e0ace62a65b63ae637b425f933f84b13d3c7462fb7db1e",
+      "bytes": 243281,
+      "rows": 640,
+      "clipped": 49,
+      "filter": "bbox overlap",
+      "fetched": "2026-11-24",
+      "bbox": {
+        "west": 114.147,
+        "south": 22.274,
+        "east": 114.171,
+        "north": 22.291,
+        "crs": "EPSG:4326"
+      }
+    },
+    {
+      "file": "water.parquet",
+      "layer": "base/water",
+      "s3": "s3://overturemaps-us-west-2/release/2026-11-18.0/theme=base/type=water/",
+      "release": "2026-11-18.0",
+      "licenses": [
+        "ODbL-1.0 (OpenStreetMap)"
+      ],
+      "sha256": "eccb8e9464b794383737a416fa68eff12d71d32f40425bb7276eb539d27db821",
+      "bytes": 47240,
+      "rows": 107,
+      "clipped": 10,
+      "filter": "bbox overlap",
+      "fetched": "2026-11-24",
+      "bbox": {
+        "west": 114.147,
+        "south": 22.274,
+        "east": 114.171,
+        "north": 22.291,
+        "crs": "EPSG:4326"
+      }
+    },
+    {
+      "file": "land.parquet",
+      "layer": "base/land",
+      "s3": "s3://overturemaps-us-west-2/release/2026-11-18.0/theme=base/type=land/",
+      "release": "2026-11-18.0",
+      "licenses": [
+        "ODbL-1.0 (OpenStreetMap)"
+      ],
+      "sha256": "03da62ff5a1cee69ee9dd6bc89c4a156cfafd48554685c934da51e2e8852c174",
+      "bytes": 48338,
+      "rows": 286,
+      "clipped": 5,
+      "filter": "bbox overlap & subtype == 'tree'",
+      "fetched": "2026-11-24",
+      "bbox": {
+        "west": 114.147,
+        "south": 22.274,
+        "east": 114.171,
+        "north": 22.291,
+        "crs": "EPSG:4326"
+      }
+    }
+  ]
+}

@@ -1,0 +1,153 @@
+{
+  "format": "central-dtm-raw",
+  "version": 1,
+  "source": "CEDD LiDAR DTM 2020 (0.5 m, bare earth)",
+  "datasetId": "cedd_rcd_1629267205233_87895",
+  "crs": "EPSG:2326",
+  "verticalDatum": "Hong Kong Principal Datum (mPD)",
+  "e0": 833150,
+  "n0": 814970,
+  "cell": 1,
+  "nx": 2551,
+  "ny": 1981,
+  "unit": "dm",
+  "nodata": -32768,
+  "data": "cedd-dtm-2020-1m.i16.gz",
+  "layout": "int16 little-endian, gzip; index = j*nx + i; sample (i, j) at E = e0 + i*cell, N = n0 + j*cell (metres, HK1980 Grid); rows south to north, west to east within a row",
+  "resample": "mean of the valid native 0.5 m pixels inside the 1 m cell centred on each integer-metre node, rounded to decimetres; sea and no-data = nodata",
+  "tiles": [
+    {
+      "tile": "11SW13A",
+      "file": "11SW13A(e833n815,e833n815).zip",
+      "url": "https://bulkdata.csdi.gov.hk/cedd/lidar/2020dtm/11SW13A(e833n815,e833n815).zip",
+      "sha256": "cf6cd1ee78f985e40d80aa271cacbf4038c552e88916374429c0ede1ff3f0c2d",
+      "bytes": 5639038
+    },
+    {
+      "tile": "11SW13B",
+      "file": "11SW13B(e833n815,e834n815).zip",
+      "url": "https://bulkdata.csdi.gov.hk/cedd/lidar/2020dtm/11SW13B(e833n815,e834n815).zip",
+      "sha256": "0c51c4adb2c276d6894cc48df43c0fe3dc4f6ee5732e668009fa42d2288e7e2e",
+      "bytes": 5592244
+    },
+    {
+      "tile": "11SW13C",
+      "file": "11SW13C(e833n814,e833n815).zip",
+      "url": "https://bulkdata.csdi.gov.hk/cedd/lidar/2020dtm/11SW13C(e833n814,e833n815).zip",
+      "sha256": "f94ab225d0a9e15147a89cd33e5dd8b6b4edd45951c39ba6aaafdbd1b3cdea83",
+      "bytes": 5458156
+    },
+    {
+      "tile": "11SW13D",
+      "file": "11SW13D(e833n814,e834n815).zip",
+      "url": "https://bulkdata.csdi.gov.hk/cedd/lidar/2020dtm/11SW13D(e833n814,e834n815).zip",
+      "sha256": "2f2fa5d2149f996bd1195c2303b0932835068d4472d483d446646f5cf9e3f5ab",
+      "bytes": 5423794
+    },
+    {
+      "tile": "11SW14A",
+      "file": "11SW14A(e834n815,e835n815).zip",
+      "url": "https://bulkdata.csdi.gov.hk/cedd/lidar/2020dtm/11SW14A(e834n815,e835n815).zip",
+      "sha256": "350bf89b820572d2622740198b7ddf139893b52f4de52bb6eb2be0354e35ef59",
+      "bytes": 5797154
+    },
+    {
+      "tile": "11SW14B",
+      "file": "11SW14B(e835n815,e836n815).zip",
+      "url": "https://bulkdata.csdi.gov.hk/cedd/lidar/2020dtm/11SW14B(e835n815,e836n815).zip",
+      "sha256": "9a01f7036d6c5966e5b8df8653880c58e6dab450c773e4b22d1a9b1acf1e0fc3",
+      "bytes": 5865208
+    },
+    {
+      "tile": "11SW14C",
+      "file": "11SW14C(e834n814,e835n815).zip",
+      "url": "https://bulkdata.csdi.gov.hk/cedd/lidar/2020dtm/11SW14C(e834n814,e835n815).zip",
+      "sha256": "40ad02a04a5188b15b656d5793ca641a2fef872a852b42963b640c2ba3981cab",
+      "bytes": 5599247
+    },
+    {
+      "tile": "11SW14D",
+      "file": "11SW14D(e835n814,e836n815).zip",
+      "url": "https://bulkdata.csdi.gov.hk/cedd/lidar/2020dtm/11SW14D(e835n814,e836n815).zip",
+      "sha256": "3671b847f9430a8e6b5fbd026a599b20c248b7e73dd3d13a519eec6cb2d0b3e7",
+      "bytes": 5761136
+    },
+    {
+      "tile": "11SW3C",
+      "file": "11SW3C(e833n816,e833n817).zip",
+      "url": "https://bulkdata.csdi.gov.hk/cedd/lidar/2020dtm/11SW3C(e833n816,e833n817).zip",
+      "sha256": "f0046e67176e6a038347c87a41a40fa53037e26dca84e575eb482805e57b014a",
+      "bytes": 8742
+    },
+    {
+      "tile": "11SW4C",
+      "file": "11SW4C(e834n816,e835n817).zip",
+      "url": "https://bulkdata.csdi.gov.hk/cedd/lidar/2020dtm/11SW4C(e834n816,e835n817).zip",
+      "sha256": "af207ad69b354230a5b758a53b7364b1dc308bbe1aedcc5ee33465deb1646fba",
+      "bytes": 251875
+    },
+    {
+      "tile": "11SW4D",
+      "file": "11SW4D(e835n816,e836n817).zip",
+      "url": "https://bulkdata.csdi.gov.hk/cedd/lidar/2020dtm/11SW4D(e835n816,e836n817).zip",
+      "sha256": "4b0925bfc53aed27028a3eb5b8f954aad3ac61d2b3afa49a36f49ce630882e48",
+      "bytes": 2188468
+    },
+    {
+      "tile": "11SW8A",
+      "file": "11SW8A(e833n816,e833n816).zip",
+      "url": "https://bulkdata.csdi.gov.hk/cedd/lidar/2020dtm/11SW8A(e833n816,e833n816).zip",
+      "sha256": "5c8c59081ef9696e2259906b09455214d7e2725168fea2625219d16d3ba09541",
+      "bytes": 4805644
+    },
+    {
+      "tile": "11SW8B",
+      "file": "11SW8B(e833n816,e834n816).zip",
+      "url": "https://bulkdata.csdi.gov.hk/cedd/lidar/2020dtm/11SW8B(e833n816,e834n816).zip",
+      "sha256": "ffbdbc543ce2d16ff4bd8e6cc5469105efc5757af8e121345b959553ac0dc847",
+      "bytes": 3434905
+    },
+    {
+      "tile": "11SW8C",
+      "file": "11SW8C(e833n815,e833n816).zip",
+      "url": "https://bulkdata.csdi.gov.hk/cedd/lidar/2020dtm/11SW8C(e833n815,e833n816).zip",
+      "sha256": "b3dc93b156a59e9b9600f54d0bae0004a57b435001f65cb9dae446218fbfd007",
+      "bytes": 5639755
+    },
+    {
+      "tile": "11SW8D",
+      "file": "11SW8D(e833n815,e834n816).zip",
+      "url": "https://bulkdata.csdi.gov.hk/cedd/lidar/2020dtm/11SW8D(e833n815,e834n816).zip",
+      "sha256": "65c49ec99a9025a195ac3911e2043f5c6e8eedba239eb1eaa1d1eb67b0d8efd1",
+      "bytes": 5897418
+    },
+    {
+      "tile": "11SW9A",
+      "file": "11SW9A(e834n816,e835n816).zip",
+      "url": "https://bulkdata.csdi.gov.hk/cedd/lidar/2020dtm/11SW9A(e834n816,e835n816).zip",
+      "sha256": "70edc16cb50abb87404392defa4ab9164fdfe2f576ed931de4f017f12ca296b0",
+      "bytes": 851919
+    },
+    {
+      "tile": "11SW9B",
+      "file": "11SW9B(e835n816,e836n816).zip",
+      "url": "https://bulkdata.csdi.gov.hk/cedd/lidar/2020dtm/11SW9B(e835n816,e836n816).zip",
+      "sha256": "dc50810aa63bea9065ddd091f54ca50873bdf98aaeee69d670a4cd1fc4ec261c",
+      "bytes": 45764
+    },
+    {
+      "tile": "11SW9C",
+      "file": "11SW9C(e834n815,e835n816).zip",
+      "url": "https://bulkdata.csdi.gov.hk/cedd/lidar/2020dtm/11SW9C(e834n815,e835n816).zip",
+      "sha256": "b6739a31249c5fef7198e96d92fb0ef09a9f2fe22447bf5a0e7926998eb5244d",
+      "bytes": 5270412
+    },
+    {
+      "tile": "11SW9D",
+      "file": "11SW9D(e835n815,e836n816).zip",
+      "url": "https://bulkdata.csdi.gov.hk/cedd/lidar/2020dtm/11SW9D(e835n815,e836n816).zip",
+      "sha256": "a4a1da1509d4b7088f648a3cfc0f652eb8bf2e39b68d85c2f0bdc905d739250d",
+      "bytes": 4485845
+    }
+  ]
+}

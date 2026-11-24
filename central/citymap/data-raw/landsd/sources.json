@@ -1,0 +1,256 @@
+{
+  "dataset": "HKSAR Government open data via the CSDI Portal (CEDD LiDAR DTM 2020; LandsD Building; LandsD 3D Pedestrian Network)",
+  "release": "2026-11-24",
+  "attribution": [
+    "Contains data from the Lands Department and the Civil Engineering and Development Department, HKSAR Government, obtained from the Common Spatial Data Infrastructure (CSDI) Portal (portal.csdi.gov.hk). Intellectual property rights in the data are owned by the Government of the Hong Kong Special Administrative Region. The data have been processed (resampled/converted) for this game; the Government is not responsible for, and does not endorse, this game.",
+    "部分資料來源：香港特別行政區政府地政總署及土木工程拓展署，經空間數據共享平台（CSDI，portal.csdi.gov.hk）取得；資料的知識產權屬香港特別行政區政府所有。資料已為本遊戲重新取樣及轉換，政府不對本遊戲負責，亦不代表政府認可。"
+  ],
+  "terms": "TERMS.md",
+  "notes": "All queries/clips use the HK1980 Grid bbox in 'bbox'. Vector layers keep the FeatureServer GeoJSON as returned (pages merged, float64-exact) minus name fields. The DTM is resampled from 0.5 m to 1 m (see cedd-dtm-2020-1m.json); the original tile zips are listed with their sha256 in derivedFrom.",
+  "files": [
+    {
+      "file": "cedd-dtm-2020-1m.json",
+      "layer": "cedd/lidar-dtm-2020",
+      "datasetId": "cedd_rcd_1629267205233_87895",
+      "url": "https://portal.csdi.gov.hk/geoportal/?datasetId=cedd_rcd_1629267205233_87895",
+      "release": "2020 (flown 2019-12-20 to 2020-02-02)",
+      "crs": "EPSG:2326 + mPD",
+      "licenses": [
+        "CSDI Portal Terms and Conditions of Use (see TERMS.md)"
+      ],
+      "fetched": "2026-11-24",
+      "bbox": {
+        "west": 833150,
+        "south": 814970,
+        "east": 835700,
+        "north": 816950,
+        "crs": "EPSG:2326"
+      },
+      "tileIndex": "https://portal.csdi.gov.hk/csdi-webpage/file-api?dataset_id=cedd_rcd_1629267205233_87895&format=geojson&layer_name=DTM_2020",
+      "tileIndexName": "Grid_Index_for_LiDAR_Data_3003_2026_gdb_DTM_2020_converted.geojson",
+      "format": "JSON grid header (written by landsd_fetch.py)",
+      "sha256": "61c03d4da2dd49d8db8105b63eea516898560752386fbba4ead371f12633241d",
+      "bytes": 6162,
+      "rows": 1
+    },
+    {
+      "file": "cedd-dtm-2020-1m.i16.gz",
+      "layer": "cedd/lidar-dtm-2020",
+      "datasetId": "cedd_rcd_1629267205233_87895",
+      "url": "https://portal.csdi.gov.hk/geoportal/?datasetId=cedd_rcd_1629267205233_87895",
+      "release": "2020 (flown 2019-12-20 to 2020-02-02)",
+      "crs": "EPSG:2326 + mPD",
+      "licenses": [
+        "CSDI Portal Terms and Conditions of Use (see TERMS.md)"
+      ],
+      "fetched": "2026-11-24",
+      "bbox": {
+        "west": 833150,
+        "south": 814970,
+        "east": 835700,
+        "north": 816950,
+        "crs": "EPSG:2326"
+      },
+      "tileIndex": "https://portal.csdi.gov.hk/csdi-webpage/file-api?dataset_id=cedd_rcd_1629267205233_87895&format=geojson&layer_name=DTM_2020",
+      "tileIndexName": "Grid_Index_for_LiDAR_Data_3003_2026_gdb_DTM_2020_converted.geojson",
+      "format": "gzip int16 LE dm grid, 1 m, resampled from GeoTIFF float32 0.5 m tiles",
+      "sha256": "5b4e0ee09fda3588033f4c82a275657e60be82aae4726e7bee5aab2e7d24080a",
+      "bytes": 2439141,
+      "rows": 5053531,
+      "derivedFrom": [
+        {
+          "tile": "11SW13A",
+          "url": "https://bulkdata.csdi.gov.hk/cedd/lidar/2020dtm/11SW13A(e833n815,e833n815).zip",
+          "sha256": "cf6cd1ee78f985e40d80aa271cacbf4038c552e88916374429c0ede1ff3f0c2d",
+          "bytes": 5639038
+        },
+        {
+          "tile": "11SW13B",
+          "url": "https://bulkdata.csdi.gov.hk/cedd/lidar/2020dtm/11SW13B(e833n815,e834n815).zip",
+          "sha256": "0c51c4adb2c276d6894cc48df43c0fe3dc4f6ee5732e668009fa42d2288e7e2e",
+          "bytes": 5592244
+        },
+        {
+          "tile": "11SW13C",
+          "url": "https://bulkdata.csdi.gov.hk/cedd/lidar/2020dtm/11SW13C(e833n814,e833n815).zip",
+          "sha256": "f94ab225d0a9e15147a89cd33e5dd8b6b4edd45951c39ba6aaafdbd1b3cdea83",
+          "bytes": 5458156
+        },
+        {
+          "tile": "11SW13D",
+          "url": "https://bulkdata.csdi.gov.hk/cedd/lidar/2020dtm/11SW13D(e833n814,e834n815).zip",
+          "sha256": "2f2fa5d2149f996bd1195c2303b0932835068d4472d483d446646f5cf9e3f5ab",
+          "bytes": 5423794
+        },
+        {
+          "tile": "11SW14A",
+          "url": "https://bulkdata.csdi.gov.hk/cedd/lidar/2020dtm/11SW14A(e834n815,e835n815).zip",
+          "sha256": "350bf89b820572d2622740198b7ddf139893b52f4de52bb6eb2be0354e35ef59",
+          "bytes": 5797154
+        },
+        {
+          "tile": "11SW14B",
+          "url": "https://bulkdata.csdi.gov.hk/cedd/lidar/2020dtm/11SW14B(e835n815,e836n815).zip",
+          "sha256": "9a01f7036d6c5966e5b8df8653880c58e6dab450c773e4b22d1a9b1acf1e0fc3",
+          "bytes": 5865208
+        },
+        {
+          "tile": "11SW14C",
+          "url": "https://bulkdata.csdi.gov.hk/cedd/lidar/2020dtm/11SW14C(e834n814,e835n815).zip",
+          "sha256": "40ad02a04a5188b15b656d5793ca641a2fef872a852b42963b640c2ba3981cab",
+          "bytes": 5599247
+        },
+        {
+          "tile": "11SW14D",
+          "url": "https://bulkdata.csdi.gov.hk/cedd/lidar/2020dtm/11SW14D(e835n814,e836n815).zip",
+          "sha256": "3671b847f9430a8e6b5fbd026a599b20c248b7e73dd3d13a519eec6cb2d0b3e7",
+          "bytes": 5761136
+        },
+        {
+          "tile": "11SW3C",
+          "url": "https://bulkdata.csdi.gov.hk/cedd/lidar/2020dtm/11SW3C(e833n816,e833n817).zip",
+          "sha256": "f0046e67176e6a038347c87a41a40fa53037e26dca84e575eb482805e57b014a",
+          "bytes": 8742
+        },
+        {
+          "tile": "11SW4C",
+          "url": "https://bulkdata.csdi.gov.hk/cedd/lidar/2020dtm/11SW4C(e834n816,e835n817).zip",
+          "sha256": "af207ad69b354230a5b758a53b7364b1dc308bbe1aedcc5ee33465deb1646fba",
+          "bytes": 251875
+        },
+        {
+          "tile": "11SW4D",
+          "url": "https://bulkdata.csdi.gov.hk/cedd/lidar/2020dtm/11SW4D(e835n816,e836n817).zip",
+          "sha256": "4b0925bfc53aed27028a3eb5b8f954aad3ac61d2b3afa49a36f49ce630882e48",
+          "bytes": 2188468
+        },
+        {
+          "tile": "11SW8A",
+          "url": "https://bulkdata.csdi.gov.hk/cedd/lidar/2020dtm/11SW8A(e833n816,e833n816).zip",
+          "sha256": "5c8c59081ef9696e2259906b09455214d7e2725168fea2625219d16d3ba09541",
+          "bytes": 4805644
+        },
+        {
+          "tile": "11SW8B",
+          "url": "https://bulkdata.csdi.gov.hk/cedd/lidar/2020dtm/11SW8B(e833n816,e834n816).zip",
+          "sha256": "ffbdbc543ce2d16ff4bd8e6cc5469105efc5757af8e121345b959553ac0dc847",
+          "bytes": 3434905
+        },
+        {
+          "tile": "11SW8C",
+          "url": "https://bulkdata.csdi.gov.hk/cedd/lidar/2020dtm/11SW8C(e833n815,e833n816).zip",
+          "sha256": "b3dc93b156a59e9b9600f54d0bae0004a57b435001f65cb9dae446218fbfd007",
+          "bytes": 5639755
+        },
+        {
+          "tile": "11SW8D",
+          "url": "https://bulkdata.csdi.gov.hk/cedd/lidar/2020dtm/11SW8D(e833n815,e834n816).zip",
+          "sha256": "65c49ec99a9025a195ac3911e2043f5c6e8eedba239eb1eaa1d1eb67b0d8efd1",
+          "bytes": 5897418
+        },
+        {
+          "tile": "11SW9A",
+          "url": "https://bulkdata.csdi.gov.hk/cedd/lidar/2020dtm/11SW9A(e834n816,e835n816).zip",
+          "sha256": "70edc16cb50abb87404392defa4ab9164fdfe2f576ed931de4f017f12ca296b0",
+          "bytes": 851919
+        },
+        {
+          "tile": "11SW9B",
+          "url": "https://bulkdata.csdi.gov.hk/cedd/lidar/2020dtm/11SW9B(e835n816,e836n816).zip",
+          "sha256": "dc50810aa63bea9065ddd091f54ca50873bdf98aaeee69d670a4cd1fc4ec261c",
+          "bytes": 45764
+        },
+        {
+          "tile": "11SW9C",
+          "url": "https://bulkdata.csdi.gov.hk/cedd/lidar/2020dtm/11SW9C(e834n815,e835n816).zip",
+          "sha256": "b6739a31249c5fef7198e96d92fb0ef09a9f2fe22447bf5a0e7926998eb5244d",
+          "bytes": 5270412
+        },
+        {
+          "tile": "11SW9D",
+          "url": "https://bulkdata.csdi.gov.hk/cedd/lidar/2020dtm/11SW9D(e835n815,e836n816).zip",
+          "sha256": "a4a1da1509d4b7088f648a3cfc0f652eb8bf2e39b68d85c2f0bdc905d739250d",
+          "bytes": 4485845
+        }
+      ]
+    },
+    {
+      "file": "landsd-buildings.geojson.gz",
+      "layer": "landsd/Building",
+      "datasetId": "landsd_rcd_1637211194312_35158",
+      "url": "https://portal.csdi.gov.hk/geoportal/?datasetId=landsd_rcd_1637211194312_35158",
+      "query": "https://portal.csdi.gov.hk/server/rest/services/common/landsd_rcd_1637211194312_35158/FeatureServer/0/query",
+      "release": "2026-10-20",
+      "releaseName": "Building_Outline_Public_v20261020_Building_converted.geojson",
+      "format": "gzip GeoJSON from ArcGIS FeatureServer (f=geojson)",
+      "crs": "EPSG:2326; BaseHeight/TopHeight in mPD",
+      "fields": [
+        "OBJECTID",
+        "BuildingID",
+        "BuildingCSUID",
+        "GeoRefNo",
+        "BuildingBlockType",
+        "Status",
+        "BaseHeight",
+        "TopHeight",
+        "Storeys",
+        "StoreysInBasement",
+        "DateStamp"
+      ],
+      "licenses": [
+        "CSDI Portal Terms and Conditions of Use (see TERMS.md)"
+      ],
+      "fetched": "2026-11-24",
+      "bbox": {
+        "west": 833150,
+        "south": 814970,
+        "east": 835700,
+        "north": 816950,
+        "crs": "EPSG:2326"
+      },
+      "sha256": "9a7e63807a08d973caf2b84ef5fca4db0a3e3fddbabf578b6865fc8459a36ddb",
+      "bytes": 967379,
+      "rows": 3740
+    },
+    {
+      "file": "landsd-pedestrian-routes.geojson.gz",
+      "layer": "landsd/PedestrianRoute",
+      "datasetId": "landsd_rcd_1637222018065_52265",
+      "url": "https://portal.csdi.gov.hk/geoportal/?datasetId=landsd_rcd_1637222018065_52265",
+      "query": "https://portal.csdi.gov.hk/server/rest/services/common/landsd_rcd_1637222018065_52265/FeatureServer/0/query",
+      "release": "2026-06-17",
+      "releaseName": "3DPN_P2_20260617_PedestrianRoute_converted.geojson",
+      "format": "gzip GeoJSON from ArcGIS FeatureServer (f=geojson, returnZ)",
+      "crs": "EPSG:2326 + mPD (Z)",
+      "fields": [
+        "OBJECTID",
+        "PedestrianRouteID",
+        "Location",
+        "FeatureType",
+        "CrossingFeature",
+        "WeatherProof",
+        "Gradient",
+        "Direction",
+        "FloorID",
+        "BuildingID_1",
+        "BuildingID_2",
+        "Enabled",
+        "LevelSource"
+      ],
+      "licenses": [
+        "CSDI Portal Terms and Conditions of Use (see TERMS.md)"
+      ],
+      "fetched": "2026-11-24",
+      "bbox": {
+        "west": 833150,
+        "south": 814970,
+        "east": 835700,
+        "north": 816950,
+        "crs": "EPSG:2326"
+      },
+      "sha256": "f96fad5ebb265e1aac52c1fe6d919bbf0b9f14147f31c8fd9fa908b566e34f7f",
+      "bytes": 873825,
+      "rows": 13963
+    }
+  ]
+}
