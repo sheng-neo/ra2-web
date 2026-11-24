@@ -1,4 +1,7 @@
 packages:
   - packages/*
+  - central/data
+  - central/citymap
+  - central/client
 allowBuilds:
   esbuild: true

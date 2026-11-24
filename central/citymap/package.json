@@ -1,0 +1,20 @@
+{
+  "name": "@central/citymap",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "Offline pipeline: raw map snapshots (Overture/OSM, LandsD) -> city.json + terrain.bin for the client",
+  "scripts": {
+    "build-city": "tsx src/cli.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@central/data": "workspace:*",
+    "hyparquet": "^1.33.1",
+    "proj4": "^2.23.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.0"
+  }
+}

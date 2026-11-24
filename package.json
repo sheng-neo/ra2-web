@@ -11,6 +11,8 @@
     "dev": "pnpm --parallel -r run dev",
     "dev:client": "pnpm --filter @ra2web/client dev",
     "dev:server": "pnpm --filter @ra2web/server dev",
+    "dev:central": "pnpm --filter @central/client dev",
+    "citymap": "pnpm --filter @central/citymap build-city",
     "build": "pnpm -r run build",
     "test": "vitest run",
     "test:watch": "vitest",

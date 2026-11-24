@@ -7,9 +7,14 @@ COPY packages/data/package.json packages/data/
 COPY packages/game/package.json packages/game/
 COPY packages/client/package.json packages/client/
 COPY packages/server/package.json packages/server/
+COPY central/data/package.json central/data/
+COPY central/citymap/package.json central/citymap/
+COPY central/client/package.json central/client/
 RUN pnpm install --frozen-lockfile
 COPY . .
 RUN pnpm --filter @ra2web/client build
+# 中环开放世界（/central/）：与红警同一容器、同一端口托管
+RUN pnpm --filter @central/client build && cp -r central/client/dist packages/client/dist/central
 
 FROM node:22-slim AS run
 WORKDIR /app
