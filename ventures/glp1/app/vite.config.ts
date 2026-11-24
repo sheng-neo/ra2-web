@@ -29,7 +29,9 @@ export default defineConfig(({ mode }) => {
     },
     build: {
       outDir: process.env.ARTIFACT ? 'dist-artifact' : launch ? 'dist-launch' : 'dist',
-      sourcemap: !process.env.ARTIFACT,
+      // The full build keeps its source maps. The launch build ships none: the public version
+      // carries only the code it runs (scripts/check-launch.mjs fails the build on a .map file).
+      sourcemap: !process.env.ARTIFACT && !launch,
       // The preload helper is the only code in the bundle that calls fetch(), and a one-file build
       // has nothing to preload. The launch build leaves it out, so its bundle has no network call
       // at all (scripts/check-launch.mjs checks that).

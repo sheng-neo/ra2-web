@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import golden from './triage.golden.hans.json';
 import {
+  crisisDial,
   crisisLine,
+  hitOf,
   emergencyDial,
   emergencyNumber,
   pausesCoaching,
@@ -435,5 +437,31 @@ describe('emergency number follows where the phone is', () => {
     expect(crisisLine('US', 'en')).toBe('988');
     expect(crisisLine('CN', 'hans')).toBe('12356（全国心理援助热线）');
     expect(crisisLine('OTHER', 'en')).toBe('your local crisis line');
+  });
+});
+
+describe('rows saved before the fixed-card mark', () => {
+  it('a Nausea or Dizziness row with the dehydration rule reads with the fixed card', () => {
+    expect(hitOf({ kind: 'nausea', triageId: 'dehydration', triageLevel: 'urgent' })).toEqual({ id: 'dehydration', level: 'urgent', fixedCard: true });
+    expect(hitOf({ kind: 'dizziness', triageId: 'dehydration', triageLevel: 'urgent' })).toEqual({ id: 'dehydration', level: 'urgent', fixedCard: true });
+  });
+  it('other rows read as they were saved', () => {
+    expect(hitOf({ kind: 'vomiting', triageId: 'dehydration', triageLevel: 'urgent' })).toEqual({ id: 'dehydration', level: 'urgent' });
+    expect(hitOf({ kind: 'dizziness', triageId: 'hypoglycemia', triageLevel: 'act_now' })).toEqual({ id: 'hypoglycemia', level: 'act_now' });
+    expect(hitOf({ kind: 'other', triageId: 'chest_or_faint', triageLevel: 'emergency', triageFixed: true })).toEqual({ id: 'chest_or_faint', level: 'emergency', fixedCard: true });
+    expect(hitOf({ kind: 'nausea', triageId: null, triageLevel: null })).toBeNull();
+  });
+  it('they match what the buttons save today', () => {
+    for (const insulinOrSU of [false, true])
+      for (const kind of ['nausea', 'dizziness', 'vomiting', 'diarrhea', 'abdominal_pain'] as const)
+        for (const hit of triageSymptom(kind, 3, { insulinOrSU, drugId: 'semaglutide-wl', region: 'US' }))
+          expect(hitOf({ kind, triageId: hit.id, triageLevel: hit.level }), kind).toEqual(hit);
+  });
+});
+
+describe('crisis line call button', () => {
+  it('dials 988 in the US only', () => {
+    expect(crisisDial('US')).toBe('988');
+    for (const r of ['CN', 'HK', 'TW', 'SG', 'MY', 'OTHER'] as const) expect(crisisDial(r)).toBeNull();
   });
 });

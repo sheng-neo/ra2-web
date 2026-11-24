@@ -19,6 +19,7 @@ These features are free. They will stay free for as long as we run [APP NAME].
 - Medication reminders
 - Weight and side effect logging
 - Danger-symptom alerts
+- The list of questions for your doctor
 - The weekly summary (numbers only)
 - Export of all your records
 - Restore from your own export file

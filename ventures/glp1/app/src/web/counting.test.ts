@@ -69,9 +69,14 @@ const calls: Call[] = [];
 let answer: (call: Call) => number | null = () => 204;
 /** While set, the pretend server holds every answer back until this is settled (a slow connection). */
 let hold: Promise<void> | null = null;
+/** Waiting for the next request to reach the pretend server. */
+let waiting: (() => void)[] = [];
+/** Settles when the next request reaches the pretend server. Tests wait on this, never on a real timer. */
+const nextCall = () => new Promise<void>((resolve) => waiting.push(resolve));
 const fetchMock = vi.fn(async (url: string, init: RequestInit = {}) => {
   const call: Call = { method: init.method ?? 'GET', url, body: typeof init.body === 'string' ? JSON.parse(init.body) : undefined, init };
   calls.push(call);
+  for (const resolve of waiting.splice(0)) resolve();
   if (hold) await hold;
   const status = answer(call);
   if (status === null) throw new TypeError('network down');
@@ -97,6 +102,7 @@ beforeEach(async () => {
   fetchMock.mockClear();
   answer = () => 204;
   hold = null;
+  waiting = [];
   resetCountRetry();
   vi.setSystemTime(SETUP);
 });
@@ -231,7 +237,8 @@ describe('after a yes', () => {
       expect(parseCountMessage(b)).toEqual(b);
     }
     // Nothing that was logged or typed is in any message, and no time zone, locale or timestamp.
-    const sent = JSON.stringify(bodies);
+    // The install id is random and checked above, so it is left out here: a random id may contain "2026" by chance.
+    const sent = JSON.stringify(bodies.map(({ installId: _id, ...rest }) => rest));
     for (const secret of ['tirzepatide', 'Zepbound', 'thigh', 'mg', '90.72', 'America', 'New_York', 'en-US', '2026', String(SETUP).slice(0, 6)]) expect(sent, secret).not.toContain(secret);
     for (const b of bodies) for (const v of Object.values(b)) if (typeof v === 'number') expect(v).toBeLessThan(100);
   });
@@ -443,10 +450,11 @@ describe('"Delete all data"', () => {
     vi.setSystemTime(at(1, 13));
     let release!: () => void;
     hold = new Promise<void>((resolve) => (release = resolve));
+    const deleteSent = nextCall();
     const wiping = wipeInstall();
     // What the settle timer, or the app coming back to the front, would start while the delete request is on its way.
     const counting = syncCounts();
-    await new Promise((resolve) => setTimeout(resolve, 30));
+    await deleteSent;
     release();
     await Promise.all([wiping, counting]);
     hold = null;
@@ -465,11 +473,13 @@ describe('"Delete all data"', () => {
     let release!: () => void;
     hold = new Promise<void>((resolve) => (release = resolve));
     // The first count is on its way when "Delete all data" is tapped.
+    const firstSent = nextCall();
     const counting = syncCounts();
-    await new Promise((resolve) => setTimeout(resolve, 30));
+    await firstSent;
     const { installId } = await readInstall();
     const wiping = wipeInstall();
-    await new Promise((resolve) => setTimeout(resolve, 30));
+    // The tap has taken effect (sharing is off) before the first count gets its answer.
+    await vi.waitFor(async () => expect((await readInstall()).countsConsent).toBe(false), { timeout: 30_000, interval: 1 });
     release();
     await Promise.all([counting, wiping]);
     hold = null;

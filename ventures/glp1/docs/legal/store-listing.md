@@ -53,6 +53,7 @@ WHAT YOU CAN DO
 • Get reminders for your next dose
 • See an estimated medication level chart for some brand-name weekly shots, with numbers from US prescribing information
 • See a weekly summary of your numbers
+• Keep a list of questions for your doctor
 • See a fixed "contact your doctor right away" message if you log certain serious symptoms
 • Export all your records at any time, and restore them from your own export file
 

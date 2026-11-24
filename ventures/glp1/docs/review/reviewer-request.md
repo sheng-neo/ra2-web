@@ -1,4 +1,4 @@
-> Before you send this: fill in every item in [square brackets] and delete this note. The sizes under "What we would send you" were copied from the review packet when this email was written. When the packet is built again, the build prints the current sizes and says if this email is out of date.
+> Before you send this: fill in every item in [square brackets] and delete this note. The sizes under "What we would send you" were copied from the two review packets when this email was written. When the packets are built again, the build prints the current sizes and says if this email is out of date.
 
 **Subject:** Request for a quote: fixed-fee clinical review of a medication-logging app (no endorsement)
 
@@ -10,28 +10,27 @@ Before anyone uses the app, we want a US-licensed pharmacist or physician to go 
 
 **What we would send you**
 
-One document, the review packet (attached). It is about 48,800 words: about 129 pages in a compact print layout, or about 208 pages as a plain Word file. Most of it is tables. It has 716 coded items, so a comment can be as short as "M-17: change to ...". It holds:
+One document to quote for: the short review packet (attached). It holds only what the first public version of the app shows or does. It is about 9,000 words, counted as Word counts them (tables included; a plain count of the Markdown file is a few hundred higher because it also counts the table lines): about 24 pages in a compact print layout, or about 39 pages as a plain Word file. Much of it is tables, and every item has a code, so a comment can be as short as "M-05: change to ...". It holds:
 
-- 15 danger-symptom rules, with 17 card texts and 207 trigger patterns, and the example phrases they were tested with;
-- 7 Medication Guide lists with 78 guide items: the "most important information" and the serious side effects of each FDA Medication Guide, copied word for word, as the app shows them, and two tables that set our rules against them;
-- 4 coping cards, 17 daily advice texts and 15 exercises, all switched off in the app until they have been reviewed;
-- the US medication list: 9 brands with 63 numbers (dose steps, highest dose, half-life, time to peak, wait after a pill). We read them from the current FDA labels ourselves. Each one has the label's own words, the label section and the label page next to it, for you to check;
-- the method and the exact on-screen wording of a chart called "Estimated medication level";
-- other cut-offs the app uses (protein target, food values, weight trend, dose timing);
-- 41 open questions.
+- the medication numbers for 9 brands (dose steps, highest dose, half-life, time to peak, wait after a pill). We read them from the current FDA labels ourselves. Each number has the label's own words and section next to it, for you to check;
+- the method of a chart called "Estimated medication level", in a few lines, with the two label numbers it uses for each weekly shot;
+- the warning signs the app shows, copied word for word from 7 Medication Guides: one guide in full, and for the others only where their instructions differ;
+- the alert cards, word for word;
+- what raises an alert: the symptom buttons, and each danger-symptom rule in plain words, with 88 example phrases that were run through the rules when the packet was built;
+- the limits we know of, and 24 open questions, each answerable with yes, no or a correction.
+
+A full packet built from the same code (about 59,900 words) is available as optional background. It also covers parts that are switched off in the first public version. You do not need to read it, and we are not asking you to quote for it.
 
 **What we ask you to do**
 
 - Mark each item OK, change, remove, or cannot say. For a change, give the words or the number you would use. For a fact from a label, give the label section.
 - Say how serious each finding is: must fix before launch, should fix, or suggestion.
+- Answer the open questions.
 - Send back a marked-up copy, or a list by item code. Either is fine.
-- If a part is outside your field (for example the workouts or the food values), tell us and leave it out.
-
-If the whole packet is too much, the parts that matter most are section 4 (medication list), section 2 (danger-symptom rules and the Medication Guide lists) and section 5 (the chart). They cover what a user sees in the first public version.
 
 **Fee and timing**
 
-- Please quote one fixed fee for the whole review, agreed before you start. If you would rather split it, please quote sections 4, 2 and 5 as one piece and the rest as a second piece.
+- Please quote one fixed fee for the short packet, agreed before you start.
 - [OPTIONAL: Our budget for this review is up to USD ___.]
 - We hope to have your comments within [10] business days after you receive the final packet. Please tell us what is realistic for you.
 - Please include up to [30] minutes of follow-up by email, in case we do not understand a comment.

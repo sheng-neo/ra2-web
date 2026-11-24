@@ -63,9 +63,9 @@ If you say yes, the app sends these, and only these:
 | The number of days since you finished setup. This is a number, not a date. | With each count |
 | "Setup finished", with your three setup answers (how long you have taken your medication, what you used before to keep track, and where you heard about us) and whether you take an injection or a pill | Once |
 | "Activated": you logged a dose soon after setup | Once |
-| Whether you logged a dose this week: yes or no, with the number of the week (week 1, week 2 and so on, counted from your first logged dose) | Each week |
+| Whether you logged a dose this week: yes or no, with the number of the week (week 1, week 2 and so on, counted from your first logged dose). A dose counts for the week you entered it in the app, not the week you say you took it. | Each week |
 | "Week-2 active": you were still logging in your second week | Once |
-| "Four-week streak met": you logged most of your planned doses for four weeks. Your phone works this out. We get only the result. | Once |
+| "Four-week streak met": you logged most of your planned doses in the four weeks after your first logged dose. Your phone works this out. We get only the result. If you turn usage counts on after those four weeks, your phone works it out once, at that moment, from the doses already logged and your schedule as it is then. | Once |
 | You marked your medication as paused or stopped | When you do it |
 | You tapped "I would want this" under "Want Pro?" | When you tap it |
 

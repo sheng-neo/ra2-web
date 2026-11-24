@@ -29,6 +29,17 @@ describe('tz', () => {
     expect(dayKey(t, SH, 0)).toBe('2026-11-21');
     expect(dayStartMs('2026-11-20', SH, 4)).toBe(zonedToUtc(2026, 11, 20, 4, 0, SH));
   });
+
+  it('the day starts at 4:00 on the local clock, also on the days US clocks change', () => {
+    for (const tz of [NY, 'America/Chicago', 'America/Denver', 'America/Los_Angeles', 'America/Anchorage']) {
+      // Clocks go forward on March 8, 2026 and back on November 1, 2026.
+      expect(dayKey(zonedToUtc(2026, 3, 8, 3, 59, tz), tz, 4), tz).toBe('2026-03-07');
+      expect(dayKey(zonedToUtc(2026, 3, 8, 4, 30, tz), tz, 4), tz).toBe('2026-03-08');
+      expect(dayKey(zonedToUtc(2026, 11, 1, 3, 30, tz), tz, 4), tz).toBe('2026-10-31');
+      expect(dayKey(zonedToUtc(2026, 11, 1, 4, 0, tz), tz, 4), tz).toBe('2026-11-01');
+      for (const key of ['2026-03-08', '2026-11-01']) expect(dayKey(dayStartMs(key, tz, 4), tz, 4), tz).toBe(key);
+    }
+  });
 });
 
 describe('catalog', () => {

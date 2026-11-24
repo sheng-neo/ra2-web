@@ -373,13 +373,27 @@ describe('four-week streak', () => {
     expect(out.progress.streakOver).toBe(true);
   });
 
-  it('is not decided at all when no schedule was seen inside the 28 days', () => {
-    // Counting starts on day 40 (sharing was turned on late): which schedule was in force is not known.
+  it('when counting starts after the 28 days (sharing turned on late), it is judged once by the schedule saved then', () => {
+    // Counting starts on day 40. The person is reported as activated, so the streak is reported too.
     const doses = [logged(on(0, 12)), logged(on(7, 12)), logged(on(14, 12)), logged(on(21, 12))];
     const out = run([{ nowMs: on(40), doses }, { nowMs: on(41), doses }]);
     expect(names(out.events)).toContain('activated');
-    expect(names(out.events)).not.toContain('four_week_streak');
+    expect(out.events.filter((e) => e.event === 'four_week_streak')).toEqual([{ event: 'four_week_streak', day: 14 }]);
     expect(out.progress.streakOver).toBe(true);
+    // Not met by the schedule saved then: not reported, and never looked at again.
+    const two = doses.slice(0, 2);
+    const notMet = run([{ nowMs: on(40), doses: two }, { nowMs: on(41), doses: two, schedule: every(14) }]);
+    expect(names(notMet.events)).toContain('activated');
+    expect(names(notMet.events)).not.toContain('four_week_streak');
+    expect(notMet.progress.streakOver).toBe(true);
+    // Without a schedule at that moment it is not decided.
+    expect(names(run([{ nowMs: on(40), doses, schedule: null }, { nowMs: on(41), doses }]).events)).not.toContain('four_week_streak');
+  });
+
+  it('a schedule that is set only after the 28 days does not decide it when counting ran all along', () => {
+    const doses = [logged(on(0, 12)), logged(on(7, 12)), logged(on(14, 12))];
+    const out = run([{ nowMs: on(0, 13), doses: doses.slice(0, 1), schedule: null }, { nowMs: on(30), doses, schedule: null }, { nowMs: on(31), doses, schedule: WEEKLY }]);
+    expect(names(out.events)).not.toContain('four_week_streak');
   });
 
   it('uses the person\'s own schedule; without one it is not decided', () => {
@@ -387,6 +401,109 @@ describe('four-week streak', () => {
     expect(names(run([{ nowMs: on(20), doses, schedule: WEEKLY }]).events)).toContain('four_week_streak');
     expect(names(run([{ nowMs: on(20), doses, schedule: DAILY }]).events)).not.toContain('four_week_streak');
     expect(names(run([{ nowMs: on(20), doses, schedule: null }]).events)).not.toContain('four_week_streak');
+  });
+});
+
+describe('the day of an event, in every US time zone and on the days the clocks change', () => {
+  const ZONES = ['America/New_York', 'America/Chicago', 'America/Denver', 'America/Phoenix', 'America/Los_Angeles', 'America/Anchorage', 'Pacific/Honolulu'];
+  /** A local time in `tz`, `day` days after the given date. */
+  const local = (tz: string, y: number, m: number, d: number, day: number, hour: number, minute = 0) => {
+    const x = addDays(y, m, d, day);
+    return zonedToUtc(x.year, x.month, x.day, hour, minute, tz);
+  };
+  /** Runs looks in `tz`, from a setup at 10:00 on the given date. */
+  const runIn = (tz: string, setupDoneAt: number, steps: Partial<CountFacts>[]) => run(steps.map((s) => ({ tz, setupDoneAt, ...s })));
+  // US clocks go forward on March 8, 2026 and back on November 1, 2026. Both are Sundays.
+  const STARTS: [string, number, number, number][] = [
+    ['spring', 2026, 3, 2],
+    ['fall', 2026, 10, 26],
+  ];
+
+  it('a weekly shot at 9 PM gives the same events in every zone, across a clock change', () => {
+    for (const tz of ZONES) {
+      for (const [name, y, m, d] of STARTS) {
+        const setup = local(tz, y, m, d, 0, 10);
+        const doses = [1, 8, 15, 22].map((day) => logged(local(tz, y, m, d, day, 21)));
+        const steps = Array.from({ length: 30 }, (_, i) => ({ nowMs: local(tz, y, m, d, i + 1, 22), doses: doses.filter((x) => x.createdAt <= local(tz, y, m, d, i + 1, 22)) }));
+        const out = runIn(tz, setup, steps);
+        expect(out.events.filter((e) => e.event !== 'setup_finished'), `${tz} ${name}`).toEqual([
+          { event: 'activated', day: 1 },
+          { event: 'logged_week', day: 1, week: 1, logged: true },
+          { event: 'logged_week', day: 8, week: 2, logged: true },
+          { event: 'week2_active', day: 8 },
+          { event: 'logged_week', day: 15, week: 3, logged: true },
+          { event: 'four_week_streak', day: 15 },
+          { event: 'logged_week', day: 22, week: 4, logged: true },
+        ]);
+      }
+    }
+  });
+
+  it('near midnight and at the start of day, the local clock decides the day, also on the days the clocks change', () => {
+    // Activated on a Sunday at noon, so day 8 is the Sunday the clocks change.
+    const cases: [number, number, number][] = [
+      [2026, 3, 1],
+      [2026, 10, 25],
+    ];
+    for (const tz of ZONES) {
+      for (const [y, m, d] of cases) {
+        const setup = local(tz, y, m, d, 0, 10);
+        const first = logged(local(tz, y, m, d, 0, 12));
+        const weekOf = (at: number) => {
+          const out = runIn(tz, setup, [{ nowMs: local(tz, y, m, d, 0, 13), doses: [first] }, { nowMs: local(tz, y, m, d, 8, 12), doses: [first, logged(at)] }]);
+          return out.events.flatMap((e) => (e.event === 'logged_week' && e.logged ? [e.week] : []));
+        };
+        const label = `${tz} ${y}-${m}-${d}`;
+        // The last minute of day 7, just after midnight, and 3:59 the next morning are still day 7 (week 1).
+        expect(weekOf(local(tz, y, m, d, 6, 23, 59)), label).toEqual([1]);
+        expect(weekOf(local(tz, y, m, d, 7, 0, 1)), label).toEqual([1]);
+        expect(weekOf(local(tz, y, m, d, 7, 3, 59)), label).toEqual([1]);
+        // From 4:00 on the day the clocks change it is day 8 (week 2), not an hour earlier or later.
+        expect(weekOf(local(tz, y, m, d, 7, 4, 0)), label).toEqual([1, 2]);
+        expect(weekOf(local(tz, y, m, d, 7, 4, 30)), label).toEqual([1, 2]);
+      }
+    }
+  });
+
+  it('travel, a new time zone or a new start of day moves nothing once counting has begun', () => {
+    const NYC = 'America/New_York';
+    const setup = local(NYC, 2026, 3, 2, 0, 10);
+    // Each dose is early in the morning in New York, which is before 4:00 in Los Angeles and Honolulu:
+    // read on their clocks, each would fall a day earlier, and the day-8 dose would move into week 1.
+    const doses = [1, 8, 15, 22].map((day) => logged(local(NYC, 2026, 3, 2, day, 5, 30)));
+    const looks = Array.from({ length: 30 }, (_, i) => local(NYC, 2026, 3, 2, i + 1, 6));
+    const home = run(looks.map((nowMs) => ({ nowMs, tz: NYC, setupDoneAt: setup, doses: doses.filter((x) => x.createdAt <= nowMs) })));
+    const away = ['America/Los_Angeles', 'Pacific/Honolulu', 'America/Chicago', NYC];
+    const travelling = run(
+      looks.map((nowMs, i) => ({ nowMs, tz: i === 0 ? NYC : away[i % away.length], dayStartHour: i > 10 ? 0 : 4, setupDoneAt: setup, doses: doses.filter((x) => x.createdAt <= nowMs) })),
+    );
+    expect(travelling.events).toEqual(home.events);
+    expect(names(home.events)).toContain('week2_active');
+    // Every week is reported once, in order, with none left out.
+    expect(home.events.flatMap((e) => (e.event === 'logged_week' ? [e.week] : []))).toEqual([1, 2, 3, 4]);
+    expect(travelling.progress.clock).toEqual({ tz: NYC, dayStartHour: 4 });
+  });
+});
+
+describe('logged means entered', () => {
+  it('a dose filled in today with last week\'s dose time counts for this week, not for last week', () => {
+    const first = logged(on(1, 21));
+    // Nothing is entered in week 2 (days 8 to 14). On day 16 the person fills in a dose taken on day 10.
+    const late = filledIn(on(16, 9), on(10, 21));
+    const out = run([{ nowMs: on(1, 22), doses: [first] }, { nowMs: on(16, 10), doses: [first, late] }]);
+    expect(out.events.filter((e) => e.event === 'logged_week')).toEqual([
+      { event: 'logged_week', day: 1, week: 1, logged: true },
+      { event: 'logged_week', day: 14, week: 2, logged: false },
+      { event: 'logged_week', day: 16, week: 3, logged: true },
+    ]);
+    expect(names(out.events)).not.toContain('week2_active');
+  });
+
+  it('filling in a whole month on one day covers one week of the streak, not four', () => {
+    const first = logged(on(1, 21));
+    const backfill = [8, 15, 22].map((day) => filledIn(on(27, 9), on(day, 21)));
+    const out = run([{ nowMs: on(1, 22), doses: [first] }, { nowMs: on(27, 10), doses: [first, ...backfill] }, { nowMs: on(40), doses: [first, ...backfill] }]);
+    expect(names(out.events)).not.toContain('four_week_streak');
   });
 });
 

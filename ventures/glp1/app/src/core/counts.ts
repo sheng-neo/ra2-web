@@ -6,9 +6,13 @@
  * messages is the type CountEvent below; nothing else is ever sent.
  *
  * Definitions. "Logged" always means the moment a dose was entered in the app (its createdAt),
- * not the time the person says they took it. Days are calendar days in the phone's time zone,
- * with the person's own start of day, so a weekly shot taken a little earlier or later on its
- * usual day still falls in the right week. The time zone itself is never sent.
+ * not the time the person says they took it: a dose from last week that is filled in today is
+ * logged today. Days are calendar days on the local clock, with the person's own start of day,
+ * so a weekly shot taken a little earlier or later on its usual day still falls in the right
+ * week. The time zone and start of day are the ones the phone had at the first look for this
+ * install id; they are kept with the progress and used from then on. So travel, a new time zone
+ * or a new start of day cannot move a dose into another day or week once counting has begun,
+ * and cannot make an event go out twice or not at all. The time zone itself is never sent.
  *
  * - New dose: a dose entered with the app after setup was finished, and taken on the day setup
  *   was finished or later. The last dose that setup asks about (source 'import') is not one.
@@ -30,6 +34,10 @@
  *   The streak is decided inside the 28 days and by the schedule that was in force then: the
  *   strictest schedule seen while the 28 days ran. Once they are over it is never looked at
  *   again, so a later change of schedule cannot produce a streak that was not earned.
+ *   One exception: when counting starts after the 28 days are over (sharing was turned on
+ *   later), no schedule was seen while they ran. The streak is then judged once, at that first
+ *   look, by the schedule saved at that moment, so a person who is counted as activated is also
+ *   counted for the streak.
  *
  * A message carries the day number since setup (0 = the day setup was finished) instead of a
  * date. It never carries a medication name, a dose, a weight, a symptom, any text the person
@@ -290,6 +298,8 @@ export interface CountProgress {
   proSent: boolean;
   /** The clock at the last check after activation, to notice a clock that ran ahead and was put right. */
   lastSeenMs: number | null;
+  /** The time zone and start of day at the first look. Every day is counted on this clock from then on. */
+  clock: DayClock | null;
 }
 
 export const NO_PROGRESS: CountProgress = {
@@ -303,6 +313,7 @@ export const NO_PROGRESS: CountProgress = {
   pausedSent: false,
   proSent: false,
   lastSeenMs: null,
+  clock: null,
 };
 
 /** Everything the phone looks at to decide which messages are due. None of it is sent as it is. */
@@ -331,7 +342,9 @@ export function dueCounts(f: CountFacts, done: CountProgress): { events: CountEv
   const events: CountEvent[] = [];
   // Progress saved by an earlier version may lack the newer fields.
   const p: CountProgress = { ...NO_PROGRESS, ...done };
-  const clock: DayClock = { tz: f.tz, dayStartHour: f.dayStartHour };
+  // The clock is fixed at the first look, so a later change of time zone or start of day moves nothing.
+  if (p.clock === null) p.clock = { tz: f.tz, dayStartHour: f.dayStartHour };
+  const clock: DayClock = p.clock;
   /** Day number since setup: 0 on the day setup was finished. */
   const dayOf = (ms: number) => clampDay(daysBetween(f.setupDoneAt, ms, clock));
 
@@ -341,6 +354,8 @@ export function dueCounts(f: CountFacts, done: CountProgress): { events: CountEv
   }
 
   const times = newDoseTimes(f.doses, f.setupDoneAt, clock);
+  /** Whether activation was already known before this look. */
+  const seenBefore = p.activatedAt !== null;
   if (p.activatedAt === null) {
     const at = activatedAt(f.doses, f.setupDoneAt, clock);
     if (at !== null) {
@@ -393,6 +408,8 @@ export function dueCounts(f: CountFacts, done: CountProgress): { events: CountEv
       const running = today >= 1 && today <= STREAK_DAYS;
       // While the 28 days run, remember the strictest schedule seen. The streak is judged by it.
       if (running && f.schedule) p.streakHours = Math.min(p.streakHours ?? Infinity, intervalHours(f.schedule));
+      // Counting starts only now, after the 28 days: the schedule saved now is the only one known.
+      if (!seenBefore && today > STREAK_DAYS && f.schedule) p.streakHours = intervalHours(f.schedule);
       // Without a schedule seen inside the 28 days the streak is not decided at all.
       if (p.streakHours !== null) {
         const met = streakMetOnDay(loggedDays(times, activated, clock), { kind: 'interval', hours: p.streakHours });

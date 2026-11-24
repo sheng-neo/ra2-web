@@ -1,9 +1,14 @@
 /**
- * Builds the clinical review packet: ../docs/review/clinical-review-packet.md
+ * Builds the two clinical review packets in ../docs/review:
+ * - clinical-review-packet.md: the full packet, everything the app has;
+ * - clinical-review-core.md: the short packet, only what the first public version shows or does,
+ *   for a fixed-fee review. It is built from the same code, after the full packet, and reuses its
+ *   item codes. The build stops when it grows past CORE_MAX_WORDS.
  *
- * Run it with `pnpm review-packet`. Options:
- *   --check         build in memory and fail if the file on disk is different (nothing is written)
- *   --docx          also write clinical-review-packet.docx next to it (needs a document converter
+ * Run it with `pnpm review-packet` (writes both). Options:
+ *   --core          write the short packet only (both are still built and checked)
+ *   --check         build both in memory and fail if a file on disk is different (nothing is written)
+ *   --docx          also write a .docx next to each file written (needs a document converter
  *                   on this machine; see the end of main())
  *   --fingerprints  print the current fingerprints of the code this script describes in words
  *
@@ -53,6 +58,8 @@ const APP_DIR = join(dirname(fileURLToPath(import.meta.url)), '..');
 const OUT_DIR = join(APP_DIR, '..', 'docs', 'review');
 const OUT_FILE = join(OUT_DIR, 'clinical-review-packet.md');
 const DOCX_FILE = join(OUT_DIR, 'clinical-review-packet.docx');
+const CORE_DOCX_FILE = join(OUT_DIR, 'clinical-review-core.docx');
+const CORE_FILE = join(OUT_DIR, 'clinical-review-core.md');
 const REQUEST_FILE = join(OUT_DIR, 'reviewer-request.md');
 const README_FILE = join(OUT_DIR, 'README.md');
 
@@ -91,14 +98,14 @@ const { brandNumbers, brandOptions, CATALOG, hasLabelSource } = await load<typeo
 const { curveAvailable, FULL, labelFactsShown, LAUNCH, safetyQuestions, thirdTab } = await load<typeof import('../src/core/features')>('src/core/features.ts');
 const { FOODS, foodName, foodUnit } = await load<typeof import('../src/core/foods')>('src/core/foods.ts');
 const { hoursFromLabel, labelFact, LABELS_READ_ON, PK_RULE } = await load<typeof import('../src/core/labelFacts')>('src/core/labelFacts.ts');
-const { guideDated, guideItems, MED_GUIDE_LIST, MED_GUIDE_OTHER, MED_GUIDES_READ_ON } = await load<typeof import('../src/core/medGuide')>('src/core/medGuide.ts');
+const { GUIDE_ACTIONS, guideDated, guideItems, guideOverdose, MED_GUIDE_LIST, MED_GUIDE_OTHER, MED_GUIDES_READ_ON } = await load<typeof import('../src/core/medGuide')>('src/core/medGuide.ts');
 const { BUTTONS_THAT_RAISE_NOTHING, buttonItems, buttonRules, GENERAL_SIGN, guidesWithItem, ITEM_COVERAGE, NOT_FROM_A_GUIDE, OTHER_COVERAGE, otherFor, QUIET_ON_PURPOSE, reminderFor, ruleItems, showsLaunchCard } = await load<typeof import('../src/core/guideCoverage')>('src/core/guideCoverage.ts');
 const { parseLocal } = await load<typeof import('../src/core/localParse')>('src/core/localParse.ts');
 const { bateman, concentration, exposureIndexAt, modelFor, steadyStatePeak } = await load<typeof import('../src/core/pk')>('src/core/pk.ts');
 const { bmi, proteinTarget } = await load<typeof import('../src/core/protein')>('src/core/protein.ts');
 const { dueStatus, SITES, siteLabel } = await load<typeof import('../src/core/schedule')>('src/core/schedule.ts');
 const { gradeLabel, SYMPTOM_ORDER, symptomLabel } = await load<typeof import('../src/core/symptoms')>('src/core/symptoms.ts');
-const { crisisLine, emergencyDial, emergencyNumber, levelRank, triageCard, triageSymptom, triageText } = await load<typeof import('../src/core/triage')>('src/core/triage.ts');
+const { crisisDial, crisisLine, emergencyDial, emergencyNumber, levelRank, triageCard, triageSymptom, triageText } = await load<typeof import('../src/core/triage')>('src/core/triage.ts');
 const { HOUR } = await load<typeof import('../src/core/tz')>('src/core/tz.ts');
 const { fromKg, ftInToCm, toKg } = await load<typeof import('../src/core/units')>('src/core/units.ts');
 const { fastLoss, regainStatus, rollingAverages } = await load<typeof import('../src/core/weight')>('src/core/weight.ts');
@@ -145,6 +152,12 @@ function sourceTree(relDir: string): string[] {
  * imported here, so this is a plain text search. When the piece is gone the caller falls back to
  * a sentence that needs no such detail, and the person running the script is told.
  */
+/** The label of the crisis-line call button on the crisis card, or '' when the screen has no such button. */
+function crisisCallButton(): string {
+  const dial = crisisDial('US');
+  return dial !== null && screenCodeHas('src/web/components/TriageModal.tsx', /c\.key === 'crisis'\) \? crisisDial\(where\)/, 'the crisis-line call button on the crisis card') ? screenText('triage.call', { number: dial }) : '';
+}
+
 function screenCodeHas(rel: string, pattern: RegExp, sentenceAbout: string): RegExpExecArray | null {
   const found = existsSync(join(APP_DIR, rel)) ? pattern.exec(source(rel)) : null;
   if (!found) notices.push(`${rel} no longer has the code that the packet's sentence about ${sentenceAbout} rests on. That sentence was left out or made general; check it.`);
@@ -350,6 +363,15 @@ interface TriageInternals {
   own: Record<string, string | RegExp>;
   /** The patterns whose hits show the fixed card also where each rule shows its own card. */
   FIXED_CARD: WeakSet<RegExp>;
+  /** The patterns that stop counting when the sign is over, in a rule that otherwise keeps a sign that has passed. */
+  ENDS_WHEN_OVER: WeakSet<RegExp>;
+  /** Shorthand and words of other registers read as plain words (readTyping). */
+  EN_SHORTHAND: [RegExp, string][];
+  /** Words of other languages, English without its small words and voice-typing slips read as plain words (readLearner). */
+  EN_LEARNER: [RegExp, string][];
+  /** Long key words read also with one letter wrong, and the real words near them that are left alone. */
+  EN_KEY_WORDS: string[];
+  EN_REAL_WORDS: Set<string>;
   /** Misspellings read as the word that was meant, before any rule looks at the text. */
   EN_SPELLING: [RegExp, string][];
 }
@@ -359,11 +381,11 @@ const TRIAGE_TEST_FILE = 'src/core/triage.test.ts';
 const CORPUS_TEST_FILE = 'src/core/triage.en.corpus.test.ts';
 
 /** Word lists the trigger patterns are built from, by the name they have in triage.ts. */
-const LIST_NAMES = ['EN_SEVERE', 'EN_BELLY', 'EN_HURT', 'EN_SORE', 'EN_VOMIT', 'EN_RUNS', 'EN_NAUSEA', 'EN_WONT_GO_AWAY', 'EN_MILD', 'EN_TO_BACK', 'EN_LONG_OR_OFTEN', 'EN_IS_SEVERE', 'EN_IS_BAD', 'EN_N_DAYS', 'EN_DAY_N', 'EN_DIZZY', 'EN_RUQ', 'EN_CANT_SEE', 'EN_SEE', 'EN_NOT_EAT', 'EN_DAYS'];
+const LIST_NAMES = ['EN_SEVERE', 'EN_BELLY', 'EN_HURT', 'EN_SORE', 'EN_VOMIT', 'EN_RUNS', 'EN_NAUSEA', 'EN_WONT_GO_AWAY', 'EN_MILD', 'EN_TO_BACK', 'EN_LONG_OR_OFTEN', 'EN_IS_SEVERE', 'EN_IS_BAD', 'EN_N_DAYS', 'EN_DAY_N', 'EN_DIZZY', 'EN_RUQ', 'EN_CANT_SEE', 'EN_SEE', 'EN_NOT_EAT', 'EN_DAYS', 'EN_FUNCTION_LOSS', 'EN_BELLY_PAIN', 'EN_PAIN_MARK', 'EN_ONE_SIDE', 'EN_LOST_TIME', 'EN_DOOM', 'EN_DOSE_VERB', 'EN_DOSE_NOUN', 'EN_BY_MISTAKE', 'EN_ONE_MORE', 'EN_TWO_IN_A_DAY', 'EN_MED_NAME', 'EN_CLOSE_TOGETHER', 'EN_INTENT', 'EN_MEANS'];
 /** The pieces that decide whether a "no" or "not" in front of a symptom counts. */
 const NEGATION_NAMES = ['EN_STILL_THERE', 'EN_NT', 'EN_NO_AFTER', 'EN_FILL_HAVE', 'EN_FILL_NO', 'EN_NOT', 'EN_NEGATED', 'EN_STILL_TRUE', 'EN_BUT_NOW', 'EN_NOT_FOR_LONG', 'EN_ASKS_ABOUT', 'EN_ONLY_AUX_NOT'];
 /** The pieces that decide whether a match is about someone else, a time long past, a general question or the size of a pill. */
-const OWN_NAMES = ['EN_KIN', 'EN_KIN_BARE', 'EN_SOMEONE_ELSE', 'EN_FIRST_PERSON', 'EN_REPORTS', 'EN_ME_AND', 'EN_SUBJECT_LEAD', 'EN_AND_THEN', 'EN_HAS', 'EN_VERB_FIRST', 'EN_WHO', 'EN_CLAUSE_BREAK', 'EN_IN_THE_FAMILY', 'EN_LONG_AGO', 'EN_USED_TO', 'EN_NOW', 'EN_OVER_NOW', 'EN_PRESENT', 'EN_PAST', 'EN_DET', 'EN_IT', 'EN_CAUSE', 'EN_GENERAL_QUESTION', 'EN_IS_IT', 'EN_A_SIDE_EFFECT', 'EN_OWN_MY', 'EN_OWN_WORDS', 'EN_OWN_STATE', 'EN_OWN_SAID', 'EN_I_HAVE_IT', 'EN_FEAR', 'EN_TOPIC', 'EN_NOT_YET', 'EN_IF_BEFORE', 'EN_THEN_AFTER', 'EN_HERE_NOW', 'EN_PILL', 'EN_PILL_AFTER', 'EN_PILL_BEFORE', 'EN_FOOD_TOO', 'EN_FIGURE_AFTER', 'EN_FIGURE_BEFORE', 'EN_EXERTION_AFTER', 'EN_MY_PLACE', 'EN_IF_I_AM', 'EN_SOMEDAY', 'EN_SWALLOW_NOW', 'EN_OVER', 'EN_OVER_NOT', 'CRISIS_DENIAL', 'EN_DIE_FIGURE'];
+const OWN_NAMES = ['EN_KIN', 'EN_KIN_BARE', 'EN_SOMEONE_ELSE', 'EN_FIRST_PERSON', 'EN_REPORTS', 'EN_ME_AND', 'EN_SUBJECT_LEAD', 'EN_AND_THEN', 'EN_HAS', 'EN_VERB_FIRST', 'EN_WHO', 'EN_THEY_SAY', 'EN_CLAUSE_BREAK', 'EN_IN_THE_FAMILY', 'EN_LONG_AGO', 'EN_USED_TO', 'EN_NOW', 'EN_OVER_NOW', 'EN_PRESENT', 'EN_PAST', 'EN_DET', 'EN_IT', 'EN_CAUSE', 'EN_GENERAL_QUESTION', 'EN_IS_IT', 'EN_A_SIDE_EFFECT', 'EN_OWN_MY', 'EN_OWN_WORDS', 'EN_OWN_STATE', 'EN_OWN_SAID', 'EN_I_HAVE_IT', 'EN_FEAR', 'EN_TOPIC', 'EN_NOT_YET', 'EN_IF_BEFORE', 'EN_THEN_AFTER', 'EN_HERE_NOW', 'EN_PILL', 'EN_PILL_AFTER', 'EN_PILL_BEFORE', 'EN_FOOD_TOO', 'EN_FIGURE_AFTER', 'EN_FIGURE_BEFORE', 'EN_EXERTION_AFTER', 'EN_MY_PLACE', 'EN_IF_I_AM', 'EN_SOMEDAY', 'EN_SWALLOW_NOW', 'EN_OVER', 'EN_OVER_NOT', 'CRISIS_DENIAL', 'EN_DIE_FIGURE', 'EN_ALSO_NAMED', 'EN_ASKS_TO_DO', 'EN_PREVENT', 'EN_LAUGHING', 'EN_NEARLY', 'EN_EVENT_AFTER', 'EN_EXERTION_BEFORE', 'EN_THING_HAVING'];
 
 /**
  * The pattern tables of triage.ts. They are module-private there, so this loads a temporary
@@ -372,7 +394,7 @@ const OWN_NAMES = ['EN_KIN', 'EN_KIN_BARE', 'EN_SOMEONE_ELSE', 'EN_FIRST_PERSON'
  */
 async function loadTriageInternals(): Promise<TriageInternals> {
   const coreDir = join(APP_DIR, 'src', 'core');
-  const exportLine = `\nexport const __reviewInternals = { EN, EN_CRISIS, EN_LOW_SUGAR_SIGNS, EN_LOW_SUGAR_COMMON, RULES, FIXED_CARD, EN_SPELLING, lists: { ${LIST_NAMES.join(', ')} }, negation: { ${NEGATION_NAMES.join(', ')}, GAP: gap(1) }, own: { ${OWN_NAMES.join(', ')} } };\n`;
+  const exportLine = `\nexport const __reviewInternals = { EN, EN_CRISIS, EN_LOW_SUGAR_SIGNS, EN_LOW_SUGAR_COMMON, RULES, FIXED_CARD, ENDS_WHEN_OVER, EN_SPELLING, EN_SHORTHAND, EN_LEARNER, EN_KEY_WORDS, EN_REAL_WORDS, lists: { ${LIST_NAMES.join(', ')} }, negation: { ${NEGATION_NAMES.join(', ')}, GAP: gap(1) }, own: { ${OWN_NAMES.join(', ')} } };\n`;
   // Relative imports must still point at src/core from where the copy is.
   const copy = source(TRIAGE_FILE).replace(/from '\.\/([^']+)'/g, (_whole, name: string) => `from '${pathToFileURL(join(coreDir, `${name}.ts`)).href}'`) + exportLine;
   const dir = mkdtempSync(join(tmpdir(), 'review-packet-'));
@@ -464,7 +486,7 @@ interface RuleGloss {
 
 const TRIGGERS: Record<string, RuleGloss> = {
   pancreatitis: {
-    fp: '33803f53',
+    fp: 'b376267a',
     triggers: [
       { says: `A **severe word**, then (within about 20 characters) a **stomach word** joined to a **pain word**.`, examples: ['severe stomach pain', 'really bad bellyache'] },
       {
@@ -472,8 +494,8 @@ const TRIGGERS: Record<string, RuleGloss> = {
         examples: ['terrible pain in my upper abdomen', 'severe pain on the left side of my stomach'],
       },
       {
-        says: `A **stomach word**, then (within about 30 characters) words that say the pain is very bad: a **pain word** plus "so", "really", "very", "extremely" or "super" plus "bad", "badly", "much", "severe", "intense", "unbearable" or "painful" ("is", "are", "was" or "got" may stand before "so"); "in agony" (also "in so much agony", "in such agony", "in total agony" and the like); "killing me" after "is", "are", "was", "were", "has been", "have been", "been" or "keeps"; "unbearable"; "excruciating"; "can't stand", "can't take" or "can't bear", followed by "it", "this" or "the pain"; "doubled over"; "can't stand up straight"; "worst pain".`,
-        examples: ['my stomach hurts so bad', 'stomach pain is unbearable', 'belly has been killing me', 'my belly is in agony', 'tummy pain so severe'],
+        says: `A **stomach word**, then (within about 30 characters) words that say the pain is very bad: a **pain word** plus "so", "really", "very", "extremely" or "super" plus "bad", "badly", "much", "severe", "intense", "unbearable" or "painful" ("is", "are", "was" or "got" may stand before "so"); "in agony" (also "in so much agony", "in such agony", "in total agony" and the like); "killing me" (also after "is", "are", "was", "were", "has been", "have been", "been" or "keeps"); "unbearable"; "excruciating"; "can't stand", "can't take" or "can't bear", followed by "it", "this" or "the pain"; "doubled over"; "can't stand up straight"; "worst pain".`,
+        examples: ['my stomach hurts so bad', 'stomach pain is unbearable', 'belly has been killing me', 'abdomen killing me', 'my belly is in agony', 'tummy pain so severe'],
       },
       { says: `"Doubled over", then (within about 20 characters) a **stomach word**.`, examples: ['doubled over with belly cramps'] },
       { says: `A **stomach word** and a **pain word**, then a **reaches-the-back phrase**, in the same sentence or the next one.`, examples: ['belly pain that goes through to my back', 'Bad stomach pain. It goes to my back.'] },
@@ -499,13 +521,13 @@ const TRIGGERS: Record<string, RuleGloss> = {
         examples: ['my stomach hurts bad', 'stomach hurts a lot', 'belly hurts like hell'],
       },
       {
-        says: `A pain that bores, shoots or spreads into the back, wherever the person says the pain is: "pain", "pains", "ache", "aches", "hurt", "hurts" or "hurting", then (within about 40 characters) "boring", "bores", "bored", "radiates", "radiated", "radiating", "shoots", "shooting", "spreads", "spreading", "goes", "going", "went", "travels", "traveled", "travelled", "traveling", "travelling", "wraps", "wrap", "wrapping", "wrapped", "moves", "move" or "moving", plus "to back" or "into back" ("my", "the", "upper", "mid" or "middle" may stand before "back", and "right", "straight" or "all the way" before "to").`,
-        examples: ['the pain in my middle is boring into my back', 'hurts left side goes to back'],
+        says: `A pain that bores, shoots or spreads into the back, wherever the person says the pain is: "pain", "pains", "ache", "aches", "hurt", "hurts" or "hurting", then (within about 40 characters) "boring", "bores", "bored", "radiates", "radiated", "radiating", "shoots", "shooting", "spreads", "spreading", "goes", "going", "went", "travels", "traveled", "travelled", "traveling", "travelling", "wraps", "wrap", "wrapping", "wrapped", "moves", "move" or "moving", plus "to" or "into", plus "back" or "spine" ("my", "the", "upper", "mid" or "middle" may stand before "back" or "spine", and "right", "straight" or "all the way" before "to").`,
+        examples: ['the pain in my middle is boring into my back', 'hurts left side goes to back', 'the pain radiates into my spine'],
       },
     ],
   },
   chest_or_faint: {
-    fp: '7fc78d00',
+    fp: '2f041ab4',
     triggers: [
       { says: `"Chest pain" or "chest pains".`, examples: ['chest pain since this morning'] },
       {
@@ -513,11 +535,11 @@ const TRIGGERS: Record<string, RuleGloss> = {
         examples: ['pressure in my chest', 'heavy feeling on my chest', 'pain on the left side of my chest'],
       },
       {
-        says: `"Chest", then "hurt", "hurts", "hurting", "aches", "aching", "achy", "sore", "killing me", "pressure", "tightness" or "tight", or "feels" plus "tight", "heavy", "painful" or "sore" ("really", "so", "very" or "weird and" may stand before that word). These words may stand after "chest": "really", "still", "just", "so", "very", "super", "kind of", "kinda", "has been", "have been", "been", "is", "was", "keeps", "started", "starts", "began". Or "tight chest".`,
-        examples: ['my chest hurts', 'chest has been hurting', 'my chest is killing me', 'my chest feels tight', 'tight chest'],
+        says: `"Chest", then "hurt", "hurts", "hurting", "aches", "aching", "achy", "sore", "killing me", "pressure", "tightness", "tight", "crushing" (not "crushing it"), "squeezing", "being crushed" or "being squeezed", or "feels" plus "tight", "heavy", "painful", "sore", "crushed" or "squeezed" ("really", "so", "very" or "weird and" may stand before that word). These words may stand after "chest": "really", "still", "just", "so", "very", "super", "kind of", "kinda", "has been", "have been", "been", "is", "was", "keeps", "started", "starts", "began". Or "tight chest".`,
+        examples: ['my chest hurts', 'chest has been hurting', 'my chest is killing me', 'my chest feels tight', 'tight chest', "my chest is crushing and I'm sweating"],
       },
       {
-        says: `"Pass out" or "black out" in any form ("passed out", "passing out", "passes out", "blacked out", "blacks out"). It does not count when a thing that is handed out or covered follows: "flyers", "fliers", "candy", "papers", "samples", "invitations", "cards", "treats", "pamphlets", "snacks", "cookies", "cupcakes", "brownies", "food", "water", "drinks", "gifts", "presents", "programs", "tickets", "copies", "leaflets", "menus", "ballots", "bags", "goodie bags", "gift bags", "coupons", "stickers", "flowers", "masks", "shirts", "t-shirts", "handouts", "worksheets", "tests", "forms", "window", "windows", "curtains", "blinds", "screen", "screens", "names", "dates", "lines", "section", "sections", "parts" or "text", also with "the", "some", "my", "our", "all the", "a few", "these", "those", "homemade" or "free" in between ("passed out cookies", "blacked out the windows").`,
+        says: `"Pass out" or "black out" in any form ("passed out", "passing out", "passes out", "blacked out", "blacks out"). It does not count when a thing that is handed out or covered follows: "flyers", "fliers", "candy", "papers", "samples", "invitations", "cards", "treats", "pamphlets", "snacks", "cookies", "cupcakes", "brownies", "food", "water", "drinks", "gifts", "presents", "programs", "tickets", "copies", "leaflets", "menus", "ballots", "bags", "goodie bags", "gift bags", "coupons", "stickers", "flowers", "masks", "shirts", "t-shirts", "handouts", "worksheets", "tests", "forms", "window", "windows", "curtains", "blinds", "screen", "screens", "names", "dates", "lines", "section", "sections", "parts" or "text", also with "the", "some", "my", "our", "all the", "a few", "these", "those", "homemade" or "free" in between ("passed out cookies", "blacked out the windows"). Nor when "on" plus "the", "that", "this", "my", "a" or "an" plus "exam", "test", "quiz", "final", "interview", "speech", "presentation", "lyrics", "answer", "answers", "question" or "questions" follows ("blacked out on that exam"), nor when "ceremony", "ceremonies", "parade" or "parades" follows ("the pass out ceremony").`,
         examples: ['I passed out after the shot', 'I keep passing out'],
       },
       {
@@ -527,7 +549,7 @@ const TRIGGERS: Record<string, RuleGloss> = {
       { says: `"Lost consciousness".`, examples: ['I lost consciousness for a minute'] },
       { says: `"Unconscious".`, examples: ['I was unconscious'] },
       {
-        says: `"Heart", "pulse", "heartbeat" or "heart rate", then (within about 20 characters) a word for fast or hard: "racing", "race", "races", "raced"; "pounding", "pounds", "pounded"; "fluttering", "flutters", "fluttered"; "thumping", "thumps", "thumped"; "hammering", "hammers", "hammered"; "skipping beat" or "skipping beats"; "beating fast", "beating hard", "beating quick" or "beating quickly" ("so", "really", "very", "too", "super" or "way too" may stand before "fast"); "beating out of my chest"; "fast", "rapid" or "elevated" (also after "so", "really", "very", "too", "super" or "way too"); "so high", "really high", "very high", "too high", "super high" or "way too high"; "going crazy", "going nuts", "going so fast" or "going a mile a minute"; "through the roof". It does not count when a **slight word** stands right before that word, or when "a bit", "a little", "a little bit", "a tad" or "slightly" follows it.`,
+        says: `"Heart", "pulse", "heartbeat" or "heart rate", then (within about 20 characters) a word for fast or hard: "racing", "race", "races", "raced"; "pounding", "pounds", "pounded"; "fluttering", "flutters", "fluttered"; "thumping", "thumps", "thumped"; "hammering", "hammers", "hammered"; "skipping" (also "skipping beat" or "skipping beats"); "beating fast", "beating hard", "beating quick" or "beating quickly" ("so", "really", "very", "too", "super" or "way too" may stand before "fast"); "beating out of my chest"; "fast", "rapid" or "elevated" (also after "so", "really", "very", "too", "super" or "way too"); "so high", "really high", "very high", "too high", "super high" or "way too high"; "going crazy", "going nuts", "going so fast" or "going a mile a minute"; "through the roof". It does not count when a **slight word** stands right before that word, or when "a bit", "a little", "a little bit", "a tad" or "slightly" follows it.`,
         examples: ['my heart is racing', 'heart pounding in my chest', 'my pulse is really fast'],
       },
       {
@@ -548,11 +570,11 @@ const TRIGGERS: Record<string, RuleGloss> = {
         examples: ['pain in my left arm and jaw', 'numbness in my left arm and sweating'],
       },
       {
-        says: `A heart attack or a stroke by name: "heart attack", but not right after "gave", "give", "gives", "giving", "nearly gave", "almost gave" or "about gave" plus a person ("the bill gave me a heart attack"); "stroke" after "having", "had", "have", "think it's", "another", "a" or "mini" ("a", "another" or "mini" may also stand right before "stroke": "having a mini stroke", "a mini-stroke"), but not when "of" follows ("a stroke of luck"); "stroke symptoms", "stroke symptom", "stroke signs" or "stroke sign"; "signs of stroke", "signs of a stroke", "symptoms of stroke" or "symptoms of a stroke" (also "sign", "symptom").`,
+        says: `A heart attack or a stroke by name: "heart attack", but not right after "gave", "give", "gives", "giving", "nearly gave", "almost gave" or "about gave" plus a person ("the bill gave me a heart attack"); "heart attack" is also not counted when "in a" plus "box", "bag", "bun", "cup", "bowl", "basket", "can" or "jar" follows, or "on a" plus "plate", "bun", "stick" or "platter", or "waiting to happen" ("a heart attack in a box"); "stroke" after "having", "had", "have", "think it's", "another", "a" or "mini" ("a", "another" or "mini" may also stand right before "stroke": "having a mini stroke", "a mini-stroke"), but not when "of" follows ("a stroke of luck"), and not when "awareness", "walk", "run", "ride", "fundraiser", "survivor", "survivors", "unit", "center", "centre", "ward", "clinic", "team", "prevention", "month", "research", "support", "education", "class" or "day" follows ("a stroke awareness walk"); "stroke symptoms", "stroke symptom", "stroke signs" or "stroke sign"; "signs of stroke", "signs of a stroke", "symptoms of stroke" or "symptoms of a stroke" (also "sign", "symptom").`,
         examples: ['I think I am having a heart attack', 'I had a mini stroke'],
       },
       {
-        says: `"Seizure" or "seizures", but not when "warning", "poster", "sign", "alert", "precautions", "safety", "awareness", "training", "dog", "medicine", "medication", "meds", "drug", "disorder awareness", "disorder foundation", "threshold" or "risk" follows (also in the plural). "Seizing"; "convulsion", "convulsions", "convulsing" or "convulsed". "Had a fit" or "had another fit", but not when "of", "about", "over", "when", "because", "at" or "with" follows ("had a fit about the mess"). "Bit my tongue", when within about 40 characters after it the same sentence has "fit", a word that starts with "seiz", "shaking", "shaked", "woke up", "passed out", "blacked out" or "on the floor".`,
+        says: `"Seizure" or "seizures", but not when "warning", "poster", "sign", "alert", "precautions", "safety", "awareness", "training", "dog", "medicine", "medication", "meds", "drug", "disorder awareness", "disorder foundation", "threshold" or "risk" follows (also in the plural), and not when "of" plus "the", "a", "an", "his", "her", "their", "its", "our", "all", "assets", "property", "goods", "drugs", "cash" or "evidence" follows ("seizure of the shipment"), nor "of my" or "of your" plus "car", "truck", "house", "home", "property", "assets", "account", "accounts", "boat", "land", "stuff", "things", "wages", "paycheck", "phone", "bike", "vehicle", "savings", "money", "goods", "passport" or "license" ("seizure of my car"). "Seizing"; "convulsion", "convulsions", "convulsing" or "convulsed". "Had a fit" or "had another fit", but not when "of", "about", "over", "when", "because" or "with" follows ("had a fit about the mess"), nor "at" plus "him", "her", "them", "me", "us", "you", "my" and one word, or "the" plus "waiter", "waitress", "clerk", "cashier", "kid", "kids", "dog", "cat", "ref", "referee", "tv", "news", "price", "bill", "teacher", "coach", "manager", "cop" or "officer" ("had a fit at the waiter"). "Had a fit at the dinner table" counts. "Bit my tongue", when within about 40 characters after it the same sentence has "fit", a word that starts with "seiz", "shaking", "shaked", "woke up", "passed out", "blacked out" or "on the floor".`,
         examples: ['I had a seizure', 'I was convulsing', 'Had a fit this morning, bit my tongue'],
       },
       {
@@ -560,19 +582,19 @@ const TRIGGERS: Record<string, RuleGloss> = {
         examples: ['I collapsed at work', 'woke up on the bathroom floor', "I don't remember falling", 'keeled over at the gym'],
       },
       {
-        says: `A drooping face: "face", "mouth", "smile" or "eyelid", then (within about 15 characters) "droop", "drooping", "droops", "drooped", "droopy", "sagging" or "lopsided". Or "drooping", "droopy", "drooped" or "droop", followed by "face", "mouth" or "eyelid". Or "facial droop" (also "facial drooping").`,
-        examples: ['my face is drooping', 'my smile is lopsided'],
+        says: `A drooping face: "face", "mouth", "smile" or "eyelid", then (within about 15 characters) "droop", "drooping", "droops", "drooped", "droopy", "sagging", "lopsided", "crooked", "uneven", "twisted", "slanted" or "slanting". Or "drooping", "droopy", "drooped", "droop", "crooked", "lopsided" or "uneven", followed by "face", "mouth", "eyelid" or "smile". Or "facial droop" (also "facial drooping").`,
+        examples: ['my face is drooping', 'my smile is lopsided', 'my mouth is crooked'],
       },
       {
-        says: `One side numb or weak: "numb", "numbness", "weak", "weakness", "paralyzed" or "paralysed", then (within about 25 characters) "one side", "left side" or "right side". Or "one side", "left side" or "right side", then (within about 25 characters) "numb", "weak", "paralyzed", "paralysed", "limp" or "went dead". Or "can't move", "can't lift", "can't raise" or "can't feel", followed by "arm", "leg", "hand", "side" or "face" ("my", and "left" or "right", may stand in between).`,
-        examples: ['my left side is numb', "I can't move my right arm"],
+        says: `One side numb or weak: "numb", "numbness", "weak", "weakness", "paralyzed" or "paralysed", then (within about 25 characters) a **one-side phrase**. Or a **one-side phrase**, then (within about 25 characters) "numb", "weak", "paralyzed", "paralysed", "limp", "went dead", "dead" or "heavy". Or "can't", "couldn't" or "won't", plus "move", "lift", "raise" or "feel", followed by "arm", "leg", "hand", "side" or "face" ("my", and "left" or "right", may stand in between). Or "arm", "leg" or "hand", plus "won't", "can't", "doesn't" or "wouldn't", plus "lift", "move", "work", "go up" or "hold anything".`,
+        examples: ['my left side is numb', "I can't move my right arm", 'my left arm and leg went numb', 'half of my body feels numb', "my arm won't lift"],
       },
       {
-        says: `Slurred speech or sudden confusion: "slurred", "slurring", "slurry" (also "slurr"); "garbled"; "speech", "words" or "talking", then (within about 15 characters) "jumbled", "coming out wrong", "coming out weird" or "coming out jumbled"; "can't talk" or "can't speak", followed by "right", "properly", "straight" or "clearly"; "can't find my words" or "can't get my words"; "don't know where I am" or "do not know where I am"; "sudden", "suddenly", "all of a sudden" or "out of nowhere", then (within about 20 characters) a word that starts with "confus" ("confused", "confusion") or "disoriented".`,
+        says: `Slurred speech or sudden confusion: "slurred", "slurring", "slurry" (also "slurr"); "garbled"; "speech", "words" or "talking", then (within about 15 characters) "jumbled", "coming out wrong", "coming out weird" or "coming out jumbled"; "can't talk" or "can't speak", followed by "right", "properly", "straight" or "clearly"; "can't find my words" or "can't get my words"; "speech", "words" or "talking", plus "sounds", "sound", "sounded", "is", "was", "are", "were", "came out", "comes out" or "come out", plus "drunk", "garbled", "jumbled", "slurred", "wrong", "weird", "off", "funny" or "mixed up" ("all", "so", "kinda" or "kind of" may stand in between); "words won't come" or "words wouldn't come"; "don't know where I am" or "do not know where I am"; "sudden", "suddenly", "all of a sudden" or "out of nowhere", then (within about 20 characters) a word that starts with "confus" ("confused", "confusion") or "disoriented".`,
         examples: ['my speech is slurred', 'My speech is garbled suddenly', "I can't find my words", 'suddenly confused'],
       },
       {
-        says: `"Ambulance", "911", "paramedics" or "EMS" ("a", "an" or "the" may stand before it), after "need", "needed", "need to call", "needed to call", "called", "calling", "dialed", "dialing" or "should I call".`,
+        says: `"Ambulance", "911", "paramedics" or "EMS" ("a", "an" or "the" may stand before it), after "need", "needed", "need to call", "needed to call", "called", "calling", "dialed", "dialing" or "should I call" (but not "when should I call": that asks when to call).`,
         examples: ['I need an ambulance', 'should I call 911'],
       },
       {
@@ -583,10 +605,34 @@ const TRIGGERS: Record<string, RuleGloss> = {
         says: `A heart rate of 120 or more at rest. "Heart rate", "heartrate", "pulse", "HR", "BPM" or "heartbeat", then a number from 120 to 249 (small words may stand in between: "is", "was", "at", "of", "over", "above", "around", "about", "like", "keeps", "kept", "going", "went", "goes", "up", "to", "reading", "reads", "says", "said", "showing", "shows", "showed", "hit", "hits", "stays", "staying", "still", "currently", "now", "always", "already", "constantly"), not when "lb", "lbs", "pounds", "kg", "mg", "steps", "cal", "kcal" or "%" follows the number, and only when within about 40 characters after it the same sentence has "rest", "resting", "at rest", "sitting", "sat", "lying", "laying", "in bed", "on the couch", "doing nothing", "still", "asleep", "sleeping", "woke" or "watching". Or one of those words for rest first (except "still", "woke" and "watching"), then (within about 25 characters) the heart rate and the number.`,
         examples: ['pulse 130 sitting still', 'heart rate keeps going over 120 resting', 'resting heart rate 125'],
       },
+      {
+        says: `A heart rate of 140 or more, with nothing said about rest. "Heart rate", "heartrate", "pulse", "HR" or "heartbeat", then a number from 140 to 249 (the same small words may stand in between as in the row above). Not when "target", "max", "maximum", "goal", "peak", "zone", "average" or "avg" stands right before it; not when "lb", "lbs", "pounds", "kg", "mg", "steps", "cal", "kcal", "%", "-", "to" plus a number, or "/" follows the number; and not when the rest of the sentence names exercise or walking: "run", "running", "ran", "jog", "hike", "hiking", "hill", "hills", "workout", "working out", a word that starts with "exercis", "gym", "walk", "walking", "stairs", "treadmill", "bike", "biking", "cycling", "spin", a word that starts with "swim", "climb" or "sprint", "training", "cardio", "lifting", "game", "practice", "race" or "class".`,
+        examples: ['my pulse is 150', 'heart rate 160 and pounding'],
+      },
+      {
+        says: `Fainting, in regional words: "I fell out" ("just", "kinda", "almost", "nearly" or "totally" may stand in between), but not "fell out of", "fell out with", "fell out over" or "fell out laughing". "I came to" plus "in", "on", "at", "and", "with", "lying", "laying" or "face" ("I came to in the car"). "Went", "dropped" or "fell" (perhaps with "down"), plus "like a sack", "like a rock", "like a stone" or "like a ton of bricks".`,
+        examples: ['I fell out at church today', 'I came to in the car', 'went down like a sack of potatoes'],
+      },
+      {
+        says: `A seizure told by what happened: a word for shaking ("jerking", "jerked", "jerks", "jerky", "shaking", "shaked", a word that starts with "convuls", "twitching", "twitched", "thrashing", "thrashed"), then (within about 60 characters) a **lost-time phrase**. Or a **lost-time phrase** first, then (within about 60 characters) a word for shaking.`,
+        examples: ['my body was jerking and I lost time', 'my family says I was shaking on the floor and did not respond'],
+      },
+      {
+        says: `A blood pressure of 180/120 or more: "blood pressure" (also "BP", read as "blood pressure" first, 2.3), then the same small words as for a heart rate, then a first number from 180 to 299 over any second number, or any first number over a second number from 120 to 199 ("/" or "over" between them).`,
+        examples: ['blood pressure 190/120 and a pounding headache', 'blood pressure 185 over 100'],
+      },
+      {
+        says: `A feeling of dying, with the heart, the chest or breathing: "heart", "chest", "pulse" or a word that starts with "breath", then (within about 60 characters, in the same sentence) a **feeling-of-dying phrase**. Or a **feeling-of-dying phrase** first, with one of those words within about 60 characters after it in the same sentence.`,
+        examples: ["my heart is skipping and I feel like I'm dying"],
+      },
+      {
+        says: `In the emergency room now: "I'm", "im", "I am", "we're", "currently", "sitting", "lying", "laying" or "waiting", plus "in" or "at", plus "emergency room", "emergency department" or "urgent care" ("the" may stand before; "ER" is read as "emergency room" first, 2.3). Or "on my way to the" or "on the way to the", plus "emergency room" or "hospital". Or "in an ambulance".`,
+        examples: ["I'm in the emergency room right now", 'on my way to the hospital'],
+      },
     ],
   },
   anaphylaxis: {
-    fp: 'de3a69f5',
+    fp: 'ed8d9fd1',
     triggers: [
       {
         says: `"Throat", "lip", "lips", "tongue", "face", "eyelid" or "eyelids", then (within about 20 characters) a swelling word: "swell", "swells", "swelled", "swelling", "swollen", "puffed up", "puffing up", "closing up" or "is closing". One more word and "and" may stand right before the swelling word ("tingling and swelling").`,
@@ -618,7 +664,7 @@ const TRIGGERS: Record<string, RuleGloss> = {
         examples: ['my throat feels tight', 'tightness in my throat'],
       },
       {
-        says: `"Throat", "lip", "lips", "tongue", "face", "eyelid", "eyelids" or "mouth", then (within about 15 characters) "puffy", "puffed", "puffing", "puffing up", "ballooned", "ballooning", "blown up", "blew up", "blowing up", "swole", or "getting" plus "bigger", "huge", "fat" or "puffy". Or "puffy" or "swole", followed by one of those body parts.`,
+        says: `"Throat", "lip", "lips", "tongue", "face", "eyelid", "eyelids" or "mouth", then (within about 25 characters) "puffy", "puffed", "puffing", "puffing up", "ballooned", "ballooning", "blown up", "blew up", "blowing up", "swole", or "getting" plus "bigger", "huge", "fat" or "puffy". Or "puffy" or "swole", followed by one of those body parts.`,
         examples: ['my face is all puffy', 'puffy lips', 'my lips are getting bigger'],
       },
       {
@@ -626,7 +672,7 @@ const TRIGGERS: Record<string, RuleGloss> = {
         examples: ['severe rash', 'severe itching'],
       },
       {
-        says: `"Rash", "rashes", "hives", "itch", "itching", "itchiness", "itchy" or "welts", then (within about 40 characters) "severe", "unbearable", "spreading", "getting worse", "so bad", "really bad", "very bad", "extremely bad", "out of control", "driving me crazy" (also "nuts" or "insane"), "won't stop" or "nonstop".`,
+        says: `"Rash", "rashes", "hives", "itch", "itching", "itchiness", "itchy" or "welts", then (within about 40 characters) "severe", "unbearable", "spreading", "getting worse", "so bad", "really bad", "very bad", "extremely bad" (also "badly"), "out of control", "driving me crazy" (also "nuts" or "insane"), "won't stop" or "nonstop".`,
         examples: ['my rash is spreading', 'the itching is driving me crazy'],
       },
       {
@@ -647,10 +693,14 @@ const TRIGGERS: Record<string, RuleGloss> = {
         says: `"So", "really", "extremely", "insanely" or "unbearably", plus "itchy", then (within about 30 characters, in the same sentence) "can't sleep", "can't stand it", "can't take it", "can't stop scratching", "can't function", "all over" or "everywhere".`,
         examples: ["so itchy I can't sleep"],
       },
+      {
+        says: `Breathing that takes effort: "every breath" or "each breath", plus "is", "feels" or "takes", plus "an effort", "a struggle", "a fight", "a chore" or "work" (also "such an effort" and the like). Or "breathing" plus "is", "feels" or "takes", plus "an effort", "a struggle" or "a chore".`,
+        examples: ['every breath is an effort right now'],
+      },
     ],
   },
   vision: {
-    fp: 'bb685224',
+    fp: '0f34dc72',
     triggers: [
       { says: `"Sudden", "suddenly" or "all of a sudden", then (within about 30 characters) a **vision word**, or "went dark" or "went black".`, examples: ["suddenly I can't see clearly", 'sudden vision loss in one eye'] },
       { says: `A **vision word**, then (within about 30 characters) "sudden", "suddenly" or "all of a sudden".`, examples: ['my vision went blurry all of a sudden'] },
@@ -658,7 +708,7 @@ const TRIGGERS: Record<string, RuleGloss> = {
       { says: `"Left eye" or "right eye", then (within about 30 characters) a **cannot-see word**, "dark", "black" or "fuzzy". The word "vision" alone is not enough here.`, examples: ['my right eye is blurry'] },
       { says: `A **cannot-see word**, then (within about 25 characters) "one eye", "left eye" or "right eye".`, examples: ['blurry in my left eye'] },
       {
-        says: `"Vision loss"; "loss of vision", "loss of sight" or "loss of eyesight" (also "loss of my ..."); "lost" followed by "vision", "sight" or "eyesight" ("my" or "some", and before that "part of", "some of", "most of", "half of" or "all of", may stand in between: "lost part of my vision"); "losing vision", "losing sight" or "losing eyesight" (also with "my"); "went blind", "going blind" or "gone blind". It does not count when "of my", "of the", "of what", "of why", "of how", "of it", "of that" or "of this" follows ("lost sight of my goals").`,
+        says: `"Vision loss"; "loss of vision", "loss of sight" or "loss of eyesight" (also "loss of my ..."); "lost" followed by "vision", "sight" or "eyesight" ("my", "some" or "the", and before that "part of", "some of", "most of", "half of" or "all of", may stand in between: "lost part of my vision"); "losing vision", "losing sight" or "losing eyesight" (also with "my"); "went blind", "going blind" or "gone blind". It does not count when "of my", "of the", "of what", "of why", "of how", "of it", "of that" or "of this" follows ("lost sight of my goals").`,
         examples: ['losing my sight', 'I think I am going blind'],
       },
       {
@@ -671,8 +721,8 @@ const TRIGGERS: Record<string, RuleGloss> = {
         examples: ['my vision is blurry', 'double vision', 'my eyesight is getting worse'],
       },
       {
-        says: `"Vision", "eyesight" or "sight", plus "is", "was", "seems", "feels", "got", "gets", "looks", "has been", "went", "goes", "keeps getting" or "keeps going", plus "off", "weird", "strange", "funny", "messed up", "dim", "dimmer", "dark", "darker", "spotty", "bad" or "terrible" ("a little", "a bit", "kind of", "kinda", "really", "so", "very" or "getting" may stand before that word).`,
-        examples: ['my vision seems off'],
+        says: `"Vision", "eyesight" or "sight", plus "is", "was", "seems", "feels", "got", "gets", "looks", "has been", "went", "goes", "keeps getting" or "keeps going", plus "off", "weird", "strange", "funny", "messed up", "dim", "dimmer", "dark", "darker", "spotty", "bad" or "terrible" ("a little", "a bit", "kind of", "kinda", "really", "so", "very" or "getting" may stand before that word). Or "vision", "eyesight" or "sight", plus "has" or "have", plus "dimmed", "darkened", "faded", "worsened", or "gotten" plus "worse", "dim", "dimmer", "dark", "darker" or a word that starts with "blurr" ("really", "suddenly" or "gradually" may stand in between).`,
+        examples: ['my vision seems off', 'over the last few days my vision has dimmed'],
       },
       {
         says: `"Eye" or "eyes", then (within about 15 characters) a word that starts with "blur", or "fuzzy", "hazy" or "cloudy". Or "blurry", "blurred", "fuzzy", "hazy" or "cloudy", followed by "eye" or "eyes". Or "everything", then a word that starts with "blur", or "fuzzy" or "hazy"; "looks", "look", "is", "seems", "went", "got", "was", "has been", "looking" or "going" may stand in between, and "so", "really", "all", "kind of" or "kinda" right before that word ("everything blurry", "everything looks fuzzy").`,
@@ -683,23 +733,27 @@ const TRIGGERS: Record<string, RuleGloss> = {
         examples: ['changes in my vision', 'vision problems'],
       },
       {
-        says: `"Seeing" plus "double", "spots", "floaters", "flashes", "flashing lights", "halos" or "two of everything" (not when "on my" or "on the" follows, as in spots on the skin); "floaters"; "flashes of light"; "trouble seeing", "difficulty seeing", "hard time seeing", "problem seeing" or "problems seeing"; "hard to see"; "can't see" plus "well", "clearly", "good", "right", "straight", "properly" or "out of" ("as", "very", "that" or "so" may stand before "well", "clearly" or "good": "can't see as clearly").`,
-        examples: ['seeing double', 'I see floaters', "can't see well out of my left eye", "I can't see as clearly as before"],
+        says: `"Seeing" plus "double", "spots", "floaters", "flashes", "flashing lights", "halos" or "two of everything" (not when "on my" or "on the" follows, as in spots on the skin); "floaters"; "flashes of light"; "trouble seeing", "difficulty seeing", "hard time seeing", "problem seeing" or "problems seeing"; "hard to see"; "can't see" or "couldn't see" plus "well", "clearly", "good", "right", "straight", "properly" or "out of" (up to three of "as", "very", "that", "so", "the", "my", "a", "an", "anything", "things", "faces", "words", "signs", "road", "screen", "print" and "text" may stand in between: "can't see as clearly", "could not see the road clearly"); "can't see", then one to four words, then "anymore", "any more" or "any longer" ("I cannot make out faces across the room any longer": "make out" after "can't" is read as "see" first, 2.3).`,
+        examples: ['seeing double', 'I see floaters', "can't see well out of my left eye", "I can't see as clearly as before", "I couldn't see the road clearly"],
       },
       {
-        says: `More words for a change in vision: "vision", "eyesight" or "sight", plus "going in and out", "goes in and out", "went in and out" or "cutting in and out" ("keeps" may stand before); "vision comes and goes" (also "eyesight", "sight"); "things", "everything", "lines", "words", "letters" or "text", plus "look", "looks", "looked", "are", "is", "seem", "seems", "went" or "got", plus "wavy", "distorted", "warped" or "double" ("so", "all" or "really" may stand in between); "see double" or "saw double"; "flashing lights"; "wavy", "distorted", "warped", "bent" or "squiggly", followed by "lines", "vision" or "edges"; "can't see" at the end of a sentence, or followed by "at all", "right now" or "a thing"; "can't see anything", but not "can't see anything wrong", "anything different", "anything on", "anything in", "anything about" or "anything that"; "blurry" (also "blury") as a sentence of its own, also as "it's blurry", "its blurry", "things are blurry" or "everything is blurry" ("all", "so", "really" or "very" may stand before "blurry").`,
+        says: `More words for a change in vision: "vision", "eyesight" or "sight", plus "going in and out", "goes in and out", "went in and out" or "cutting in and out" ("keeps" may stand before); "vision comes and goes" (also "eyesight", "sight"); "things", "everything", "lines", "words", "letters" or "text", plus "look", "looks", "looked", "looking", "are", "is", "seem", "seems", "went", "got", "have been looking", "has been looking" or "keep looking", plus "wavy", "distorted", "warped", "double", "fuzzy", "blurry", "blurred" or "hazy" ("so", "all" or "really" may stand in between); "see double" or "saw double"; "flashing lights"; "wavy", "distorted", "warped", "bent" or "squiggly", followed by "lines", "vision" or "edges"; "can't see" at the end of a sentence, or followed by "at all", "right now" or "a thing"; "can't see anything", but not "can't see anything wrong", "anything different", "anything on", "anything in", "anything about" or "anything that"; "blurry" (also "blury") as a sentence of its own, also as "it's blurry", "its blurry", "things are blurry" or "everything is blurry" ("all", "so", "really" or "very" may stand before "blurry").`,
         examples: ['my vision keeps going in and out', 'things look wavy', "I can't see", 'its all blurry', 'wavy lines in my vision'],
+      },
+      {
+        says: `Spots or floaters in the vision: "spots", "specks", "dots", "floaters", "cobwebs" or "squiggles", then (within about 20 characters) a word that starts with "float", or "in" plus "vision", "eye", "eyes" or "sight" ("my" or "the" may stand before).`,
+        examples: ['dark spots floating in my vision'],
       },
     ],
   },
   hypoglycemia: {
-    fp: '6cc491f3',
+    fp: 'bb0e0a6b',
     triggers: [
       { says: `A word that starts with "hypoglyc" ("hypoglycemia", "hypoglycemic").`, examples: ['I think this is hypoglycemia'] },
       { says: `"Low blood sugar" or "low blood glucose".`, examples: ['low blood sugar'] },
       { says: `"Blood sugar" or "blood glucose", then (within about 15 characters) "low", "dropped", "crash", "crashed", "crashing", "tanked" or "bottomed".`, examples: ['I think my blood sugar is low'] },
       { says: `"Sugar" or "glucose", then "is", "was", "got", "went" or "feels", then "low". "Very", "too", "really", "so" or "super" may stand before "low". It does not count when "normal", "carb", "fat" or "cal" follows "low".`, examples: ['my sugar is really low'] },
-      { says: `"Sugar" or "glucose" (with or without "level" or "levels"), then "dropped", "dropping", "crashed", "crashing", "tanked", "plummeted" or "bottomed out" ("has", "have", "just", "is" or "was" may stand in between).`, examples: ['my glucose dropped', 'sugar crashed'] },
+      { says: `"Sugar", "sugars" or "glucose" (with or without "level" or "levels"), then "dropped", "dropping", "crashed", "crashing", "tanked", "tanking", "plummeted", "plummeting", "bottomed out" or "bottoming out" ("has", "have", "has been", "have been", "just", "is", "was", "are", "were", "keeps", "keep" or "kept" may stand in between).`, examples: ['my glucose dropped', 'sugar crashed', 'my sugars are tanking'] },
       {
         says: `"Low glucose" or "low sugars". Or "a", "my", "another", "having", "had" or "got", followed by "low sugar", unless a word for a food, a drink or a diet follows ("a low sugar yogurt", "a low sugar week").`,
         examples: ['having low sugars a lot', 'I had low sugar this morning'],
@@ -713,20 +767,28 @@ const TRIGGERS: Record<string, RuleGloss> = {
         examples: ['low bg this morning', 'sugars low', 'went low last night', 'had a bad low'],
       },
       {
-        says: `A reading under 70. "Blood sugar", "blood sugars", "blood glucose", "glucose", "BG", "BGL", "BS", "CGM", "Dexcom", "Libre", "meter", "my sugar" or "my sugars" (or "sugar" or "sugars" when "is", "was", "are", "were", "at", "dropped", "went", "got", "hit", "read", "reads", "reading" or the number itself follows), then a number from 10 to 69, or a reading in mmol/L under 3.9 (from "0.0" to "3.8", one decimal: "BG 3.0"). These words may stand in between, each perhaps with a comma after it: "is", "was", "were", "at", "of", "read", "reads", "reading", "say", "says", "said", "showed", "shows", "dropped", "went", "down", "got", "to", "hit", "level", "levels", "alarm", "alarms", "alarming", "alarmed", "alert", "alerted", "went off", "beeped", "low", "lo", "currently", "now", "just", "only", "about", "around", "like". It does not count when a unit or a time follows the number: "%", "g", "gram", "grams", "carb", "carbs", "mg" (but "mg/dL" counts), "unit", "units", "lb", "lbs", "kg", "oz", "tsp", "tbsp", "teaspoon", "teaspoons", "tablespoon", "tablespoons", "cup", "cups", a decimal point or a colon with a digit after it, minutes, hours, days, weeks, years, "times", "am", "pm", "point", "points". Or "blood sugar", "blood sugars", "sugar", "sugars", "glucose" or "BG", then (within about 15 characters) "in the 20s", "30s", "40s", "50s" or "60s". Or "meter", "CGM", "Dexcom", "Libre" or "reading", plus "read", "reads", "say", "says", "said", "showed", "shows", "is" or "was", plus "LO" or "low".`,
-        examples: ['blood sugar 48', 'glucose was 55', 'cgm says 49', 'sugar is in the 40s', 'meter read LO', 'sugar 39', 'bg 2.8', 'my CGM alarm said low, 55'],
+        says: `A reading under 70. "Blood sugar", "blood sugars", "blood glucose", "glucose", "BG", "BGL", "BS", "CGM", "Dexcom", "Libre", "meter", "my sugar" or "my sugars" (or "sugar" or "sugars" when "is", "was", "are", "were", "at", "dropped", "went", "got", "hit", "read", "reads", "reading" or the number itself follows), then a number from 10 to 69, or a reading in mmol/L under 3.9 (from "0.0" to "3.8", one decimal: "BG 3.0"). These words may stand in between, each perhaps with a comma after it: "is", "was", "were", "at", "of", "read", "reads", "reading", "say", "says", "said", "showed", "shows", "dropped", "went", "down", "got", "to", "hit", "level", "levels", "alarm", "alarms", "alarming", "alarmed", "alert", "alerted", "went off", "beeped", "low", "lo", "currently", "now", "just", "only", "about", "around", "like", "showing", "meter", "monitor", "check", "checked". It does not count when a unit or a time follows the number: "%", "g", "gram", "grams", "carb", "carbs", "mg" (but "mg/dL" counts), "unit", "units", "lb", "lbs", "kg", "oz", "tsp", "tbsp", "teaspoon", "teaspoons", "tablespoon", "tablespoons", "cup", "cups", a decimal point or a colon with a digit after it, minutes, hours, days, weeks, years, "times", "am", "pm", "point", "points". Or "blood sugar", "blood sugars", "sugar", "sugars", "glucose" or "BG", then (within about 15 characters) "in the 20s", "30s", "40s", "50s" or "60s". Or "meter", "CGM", "Dexcom", "Libre" or "reading", plus "read", "reads", "say", "says", "said", "showed", "shows", "is" or "was", plus "LO" or "low".`,
+        examples: ['blood sugar 48', 'glucose was 55', 'cgm says 49', 'sugar is in the 40s', 'meter read LO', 'sugar 39', 'bg 2.8', 'my CGM alarm said low, 55', 'glucose meter showing 52'],
       },
       {
         says: `Lows and hypos by the short words. "Lows" after "having", "had", "have", "getting", "get", "got", "keep having", "keep getting", "been having", "been getting", "more", "frequent", "bad", "scary", "lots of" or "a lot of" ("a lot of", "lots of", "more", "frequent", "bad", "scary", "so many" or "many" may also stand right before "lows"). "Hypo" or "hypos". "CGM", "Dexcom", "Libre", "meter" or "pump", then (within about 10 characters) "low alarm", "low alert" or "low warning" (also "urgent low", and in the plural). Or "low alarm" or "low alert" (also "urgent low", and in the plural), followed by "went off", "going off", "keeps going off", "keep going off" or "again".`,
         examples: ['I keep having lows at night', 'hypo last night', 'dexcom urgent low alarm'],
       },
+      {
+        says: `A reading under 70, with the meter after it or in tens. "Reading", "readings", "got", "getting", "showing", "shows", "showed", "read", "was" or "is" (perhaps with "a"), then a number from 10 to 69, then "on" or "from" plus "my" or "the" plus "meter", "CGM", "Dexcom", "Libre", "monitor", "glucometer" or "sensor". Or a number from 10 to 69 plus "on my" or "on the" plus "meter", "CGM", "Dexcom", "Libre" or "glucometer". Or "reading", "readings", "number", "numbers", "sugar", "sugars", "glucose" or "BG", then (within about 20 characters) "in", "into", "down in", "down to" or "down into", plus "the 20s", "30s", "40s", "50s" or "60s".`,
+        examples: ['reading 59 on my meter', 'My readings have been in the 60s every morning this week.', 'my glucose has been dropping into the 50s'],
+      },
+      {
+        says: `Glucagon, the rescue medicine for a severe low: "give", "gave", "given" or "giving", plus "me", plus "glucagon", "Baqsimi" or "Gvoke" ("my", "a", "the" or "some" may stand before). Or "used", "needed", "took", "had to use" or "had to take" (perhaps after "I"), plus "glucagon", "Baqsimi" or "Gvoke" ("my", "a" or "the" may stand before). Or "glucagon", "Baqsimi" or "Gvoke", plus "was", "got", "had to be", "has been" or "had been", plus "given", "administered", "used", "injected" or "sprayed", but not when "to" and anyone but "me" follows ("glucagon was given to my son").`,
+        examples: ['husband had to give me glucagon i was out of it', 'glucagon was given to me'],
+      },
     ],
   },
   dehydration: {
-    fp: '606bfed2',
+    fp: 'e3258e0a',
     triggers: [
       {
-        says: `A word that says it keeps happening, then (within about 15 characters) a **vomiting word** or a **diarrhea word**. The words: "keep", "keeps", "kept"; "can't stop", "can't quit", "can't I stop", "cannot stop", "cannot quit", "won't stop", "won't quit"; "haven't stopped", "have not stopped", "hasn't stopped", "has not stopped" or "not stopped" (also "stop" in place of "stopped", and "been able to stop"); "still"; "constant", "constantly"; "nonstop"; "over and over"; "again and again"; "repeatedly".`,
+        says: `A word that says it keeps happening, then (within about 15 characters) a **vomiting word** or a **diarrhea word**. The words: "keep", "keeps", "kept"; "can't stop", "can't quit", "can't I stop", "cannot stop", "cannot quit", "won't stop", "won't quit"; "haven't stopped", "have not stopped", "hasn't stopped", "has not stopped" or "not stopped" (also "stop" in place of "stopped", and "been able to stop"); "still"; "constant", "constantly"; "nonstop"; "over and over"; "again and again"; "repeatedly"; "repeated".`,
         examples: ['I keep throwing up', 'constant diarrhea', "why can't I stop throwing up", 'still vomiting'],
       },
       { says: `A **vomiting word** or a **diarrhea word**, then (within about 25 characters) a **long-or-often phrase**.`, examples: ["I've been throwing up all day", 'threw up 6 times today', 'diarrhea nonstop since last night'] },
@@ -736,16 +798,16 @@ const TRIGGERS: Record<string, RuleGloss> = {
       },
       { says: `"Nothing stays down", "nothing will stay down" or "nothing is staying down".`, examples: ['nothing stays down'] },
       {
-        says: `A **vomiting word** followed by "water", "everything I drink", "everything I eat", "whatever I drink" or "whatever I eat" (also "every thing"). "Up", and "even", "just" or "plain", may stand in between.`,
-        examples: ['throwing up even water', 'vomiting everything I drink'],
+        says: `A **vomiting word** followed by "water", "everything" (also "everything I drink" or "everything I eat"), "whatever I drink", "whatever I eat", "Gatorade", "Pedialyte", "liquid", "liquids", "fluid", "fluids", "drink", "drinks", "juice", "broth" or "ice chips" (also "every thing"). "Up", and "even", "just", "plain" or "literally", may stand in between.`,
+        examples: ['throwing up even water', 'vomiting everything I drink', 'throwing up everything even gatorade'],
       },
       {
         says: `"Even water", "even sips" or "even sips of water", or "everything", "every thing", "anything" or "whatever" plus "I eat", "I drink", "I eat or drink" or "I swallow"; then (within about 20 characters) "comes up", "come up", "came up" (also "back up" or "right up" in place of "up"), or a **vomiting word**.`,
         examples: ['everything I eat comes back up', 'even water comes right up'],
       },
       { says: `"Haven't", "have not", "hasn't", "didn't" or "did not", followed by "peed", "pee", "urinated", "urinate" or "been able to pee" ("really" may stand in between).`, examples: ["I haven't peed all day"] },
-      { says: `"No", "barely any", "hardly any", "very little" or "almost no", followed by "pee" or "urine".`, examples: ['very little urine today'] },
-      { says: `"Barely" or "hardly", followed by "peeing", "pee", "peed", "urinating", "urinate" or "urinated".`, examples: ['barely peeing'] },
+      { says: `"No", "barely any", "hardly any", "very little" or "almost no", followed by "pee" or "urine" ("made", "passed", "produced" or "had" may stand between "barely" or "hardly" and "any").`, examples: ['very little urine today', 'I have hardly made any urine today'] },
+      { says: `"Barely" or "hardly", followed by "peeing", "pee", "peed", "urinating", "urinate" or "urinated". Or "only peed", "only urinated" or "only gone pee", followed by "once", "one time" or "twice".`, examples: ['barely peeing', 'I have only urinated once today'] },
       { says: `"Peeing" or "urinating", followed by "little", "very little" or "so little".`, examples: ['peeing very little'] },
       { says: `"Not peeing" or "not urinating", followed by "much", "a lot" or "at all".`, examples: ['not peeing much'] },
       { says: `"Peeing" or "urinating", followed by "less", "much less", "a lot less" or "way less".`, examples: ['peeing a lot less than usual'] },
@@ -765,11 +827,11 @@ const TRIGGERS: Record<string, RuleGloss> = {
         examples: ['feeling dizzy', 'the room is spinning'],
       },
       {
-        says: `"Dehydrated" after "so", "very", "really", "severely", "badly", "super", "extremely" or "pretty", or after "I'm", "I am", "I think I'm", "feel", "feeling", "felt", "got" or "getting". Or "severe dehydration". Or "dehydrated" alone, as a sentence of its own.`,
+        says: `"Dehydrated" after "so", "very", "really", "severely", "badly", "super", "extremely", "pretty", "terribly" or "awfully", or after "I'm", "I am", "I think I'm", "feel", "feeling", "felt", "got" or "getting". Or "severe dehydration". Or "dehydrated" alone, as a sentence of its own.`,
         examples: ["I think I'm dehydrated", 'Dehydrated.'],
       },
       {
-        says: `A count of days, without "for". A **vomiting word** or a **diarrhea word**, then (within about 15 characters) a **count of days**, but not when "ago" follows. Or a **count of days**, "a week" or a **day number**, then "of" or "with" ("now" may stand before), then a **vomiting word** or a **diarrhea word** ("the", "constant" or "nonstop" may stand in between). Or a **vomiting word** or a **diarrhea word**, then (within about 20 characters, any words of the same sentence except "on") a **day number**, but not when "of", "after", "post", "since" or "on" follows it.`,
+        says: `A count of days, without "for". A **vomiting word** or a **diarrhea word**, then (within about 15 characters) a **count of days**, but not when "ago" follows. Or a **count of days**, "days", "a week" or a **day number**, then "of" or "with" ("now" may stand before), then a **vomiting word** or a **diarrhea word** ("the", "constant" or "nonstop" may stand in between). Or a **vomiting word** or a **diarrhea word**, then (within about 20 characters, any words of the same sentence except "on") a **day number**, but not when "of", "after", "post", "since" or "on" follows it.`,
         examples: ['vomiting 3 days', 'day 3 of throwing up', 'puking again, 4th day in a row'],
       },
       {
@@ -786,23 +848,39 @@ const TRIGGERS: Record<string, RuleGloss> = {
         examples: ['stomach flu like symptoms that will not go away'],
       },
       {
-        says: `Little urine, said after the word: "pee" or "urine", then (within about 25 characters) "barely", "hardly", "very little", "almost no" or "not much" (perhaps followed by "any", "comes out", "come out" or "coming out").`,
-        examples: ['pee is dark brown and barely any'],
+        says: `Little urine, said after the word: "pee", "peed", "peeing", "urine", "urinate", "urinated" or "urinating", then (within about 25 characters) "barely", "hardly", "very little", "almost no", "not much", "a trickle", "only once", "only a little" or "only a few drops" (perhaps followed by "any", "comes out", "come out", "coming out" or "at all").`,
+        examples: ['pee is dark brown and barely any', 'super thirsty and peeing hardly at all'],
       },
       {
         says: `Dark brown urine: "dark brown", "brown", "tea-colored", "tea colored", "cola-colored" or "cola colored" (also "coloured"), followed by "urine" or "pee". Or "urine" or "pee", then "dark brown", "brown", "the color of tea", "the color of cola" or "the color of coke" (also "colour"); "is", "was", "looks", "has been", "turned", "got" or "went", and "really", "very" or "so", may stand in between. "Dark urine" alone is not enough.`,
         examples: ['my urine is dark brown', 'brown pee'],
       },
+      {
+        says: `Everything comes back up: "everything", "every thing", "food", "water", "anything", "drink", "drinks", "liquid", "liquids", "fluid", "fluids", "whatever I eat" or "whatever I drink", plus "comes back up", "come back up", "coming back up" or "came back up" ("just", "always", "keeps" or "still" may stand before, and "right" before "back"). Or "without" plus "coming up", "coming back up", "throwing it up" or "puking it up" (also with "it" and "right": "without it coming back up").`,
+        examples: ["can't eat or drink anything without it coming back up", 'everything I drink comes right back up'],
+      },
+      {
+        says: `"Haven't", "hasn't", "didn't", "not" or "never", plus "kept", "keeping", "held" or "holding" ("been" may stand before), plus what will not stay down (the same words as for "can't keep ... down"), plus "down".`,
+        examples: ['I have not kept fluids down'],
+      },
+      {
+        says: `The kidneys: "kidney" or "kidneys", then (within about 25 characters) a word that starts with "hurt", "pain", "ach", "damage" or "injur", or "sore", "off", "bad", "worse", "failing", "failure", or "number" or "numbers" plus "off", "bad", "up", "high", "worse", "low" or "abnormal" ("are" or "is" may stand in between). Or "eGFR", "GFR" or "creatinine", then (within about 20 characters) "dropped", "down", "low", "high", "up", "elevated", "worse", "bad", "off" or "abnormal".`,
+        examples: ['my kidneys hurt and i havent been drinking', 'labs say my kidney numbers are off'],
+      },
+      {
+        says: `Vomiting, diarrhea or nausea that stops the person from getting through the day: a **vomiting word**, a **diarrhea word** or a **nausea word**, then (within about 60 characters) a **cannot-cope phrase**. Or a **cannot-cope phrase**, then (within about 40 characters) a **vomiting word** or a **diarrhea word**.`,
+        examples: ['I am so weak from the diarrhea that I can hardly get out of bed'],
+      },
     ],
   },
   gallbladder: {
-    fp: 'd20ad8ef',
+    fp: '0d87be8f',
     triggers: [
       { says: `A word that starts with "jaundice".`, examples: ['jaundice'] },
-      { says: `"Yellow", "yellowing" or "yellowish", followed by "skin", "eye", "eyes", "eyeball" or "eyeballs" ("of", "my" or "the" may stand in between).`, examples: ['yellowing of my skin', 'yellow eyes'] },
+      { says: `"Yellow", "yellowing" or "yellowish", followed by "skin", "eye", "eyes", "eyeball" or "eyeballs" ("of", "my" or "the" may stand in between), but not when "emoji", "emojis", "filter", "filters", "contact", "contacts", "lenses", "makeup", "paint", "shirt", "dress", "costume", "sticker" or "stickers" follows ("yellow eyes emoji").`, examples: ['yellowing of my skin', 'yellow eyes'] },
       {
-        says: `"Skin", "eye", "eyes" or "whites of my eyes" or "whites of the eyes", then none, one or two of these words: "is", "are", "has", "have", "look", "looks", "turned", "turning", "got", "getting", "went", "going", "gone", "seem", "seems"; then "yellow" ("a bit", "a little", "kind of", "slightly", "really" or "very" may stand before "yellow").`,
-        examples: ['my eyes look yellow', 'my skin is turning yellow', 'my skin has turned yellow', 'eyes yellow'],
+        says: `"Skin", "eye", "eyes" or "whites of my eyes" or "whites of the eyes", then none, one or two of these words: "is", "are", "has", "have", "look", "looks", "looking", "turned", "turning", "got", "getting", "went", "going", "gone", "seem", "seems", "been"; then "yellow". "A" may stand before "yellow", and up to three of "bit", "little", "tiny", "kind of", "kinda", "sort of", "sorta", "slightly", "really", "very", "super", "so" and "pretty" ("my eyes have a yellow cast", "skin looking kinda yellow"). A slight word does not stop this sign.`,
+        examples: ['my eyes look yellow', 'my skin is turning yellow', 'my skin has turned yellow', 'eyes yellow', 'skin looking kinda yellow today'],
       },
       { says: `A **pain or soreness word**, then (within about 30 characters) an **upper-right phrase**.`, examples: ['pain in my upper right abdomen', 'pain under my right ribs'] },
       { says: `An **upper-right phrase**, then (within about 30 characters) a **pain or soreness word**.`, examples: ['my upper right side hurts', 'right rib cage is sore'] },
@@ -816,7 +894,7 @@ const TRIGGERS: Record<string, RuleGloss> = {
         examples: ['sore right under my ribs'],
       },
       {
-        says: `"I'm", "I am", "I look", "I looked", "I turned", "I'm looking" or "I'm turning", followed by "yellow" or "jaundiced" ("a bit", "a little", "kind of", "kinda", "really" or "so" may stand in between). Or "is my" or "are my", plus "skin", "eye", "eyes" or "face", plus "yellow" ("so", "turning", "looking", "a bit" or "kind of" may stand in between). Or "skin", "eye", "eyes" or "face", then (within about 20 characters) "yellow" or "yellowish" plus "tint", "tinge", "color", "colour", "hue" or "look"; or those words first, then (within about 20 characters) "skin", "eye", "eyes" or "face".`,
+        says: `"I'm", "I am", "I look", "I looked", "I turned", "I'm looking" or "I'm turning", followed by "yellow" or "jaundiced" ("a bit", "a little", "kind of", "kinda", "really" or "so" may stand in between). Or "is my" or "are my", plus "skin", "eye", "eyes" or "face", plus "yellow" ("so", "turning", "looking", "a bit" or "kind of" may stand in between). Or "skin", "eye", "eyes" or "face", then (within about 20 characters) "yellow" or "yellowish" plus "tint", "tinge", "color", "colour", "hue", "look" or "cast"; or those words first, then (within about 20 characters) "skin", "eye", "eyes" or "face".`,
         examples: ['I look yellow', 'why are my eyes yellow', 'my skin has a yellow tint'],
       },
       {
@@ -824,14 +902,14 @@ const TRIGGERS: Record<string, RuleGloss> = {
         examples: ['I have a fever', 'my temp is 101.2'],
       },
       {
-        says: `"Clay", "pale", "light", "gray", "grey", "white", "whitish", "chalky" or "putty" (with or without "colored" or "coloured", also joined with a hyphen), followed by "stool", "stools", "poop", "poops", "poo", "bowel movement", "bowel movements", "BM" or "BMs". Or one of those words for stool first, then (within about 20 characters) "clay", "pale", "light-colored", "light colored", "light in color", "gray", "grey", "white", "whitish", "chalky" or "putty". Or "pooping" or "pooped" (also "pooping out"), followed by "clay", "pale", "light", "gray", "grey", "white", "whitish" or "chalky".`,
+        says: `"Clay", "pale", "light", "gray", "grey", "white", "whitish", "chalky" or "putty" (with or without "colored" or "coloured", also joined with a hyphen), followed by "stool", "stools", "poop", "poops", "poo", "bowel movement", "bowel movements", "BM" or "BMs". Or one of those words for stool first, then (within about 40 characters) "clay", "pale", "light-colored", "light colored", "light in color", "gray", "grey", "white", "whitish", "chalky" or "putty". Or "pooping" or "pooped" (also "pooping out"), followed by "clay", "pale", "light", "gray", "grey", "white", "whitish" or "chalky".`,
         examples: ['clay colored stools', 'my poop is pale'],
       },
       { says: `"Gallstone" or "gallstones" (also written "gall stones"). Or "gallbladder" (also "gall bladder") followed by "attack", "pain", "problem", "problems", "issue", "issues" or "infection".`, examples: ['I think I have gallstones'] },
     ],
   },
   thyroid: {
-    fp: '71618405',
+    fp: '20d5e1c2',
     triggers: [
       {
         says: `"Lump", "bump", "swelling", "mass", "nodule", "knot" or "growth", then (within about 15 characters) "in", "on", "at", "around", "under" or "near", plus "neck" ("my" or "the" may stand before). The front, side, left side, right side, base, back or bottom of the neck counts too ("a lump on the side of my neck").`,
@@ -860,7 +938,7 @@ const TRIGGERS: Record<string, RuleGloss> = {
         examples: ['swollen glands in my neck', 'a nodule on my thyroid'],
       },
       {
-        says: `"Swollen", "swelling", "puffy" or "enlarged", then (within about 25 characters) "front of", "side of" or "base of", plus "neck" ("my" or "the" may stand before "neck"). Or "neck" or "thyroid", plus "is", "feels", "looks", "seems" or "got", plus "swollen", "puffy", "enlarged", "thick", "bigger" or "lumpy" ("so", "really", "a bit", "kind of" or "a little" may stand in between). Or "lump", "bump", "mass" or "knot", then (within about 15 characters) "in my throat" (also "in my throat area"), then (within about 25 characters) a **does-not-go-away phrase** or "when I swallow".`,
+        says: `"Swollen", "swelling", "puffy" or "enlarged", then (within about 25 characters) "front of", "side of" or "base of", plus "neck" ("my" or "the" may stand before "neck"). Or "neck" or "thyroid", plus "is", "feels", "looks", "seems" or "got", plus "swollen", "puffy", "enlarged", "thick", "bigger", "lumpy" or "fuller" ("so", "really", "a bit", "kind of" or "a little" may stand in between). Or "lump", "bump", "mass" or "knot", then (within about 15 characters) "in my throat" (also "in my throat area"), then (within about 25 characters) a **does-not-go-away phrase** or "when I swallow".`,
         examples: ['swelling at the front of my neck', 'my neck feels swollen', "a lump in my throat that won't go away"],
       },
       {
@@ -874,6 +952,10 @@ const TRIGGERS: Record<string, RuleGloss> = {
       {
         says: `Swallowing that hurts: "hurt", "hurts", "hurting", "painful", "pain", "pains", "sore", "burn", "burns" or "burning", followed by "to", "when I", "whenever I", "every time I", "while I" or "while", plus a word that starts with "swallow".`,
         examples: ['it hurts to swallow', 'painful to swallow'],
+      },
+      {
+        says: `A lump under the jaw: "lump", "bump", "swelling", "mass", "nodule", "knot" or "growth", then (within about 15 characters) "under", "below", "beneath" or "along", plus "jaw", "jawline" or "chin" ("my" or "the" may stand before).`,
+        examples: ['lump under my jaw'],
       },
     ],
   },
@@ -917,15 +999,15 @@ const TRIGGERS: Record<string, RuleGloss> = {
     ],
   },
   overdose: {
-    fp: '282b376d',
+    fp: 'e00c4392',
     triggers: [
       {
         says: `"Double dose", "double dosed", "double dosing", "double doses" (also "double-dose", "doubledose"). Or "double", "doubled", "double up" or "doubled up" (also with "on"), followed by "dose", "doses", "dosage", "shot", "shots", "injection", "pill", "pills", "meds", "medication", "tablet" or "tablets" ("my", "the" or "a" may stand in between), but not when a doctor, nurse or other provider, "they", "she" or "he" stands right before it ("my doctor doubled my dose").`,
         examples: ['double dosed', 'I may have taken a double dose of Rybelsus this morning.'],
       },
       {
-        says: `"Took", "taken", "take", "taking", "injected", "inject", "injecting", "used", "gave myself", "given myself", "dosed" or "shot myself with", followed by "too much" ("way", "far", "much", "a lot", "a bit", "slightly" or "a little" may stand in between), but not "too much time", "too much of my time", "too much off", "too much on my plate" or "too much for granted".`,
-        examples: ['I think I took too much', 'injected way too much'],
+        says: `"Took", "taken", "take", "taking", "injected", "inject", "injecting", "used", "gave myself", "given myself", "dosed", "shot myself with", "drew up", "drawn up", "pulled up", "dialed", "dialled", "clicked", "put in" or "pushed", followed by "too much", or by "too many" plus "units", "clicks", "pills", "tablets", "doses", "shots", "injections", "pens", "mg", "ml" or "mls" ("of my" or "of the" may stand after "too many"; "way", "far", "much", "a lot", "a bit", "slightly" or "a little" may stand in between), but not "too much time", "too much of my time", "too much off", "too much on my plate" or "too much for granted".`,
+        examples: ['I think I took too much', 'injected way too much', 'drew up way too much from the vial', 'I drew up too many units from the vial', 'I took too many of my shots'],
       },
       {
         says: `"Took", "taken", "injected", "did", "gave myself", "used", "dosed" or "shot", then "twice" ("my", "the", "a", "this week's", "today's", "it" or "myself", then "weekly", "daily", "morning", "evening", "usual" or "regular", then "shot", "dose", "injection", "pill", "tablet", "meds", "medication", "pen" or a brand name, may stand in between). Not "twice a day", "twice a week", "twice per day", "twice each day", "twice every day", "twice daily" or "twice weekly".`,
@@ -936,33 +1018,85 @@ const TRIGGERS: Record<string, RuleGloss> = {
         examples: ['I took two doses by mistake', 'took 2 pills today instead of 1', 'Took 2 Foundayo today, forgot I took one'],
       },
       {
-        says: `"Injected", "used", "took", "gave myself", "emptied" or "shot", followed by "the whole", "the entire", "the full" or "all of the" (also "my" for "the"), plus "pen", "vial", "syringe", "cartridge" or "box". Or "clicked", "turned", "dialed" or "dialled", plus "the dial", "the pen" or "the dose" (also without "the"), plus "all the way".`,
-        examples: ['I injected the whole pen', 'I clicked the dial all the way'],
+        says: `"Injected", "inject", "injecting", "used", "use", "took", "take", "gave myself", "give myself", "emptied", "empty" or "shot", followed by "the whole", "the entire", "the full" or "all of the" (also "my" or "a" for "the", or nothing: "inject whole pen"), plus "pen", "vial", "syringe", "cartridge" or "box". Or "clicked", "turned", "dialed" or "dialled", plus "the dial", "the pen" or "the dose" (also without "the"), plus "all the way".`,
+        examples: ['I injected the whole pen', 'I clicked the dial all the way', 'by mistake inject whole pen'],
       },
       {
         says: `"Overdose", "overdosed", "overdoses" or "overdosing", but not "overdosed on" sugar, carbs, chocolate, coffee, caffeine, candy, cake, pizza, sweets, junk, TV, Netflix, love, cuteness, sleep, food, fun or vitamin C. "OD'd" or "ODd" (also "O.D.'d").`,
         examples: ['overdosed on my ozempic'],
       },
       {
-        says: `"Took", "taken", "injected", "gave myself", "did", "used" or "had", followed by "extra" or "additional" plus "shot", "dose", "injection", "pill" or "tablet" ("a", "an" or "one" may stand before "extra").`,
-        examples: ['took an extra dose by mistake'],
+        says: `A **dose verb** or "give myself", followed by "extra" or "additional" plus "shot", "dose", "injection", "pill" or "tablet" ("a", "an", "one" or "my" may stand before "extra"). Not when "of" plus "espresso", "coffee", "caffeine", "vodka", "tequila", "whiskey", "rum", "gin", "wheatgrass", "ginger", "b12" or "vitamin" follows ("had an extra shot of espresso").`,
+        examples: ['took an extra dose by mistake', "I take extra shot because I think I miss it but I didn't"],
       },
       {
         says: `"More", "higher", "bigger", "larger" or "stronger" (perhaps with "dose"), then "than prescribed", "than I was prescribed", "than I am prescribed", "than what I was prescribed", "than what was prescribed", "than my dose", "than my prescription", "than my doctor said", "than my doctor prescribed", "than I should", "than I should have", "than I was supposed to" or "than I was supposed to have". Or "wrong dose", then (within about 30 characters, in the same sentence) "more", "higher", "too much", "extra", "double" or "bigger". Or "too high", "too big", "too large" or "too strong", plus "dose" or "a dose".`,
         examples: ['gave myself the wrong dose, way more than prescribed'],
       },
       {
-        says: `By mistake, and again or more. "Accidentally", "by accident", "by mistake", "mistakenly" or "on accident", then (within about 40 characters) "took", "taken", "injected", "did", "dosed" or "gave myself", then (within about 30 characters, in the same sentence) "again", "twice", "extra", "another", "second", "double" or "too much". Or those words for taking first, then (within about 40 characters) "again", "twice", "extra", "another", "second" or "double", then (within about 30 characters) one of the words for a mistake.`,
-        examples: ['accidentally took my weekly dose again yesterday'],
+        says: `By mistake, and again or more. A **mistake phrase**, then (within about 40 characters) "took", "taken", "injected", "did", "dosed" or "gave myself", then (within about 30 characters, in the same sentence) a **one-more phrase**. Or those words for taking first, then (within about 40 characters) a **one-more phrase**, then (within about 30 characters) a **mistake phrase**.`,
+        examples: ['accidentally took my weekly dose again yesterday', 'took mounjaro 2 days in a row by mistake', 'I took my weekly shot on Monday and then forgot and took it again on Wednesday', 'took a second wegovy shot because i forgot i already did it sunday'],
       },
       {
         says: `"On top of mine", or "on top of my" plus "dose", "shot", "pill" or "injection" ("own", "usual", "regular" or "normal" may stand before it).`,
         examples: ["took my wife's pen dose on top of mine"],
       },
+      {
+        says: `A dose, then more than one dose's worth in the same part of the sentence. A **dose verb**, then (within about 30 characters) "2x" to "10x" (also "x2" to "x10"), "triple", "twice", "two times", "three times" or "2 times" to "9 times", then "my", "the", "a", "what my" or "as much as my" (or nothing), then perhaps "usual", "normal", "regular", "prescribed", "weekly" or "daily", then a **dose word** or "amount". Or a **dose verb**, then (within about 40 characters) a **two-doses phrase**. Or a **dose verb**, then "my", "the", "a", "this" or "another" (or nothing), then perhaps "weekly", "daily" or "usual", then a **dose word**, then up to two more words, then "twice", "two times", "2 times", "three times", "3 times" or "2x" to "9x", plus "today", "in one day", "in a day", "in the same day", "this morning" or "tonight".`,
+        examples: ['took like 3x my dose', 'pretty sure i took tomorrows dose today too, so two in one day', 'I mistakenly took my medication three times today', 'I used my new pen and my old pen on the same day'],
+      },
+      {
+        says: `An extra dose with the words for a mistake, and no verb: "extra", "additional", "second", "another" or "double", plus "dose", "shot", "injection", "pill" or "tablet", then (within about 40 characters, in the same sentence) "accidentally", "by accident", "by mistake", "mistakenly" or "on accident". Or one of those words first, then (within about 40 characters) the extra dose.`,
+        examples: ['extra dose by accident now so sick'],
+      },
+      {
+        says: `"Overdid", "overdo", "overdone" or "overdoing", plus "my", "the" or "on" (perhaps after "it with" or "it on"), plus a **dose word** or "insulin".`,
+        examples: ['overdid my dose, what do i do'],
+      },
+      {
+        says: `Two amounts, the one taken larger than the one meant. A **dose verb**, "dial", "dials" or "put", then (within about 20 characters) a number, perhaps with "mg", "unit", "units", "u", "ml", "cc", "click", "clicks", "pill", "pills", "tablet" or "tablets" (and perhaps "of the", "of my" or "of this" plus one to three words), then "instead of" (also "instead" alone), "rather than" or "not", then perhaps "the", "my" or "a" and "usual", "normal", "regular" or "prescribed", then a second number. It counts only when the first number is larger than the second ("did 2.5 instead of .25" counts; "took 1 instead of 2" does not).`,
+        examples: ['injected 50 units instead of 5', 'dialed the wrong dose did 2.5 instead of .25', 'I dial to wrong number 2.4 instead 0.25'],
+      },
+      {
+        says: `Two amounts joined by other words, the one taken larger than the one meant. A **dose verb**, "dial", "dials" or "put", then (within about 20 characters) a number with "mg", "unit", "units", "u", "ml", "cc", "click" or "clicks", then (within about 15 characters) "but", "and", "when", "while", "though", "although", "even though" or "yet", then perhaps "my" or "the" and "real", "right", "correct", "prescribed", "usual", "normal", "regular" or "weekly", then "dose", "dosage" or "prescription" plus "is", "was", "should be" or "is supposed to be", or "I'm", "I am" or "I was" plus "on", "prescribed" or "supposed to take", "do" or "use" ("only" may stand before these), then perhaps "only", then a second number. It counts only when the first number is larger ("injected 15 mg but my dose is 5" counts; "took 1 mg but my dose is 2" does not).`,
+        examples: ['I injected 15 mg but my dose is 5', 'took 2 mg when I am only on 0.5'],
+      },
+      {
+        says: `Two or more doses close together, by count. A **dose verb**, "inject", "injects" or "give myself", then (within about 30 characters) "2", "two", "3", "three", "4", "four" or "both", then perhaps "of my" or "of the" and one more word, then "shot", "injection", "dose", "pen", "time", "tablet", "pill" or a **medication name**, singular or plural. Or the same count with no verb, at the start of the text or after a comma or the end of a sentence (perhaps after "I" or "and"). Later in the same sentence there must be a **close-together word**. A count of tablets or pills counts only when a **medication name** is in the sentence; a count of "times" only after "inject", "injects" or "give myself", or when "shot", "injection", "dose", "pen" or a **medication name** is in the sentence ("took the dog out 3 times today" does not count). With no verb, only shots, injections, doses and pens count.`,
+        examples: ['I inject two time today by mistake', 'took my rybelsus 3 tablet today', 'two injection same day, oops', 'I injected two times today by mistake'],
+      },
+      {
+        says: `A dose, then again a day or hours later. A **dose verb**, "inject" or "injects", then (within about 40 characters) a **dose word**, a **medication name** or "it", then (within about 30 characters) "again", plus "next day", "same day", "following day" (also "morning", "night" or "evening", and perhaps "the" or "on the" before), "day after", "a day later", "one day later", "an hour later", "a few hours later", "2 hours later" and the like, or "that night", "that evening" or "that afternoon". "Again today" alone does not count: a weekly dose is taken "again" each week.`,
+        examples: ['I took my weekly dose and then again next day', 'injected my shot and again a few hours later'],
+      },
+      {
+        says: `A higher strength instead of the one prescribed: a **dose verb**, then (within about 30 characters) "higher", "bigger", "larger" or "stronger", plus "strength", "dose", "dosage" or "pen", then (within about 20 characters) "instead of", "rather than", "by mistake" or "accidentally".`,
+        examples: ['I injected the full higher strength instead of the starting dose'],
+      },
+      {
+        says: `A dose, then "and again" with a second time. A **dose verb**, "inject" or "injects", then (within about 40 characters) a **dose word**, a **medication name** or "it", then (within about 40 characters) "and", "then" or "but" (perhaps with "then", and perhaps "I" plus a **dose verb** and "it" or "one"), then "again" plus "tonight", "this evening" or "this afternoon" (perhaps after "later"), "later" (also "later that day", "later in the evening" and the like), "a few hours later", "2 hours later" and the like, a weekday (perhaps after "on"), or "1" to "5" days later or after ("a couple of days later", "a few days after"). It does not count when the first dose was "last week", "last month", "last time", last plus a weekday, or weeks ago, or when the second weekday is the one already named before "and": that is the weekly routine ("I took my shot last Sunday and again today", "on Sunday and again on Sunday").`,
+        examples: ['I took my shot this morning and again tonight', 'I took my dose today and then again tonight', 'I took my weekly shot on Monday and again on Wednesday'],
+      },
+      {
+        says: `A dose taken again only days after the last one. A **dose verb**, "inject" or "injects" (perhaps with "my", "the", "a", "another" or "it", "weekly" or "daily", and a **dose word** or a **medication name**), then "again", then perhaps "only" or "just", then "1" to "5" days ("a couple of days", "a few days"), "a day" or "the day", then "after", "later" or "since".`,
+        examples: ['I injected again 2 days after my last shot', 'I injected again a day after my last dose'],
+      },
+      {
+        says: `Two days' doses at once. A **dose verb** or "inject", then (within about 20 characters) "yesterday's", "tomorrow's", "last week's" or "next week's" (also without the apostrophe), perhaps with a **dose word** or "one", then "and", "plus", "&", "with" or "along with", then perhaps "my" or "the", then "today's", "tonight's" or "this week's". Or the same with the two days the other way round.`,
+        examples: ["I took yesterday's pill and today's pill this morning", "took last week's shot and this week's shot today"],
+      },
+      {
+        says: `A second dose from someone else after one's own. A **dose verb**, then (within about 40 characters) a **dose word** or a **medication name**, then (within about 60 characters) "gave", "given", "injected" or "did", plus "me", plus "another", "a second", "an extra" or "one more" (perhaps with "one", "dose", "shot", "injection", "pill" or "tablet"). Or "gave", "given" or "injected", plus "me", plus "another", "a second", "an extra" or "one more", plus "dose", "shot", "injection", "pill", "tablet" or "one", then (within about 40 characters, in the same sentence) a **mistake phrase**. "The nurse gave me another shot today" alone does not count.`,
+        examples: ['I took my dose and then my husband gave me another one'],
+      },
+      {
+        says: `Two or more pills on one day. "Took", "taken", "swallowed" or "had", then "2", "two", "3", "three", "4", "four" or "both" (perhaps "of my" or "of the", and one more word), then "pills" or "tablets", when later in the same sentence there is "today", "tonight", "this morning", "this evening", "this afternoon", "at once", "at the same time", "same day", "in one day", "in a day" or "back to back". It does not count when the sentence names another medicine or a reason for it: Tylenol, Advil, Motrin, Aleve, ibuprofen, acetaminophen, aspirin, Excedrin, Benadryl, Claritin, Zyrtec, Allegra, Imodium, Pepto, Tums, Dramamine, melatonin, vitamins, supplements, iron, fiber, probiotics, magnesium, stool softeners, laxatives, antibiotics, Zofran, ondansetron, metformin, birth control, sleeping or allergy pills, antacids, painkillers, or "for" plus a headache, pain, back, a cold, flu, allergies, a period, cramps, nausea, stomach, heartburn, sleep, fever, blood pressure, cholesterol or anxiety ("I took two pills today for my headache").`,
+        examples: ['I took two pills today', 'took 2 tablets this morning'],
+      },
     ],
   },
   abdominal_pain_severe: {
-    fp: '10fe5f2c',
+    fp: '4e25a43d',
     triggers: [
       { says: `A **stomach word** and a **pain word**, then (within about 30 characters) a **does-not-go-away phrase**.`, examples: ["stomach pain that won't go away", 'my stomach has hurt for 5 days'] },
       { says: `A **pain word**, then "in", "around" or "across" and a **stomach word**, then (within about 30 characters) a **does-not-go-away phrase**.`, examples: ['pain in my belly for 3 days'] },
@@ -980,8 +1114,8 @@ const TRIGGERS: Record<string, RuleGloss> = {
         examples: ['stomach problems that will not go away', 'constipated for a week'],
       },
       {
-        says: `A **vomiting word** followed by "blood" ("up", and "bright red", "a lot of", "some" or "dark", may stand in between). Or "pooping" or "pooped", followed by "blood" (the same words may stand in between). Or "blood", then (within about 15 characters) "in" or "with", plus "vomit", "puke", "throw up", "throwup", "stool", "stools", "poop", "poo", "bowel movement", "bowel movements", "BM" or "diarrhea" ("my" or "the" may stand before).`,
-        examples: ['vomited blood', 'blood in my stool'],
+        says: `A **vomiting word** followed by "blood" ("up", and "bright red", "a lot of", "some" or "dark", may stand in between). Or "pooping" or "pooped", followed by "blood" (the same words may stand in between). Or "blood", "coffee grounds" or "coffee-ground", then (within about 15 characters) "in" or "with", plus "vomit", "puke", "throw up", "throwup", "stool", "stools", "poop", "poo", "bowel movement", "bowel movements", "BM" or "diarrhea" ("my" or "the" may stand before). Or "vomit", "puke", "throw up", "throwup", "stool", "stools", "poop", "poo" or "diarrhea", then (within about 30 characters) "blood" or "bloody".`,
+        examples: ['vomited blood', 'blood in my stool', 'There was what looked like coffee grounds in my vomit.', 'My vomit had streaks of bright red blood in it.'],
       },
       {
         says: `"Bloody", "black", "tarry", "black tarry", "black and tarry" or "maroon", followed by "stool", "stools", "poop", "poops", "poo", "vomit", "diarrhea", "bowel movement" or "bowel movements". Or "stool", "stools", "poop", "poops", "poo", "vomit" or "puke", then (within about 15 characters) "is", "was", "are", "were", "looks", "look" or "looked", plus "black", "bloody", "tarry" or "like coffee grounds".`,
@@ -1008,17 +1142,29 @@ const TRIGGERS: Record<string, RuleGloss> = {
         says: `"Extremely", "severely", "incredibly", "painfully", "unbearably" or "insanely", followed by "bloated", "constipated", "backed up" or "gassy". Or "constipation", "bloating", "heartburn", "acid reflux", "reflux", "indigestion", "gas pain" or "gas pains", followed by "so bad". Or a **severe word** followed by "cramp", "cramps" or "cramping", but not when "in" and a leg, calf, calves, foot, feet, toe, toes, hand, hands, thigh, thighs, arm or arms follows ("severe cramps in my legs").`,
         examples: ['extremely bloated', 'severe cramps'],
       },
+      {
+        says: `A stomach pain, and anywhere in its sentence a word that makes it severe or lasting, or says what the person cannot do: a **stomach-pain phrase**, then (within about 100 characters) a **severe-or-lasting phrase**. It does not count when a **slight word** stands right before the stomach-pain phrase. This pattern and the next stand back when the pancreatitis rule already fires for the text, so "severe stomach pain" raises one rule, not two.`,
+        examples: ['The pain in my abdomen has me curled up on the bathroom floor.', 'It feels as though someone is stabbing me in the stomach, and it has gone on all afternoon.'],
+      },
+      {
+        says: `The same in the other order: a **severe-or-lasting phrase**, then (within about 60 characters) a **stomach-pain phrase** (not when a **slight word** stands right before it).`,
+        examples: ['Since my injection on Tuesday I have had a constant, sharp pain in the pit of my stomach.'],
+      },
+      {
+        says: `Cramps with no body part named, so bad the person cannot cope: "cramp", "cramps" or "cramping", but not right after "leg", "legs", "calf", "calves", "foot", "feet", "toe", "toes", "hand", "hands", "thigh", "thighs", "arm", "arms", "neck", "muscle", "period" or "menstrual", and not when "in" plus one of those body parts follows; then (within about 40 characters) a **cannot-cope phrase**, "so bad", "really bad", "very bad", "super bad" (also "badly"), "killing me" or "unbearable".`,
+        examples: ['cramping so bad im on the bathroom floor crying 3 hrs'],
+      },
     ],
   },
 };
 
 /** The self-harm rule is one pattern with many alternatives, and only a few narrow checks (crisisCounts in triage.ts). */
 const CRISIS_GLOSS = {
-  fp: '97c19a41',
+  fp: '9c76f86c',
   says: [
     `A whole word that starts with "suicid" ("suicide", "suicidal"), but not when "squad", "prevention", "awareness", "hotline", "helpline", "line", "lines", "risk", "risks", "warning", "warnings", "rate", "rates", "statistics", "stats", a word that starts with "bomb", "door", "doors", "mission" or "run" follows ("suicide squad", "the suicide risk warning"). Misspellings such as "sucide" or "suiside" are read as this word first (2.3). "Kill myself", "killing myself" or "killed myself" (also "my self"). "Off myself" after "to", "gonna", "wanna", "will", "could", "should" or "might". A word that starts with "unaliv". "KMS", but not after a number ("ran 5 kms"). "KYS".`,
     `"End my life", "ending my life", "take my life", "taking my life" (also "my own life"), but not "take my life back", "take my life in my hands", "take my life in my own hands", "take my life seriously", "take my life one day" or "take my life a day".`,
-    `"Want to die", "wanted to die", "wanna die", as whole words ("want to diet" does not count), and not when a figure of speech follows: "laughing", "of laughter", "of embarrassment", "of shame", "of boredom", "of cuteness", "from laughing", "from embarrassment", "from cuteness", or "for" plus "a", "an", "this", "that", "some" or "these" ("I could die for a slice"). "Wish I was dead", "wish I were dead", "better off dead", "better off without me".`,
+    `"Want to die", "wanted to die", "wanna die", as whole words ("want to diet" does not count), and not when a figure of speech follows: "laughing", "of laughter", "of embarrassment", "of shame", "of boredom", "of cuteness", "from laughing", "from embarrassment", "from cuteness", or "for" plus "a", "an", "this", "that", "some" or "these" ("I could die for a slice"). "Wish I was dead", "wish I were dead", "better off dead", "better off without me" (also "better without me").`,
     `"Don't want to live", "do not want to live", "don't want to be alive", "do not want to be alive".`,
     `"No reason to live", "no point to live", "no reason in living", "no point in living". "Don't", "do not", "can't" or "cannot", plus "see the point", "see a point" or "see any point", plus "in", "of" or "to", plus "living", "life", "going on", "being here" or "being alive". "What's the point in" or "what's the point of", plus "living", "life" or "going on".`,
     `"Life isn't worth living", "life is not worth living", "life isn't worth it", "life is not worth it", "not worth living".`,
@@ -1032,9 +1178,19 @@ const CRISIS_GLOSS = {
     `"Want to", "wanted to", "wanna", "going to", "gonna", "thinking about", "thinking of" or "ready to", followed by "end it", "end things", "ending it" or "ending things", but not when "with" or "between" follows ("ready to end things with my trainer").`,
     `"Want to disappear forever".`,
     `"Can't go on", "cant go on" or "cannot go on", followed by a punctuation mark or the end of the text; up to three of "like this", "this way", "anymore", "any more", "living", "any longer" and "much longer" may stand in between ("I can't go on like this anymore"). With any other word after it it does not count ("I can't go on a walk today").`,
+    `A **wish-or-plan phrase**, then a **way-of-dying phrase** ("just", "finally", "really" or "seriously" may stand in between): "going to jump off the bridge", "tempted to drive my car into a tree", "think about using it on myself", "planning to swallow all my sleeping pills", "better if I not wake up". Not right after "don't", "dont", "do not", "doesn't", "never", "not" or "no" ("I don't want to overdose").`,
+    `"Hang myself", "slit my wrists" (also "wrist" or "throat"), "drown myself", "shoot myself in the head" or "shoot myself with a gun" (also "my self", and "hanging", "slitting", "drowning", "shooting"). "Shoot myself" alone is not on the list: people say it of their injection.`,
+    `"Better if I were not", "better if I wasn't", "better if I were gone", "better if I were dead" (also "better off if", and "was" for "were"). "Wish I were not here", "wish I wasn't around", "wish I was not alive" and the like (also "want" for "wish"). "Wish I were gone", "wish I was gone".`,
+    `"Don't want to", "do not want to", "don't wanna" or "do not wanna", plus "go on living", "keep living", "continue living" or "carry on living".`,
+    `"Everyone", "everybody", "they", "people", or "my" plus family, kids, husband, wife, partner or parents, plus "would", "will" or "'d", plus "be better" or "be happier" ("so much", "much", "a lot" or "way" may stand before, "off" after), plus "if I" (perhaps "just"), plus "wasn't here", "weren't around", "was not alive", "were gone", "was dead", "died", "disappeared" or "didn't exist" and the like. Not "if I just left the party early".`,
+    `"Nobody", "no one" or "noone", plus "would", "will", "is going to" or "gonna" ("even", "really" or "ever" may stand in between), plus "miss me", but not when "at", "in", "on", "for", "during", "from", "there" or "here" follows, or "if I" plus anything but "was", "were", "died", "disappeared", "wasn't" or "weren't" ("nobody would miss me at the party", "nobody would miss me if I skipped the meeting"). The same words plus "notice" or "care", plus "if I" plus "was gone", "were dead", "was not here", "wasn't here", "died" or "disappeared". "Wouldn't", "would not" or "won't" plus "miss me if I" plus "was gone", "were dead", "was not here", "died" or "disappeared". "Don't want to", "do not want to" or "don't wanna" plus "wake up" (perhaps with "tomorrow", "again", "anymore", "any more", "ever again" or "in the morning"), followed by a punctuation mark, the end of the text, "and" or "ever": not "wake up early", "wake up at 5" or "wake up for school".`,
+    `"No", or "don't", "do not", "doesn't", "does not", "can't" or "couldn't" plus "see", "find" or "think of" plus "a", "any" or "the", then "reason" or "point", then "to", "in", "of" or "for", then "keep living", "keeping living", "keep on living", "keep being alive", "go on" or "going on" (also with "living") at the end of a sentence, "carry on" or "carrying on" at the end of a sentence or before "anymore", "like this", "and", "but" or "with life", "live", "living", "be here", "being here", "be alive" or "being alive".`,
+    `Harming oneself again: "cut myself again", "burned myself again" or "burnt myself again", but not when "while", "chopping", "cooking", "shaving", "slicing", "on a", "on the", "on my", "with a", "with the", "with my" or "in the kitchen" follows. "Been", "keep", "kept", "started" or "start", plus "hurting", "harming", "cutting", "burning", "hitting", "punching" or "scratching", plus "myself", but not when "at", "in", "on", "during", "while", "lifting", "playing", "working", "with weights" or "with the" follows ("I keep hurting myself at the gym").`,
+    `On purpose: a word that starts with "cut", "hurt", "harm", "burn", "scratch", "hit", "punch", "bang", "bit", "bite" or "starv", plus "myself", or "my" plus "arm", "arms", "leg", "legs", "wrist", "wrists", "skin", "thigh", "thighs", "stomach", "head", "hand" or "hands", then (within about 30 characters, in the same sentence) "on purpose", "deliberately" or "intentionally".`,
+    `Getting ready to die: "wrote", "write", "writing" or "written", plus "goodbye", "suicide" or "farewell" notes or letters ("my", "a", "some" or "the" may stand before), but not when "to" or "for" plus students, a class, coworkers, a team, colleagues, staff, the office, neighbors or clients follows.`,
   ],
-  note: `Every alternative stands as whole words, so "I want to diet", "blend it all together", "I spend my life at the gym", "taking my life back one pound at a time" and "ready to end things with my trainer" stay quiet. A "no" or "not" in front does not stop the rule ("I do not want to die" shows the card), with four narrow exceptions, each checked: a plain denial right before the words ("not suicidal", "no thoughts of hurting myself"); a figure of speech after "die" ("wanna die laughing"); words that are about someone else ("a girl on tiktok said it made her suicidal"); a general question or a note to ask about a warning ("does this drug cause suicidal thoughts"). A time long past, a plan or a fear do not stop it.`,
-  noteQuiet: ['I want to diet', 'blend it all together', 'I spend my life at the gym', 'taking my life back one pound at a time', 'ready to end things with my trainer', 'not suicidal', 'no thoughts of hurting myself', 'I wanna die laughing', 'a girl on tiktok said it made her suicidal', 'does this drug cause suicidal thoughts', 'suicide squad movie night'],
+  note: `Every alternative stands as whole words, so "I want to diet", "blend it all together", "I spend my life at the gym", "taking my life back one pound at a time" and "ready to end things with my trainer" stay quiet. A "no" or "not" in front does not stop the rule ("I do not want to die" shows the card), and neither does a laugh ("that test made me want to die lol" shows the card: people often hide what they mean behind a joke), with four narrow exceptions, each checked: a plain denial right before the words ("not suicidal", "no thoughts of hurting myself"); a figure of speech after "die" ("wanna die laughing"); words that are about someone else ("a girl on tiktok said it made her suicidal"); a general question or a note to ask about a warning ("does this drug cause suicidal thoughts"). A time long past, a plan or a fear do not stop it.`,
+  noteQuiet: ['I want to diet', 'blend it all together', 'I spend my life at the gym', 'taking my life back one pound at a time', 'ready to end things with my trainer', 'not suicidal', 'no thoughts of hurting myself', 'I wanna die laughing', 'a girl on tiktok said it made her suicidal', 'does this drug cause suicidal thoughts', 'suicide squad movie night', 'cut myself again chopping onions', 'I keep hurting myself at the gym', 'wrote goodbye notes to my students', "I don't want to overdose", "I don't want to wake up early tomorrow", 'nobody would miss me at the party anyway lol', 'There is a section in the booklet about depression or thoughts of suicide.'],
   examples: [
     'thinking about suicide',
     'I want to kill myself',
@@ -1057,11 +1213,31 @@ const CRISIS_GLOSS = {
     'thinking of ending things',
     'I want to disappear forever',
     "I can't go on like this anymore",
+    'going to jump off the bridge tonight',
+    'I have been tempted to drive my car into a tree.',
+    'Sometimes I hold the knife and think about using it on myself.',
+    'planning to swallow all my sleeping pills tonight',
+    'i wish i could just disappear forever and not wake up',
+    'I have been thinking it would be better if I were not here anymore.',
+    'I do not want to go on living.',
+    'I do not see a reason to keep living anymore.',
+    'I see no point in carrying on and have been thinking of how to do it.',
+    'cut myself again last nite',
+    'i have been hurting myself again',
+    'I scratched my arms until they bled on purpose.',
+    'wrote goodbye notes',
+    'better if I not wake up tomorrow',
+    'everyone better without me, I plan to go',
+    "I really feel like everyone would be happier if I just wasn't around",
+    'nobody would miss me if I was gone',
+    "I don't want to wake up tomorrow",
   ],
 };
 
 /** Marks, in section 2.4, a pattern whose hits show the fixed card also where each rule shows its own card. */
 const FIXED_MARK = '*(Fixed card: see 2.3.)*';
+/** Marks, in section 2.4, a pattern that stops counting when the person says the sign is over, in a rule that otherwise keeps a sign that has passed. */
+const OVER_MARK = '*(Stops when over: see 2.3.)*';
 
 /**
  * The misspellings that triage.ts reads as the word that was meant (EN_SPELLING), in plain words,
@@ -1087,11 +1263,54 @@ const SPELLING_GLOSS = {
   ],
 };
 
+/**
+ * Shorthand, written-out contractions and words of other registers that triage.ts reads as plain
+ * words (EN_SHORTHAND), in plain words, in the order of the code. `fp` ties the words to that list.
+ */
+const SHORTHAND_GLOSS = {
+  fp: '6e2f9897',
+  says: [
+    `"cannot" and "can not" are read as "can't", "could not" as "couldn't", "will not" as "won't";`,
+    `"n/v/d" as "nausea and vomiting and diarrhea", "n/v" as "nausea and vomiting", "v/d" as "vomiting and diarrhea" (spaces may stand around the slashes); "w/o" as "without"; "w/" as "with";`,
+    `"sob" as "short of breath" (not before "story", "stories", "sister" or "sisters"); "cp" as "chest pain"; "bp" as "blood pressure"; "ruq" as "upper right quadrant"; "low bs" as "low blood sugar", and "bs" as "blood sugar" before "is", "was", "at", "of", "dropped", "dropping", a word that starts with "crash" or "tank", "went", "read", "reads", "reading", "low" or a number from 10 to 69; "er" as "emergency room" after "the", "an", "to", "in", "at" or "from", and "ER" in capitals anywhere; "od" as "overdose" after "I", "to", "gonna", "might", "may", "could", "did", "accidentally", "almost" or "nearly";`,
+    `"abt" as "about"; "r" as "are" and "n" as "and", between two words; "u" as "you" between spaces; "cnt" as "can't"; "2nite" and "tonite" as "tonight"; "nite" as "night"; "2day" as "today"; "tmr", "tmrw", "tmw", "tomoro" and "tomorow" as "tomorrow"; "rn" as "right now"; "thru" as "through"; "str8" as "straight"; "hrs" as "hours"; "wk" and "wks" as "weeks"; "rly" as "really"; "soo" as "so"; "mon", "tue", "tues", "wed", "thu", "thurs", "fri", "sat" and "sun" as the day's full name after "since", "on", "last", "this", "from", "til", "till" or "until";`,
+    `a dropped final "g" on a short list of verbs: "lookin", "feelin", "gettin", "goin", "hurtin", "comin", "peein", "shakin", "sweatin", "bleedin", "burnin", "killin", "dyin", "breathin", "havin", "passin", "faintin", "swellin", "itchin", "crampin", "achin", "throbbin", "poundin", "racin", "keepin", "drinkin", "eatin", "takin", "startin", "tankin", "crashin", "droppin", "shiverin", "tremblin", "vomitin", "heavin", "chokin", "wheezin", "gaspin", "droopin", "slurrin", "jerkin", "seizin", "convulsin", "stabbin", "bloatin" and the like (also with an apostrophe) as the "-ing" word;`,
+    `medical words: "hematemesis" as "vomiting blood"; "emesis" as "vomiting"; "melena" as "black tarry stool"; "dyspnea" and "dyspnoea" as "shortness of breath"; "syncopal" (also "syncopal episode", "event" or "spell") as "fainting"; "angina" as "chest pain"; "TIA" in capitals, and "tia" after "a", "had", "have" or "having", as "mini stroke"; "biliary colic" as "gallbladder attack"; "insulin reaction" as "low blood sugar"; "fingerstick" and "finger stick" as "blood sugar";`,
+    `regional words: "upchucking" as "throwing up" and "upchuck", "upchucked" as "threw up"; "passed water" as "peed", "pass water" and "passing water" as "peeing"; "scant" as "very little"; "took a spell" (also "a bad spell") as "fainted"; "something fierce", "something awful" and "something terrible" as "so bad"; "dried out" after "feel", "feeling", "felt", "I'm", "im", "I am", "so", "really" or "all" as "dehydrated"; "make out" after "can't" or "couldn't" as "see".`,
+  ],
+};
+
+/**
+ * The ways of writing that triage.ts reads as plain words after the shorthand (EN_LEARNER):
+ * words of other languages, English without its small words, voice-typing slips and signs told by
+ * what they look like, in plain words, in the order of the code. `fp` ties the words to that list.
+ */
+const LEARNER_GLOSS = {
+  fp: '245a1b79',
+  says: [
+    `Spanish: "quiero morir", "quiero morirme", "quisiera morir" (also with "me" before) and "me quiero morir" are read as "I want to die"; "quiero" or "voy a" (also with "me" before) plus "matarme", "suicidarme", "matar" or "suicidar" as "I want to kill myself"; "dolor fuerte", "dolor muy fuerte", "fuerte dolor", "muy fuerte dolor" and "mucho dolor" as "severe pain", and "dolor" alone as "pain"; "azúcar" or "glucosa" (also "azucar") plus "baja", "bajo" or "bajita" (also with "muy" between), and "baja de azúcar", "bajo de azúcar" and "bajón de azúcar" (also without the accents), as "low blood sugar";`,
+    `"me inyecté doble", "me puse doble" and "tomé doble" (also with "una", or "dosis doble" or "doble dosis" for "doble", also without the accents), and "doble dosis" or "dosis doble" alone, as "I took a double dose"; "me inyecté" (also "inyecte") as "I injected"; "pecho" as "chest"; "barriga", "panza" and "vientre" as "belly"; "corazón" (also "corazon") as "heart"; "azúcar" (also "azucar") as "sugar"; "amarillo", "amarilla", "amarillos" and "amarillas" as "yellow"; "mareado", "mareada", "mareo" and "mareos" as "dizzy"; "vómito", "vómitos", "vomité" and "vomitar" (also without the accents) as "vomiting"; "falta el aire", "falta de aire" and "falta aire" (also with "me" before) as "short of breath";`,
+    `Spanish family words: "esposo" and "marido" as "husband"; "esposa" as "wife"; "mamá", "mama" and "madre" as "mom"; "papá", "papa" and "padre" as "dad"; "hijo" as "son"; "hija" as "daughter"; "hermano" as "brother"; "hermana" as "sister"; "abuela" and "abuelita" as "grandma"; "abuelo" and "abuelito" as "grandpa"; "tía" (also "tia") as "aunt"; "tío" (also "tio") as "uncle"; "suegra" as "mother-in-law"; "suegro" as "father-in-law"; "mi" and "mis" before a word (not after a number: "3 mi") as "my"; "tiene" as "has"; "tengo" as "I have";`,
+    `Tagalog: "gusto ko mamatay", "gusto kong mamatay" (also with "na" or "nang" before "mamatay") and "ayoko na mabuhay" (also "nang") as "I want to die"; "magpakamatay" (also after "gusto ko" and the like) as "I want to kill myself"; "sakit ng tiyan", "masakit ang tiyan", "sakit sa tiyan" and "tiyan ko masakit" and the like (also "tyan", and with "ko" or "ay") as "stomach pain"; the same with "dibdib" as "chest pain"; "tiyan" and "tyan" as "stomach"; "dibdib" as "chest"; "nanginginig" as "shaking"; "pinagpapawisan", "pawisan" and "pawis" as "sweating"; "nahihilo" as "dizzy"; "nahimatay" as "fainted"; "nagsusuka" and "sumusuka" as "vomiting"; "hirap huminga" and "hirap sa paghinga" as "trouble breathing"; "mababa sugar" (also "asukal", "ang", and "ko" after) and "sugar ko mababa" (also "asukal", and "ay") as "my blood sugar is low"; "asawa ko" as "my spouse"; "nanay ko" and "inay ko" as "my mom"; "tatay ko" and "itay ko" as "my dad"; "anak ko" and "kapatid ko" as "my child"; "tita" as "aunt"; "tito" as "uncle"; "lola" as "grandma"; "lolo" as "grandpa";`,
+    `Vietnamese: "muốn chết" (also with "tôi", "em" or "tui" before) as "I want to die"; "tự tử" as "suicide"; "đau bụng", "bụng đau" (also "bụng tôi đau", "bụng em đau") and "dau bung" as "stomach pain"; the same with "ngực" ("dau nguc") as "chest pain"; "bụng" as "belly"; "ngực" as "chest"; "dữ lắm", "dữ dội", "quá trời", "quá chừng", "rất nhiều", "quá" and "lắm" as "so bad"; "đau" as "pain"; "chóng mặt" as "dizzy"; "ói mửa", "nôn mửa", "ói" and "nôn" as "vomiting"; "xỉu", "ngất" and "ngất xỉu" (also with "bị") as "fainted"; "khó thở" as "trouble breathing"; "vàng da" as "yellow skin"; "mắt vàng" as "yellow eyes"; "hạ đường huyết", "đường huyết thấp" and "đường thấp" as "low blood sugar"; "chồng tôi" (also "em" or "tui" for "tôi") as "my husband"; "vợ tôi" as "my wife"; "mẹ tôi" and "má tôi" as "my mom"; "bố tôi", "ba tôi" and "cha tôi" as "my dad"; "con tôi" (also "con trai tôi", "con gái tôi") as "my child";`,
+    `Arabic family words written in Latin letters: "zawji" as "my husband"; "zawjati" as "my wife"; "ummi" as "my mom"; "ibni" and "binti" as "my child".`,
+    `Voice-typing slips, read only next to their key word: "through up" after "been", "keep", "keeps", "kept", "am", "I'm", "is", "are", "was", "were", "start", "started", "stop" or "still" as "throwing up", and anywhere else (not before "to", "the", "a", "until", "till" or "and including") as "threw up"; "to many" and "to much" as "too many" and "too much" after "took", "taken", "take", "taking", "injected", "inject", "injecting", "used", "use", "did", "gave myself", "give myself", "dialed", "dial", "clicked", "click", "put", "pushed", "push", "drew up" or "draw up" (also with "way" or "far" between), and before "of my", "of the", "of it", "of them", "units", "clicks", "pills", "tablets", "doses", "shots", "injections", "mg", "insulin", "medicine" or "medication"; "lost", "lose", "loose", "losing" or "loosing" plus "conscious" or "consciousness" (also with "my") as "lost consciousness"; "and" as "in" between "lump", "bump", "knot", "swelling", "ball", "pain", "ache", "pressure" or "tightness" and "my" or "the" plus "neck", "throat", "chest", "stomach", "belly", "abdomen" or "tummy" ("a lump and my neck").`,
+    `English without its small words: "troubles", "problem", "problems", "difficulty" or "difficulties", plus "to", "for", "in" or "with", before a word that starts with "breath", as "trouble" ("troubles to breathe"); "trouble to" before such a word as "trouble"; "not go away", "no go away", "never goes away" and the like, when no helping verb such as "did", "does", "will", "can" or "is" stands before, as "won't go away"; "is", "it's", "its", "it", "that" or "which" plus "not going", when "away", "to", "out", "anywhere", "back", "home", "in", "well", "so", "too", "as", "like", "for", "on", "great", "good", "bad", "down", "up", "through", "with" or "by" does not follow, as "not going away"; "no stop" and "no stopping" as "not stopping" (not before "sign", "signs", "light", "lights", "at", "in", "for", "by", "on", "over" or "here"); "no strength" and "no power" as "weak"; "no feeling" and "no sensation" as "numb"; "no air" as "can't get air" (not "no air conditioning", "no air fryer" and the like); "urine", "pee" or "peeing" plus "almost", "nearly", "basically" or "like", plus "nothing", "none" or "zero" (also with "is" or "was") as "very little urine"; "keep" or "hold" plus "anything", "nothing", "food", "water", "it", "liquid", "liquids", "fluid" or "fluids" plus "in my stomach" (also "belly", "tummy", "the", or no "my") as that verb and word plus "down";`,
+    `"everything", "all", "food", "water" or "it all", plus "come", "comes", "coming", "came", "go", "goes", "going" or "went", plus "up" (also "back up", "right up"), as "everything comes back up" (not before "with", "to", "on", "for", "in", "at", "the", "and down", "roses", "short", "empty", "clean", "fine", "positive", "negative", "normal", "clear", "good", "great", "ok" or "okay"); "come", "comes", "coming", "came", "going", "goes", "went", "pouring" or "pours", plus "out" (perhaps with "of" or "from"), plus "both ends" or "top and bottom", as "vomiting and diarrhea"; "abdominal", "ab", "gut", "side", "back", "neck", "throat" or "kidney" plus "pane" or "payne" (also with "s") as that word plus "pain"; "ab" before "pain", "pains", "hurt", "hurts", "hurting", "ache", "aches", "cramp", "cramps" or "cramping" as "abdominal"; "sever" as "severe", unless "the", "a", "an", "my", "his", "her", "their", "its", "it", "them", "ties", "all", "relation", "relations", "connection", "connections", "contact", "ways", "link" or "links" follows;`,
+    `"pain", "pains", "ache", "aches", "cramp", "cramps", "cramping", "hurt", "hurts" or "hurting" plus "strong" (up to three of "is", "are", "was", "so", "very", "too", "really", "super" and "real" between) as that word plus "so bad"; "strong" (also "very", "so", "really" or "super strong") before "pain", "pains", "ache", "aches", "cramp", "cramps" or "cramping" as "severe"; "very much pain" as "so much pain"; "go", "goes", "going", "went", "fall", "falls" or "fell", plus "to" or "on" (perhaps with "down" before and "the" after), plus "floor", as that verb plus "down on the floor"; "on", "to", "in" or "at" plus "floor", "ground", "hospital", "emergency room" or "urgent care", with no "the", as the same with "the"; "wake up", "wakes up" and "waking up" before "on the floor" or "on the ground" (also with "lying" or "laying", and one word before "floor" or "ground") as "woke up";`,
+    `"I faint" and "we faint" (also with "just", "also", "almost", "nearly", "sometimes", "then", "suddenly", "kind of" or "kinda" between) as "I fainted", but not after "if", "when", "whenever", "in case", "afraid", "scared", "worried" or "that", and not before "of heart", "smell", "sound", "light", "line", "glow", "hope", "memory", "idea", "trace" or "feeling"; "squeeze", "squeezy" and "squeezed" as "squeezing" before "feeling", "sensation", "pain" or "pressure", or before "in", "on", "around" or "across" plus "chest" (also with "my" or "the"); "sugar", "sugars", "glucose", "bg", "blood sugar" or "blood sugars" (not after "a", "an", "the", "that", "this" or "of"), plus "drop", "drops", "crash", "crashes", "tank", "tanks", "fall", "falls", "fell", "go down", "goes down" or "went down", as that word plus "dropped", when the end of the sentence, a comma, a number, "to", "now", "again", "fast", "quick", "quickly", "hard", "low", "into", "below", "down", "under" or "at" follows ("sugar drop to 49"; not "sugar crash after cake");`,
+    `"want", "wish", "ready", "going", "plan", "planning", "try", "trying", "decide" or "decided", plus "die", "kill myself", "hurt myself", "end it" or "end my life", as the same with "to" between ("I want die"); "off", "from" or "in front of", before "bridge", "roof", "building", "balcony", "overpass", "cliff", "ledge", "train" or "tower", as the same with "a" between ("jump from bridge"); "pain", "pains", "it" or "ache" plus "go", "move", "run", "spread" or "shoot", before "to" or "into" plus "back" or "spine" (also with "my" or "the"), as that word plus "goes".`,
+    `Signs told by what they look like: within about 25 characters after "skin", "eye", "eyes", "eyeball", "eyeballs", "face" or "whites" (not across a comma), "lemon", "lemons", "mustard", "banana", "bananas", "egg yolk", "egg yolks", "yolk", "yolks", "highlighter", "highlighters", "canary", "turmeric" or "curry" (perhaps after "like", "a", "an", "the", or "color of" or "colour like", and perhaps with "color", "colour" or "colored" after) as "yellow" ("my eyes look like lemon color"); "face", "body", "hands" or "palms", before one or two of "is", "are", "got", "turned", "turning", "look", "looks", "looking", "going", "went", "became" or "gone" plus "yellow" (perhaps with "so", "very" or "really"), as that word plus "skin"; "caca", "kaka", "popo", "poopoo" and "dumi" as "poop";`,
+    `"foggy", "misty", "smoky", "milky", "smeary" or "smudgy" within about 30 characters after "eye", "eyes", "vision", "sight", "see", "seeing", "everything looks" or "everything look", or within about 30 characters before "eye", "eyes", "vision" or "sight", as "blurry"; within about 15 characters after "eye", "eyes", "vision" or "sight", "can't focus", "cannot focus", "won't focus", "not focus", "no focus" or "don't focus" (also "focusing", and "good", "well" or "right" after) and "like looking through a dirty glass" (also "foggy", "wet", "frosted", "smudged" or "greasy", and "window" or "lens") as "blurry";`,
+    `"ball", "marble", "pea", "golf ball" or "bulge" within about 20 characters after "neck" or "throat", and "ball", "marble", "pea" or "bulge" before "inside", "in", "on" or "under" plus "neck" or "throat" (also with "my" or "the"), as "lump"; "neck" (also "my neck") plus "has", "have", "got" or "with", plus "lump", "bump", "knot", "swelling" or "mass" (perhaps with "a" before and "inside", "in it" or "on it" after) as "a lump in my neck" (or that word); the same with "throat" as "a lump on my throat"; "lump", "bump", "knot" or "mass" plus "in" or "on" plus "throat area" or "throat region" (also "my" or "the") as that word plus "on my throat"; "found", "noticed", "discovered", "see" or "saw", plus "lump", "bump", "knot" or "mass" (also "a"), plus "in my throat" (also "the"), as that verb plus "a ... on my throat"; "voice" plus "frog", "croaking", "sandpaper", "gravel" or "gravelly" (perhaps with "is", "sound", "sounds", "sounding", "became" or "become", "like" and "a" between) as "voice is hoarse".`,
+  ],
+};
+
 /** The sign groups of the low-blood-sugar rule: `signs` in the order of EN_LOW_SUGAR_SIGNS, `common` in the order of EN_LOW_SUGAR_COMMON. */
 const SIGN_GLOSS = {
-  fp: '48ed649c',
+  fp: 'ee34539c',
   signs: [
-    { says: `Shakiness: "shaky", "shaking", "shakes", "shakiness", "tremble", "trembles", "trembling", "tremor", "tremors", "jittery", "jitters". Not "protein shakes", "milk shakes" or "meal replacement shakes".`, example: 'I feel shaky' },
+    { says: `Shakiness: "shaky", "shaking", "shakes", "shakiness", "tremble", "trembles", "trembling", "trembly", "tremor", "tremors", "jittery", "jitters". Not "protein shakes", "milk shakes" or "meal replacement shakes".`, example: 'I feel shaky' },
     { says: `Sweating: "cold sweat", "cold sweats", "clammy", "sweaty", "sweating", "drenched in sweat".`, example: 'in a cold sweat' },
     { says: `Fast heartbeat: a word that starts with "palpitat"; "heart" or "pulse" plus "racing", "pounding", "fluttering" or "beating fast"; "racing", "pounding", "fast" or "rapid" plus "heart", "heartbeat" or "pulse".`, example: 'my heart is racing' },
     { says: `Confusion or drowsiness: a word that starts with "confus"; "disoriented"; "dazed"; "drowsy", "drowsiness"; "can't think straight".`, example: 'I feel confused' },
@@ -1128,15 +1347,15 @@ const WORD_LISTS: WordList[] = [
   {
     name: 'EN_RUNS',
     label: 'diarrhea word',
-    fp: '74eec711',
-    says: `"diarrhea", also spelled "diarrhoea" or with letters missing or doubled ("diarrea", "diarhea", "diarreah"); "the runs"; "the squirts"; "loose", "watery" or "liquid" plus "stool", "stools", "poop", "poops", "bowel movement" or "bowel movements"; "pooping water", "pooping liquid"; "running to the bathroom" (also "run", "ran", "rushing" or "rushed", and "toilet", "restroom" or "loo"). Other misspellings of "diarrhea" are read as the word first (2.3).`,
+    fp: 'd52c065b',
+    says: `"diarrhea", also spelled "diarrhoea" or with letters missing or doubled ("diarrea", "diarhea", "diarreah"); "the runs"; "the squirts"; "the trots"; "loose", "watery" or "liquid" plus "stool", "stools", "poop", "poops", "bowel movement" or "bowel movements"; "pooping water", "pooping liquid"; "running to the bathroom" (also "run", "ran", "rushing" or "rushed", and "toilet", "restroom" or "loo"). Other misspellings of "diarrhea" are read as the word first (2.3).`,
   },
   { name: 'EN_NAUSEA', label: 'nausea word', fp: 'f5c90133', says: `"nausea", "nauseous", "nauseated" (also misspelled "nausious", "nauseus", "nasuea"); "queasy", "queasiness"; "sick to my stomach".` },
   {
     name: 'EN_WONT_GO_AWAY',
     label: 'does-not-go-away phrase',
-    fp: '13211070',
-    says: `"won't", "will not", "doesn't", "does not", "don't", "do not", "didn't", "isn't", "is not", "hasn't", "has not", "haven't", "have not", "ain't", "not" or "never" (the apostrophe may be left out: "wont", "doesnt"), followed by "go away" (also "goes", "going", "gone away"), "stop" (also "stops", "stopped", "stopping"), "let up" or "letting up", "ease", "eased" or "easing" (also with "up"), "quit" or "quitting", "end", "ended" or "ending", "slow down" (also "slowed", "slowing"), "better" ("get better", "getting better", "gotten better", "any better"), or "improve", "improved" or "improving"; "been able to" or "seem to" may stand in between ("hasn't been able to stop", "doesn't seem to go away"). "Still there", "still here", "still going", "still the same". "Constant", "constantly", "nonstop", "persistent", "never-ending". "All the time". "Day and night". "Every day", "every single day". "For days" or "for weeks", with or without a count ("for 3 days", "for a few weeks", "for many days", "for a couple of weeks"). "For a week", "for over a week", "for more than a week", "for about a week", "for almost a week", "for the past week", "for the last week", "for the whole week", "for the entire week". "All week". A count of days plus "straight", "in a row", "now" or "running" ("3 days straight"). "Been 3 days" (also "been over", "almost" or "about", and "a few" or "several" days). "Since" plus a day of the week ("since Monday", "since last Friday"). "Since last week", "since last weekend". One day is not on this list: "all day" and "since yesterday" do not count here.`,
+    fp: '9543a3c5',
+    says: `"won't", "will not", "doesn't", "does not", "don't", "do not", "didn't", "isn't", "is not", "hasn't", "has not", "haven't", "have not", "ain't", "not" or "never" (the apostrophe may be left out: "wont", "doesnt"), followed by "go away" (also "goes", "going", "gone away"), "stop" (also "stops", "stopped", "stopping"), "let up" or "letting up", "ease", "eased" or "easing" (also with "up"), "quit" or "quitting", "end", "ended" or "ending", "slow down" (also "slowed", "slowing"), "better" ("get better", "getting better", "gotten better", "any better"), or "improve", "improved" or "improving"; "been able to" or "seem to" may stand in between ("hasn't been able to stop", "doesn't seem to go away"). "Still there", "still here", "still going", "still the same". "Constant", "constantly", "nonstop", "persistent", "never-ending". "All the time". "Day and night". "Every day", "every single day". "For days" or "for weeks", with or without a count ("for 3 days", "for a few weeks", "for many days", "for a couple of weeks"). "For a week", "for over a week", "for more than a week", "for about a week", "for almost a week", "for the past week", "for the last week", "for the whole week", "for the entire week". "All week". A count of days plus "straight", "in a row", "now" or "running" ("3 days straight"). "Been 3 days" (also "been over", "almost" or "about", and "a few" or "several" days). "Since" plus a day of the week ("since Monday", "since last Friday"). "Since last week", "since last weekend". "Ever since". "Morning, noon and night". "Since I went up", "since I increased", "since I upped", "since I moved up", "since my dose went up", "since my dose was raised", "since my dose was increased", "since my dose increase", "since my dose change". One day is not on this list: "all day" and "since yesterday" do not count here.`,
   },
   {
     name: 'EN_MILD',
@@ -1147,26 +1366,26 @@ const WORD_LISTS: WordList[] = [
   {
     name: 'EN_TO_BACK',
     label: 'reaches-the-back phrase',
-    fp: '9be3bf48',
-    says: `"to", "into", "through", "toward", "towards", "in", "around" or "round", followed by "back", "my back" or "the back" ("upper", "lower", "middle" or "mid" may stand before "back"), but not "back yard", "back seat", "back room", "back door", "back porch" or "back office". Or "and", "plus", "with" or "also", followed by "back" or "my back", but not "back to", "back from", "back at", "back on", "back home", "back again" or "back in". Or "back hurts", "back hurting", "back aches", "back aching" or "back pain" ("also", "too" or "is" may stand in between).`,
+    fp: '5b20b41d',
+    says: `"to", "into", "through", "toward", "towards", "in", "around" or "round", followed by "back" or "spine" ("my" or "the", and "upper", "lower", "middle" or "mid", may stand before it), but not "back yard", "back seat", "back room", "back door", "back porch" or "back office". Or "and", "plus", "with" or "also", followed by "back" or "my back", but not "back to", "back from", "back at", "back on", "back home", "back again" or "back in". Or "back hurts", "back hurting", "back aches", "back aching" or "back pain" ("also", "too" or "is" may stand in between).`,
   },
   {
     name: 'EN_LONG_OR_OFTEN',
     label: 'long-or-often phrase',
-    fp: 'a0afc926',
-    says: `"all day", "all night", "all morning", "all afternoon", "all evening", "all week", "all weekend"; "for hours", with or without a count ("for 3 hours", "for several hours", "for a couple of hours"; counts "two" to "six", "many", "a few"); "since" plus a day of the week ("since Monday", "since last Friday"); a count of 5 or more with "x" ("5x", "x6", "10 x"); "every hour", "every half hour", or "every" plus a number, "few" or "couple" ("couple of") plus "minutes", "min", "mins" or "hours" ("every 20 minutes", "every few hours"); "nonstop"; "constantly"; "won't stop", "can't stop", "cannot stop"; "over and over"; "for days", with or without a count ("for 3 days", "for two days", "for a few days", "for several days", "for many days"); "24 hours", "48 hours", "72 hours"; "since yesterday", "since last night"; or a count of 5 or more "times" (5 to 9, any number with two or more digits, "five" to "ten", "several", "many", "multiple", "countless", "so many").`,
+    fp: '090dc24d',
+    says: `"all day", "all night", "all morning", "all afternoon", "all evening", "all week", "all weekend"; "for hours", with or without a count ("for 3 hours", "for several hours", "for a couple of hours"; counts "two" to "six", "many", "a few"); "since" plus a day of the week ("since Monday", "since last Friday"); a count of 5 or more with "x" ("5x", "x6", "10 x"); "every hour", "every half hour", or "every" plus a number, "few" or "couple" ("couple of") plus "minutes", "min", "mins" or "hours" ("every 20 minutes", "every few hours"); "nonstop"; "constantly"; "won't stop", "can't stop", "cannot stop"; "over and over"; "for days", with or without a count ("for 3 days", "for two days", "for a few days", "for several days", "for many days"); "24 hours", "48 hours", "72 hours"; "since yesterday", "since last night"; or a count of 5 or more "times" (5 to 9, any number with two or more digits, "five" to "ten", "several", "many", "multiple", "countless", "so many"); "so much" or "too much".`,
   },
   {
     name: 'EN_IS_SEVERE',
     label: 'how-bad phrase',
-    fp: '571c552a',
-    says: `"is", "are", "was", "were", "it's", "its", "has been", "have been", "been", "got", "gets", "getting", "gotten", "became", "feel", "feels" or "keeps getting", then "severe", "unbearable", "excruciating", "awful", "terrible", "horrible", "intense", "insane", "agonizing", "brutal", "out of control", "off the charts", "through the roof" or "the worst" (any of "so", "really", "very", "pretty", "quite", "getting", "just", "still", "extremely", "super" and "real" may stand in between: "is getting really severe"). Or one of those first words, then "so bad", "really bad", "very bad", "extremely bad", "super bad", "real bad" or "pretty bad" ("getting", "just" or "still" may stand in between: "is getting so bad").`,
+    fp: '7a426aa9',
+    says: `"is", "are", "was", "were", "it's", "its", "has been", "have been", "been", "got", "gets", "getting", "gotten", "became", "feel", "feels" or "keeps getting", then "severe", "unbearable", "excruciating", "awful", "terrible", "horrible", "intense", "insane", "agonizing", "brutal", "out of control", "off the charts", "through the roof" or "the worst" (any of "so", "really", "very", "pretty", "quite", "getting", "just", "still", "extremely", "super", "real", "steadily", "even" and "much" may stand in between: "is getting really severe"). Or one of those first words, then "so bad", "really bad", "very bad", "extremely bad", "super bad", "real bad" or "pretty bad" ("getting", "just" or "still" may stand in between: "is getting so bad").`,
   },
   {
     name: 'EN_IS_BAD',
     label: 'how-bad phrase for pain',
-    fp: '0e6cafab',
-    says: `a **how-bad phrase**; or one of its first words ("is", "has been", "getting" and the others), then "bad", "worse" or "worse and worse" (the same small words may stand in between: "is really bad", "keeps getting worse"); or "getting worse".`,
+    fp: 'afbba51d',
+    says: `a **how-bad phrase**; or one of its first words ("is", "has been", "getting" and the others), then "bad", "worse" or "worse and worse" (the same small words may stand in between: "is really bad", "keeps getting worse", "has gotten steadily worse"); or "getting worse"; or "worse every hour", "worse each hour", "worse by the hour" (also minute or day).`,
   },
   {
     name: 'EN_N_DAYS',
@@ -1201,12 +1420,57 @@ const WORD_LISTS: WordList[] = [
     says: `"haven't", "have not", "hasn't", "didn't", "did not", "barely", "hardly", "can't", "cannot", "couldn't", "could not", "not" or "unable to", followed by "eat", "eaten", "ate" or "eating" ("really", "even", "been able to" or "been" may stand in between). Or "eaten", "ate" or "eating" followed by "nothing", "almost nothing" or "next to nothing".`,
   },
   { name: 'EN_DAYS', label: 'days phrase', fp: 'c9e7ba7c', says: `"days"; "for a week", "for 2 weeks", "for two weeks", "for three weeks", "for a few weeks"; "all week".` },
+  {
+    name: 'EN_FUNCTION_LOSS',
+    label: 'cannot-cope phrase',
+    fp: '4bd08bc1',
+    says: `How bad, told by what the person cannot do or had to do: "curled up"; "on the floor", "lying on the floor", "laying on the floor", "rolling on the floor" or "collapsed on the floor" (one word may stand before "floor": "on the bathroom floor"); "crying", "in tears", "sobbing", "screaming", "writhing"; "doubled over"; "can't", "couldn't", "can hardly", "can barely", "could hardly", "could barely" or "unable to" ("even" may follow), plus "stand", "stand up", "sit", "sit up", "sleep", "walk", "move", "function", "work", "straighten up", "get up", "get out of bed", "bear it", "bear to", "bear the", "bear this", "bear anything", "take it", "stand it", "stand to", "stand the" or "stand anything"; "had to be driven", "had to be carried", "had to be helped", "had to leave work", "had to pull over", "had to call 911", "had to call an ambulance"; "drive", "drove", "take", "took", "rush" or "rushed" (perhaps after "had to"), plus "me home" or "me to the emergency room", "to the hospital" or "to urgent care"; "going", "went", "go" or "on my way", plus "to the emergency room", "to the hospital" or "to urgent care"; "in" or "at" the emergency room, the hospital or urgent care ("ER" is read as "emergency room" first); a pain score of 7 or more ("7/10" to "10/10", also "out of 10"); "help me" (also "please help me"), or "help" at the end of the text or before an exclamation mark.`,
+  },
+  {
+    name: 'EN_BELLY_PAIN',
+    label: 'stomach-pain phrase',
+    fp: '58c8c990',
+    says: `A **stomach word**, then (within about 30 characters) a **pain or soreness word**, "stabbing", "burning" or "on fire". Or a **pain or soreness word**, "stabbing" or "stabbed", then (within about 20 characters) "in", "around", "across", "on", "at", "of" or "into", then (within about 25 characters) a **stomach word**. Or "stomach", "belly" or "tummy" joined to "ache" or "aches" ("stomachache", "belly ache").`,
+  },
+  {
+    name: 'EN_PAIN_MARK',
+    label: 'severe-or-lasting phrase',
+    fp: 'ae39a87e',
+    says: `A **severe word**; "so bad" or "so badly"; "killing me"; "agony"; "sharp", "stabbing" or "shooting" plus "pain", "pains", "cramp", "cramps", "cramping", "ache" or "aches"; a **does-not-go-away phrase**; "for hours" (also with a count: "for 3 hours", "for several hours"); "hours now", "hours straight", "hours in a row"; "been hours" (also "been 3 hours"); a number of hours at the end of a sentence ("3 hours"); "gone on"; "getting", "gotten", "got", "grown" or "growing", plus "worse" (one word may stand in between: "gotten steadily worse"); "worse and worse", "worse every", "worse each", "worse by the"; or a **cannot-cope phrase**. "All day" alone is not on this list.`,
+  },
+  { name: 'EN_ONE_SIDE', label: 'one-side phrase' },
+  {
+    name: 'EN_LOST_TIME',
+    label: 'lost-time phrase',
+    fp: '87bdcc67',
+    says: `"Lost time", "lost awareness", "lost consciousness"; "didn't", "did not", "wasn't", "was not", "couldn't" or "not", plus a word that starts with "respond" or "answer", or "aware"; "unresponsive"; "came to"; "blacked out" (not "blacked out on the ..." and the like); "don't", "can't" or "couldn't", plus "remember what happened", "remember anything", "remember it happening", "remember how I got" or "remember the last"; "zoned out"; "foaming"; "bit my tongue"; "wet myself".`,
+  },
+  { name: 'EN_DOOM', label: 'feeling-of-dying phrase' },
+  { name: 'EN_DOSE_VERB', label: 'dose verb' },
+  { name: 'EN_DOSE_NOUN', label: 'dose word' },
+  { name: 'EN_BY_MISTAKE', label: 'mistake phrase' },
+  { name: 'EN_ONE_MORE', label: 'one-more phrase' },
+  {
+    name: 'EN_TWO_IN_A_DAY',
+    label: 'two-doses phrase',
+    fp: 'd56bc69a',
+    says: `"Two", "2", "both", "three" or "3", plus "doses", "shots", "injections", "pens" or a brand name in the plural ("of my" or "of the" may stand in between), plus "in one day", "in a day", "in the same day" (also "week"), "on the same day", "today", "at once" or "back to back". "Two in one day" (also "2", and "a day", "the same day"). "Tomorrow's dose" (also "tomorrows", and "pill", "shot", "tablet" or "injection"). "Whole", "entire" or "full", plus "month's", "months", "week's" or "weeks" and the like, plus "supply" or "worth". "My new pen and my old pen" (also "the", and in the other order).`,
+  },
+  { name: 'EN_MED_NAME', label: 'medication name' },
+  { name: 'EN_CLOSE_TOGETHER', label: 'close-together word' },
+  { name: 'EN_INTENT', label: 'wish-or-plan phrase' },
+  {
+    name: 'EN_MEANS',
+    label: 'way-of-dying phrase',
+    fp: '8e47f404',
+    says: `"Jump" or "jumping", plus "off", "from" or "in front of", plus "a", "the", "my", "this" or "that", plus "bridge", "roof", "building", "balcony", "overpass", "cliff", "ledge", "train", "car", "bus", "truck", "tower", "parking garage" or "parking deck". "Drive", "driving", "drove", "crash", "crashing", "steer" or "steering" (perhaps with "my car", "the car" or "off"), plus "into" or "off", plus "a", "the" or "oncoming", plus "tree", "wall", "pole", "bridge", "river", "lake", "traffic", "cliff", "truck" or "road". "Step" or "stepping in front of" a train, car, bus or truck. "Take", "taking", "swallow", "swallowing", "down" or "downing", plus "all", "every one" or "the whole bottle", "box" or "pack" (perhaps with "of", and "my", "the", "these" or "those"), plus "pills", "meds", "medication", "medications", "tablets", "sleeping pills", "insulin" or "pens". "Overdose" or "overdosing" (not "on" sugar, coffee, candy and the like). "Use" or "using", plus "it", "the knife", "a knife", "a gun", "the gun", "a blade", "the blade", "a razor" or "the razor", plus "on myself". "Disappear" or "disappearing", plus "forever", "for good" or "and never". "Not wake up", "never wake up", "don't wake up", "didn't wake up", "won't wake up" or "wouldn't wake up" (also "waking"), but not when "early", "late", "in time", "on time", "before", "until", "till", "at" or "for" follows. "End" or "ending", plus "it", "things" or "my life" (not when "with" or "between" follows). "Kill", "hurt", "harm", "cut" or "burn" (also with "ing"), plus "myself".`,
+  },
 ];
 
 /** Fingerprint of everything that decides how "no" and "not" are read (see negationSection). */
-const NEGATION_FP = '9d108948';
+const NEGATION_FP = '70bda484';
 /** Fingerprint of everything that decides whether a match is about the person's own state now (see ownStateLines). */
-const OWN_FP = '50e02dec';
+const OWN_FP = 'b52f91f7';
 
 /**
  * Phrases from the test file that this packet points out, with why. The script checks that each
@@ -1293,12 +1557,16 @@ function checkFingerprint(what: string, actual: string, expected: string, howToF
 const DESCRIBED_CODE: [string, string, string, string][] = [
   ['src/core/triage.ts', 'const RANK', '807d4453', 'section 2 (levels)'],
   ['src/core/triage.ts', 'function negatedEn(', '3257e47d', 'section 2.3 (how "no" and "not" are read)'],
-  ['src/core/triage.ts', 'function anyEn(', '6d86ee96', 'section 2.3'],
-  ['src/core/triage.ts', 'function notOwnNowEn(', '6efc18fa', 'section 2.3 (someone else, long ago, a general question, the size of a pill)'],
+  ['src/core/triage.ts', 'function anyEn(', 'e3ec8485', 'section 2.3'],
+  ['src/core/triage.ts', 'function notOwnNowEn(', '7a05dc78', 'section 2.3 (someone else, long ago, a general question, the size of a pill)'],
   ['src/core/triage.ts', 'export function triageSymptom(', '2954291a', 'sections 2.2 and 2.8 (what the symptom buttons raise)'],
   ['src/core/alert.ts', 'export function fixedAlertCard(', 'fa19d9f9', 'section 2.1 (the two wordings of the fixed card)'],
   ['src/core/medGuide.ts', 'export function guideChoice(', 'a4d5017c', 'section 2.6 (which guide a person sees)'],
-  ['src/core/triage.ts', 'export function triageText(', '378eda41', 'section 2.3'],
+  ['src/core/triage.ts', 'export function triageText(', 'a1cb478d', 'section 2.3'],
+  ['src/core/triage.ts', 'function readTyping(', '55e8ad5c', 'section 2.3 (fast typing, shorthand and other words)'],
+  ['src/core/triage.ts', 'function readLearner(', '7f5f5976', 'section 2.3 (other languages, small words left out, voice typing)'],
+  ['src/core/triage.ts', 'function oneLetterApart(', '904d59e1', 'section 2.3 (fast typing: one letter wrong)'],
+  ['src/core/triage.ts', 'function overAfter(', '776cb9c5', 'section 2.3 (over now)'],
   ['src/core/pk.ts', 'export function kaFromTmax(', 'ca06c69a', 'section 5'],
   ['src/core/pk.ts', 'export function modelFor(', '1c38897f', 'section 5'],
   ['src/core/pk.ts', 'export function bateman(', 'bcdacc1d', 'section 5'],
@@ -1530,6 +1798,8 @@ interface TriageCounts {
 let silentAtLaunch: TriageId[] = [];
 /** True when section 2 says that an alert from the questions box leaves no reminder; section 7 then asks about it. */
 let questionAlertLeavesNothing = false;
+/** True when section 2 says that an alert from a symptom button stays on the main screen for the day. The short packet says so too. */
+let buttonAlertStays = false;
 
 /** What the "card in the first public version" column says for one hit. */
 function launchCardLabel(card: TriageCard | null, fixed: TriageCard): string {
@@ -1555,6 +1825,7 @@ function reminderLines(buttonRows: QuickLogRow[]): string[] {
   if (staysIfPausing) {
     const allButtonsPause = buttonRows.length > 0 && buttonRows.every((row) => triageCard(row.hit, 'US', 'en').pauseCoaching);
     lines.push(`After the person taps ${ack}, the reminder stays only for an alert whose rule pauses the day's tips (each card in section 2.4 says whether it does).${allButtonsPause ? ' Every alert a symptom button can raise is of that kind.' : ''}`);
+    buttonAlertStays = allButtonsPause;
   }
   const questionsBox = typedTextPlaces().find((p) => p.where === TYPED_TEXT_PLACES.addQuestionFromList.where);
   if (questionLogsNothing && questionsBox && (questionsBox.atLaunch || questionsBox.inFull)) {
@@ -1576,7 +1847,9 @@ function dangerSymptomSection(internals: TriageInternals, counts: TriageCounts):
   const launchCardFor = (hit: TriageHit): TriageCard | null => alertCards([hit], 'US', 'en', LAUNCH.triageDetailCards)[0]?.card ?? null;
   const cardLines = (card: TriageCard): string[] => quoteBlock([`**${md(card.title)}**`, '', md(card.body)]);
   const cardExtras = (card: TriageCard): string => {
-    const button = card.showEmergency && callButton ? `shows a ${q(callButton)} button` : 'shows no call button';
+    const isCrisis = card.title === triageCard({ id: 'crisis', level: 'crisis' }, 'US', 'en').title;
+    const crisisButton = isCrisis ? crisisCallButton() : '';
+    const button = card.showEmergency && callButton ? `shows a ${q(callButton)} button${crisisButton ? ` and a ${q(crisisButton)} button` : ''}` : 'shows no call button';
     const pause = card.pauseCoaching ? `pauses the day's workout and food tips` : 'does not pause anything';
     return `${button} and ${pause}`;
   };
@@ -1658,7 +1931,7 @@ function dangerSymptomSection(internals: TriageInternals, counts: TriageCounts):
     }
     if (LAUNCH.guideWarningSigns && screenCodeHas('src/web/components/TriageModal.tsx', /features\.guideWarningSigns && cards\.some\(\(c\) => c\.key !== 'crisis'\)/, 'the button on an alert that opens the Medication Guide list')) {
       out.push(
-        `Under the card there is one more button, ${q(screenText('guide.open'))}. It opens the list of section 2.6 for the person's own medication: always the whole list, never one item of it, because the app does not say which item a person may have. The crisis card has no such button.`,
+        `Under the card there is one more button, ${q(screenText('guide.open'))}. It opens the list of section 2.6 for the person's own medication: always the whole list, never one item of it, because the app does not say which item a person may have. The crisis card has no such button, and neither does an alert for a person whose medication is "Other / custom": the app has no Medication Guide for it.`,
         '',
       );
     }
@@ -1740,7 +2013,33 @@ function dangerSymptomSection(internals: TriageInternals, counts: TriageCounts):
   for (const [typed, meant] of [['I past out', 'chest_or_faint'], ['my tounge is swolen', 'anaphylaxis'], ['servere stomach pian', 'pancreatitis'], ['chess pain', 'chest_or_faint'], ['throne up all day', 'dehydration'], ['dolor de pecho', 'chest_or_faint'], ['vomitando todo el dia', 'dehydration']] as const) expectOutcome(typed, meant, 'Section 2.3 (spellings)');
   expectOutcome('the boxer feinted left', null, 'Section 2.3 (spellings)');
   out.push(
-    `**Misspellings.** Before any rule looks at the text, a fixed list of misspellings and voice-typing slips is read as the word that was meant. Every entry is a spelling written out in the code; nothing is guessed from how alike two words look. The list, in plain words: ${SPELLING_GLOSS.says.join(' ')} So ${q('I past out')}, ${q('my tounge is swolen')}, ${q('servere stomach pian')}, ${q('chess pain')}, ${q('throne up all day')}, ${q('dolor de pecho')} and ${q('vomitando todo el dia')} trigger, and ${q('the boxer feinted left')} does not (checked). The examples in section 2.4 are written as the patterns read them.`,
+    `**Misspellings.** Before any rule looks at the text, a fixed list of misspellings and voice-typing slips is read as the word that was meant. Every entry is a spelling written out in the code. The list, in plain words: ${SPELLING_GLOSS.says.join(' ')} So ${q('I past out')}, ${q('my tounge is swolen')}, ${q('servere stomach pian')}, ${q('chess pain')}, ${q('throne up all day')}, ${q('dolor de pecho')} and ${q('vomitando todo el dia')} trigger, and ${q('the boxer feinted left')} does not (checked). The examples in section 2.4 are written as the patterns read them.`,
+    '',
+  );
+  checkFingerprint(`${TRIAGE_FILE} · EN_SHORTHAND`, hash8(internals.EN_SHORTHAND.map(([re, to]) => `${re.source} ${to}`).join('\n')), SHORTHAND_GLOSS.fp, 'Re-read EN_SHORTHAND, correct SHORTHAND_GLOSS, then update its fp.');
+  for (const [typed, meant] of [['sob since the shot', 'anaphylaxis'], ['cp radiating to back', 'chest_or_faint'], ['n/v/d since sat not stopping', 'dehydration'], ['i keep thinking abt hurting myself', 'crisis'], ['stomache pain wont go awayyy', 'abdominal_pain_severe'], ['I have had hematemesis twice today.', 'abdominal_pain_severe'], ['colapsed at work', 'chest_or_faint'], ['sezure this morning', 'chest_or_faint']] as const) expectOutcome(typed, meant, 'Section 2.3 (shorthand)');
+  for (const phrase of ['the boxer feinted left', 'sob story from my boss', 'that steak was overdone', 'deep breaths helped']) expectOutcome(phrase, null, 'Section 2.3 (shorthand)');
+  out.push(
+    `**Fast typing, shorthand and other words.** Then a letter held down counts once ("awayyy" is "away", "baaad" is "bad"), or twice where English doubles it ("e", "o", "l", "s" and "f" at the end of a word: "tooo" is "too"; also "t", "p", "r", "m", "n", "d", "g", "c", "b" and "z" inside a word). Then shorthand, contractions written out, medical words and regional words are read as plain words, each written out in the code: ${SHORTHAND_GLOSS.says.join(' ')} Last, ${plural(internals.EN_KEY_WORDS.length, 'long key word')} are read also when one letter is wrong, missing, added, or swapped with the next one: ${internals.EN_KEY_WORDS.map((w) => `"${w}"`).join(', ')}. Only a word of six letters or more that starts with the same letter counts, and these real words that are that close are left as they are: ${[...internals.EN_REAL_WORDS].map((w) => `"${w}"`).join(', ')}. So ${q('sob since the shot')}, ${q('cp radiating to back')}, ${q('n/v/d since sat not stopping')}, ${q('i keep thinking abt hurting myself')}, ${q('stomache pain wont go awayyy')}, ${q('I have had hematemesis twice today.')}, ${q('colapsed at work')} and ${q('sezure this morning')} trigger, and ${q('sob story from my boss')}, ${q('that steak was overdone')} and ${q('deep breaths helped')} do not (checked).`,
+    '',
+  );
+  checkFingerprint(`${TRIAGE_FILE} · EN_LEARNER`, hash8(internals.EN_LEARNER.map(([re, to]) => `${re.source} ${to}`).join('\n')), LEARNER_GLOSS.fp, 'Re-read EN_LEARNER, correct LEARNER_GLOSS, then update its fp.');
+  const learnerFires: [string, string][] = [
+    ['quiero morirme', 'crisis'],
+    ['sakit ng tiyan ko super bad since morning, no stop', 'pancreatitis'],
+    ['đau bụng quá trời, cannot stand, pain go to back', 'pancreatitis'],
+    ['I faint this morning, wake up on floor', 'chest_or_faint'],
+    ['I am having troubles to breathe', 'anaphylaxis'],
+    ["I've been through up all day", 'dehydration'],
+    ['I took to many of my shots', 'overdose'],
+    ['my eyes look like lemon color today', 'gallbladder'],
+    ['my neck has a ball inside', 'thyroid'],
+  ];
+  for (const [typed, meant] of learnerFires) expectOutcome(typed, meant, 'Section 2.3 (other languages and small words)');
+  const learnerQuiet = ['mi esposo tiene dolor de pecho', 'had lemon water with my eggs', 'everything came up roses', 'talked to many of my friends today'];
+  for (const phrase of learnerQuiet) expectOutcome(phrase, null, 'Section 2.3 (other languages and small words)');
+  out.push(
+    `**Other languages, small words left out, voice typing.** Then the ways many people really write are read as plain words, each written out in the code: words of Spanish, Tagalog and Vietnamese mixed into English, family words in Arabic written in Latin letters, English without its small words, voice-typing slips and signs told by what they look like. A word of another language is read only where it cannot be an English word, and a voice-typing slip only next to the key word it belongs with. The list, in plain words: ${LEARNER_GLOSS.says.join(' ')} So ${learnerFires.map(([p]) => q(p)).join(', ')} trigger, and ${learnerQuiet.map(q).join(', ')} do not (checked): the family words are read too, so the checks for someone else work in those languages as well.`,
     '',
   );
   const fixedSentence = LAUNCH.triageDetailCards
@@ -1832,7 +2131,8 @@ function dangerSymptomSection(internals: TriageInternals, counts: TriageCounts):
           gloss.triggers.map((t, i) => {
             for (const example of t.examples) checkExample(example, patterns[i] ?? null, `TRIGGERS.${rule.id}[${i}]`);
             const fixedMark = patterns[i] !== undefined && internals.FIXED_CARD.has(patterns[i]) ? ` ${FIXED_MARK}` : '';
-            return [`${ruleCode.get(rule.id)}.${i + 1}`, `${t.says}${fixedMark}`, t.examples.map(q).join('; ')];
+            const overMark = patterns[i] !== undefined && internals.ENDS_WHEN_OVER.has(patterns[i]) ? ` ${OVER_MARK}` : '';
+            return [`${ruleCode.get(rule.id)}.${i + 1}`, `${t.says}${fixedMark}${overMark}`, t.examples.map(q).join('; ')];
           }),
           [1, 9, 5],
         ),
@@ -1885,7 +2185,7 @@ function expectOutcome(phrase: string, id: string | null, where: string): void {
 function negationLines(tests: TestPhrases): string[] {
   const out: string[] = [];
   for (const phrase of ['no chest pain', "I don't have any chest pain", 'never had chest pain', 'no fever or chest pain', 'zero chest pain', 'ruled out gallstones', "can't say I have any chest pain", 'my lips arent swollen']) expectOutcome(phrase, null, 'Section 2.3');
-  for (const phrase of ['chest pain: no', 'fever - none', 'chest pain free today', 'gallstones were ruled out', "I didn't take a double dose, I checked the log"]) expectOutcome(phrase, null, 'Section 2.3');
+  for (const phrase of ['chest pain: no', 'fever - none', 'chest pain free today', 'gallstones were ruled out', "I didn't take a double dose, I checked the log", 'No chest pain, no palpitations, nothing like that.']) expectOutcome(phrase, null, 'Section 2.3');
   for (const phrase of ['not feeling well, chest pain', "isn't chest pain serious?", "I've never had chest pain like this", 'I never get chest pain, but today I do', "wasn't unconscious long", 'chest pain - no relief']) expectOutcome(phrase, 'chest_or_faint', 'Section 2.3');
   expectOutcome('I do not want to die', 'crisis', 'Section 2.3');
   out.push('How the rules read "no" and "not":', '');
@@ -1894,7 +2194,7 @@ function negationLines(tests: TestPhrases): string[] {
       `A rule stays quiet when the words right before the symptom deny it: "no chest pain", "I don't have any chest pain", "never had chest pain", "no fever or chest pain", "zero chest pain", "ruled out gallstones", "can't say I have any chest pain". The words that deny: "no", "none", "neither", "nor", "zero", "0", "ruled out", "rule out", "negative for", "free of", "free from"; "not", "never", "without", "cannot", "denies", "denied", "deny", and any word that ends in "n't" (also typed without the apostrophe: "dont", "doesnt", "didnt", "havent", "hasnt", "hadnt", "isnt", "wasnt", "arent"); "can't say", "cannot say" or "wouldn't say" (also "can't say that I", "I'm" or "it's"). "No", "without", "denies" or "denied" may also stand one to three words before an "or" or "nor" that comes right before the symptom ("no fever or chest pain").`,
       `A "no" written after the symptom, as on a checklist, denies it too: "chest pain: no", "fever - none", "chest pain free today", "gallstones were ruled out". That is ":", "=", "?", "-" or a dash, then "no", "none", "nope", "n/a", "negative", "0" or "zero", but not "no more", "no longer", "no better", "no relief", "no change", "no improvement", "no break" or "no let up" ("chest pain - no relief" fires). Or "free" right after the symptom, after a space or a hyphen. Or "was", "were", "is", "has been" or "got", plus "ruled out".`,
       `Only small filler words may stand between a "no" in front and the symptom, such as "any", "more", "have", "having", "feeling", "take" or "took" ("I didn't take a double dose, I checked the log" stays quiet). With anything else in between, the rule fires: "not feeling well, chest pain". The part before the symptom is read back only to the last comma, full stop, colon, semicolon, question mark, exclamation mark or bracket.`,
-      `A denial does not count, and the rule fires, when the rest of the sentence says the symptom is there now. The markers are "like this", "this bad", "so bad", "this low", "before", "until", and turns such as "but today I do". "Wasn't unconscious long" also fires: it happened, only not for long.`,
+      `A denial does not count, and the rule fires, when the rest of the sentence says the symptom is there now. The markers are "like this", "this bad", "so bad", "this low", "before", "until", and turns such as "but today I do". "Like this" or "like that" is not a marker after "nothing", "anything", "something" or "none": "No chest pain, no palpitations, nothing like that." stays quiet. "Wasn't unconscious long" also fires: it happened, only not for long.`,
       `A question that opens with "isn't", "aren't" or "doesn't" is not a denial: "isn't chest pain serious?" fires. The same goes for any other "...n't" alone before the symptom when a question mark follows in the same sentence.`,
       `Between the key words of one pattern a few other words may stand. How many characters is fixed for each pattern. They may not cross the end of a sentence. They may not cross "no", "not", "never", "without" or a word ending in "n't" (also typed without the apostrophe, such as "arent", "dont", "wont": "my lips arent swollen" stays quiet), unless that word says the symptom goes on ("won't go away", "doesn't stop", "haven't been able to stop", "not getting better", "not slowing down").`,
       `The self-harm rule stops only for a plain denial right before its words ("not suicidal", "no thoughts of hurting myself"); a "don't" or "do not" that begins its words does not stop it ("I do not want to die" fires).`,
@@ -1930,16 +2230,16 @@ function ownStateLines(rules: RuleView[]): string[] {
   const notForReminders = reminders.length ? ` These three checks are not made for ${reminders.join(', ')}: a question, a worry or a plan is what those reminders are for.` : '';
   out.push(
     ...list([
-      `**Someone else.** The words before the symptom, in the same part of the sentence (back to the last comma, colon or bracket), name another person who is the one the sentence is about: "my dad", "my sister's", "my late mother", "mom", "hubby", "she", "he", "they", "a friend of mine", "a guy", "the baby", "people", "patients", "someone". The person counts as the one the sentence is about when "he", "she" or "they" names them, when "his", "her" or "their" stands right before the symptom, when nothing or only an opening word stands before the person ("so", "yesterday", "update"), when a word that starts a new statement stands before them ("I think", "because", "when", "said", "one of"), or when "who" follows them. Stays quiet: ${quiet(['my dad had chest pain last year', 'my sister is pregnant', 'she passed out at the gym', 'mom has chest pain', "hubby's lips are swollen", 'some people get hives from it', 'a guy on the news who was vomiting blood', 'pancreatitis runs in my family'])}. It counts again when "I", "me", "my" or "we" stands between that person and the symptom or is part of the symptom, when the writer stands with them ("me and my husband"), when a word for saying, noticing, finding, worrying or taking stands between them and the symptom ("said", "noticed", "found", "worried", "took", "called" and the like), when more than about 60 characters stand between them and the symptom, when the next sentence says "I have it" or "me too", or when the person is only part of the writer's own story (after a verb or a preposition: "walking my dog", "with my sister"): ${firing(['my dad had chest pain and now I have chest pain', 'me and my husband have been throwing up all day', 'my wife noticed my eyes look yellow', 'they said my blood sugar was low', 'husband found me on the floor', 'was walking my dog and passed out'])}. After "and then" or "and now" a symptom named as a thing, with no "has" or "had" tied to the person, starts a new statement and counts: ${firing(['my husband cooked dinner and then severe stomach pain'])}. "Anyone else" is read as the writer too: ${firing(['has anyone else had chest pain on this'])}. The people looked for include family, friends and pets, and also people such as "our pastor", "my coach", "a member" or "a lady"; "my" in a place the other person belongs to ("a lady in my group", "a guy from my work") does not turn the sentence to the writer: ${quiet(['a lady in my group passed out at the gym', 'Our pastor had a heart attack'])}. Someone else as the subject of the part before a comma also counts, when the symptom that follows has no subject of its own and starts with a word ending in "-ing": ${quiet(["My husband has the flu, throwing up all night, I'm fine."])}.`,
-      `**Long ago.** The sentence names a time long past: "last year", "last summer" (also winter, spring, autumn, Christmas), "last fall" (but not "my last fall" or "a bad last fall"), "years ago", "a few years back", "decades ago", "a long time ago", "ages ago", "in 2019" (any year before last year), "in college", "in high school", "back in the day", "as a kid", "as a newborn", "as an infant", "at birth", "when I was born", "when I was pregnant with ..." or "when I was pregnant before", "during my first pregnancy" (also second, third, last, previous, other or earlier), "when I was younger", "when I was 12", "growing up", "used to", "a history of". Stays quiet: ${quiet(['I fainted once as a kid', 'i had pancreatitis in 2019', 'i used to get palpitations', 'a history of gallstones'])}. Days, weeks and months ago still count: ${firing(['I passed out last week', 'two weeks ago I started having trouble swallowing'])}. The time must stand in the same part of the sentence as the symptom, or alone right before it ("last year, I had chest pain"); a symptom in another part of the sentence counts: ${firing(['I had my gallbladder out last year and I have severe stomach pain'])}. A sentence that opens with the time and goes on in the past, with no verb in the present, is a story of long ago and stays quiet: ${quiet(["back in 2020 I had covid and couldn't breathe"])}. It counts again when the sentence has a word for now ("now", "today", "tonight", "again", "still", "currently", "lately", "recently", "yesterday", "since", "this morning", "this week", "last night", "earlier", "is back", "came back", "same pain"): ${firing(['had chest pain last year and again today'])}. "Fine now", "better now", "healed now", "none since", "nothing since", "not once since", "no more since", "haven't had one since" and the like say it is over and do not count as a word for now: ${quiet(['had gallstones years ago, fine now', 'As a child I had seizures but none since', 'When I was pregnant with my first, I threw up every day', 'I was jaundiced as a newborn'])}.`,
-      `**A general question.** The words lead straight up to the symptom as a question about it in general: "what are the signs of ...", "symptoms of ..." at the start, "the risk of ...", "what causes ...", "what is ...", "what does ... feel like", "can it cause ...", "I wonder if it causes ...", "can you get ...", "how do I know ...", "the difference between ...", "how common is ...", "what should I do if I get ...", "I read that ...", "googled ...", "watching a show about ...", "read a book about ...", "people say it causes ...", "how to prevent ...", "is ... a side effect", "is ... common". Stays quiet: ${quiet(['What are the signs of low blood sugar?', 'can ozempic cause chest pain', 'is fainting a side effect', 'what should i do if i get low blood sugar', "how do I know if I'm dehydrated?", 'watching a show about seizures'])}. In "how do I know if I'm ...", "tell whether I am ..." and the like, the "I'm" belongs to the question and does not say the person has it. It counts again when the sentence says the person has it ("my", except "my medication", "my shot", "my doctor", "my wife" and the like; "I have", "I'm", "I feel", "this pain", "now", "today", "again", "still"), or the next sentence does ("I have it", "mine is", "me too"): ${firing(['what are the signs of low blood sugar? I feel shaky and sweaty', 'can ozempic cause the chest pain I have now', 'does this cause chest pain? i have it now'])}. Other questions are not on the list and count: ${firing(["isn't chest pain serious?", 'Is severe stomach pain going to my back normal?', 'what should I do about this chest pain'])}. A statement is not a question and counts: ${firing(['the shot did cause severe stomach pain', 'showing symptoms of low blood sugar'])}.`,
-      `**A warning, a thing to watch for, a question for the doctor, a fear.** The words before the symptom say someone warned about it, or the person will watch for it, ask about it or is afraid of it: "the leaflet says ...", "the label lists ...", "the nurse said to call if ...", "told me to watch for ...", "warned me about ...", "boxed warning", "the doctor mentioned ...", "watch out for ...", "keep an eye out for ...", "be aware of ...", "ask my doctor about ...", "ask if ...", "talk to my doctor about ...", "worried about ...", "afraid of ...", "scared I'll ...", "nervous that it might ...", "afraid to get ...", "my fear is ...". Stays quiet: ${quiet(['the leaflet says to call if you have severe stomach pain', 'my doctor told me to watch for vision changes', 'pharmacist warned me about pancreatitis', 'ask my doctor about chest pain', 'worried about getting pancreatitis', 'afraid I might faint'])}. It counts again when the words from there up to the symptom say the person has it ("my", "this", "I have", "now" and the other words of the paragraph above), or the words after it do (the same, without "my"), when "but" stands between, or when the next sentence says "I have it": ${firing(['ask about my chest pain', 'worried about this rash spreading'])}. "I'll", "I might" and "if I ..." speak of what may come and do not count as saying the person has it.`,
-      `**Something that has not happened.** The sentence speaks of what might come: "what if ...", "what would I do if ...", "what happens if ...", "what to do if ...", "how would I know ...", a plan ("I'll call the doctor if ...", "going to stop if ..."), "in case of ...", "just in case", "I don't want to end up with ...", "if I ..." or "if my ..." right before the symptom with an instruction after it ("if I pass out call my wife"), or a time to come after the symptom ("someday", "some day", "in the future", "down the road", "down the line", "eventually", "later on", "in the long run"). Stays quiet: ${quiet(['what if my throat swells up', 'in case of an allergic reaction', "I'll call the doctor if my vision changes", 'if I pass out call my wife', 'Should I be concerned about a lump in my neck someday?'])}. "My" and "I" belong to such sentences and do not count; only words for the present do ("now", "today", "again", "still", "already", "anymore", "I'm having", "this chest pain", "my ... is"), or "but" in between, or a next sentence that says "I have it": ${firing(['what if this chest pain is my heart'])}.${notForReminders}`,
+      `**Someone else.** The words before the symptom, in the same part of the sentence (back to the last comma, colon or bracket), name another person who is the one the sentence is about: "my dad", "my sister's", "my late mother", "mom", "hubby", "she", "he", "they", "a friend of mine", "a guy", "the baby", "people", "patients", "someone". The person counts as the one the sentence is about when "he", "she" or "they" names them, when "his", "her" or "their" stands right before the symptom, when nothing or only an opening word stands before the person ("so", "yesterday", "update"), when a word that starts a new statement stands before them ("I think", "because", "when", "said", "one of"), or when "who" follows them. Stays quiet: ${quiet(['my dad had chest pain last year', 'my sister is pregnant', 'she passed out at the gym', 'mom has chest pain', "hubby's lips are swollen", 'some people get hives from it', 'a guy on the news who was vomiting blood', 'pancreatitis runs in my family'])}. It counts again when "I", "me", "my" or "we" stands between that person and the symptom or is part of the symptom, when the writer stands with them ("me and my husband"), when a word for saying, noticing, finding, worrying or taking stands between them and the symptom ("said", "noticed", "found", "worried", "took", "called" and the like), when more than about 60 characters stand between them and the symptom, when the next sentence says "I have it" or "me too", or when the person is only part of the writer's own story (after a verb or a preposition: "walking my dog", "with my sister"): ${firing(['my dad had chest pain and now I have chest pain', 'me and my husband have been throwing up all day', 'my wife noticed my eyes look yellow', 'they said my blood sugar was low', 'husband found me on the floor', 'was walking my dog and passed out'])}. A later part of the sentence goes on about that person when it has a symptom with no subject of its own ("My husband has the flu, throwing up all night") or names a cause the way others see it ("they say", "the doctor thinks", "the nurse said", perhaps with "it's", "maybe", "probably" and the like), and the earlier part names the person with no word for the writer: ${quiet(['my mother-in-law got yellow skin, they say gallstone', 'my wife is suffer migraine and blurry eye'])}. After "and then" or "and now" a symptom named as a thing, with no "has", "had", "got", "with" or a form of "suffer" tied to the person, starts a new statement and counts: ${firing(['my husband cooked dinner and then severe stomach pain'])}. "Anyone else" is read as the writer too: ${firing(['has anyone else had chest pain on this'])}. The people looked for include family, friends and pets, and also people such as "our pastor", "my coach", "a member" or "a lady"; "sis", "bro", "best friend", "patient", "dog" and "cat" count also without "my"; "the" counts before "lady", "guy", "man", "woman", "person", "girl", "boy", "gentleman", "stranger", "patient", "driver", "cashier", "waiter", "waitress", "neighbor", "teacher", "coach" or "nurse" (also "the old lady", "the poor guy" and the like). "My" in a place the other person belongs to ("a lady in my group", "a guy from my work") does not turn the sentence to the writer, and neither does "me" in a place next to them ("next to me", "beside me", "behind me", "in front of me", "near me", "across from me", "ahead of me"): ${quiet(['a lady in my group passed out at the gym', 'Our pastor had a heart attack', 'The lady next to me in the waiting room was having trouble breathing.', 'my sis passed out at her wedding lmao she was so nervous', "dog's eyes look cloudy, vet tmr", 'patient in bed 4 is having chest pain, paged the doc'])}. A word for taking or saying in the passive ("was rushed", "was told", "got sent") is about that person, not a report about the writer: ${quiet(['My brother-in-law was rushed to the ER with chest pains on Saturday.'])}. Someone else as the subject of the part before a comma also counts, when the symptom that follows has no subject of its own and starts with a word ending in "-ing": ${quiet(["My husband has the flu, throwing up all night, I'm fine."])}.`,
+      `**Long ago.** The sentence names a time long past: "last year", "last summer" (also winter, spring, autumn, Christmas), "last fall" (but not "my last fall" or "a bad last fall"), "years ago", "a few years back", "decades ago", "a long time ago", "ages ago", "in 2019" (any year before last year), "in college", "in high school", "back in the day", "as a kid", "as a newborn", "as an infant", "at birth", "when I was born", "when I was pregnant with ..." or "when I was pregnant before", "during my first pregnancy" (also second, third, last, previous, other or earlier), "when I was younger", "when I was 12", "when I was pregnant", "when I was a girl" (also boy, student, teen, in the army, in my twenties and the like), "long ago", "in the 1980s" or "in the '80s" (a decade written with four digits or an apostrophe; "in the 60s" alone may be a sugar reading), "in my twenties" (also teens, thirties, forties, fifties, "in my 20s" to "60s"), "during my time in the Army" (also navy, marines, military, service, air force, college, school, high school), "growing up", "a decade ago" (also without "a"), "before I was pregnant" (also "got" or "became", and "married"), "before my kids" (also "children", "pregnancy", "first baby", "before I had my kids"), "when I was in" or "while I lived in" my home country, the old country, back home or a country many US immigrants come from ("when I was in Vietnam"), "used to", "a history of". Stays quiet: ${quiet(['before I was pregnant I had double vision once', 'when I was in Vietnam I got dengue fever', 'decade ago I had chest pain from stress, tests normal'])}, ${quiet(['I fainted once as a kid', 'i had pancreatitis in 2019', 'i used to get palpitations', 'a history of gallstones', 'Long ago I had an allergic reaction to penicillin with hives.', 'In the 1980s I lost consciousness in a car accident.', 'During my time in the Army I passed out on a hot parade ground.', 'when i was pregnant i puked every day'])}. Days, weeks and months ago still count: ${firing(['I passed out last week', 'two weeks ago I started having trouble swallowing'])}. The time must stand in the same part of the sentence as the symptom, or alone right before it ("last year, I had chest pain"); a symptom in another part of the sentence counts: ${firing(['I had my gallbladder out last year and I have severe stomach pain'])}. A sentence that opens with the time and goes on in the past, with no verb in the present, is a story of long ago and stays quiet; so is any sentence with a time long past anywhere in it, a verb in the past and no verb in the present: ${quiet(["back in 2020 I had covid and couldn't breathe", 'I had pancreatitis once, many years back, from a gallstone.'])}. It counts again when the sentence has a word for now ("now", "today", "tonight", "again", "still", "currently", "lately", "recently", "yesterday", "since", "this morning", "this week", "last night", "earlier", "is back", "came back", "same pain"): ${firing(['had chest pain last year and again today'])}. "Fine now", "better now", "healed now", "none since", "never since", "nothing since", "not once since", "no more since", "haven't had one since" and the like say it is over and do not count as a word for now: ${quiet(['had gallstones years ago, fine now', 'As a child I had seizures but none since', 'had a seizure as a kid never since', 'When I was pregnant with my first, I threw up every day', 'I was jaundiced as a newborn'])}.`,
+      `**A general question.** The words lead straight up to the symptom as a question about it in general: "what are the signs of ...", "symptoms of ..." at the start, "the risk of ...", "what causes ...", "what is ...", "what does ... feel like", "can it cause ...", "I wonder if it causes ...", "can you get ...", "how do I know ...", "how I know ...", "how to know ...", "what number is ..." (also level, reading, range, value, amount, temperature; "counts as", "means"), "who to call if ...", "where do I go if ...", "can it make ...", "the difference between ...", "how common is ...", "what should I do if I get ...", "I read that ...", "googled ...", "watching a show about ...", "read a book about ...", "people say it causes ...", "how to prevent ...", "a video of ...", "a tiktok about ..." (also clip, meme, reel, post, movie, show, episode, article, story, thread, tweet, song), "is ... a side effect" (also without "a", and with "thoughts", "feelings", "urges" and the like after the symptom), "is ... common", "would ... be a reason to ...", "is ... something people report". Other things may be named first in a list ("does it cause depression or suicidal thoughts"). Stays quiet: ${quiet(['What are the signs of low blood sugar?', 'can ozempic cause chest pain', 'is fainting a side effect', 'what should i do if i get low blood sugar', "how do I know if I'm dehydrated?", 'watching a show about seizures', 'does this med cause depression or suicidal thoughts?', 'Would chest pain be a reason to stop the medication?', 'Is blurry vision something people report on semaglutide?', 'tiktok of a guy faking a seizure was not funny'])}. In "how do I know if I'm ...", "tell whether my blood sugar is ..." and the like, the "I'm" or "my ..." (with or without "is") belongs to the question and does not say the person has it: ${quiet(['how do i know if my blood sugar is low', 'how I know if my sugar low?', 'what number is low blood sugar?', 'who to call if allergic reaction?', 'can mounjaro make vision blurry?'])}. For every rule but the self-harm rule, two more frames count as a question here: a question about doing something, right before it ("can I ...", "could I ...", "should I ...", "is it ok to ...", "is it safe to ..."), and words for keeping a symptom away ("don't want to ...", "don't wanna ...", "so I don't ...", "to avoid ...", "to prevent ...", "would rather not ..."): ${quiet(['can I double my dose?', 'dont wanna overdose so i set an alarm', 'I would rather not end up in the hospital with gallstones.'])}; they count again with a word for now: ${firing(['i dont want to pass out again'])}. It counts again when the sentence says the person has it ("my", except "my medication", "my shot", "my doctor", "my wife" and the like; "I have", "I'm", "I feel", "this pain", "now", "today", "again", "still"), or the next sentence does ("I have it", "mine is", "me too"): ${firing(['what are the signs of low blood sugar? I feel shaky and sweaty', 'can ozempic cause the chest pain I have now', 'does this cause chest pain? i have it now'])}. Other questions are not on the list and count: ${firing(["isn't chest pain serious?", 'Is severe stomach pain going to my back normal?', 'what should I do about this chest pain'])}. A statement is not a question and counts: ${firing(['the shot did cause severe stomach pain', 'showing symptoms of low blood sugar'])}.`,
+      `**A warning, a thing to watch for, a question for the doctor, a fear.** The words before the symptom say someone warned about it, or the person will watch for it, ask about it or is afraid of it: "the leaflet says ...", "the label lists ...", "the nurse said to call if ...", "told me to watch for ...", "warned me about ...", "boxed warning", "the doctor mentioned ...", "watch out for ...", "keep an eye out for ...", "be aware of ...", "ask my doctor about ...", "ask if ...", "talk to my doctor about ...", "worried about ...", "afraid of ...", "scared I'll ...", "nervous that it might ...", "afraid to get ...", "my fear is ...", "according to ...", "the brochure notes ..." (also explains, describes, covers, includes; and article, sheet, flyer), "the part about ...", "a section in the booklet about ...", "ask at my next appointment ...". Stays quiet: ${quiet(['the leaflet says to call if you have severe stomach pain', 'my doctor told me to watch for vision changes', 'pharmacist warned me about pancreatitis', 'ask my doctor about chest pain', 'worried about getting pancreatitis', 'afraid I might faint', 'According to the pamphlet, signs of low blood sugar include shakiness and sweating.', 'I underlined the part about changes in vision in the instructions.', 'The brochure notes that dizziness can happen when blood sugar is low.', 'Ask at next appointment: whether hoarseness is a side effect worth mentioning.'])}. It counts again when the words from there up to the symptom say the person has it ("my", "this", "I have", "now" and the other words of the paragraph above), or the words after it do (the same, without "my"), when "but" stands between, or when the next sentence says "I have it": ${firing(['ask about my chest pain', 'worried about this rash spreading'])}. "I'll", "I might" and "if I ..." speak of what may come and do not count as saying the person has it. After "watch for", "look out for", "keep an eye out for", "monitor for" or "be aware of", "my" belongs to what may come, and only words for the present count ("now", "today", "this ...", "my ... is"). After the symptom, a plan that starts with "so I" does not count either: ${quiet(['I plan to watch for any yellowing of my skin, as the leaflet says.', 'I am nervous about having a low while driving, so I keep candy in the car.'])}.`,
+      `**Something that has not happened.** The sentence speaks of what might come: "what if ...", "what would I do if ...", "what happens if ...", "what to do if ...", "how would I know ...", a plan ("I'll call the doctor if ...", "going to stop if ..."), "in case of ...", "just in case", "I don't want to end up with ...", "if I ..." or "if my ..." right before the symptom with an instruction after it ("if I pass out call my wife"), or with "I'll", "I will", "I would", "I can" and the like after a comma within about 40 characters ("if my sugar runs low on the cruise, I will treat it"), or a time to come after the symptom ("someday", "some day", "in the future", "down the road", "down the line", "eventually", "later on", "in the long run"). Stays quiet: ${quiet(['what if my throat swells up', 'in case of an allergic reaction', "I'll call the doctor if my vision changes", 'if I pass out call my wife', 'Should I be concerned about a lump in my neck someday?', 'If my sugar runs low on the cruise, I will treat it with juice.'])}. "My" and "I" belong to such sentences and do not count; only words for the present do ("now", "today", "again", "still", "already", "anymore", "I'm having", "this chest pain", "my ... is"), or "but" in between, or a next sentence that says "I have it": ${firing(['what if this chest pain is my heart'])}.${notForReminders}`,
       `**The size of a pill.** Trouble swallowing does not count when it is said of a pill, tablet, capsule, vitamin, supplement, "meds", medication or medicine: the pill follows "swallow" (up to four small words may stand between: "this big pill"), or stands before it with "is", "are", "was", "were", "seems", "feels", "looks", "gets" or "got". Stays quiet: ${quiet(['hard to swallow this big pill', 'these pills are hard to swallow'])}. Still counts, also when food or drink is named too, or when the sentence (or the 60 characters after it) says swallowing has changed ("lately", "recently", "now", "still", "stuck", "anymore", "any more", "these days", "getting harder", "harder and harder", "since starting", "since I started", "since last", "never used to"): ${firing(['trouble swallowing food', 'since starting my medication I have trouble swallowing', 'hard to swallow pills and food', 'hard to swallow pills lately, feels like something stuck'])}.`,
-      `**A figure of speech.** The words after the symptom name joy or a shock that is not a symptom ("with excitement", "with joy", "from laughing", "when I saw the price", "when I got the bill", "at the price", "I'm so excited", "in these jeans", "after the spinning ride", "on the roller coaster", "from the carousel", "from spinning"), or the words before it do ("laughing so hard", "crying so hard", "that movie had my ..."). Stays quiet: ${quiet(['heart racing with excitement', 'almost fainted when I saw the price', "can't breathe in these jeans", "laughing so hard I couldn't breathe", 'that movie had my heart pounding', 'dizzy after the spinning ride at the fair'])}.`,
-      `**Out of breath, or a pounding heart, from hard exercise.** A sign about breathing or the heart (a word with "breath", "wheez", "gasp", "winded", "heart" or "pulse", and no "pain", "hurt" or "ache") does not count when a run, a jog, a workout, the gym, cardio, a sprint, HIIT, a spin class, the treadmill, a Peloton, a hike, leg day, lifting, CrossFit, Zumba, burpees, a "5k" or "10k", a marathon or half marathon, a race, a swim, a bike ride, cycling, spin, soccer, basketball, tennis, football, hockey, practice, a training session, a dance class, boxing, kickboxing or rowing follows it as the cause ("after", "from", "during", "while" or "on"). Climbing stairs and walking are not on the list. Stays quiet: ${quiet(['out of breath after my run', 'heart pounding after my workout', 'out of breath after my 5k, felt great'])}. Counts: ${firing(['short of breath after climbing stairs', 'chest pain after my run'])}.`,
+      `**A figure of speech.** The words after the symptom name joy or a shock that is not a symptom ("with excitement", "with joy", "from laughing", "when I saw the price", "when I see price of ...", "when I got the bill", "at the price", "I'm so excited", "in these jeans", "after the spinning ride", "on the roller coaster", "from the carousel", "from spinning"), or something beautiful ("after that view", "at the sunset", "after the kiss", "over the news", "at the proposal" and the like), or the words before it do ("laughing so hard", "crying so hard", "that movie had my ..."), or a thing that is hard to take does ("the price is", "the news was", "the truth is" and the like, right before it: "the price is hard to swallow"), or a title or a fake does: "listening to", "playing", "singing", "streaming", "watching" or "binging" right before it, or "faking", "pretending to have"; or a movie, a show, a view, a sunset, a kiss, a song, a performance and the like, or "she", "he" or "you", plus "left me" (also "leaves me", "has left me", "had left me") right before it ("that movie left me breathless"). For a breathing word, a heart attack, a seizure or a stroke, laughing anywhere in the sentence ("lol", "lmao", "haha", a laughing emoji) makes it a figure of speech too; so does a thing, not a person, an animal or a body part, as the one having it ("my bank account is having a seizure"), and "nearly" or "almost" before it with an event after it ("nearly had a stroke when I bid"). Stays quiet: ${quiet(['heart racing with excitement', 'almost fainted when I saw the price', "can't breathe in these jeans", "laughing so hard I couldn't breathe", 'that movie had my heart pounding', 'dizzy after the spinning ride at the fair', 'i was breathless after that view', 'listening to Heart Attack by demi lovato', 'lmao i literally cant breathe this video', 'my bank account is having a seizure', 'My bridge partner nearly had a stroke when I bid seven no trump.', 'I almost faint when I see price of wegovy', 'the price is hard to swallow', 'That movie left me breathless'])}. The self-harm words are not checked for any of this: ${firing(['that test made me want to die lol'])}.`,
+      `**Out of breath, or a pounding heart, from hard exercise.** A sign about breathing or the heart (a word with "breath", "wheez", "gasp", "winded", "heart" or "pulse", and no "pain", "hurt" or "ache") does not count when a run, a jog, a workout, the gym, cardio, a sprint, HIIT, a spin class, the treadmill, a Peloton, a hike, leg day, lifting, CrossFit, Zumba, burpees, a "5k" or "10k", a marathon or half marathon, a race, a swim, a bike ride, cycling, spin, soccer, basketball, tennis, football, hockey, practice, a training session, a dance class, boxing, kickboxing, rowing, deadlifts, squats, weights, weightlifting or boot camp follows it as the cause ("after", "from", "during", "while" or "on"; up to three words may stand between the sign and that word, and "heavy" or "big" before the exercise). The same when such exercise, a hill, a hike, chasing, dancing, swimming or biking stands within about 40 characters before the sign in its sentence, or "until I was" stands right before it. Climbing stairs and walking are not on the list. Shaking and sweating after exercise still count, as they can be low blood sugar. Stays quiet: ${quiet(['out of breath after my run', 'heart pounding after my workout', 'out of breath after my 5k, felt great', 'that hill is a killer i was gasping', 'I chased my grandson around the yard until I was out of breath and we both fell on the grass laughing.'])}. Counts: ${firing(['short of breath after climbing stairs', 'chest pain after my run', 'sweaty n shaky after heavy deadlifts'])}.`,
       `**Slight.** Three signs stay quiet when the person calls them slight (the **slight word** list): dizziness, a racing heart and hoarseness. Being short of breath or out of breath stays quiet after "less", "not as", "not so" or "no longer". Stays quiet: ${quiet(['a little dizzy', 'heart racing a bit', 'a little hoarse', 'less short of breath than yesterday'])}. Counts: ${firing(['dizzy', 'my heart is racing', 'my voice is hoarse'])}. "A little more dizzy" says it is getting worse, and counts: ${firing(['a little more dizzy'])}.`,
-      `**Over now.** Within about 30 characters after the symptom, in the same sentence, words say it has passed: "passed" (not "passed out"), "went away", "gone away", "is gone", "gone now", "resolved", "cleared up", "stopped" (not "stopped eating" and the like), "eased", "eased off", "subsided", "settled", "wore off", "got better", "is better", "faded", "disappeared", "is over", "over now", "went back to normal", "came back up", "back to normal", "back in range", "then fine", "now I feel better" and the like. These words do not count after a negation ("hasn't stopped", "never went away"), or when the rest of the sentence says it is back ("came back", "again", "returned", "worse", "still"). Stays quiet: ${quiet(['dizziness passed', 'blurry vision went away after I rested', 'the vomiting stopped after a day'])}. Counts: ${firing(["the vomiting hasn't stopped", 'the dizziness went away then came back'])}. The rules for chest pain or fainting, for a serious allergic reaction and for taking too much do not look for these words: such a sign is raised even when it has passed. Counts: ${firing(['chest pain earlier but it went away', 'I fainted but it passed quickly'])}.`,
+      `**Over now.** Within about 60 characters after the symptom, in the same sentence, words say it has passed: "passed" (not "passed out"), "went away", "gone away", "is gone", "gone now", "resolved", "cleared up", "stopped" (not "stopped eating" and the like), "eased", "eased off", "subsided", "settled", "wore off", "got better", "is better", "faded", "disappeared", "is over", "over now", "went back to normal", "came back up", "back to normal", "back in range", "then fine", "now I feel better", "but better" (also fine, ok, good, normal), "better now", "fine now", "clear up" (also "clears up", "clearing up"), "the cold is over" (also flu, virus, infection or bug; "finished", "finish", "gone", "done"), "calmed" or "calmed down", "cleared", "has been fine" (also ok, good, normal, better; not before "until", "till" or "but"), "turned out to be", "was just a ..." (also "an", "from", "my", "the"), "things are moving again" and the like. These words do not count after a negation ("hasn't stopped", "never went away"), or when the rest of the sentence says it is back ("came back", "again", "returned", "worse", "still"). Stays quiet: ${quiet(['dizziness passed', 'blurry vision went away after I rested', 'the vomiting stopped after a day', 'blurry vision cleared once i put my glasses on', 'lump on my neck was just a swollen node from a cold, gone now', 'I was constipated for a few days but things are moving again.', 'dizzy before but better now after eat', 'my eye blur clear up', 'hoarse voice better after cold finish'])}. Counts: ${firing(["the vomiting hasn't stopped", 'the dizziness went away then came back'])}. The rules for chest pain or fainting, for a serious allergic reaction and for taking too much do not look for these words: such a sign is raised even when it has passed. Counts: ${firing(['chest pain earlier but it went away', 'I fainted but it passed quickly'])}. The exceptions are the patterns marked ${OVER_MARK} in 2.4: a racing heart, palpitations, and being short of breath or out of breath stop counting when they are over: ${quiet(['heart racing calmed down after 1 min', 'The palpitations I had on Tuesday turned out to be from too much coffee and have stopped.', 'I was short of breath after my brisk walk, as expected, and it settled within a minute.'])}.`,
     ]),
   );
   return out;
@@ -2102,6 +2402,8 @@ interface GuideCounts {
 
 /** Item code of each guide item as section 2.6 prints it, by guide key and item id. Section 2.7 points back with it. */
 const guideItemCode = new Map<string, string>();
+/** Code of each guide as section 2.6 prints it, by guide key. The short packet uses the same codes. */
+const guideCode = new Map<string, string>();
 
 function guideSections(counts: GuideCounts): string[] {
   const out: string[] = [];
@@ -2135,7 +2437,9 @@ function guideSections(counts: GuideCounts): string[] {
     '',
   );
   for (const g of MED_GUIDE_LIST) {
-    out.push(`#### ${code('G')} · Medication Guide for ${brandsOf(g)}`, '');
+    const guide = code('G');
+    guideCode.set(g.key, guide);
+    out.push(`#### ${guide} · Medication Guide for ${brandsOf(g)}`, '');
     out.push(
       ...list([
         `**Title:** ${q(g.title)}`,
@@ -2495,6 +2799,9 @@ function provenanceCell(fact: LabelFact | undefined, matches: boolean, fallback:
   return parts.join(' ');
 }
 
+/** Code of each row of section 4, by "brand|what". The short packet uses the same codes. */
+const medRowCode = new Map<string, string>();
+
 const sameSteps = (a: unknown, b: number[]): boolean => Array.isArray(a) && a.length === b.length && a.every((x, i) => x === b[i]);
 
 function medicationSection(counts: MedicationCounts): string[] {
@@ -2570,7 +2877,9 @@ function medicationSection(counts: MedicationCounts): string[] {
     if (label) out.push(`Label read: ${md(label.title)}, version ${label.version}, effective ${isoDay(label.effective)}.`, '');
     const rows: string[][] = [];
     const row = (what: string, value: string, status: string, numbers = 0, fromLabel = false) => {
-      rows.push([code('M'), what, value, status, '', '']);
+      const rowCode = code('M');
+      medRowCode.set(`${brand}|${what}`, rowCode);
+      rows.push([rowCode, what, value, status, '', '']);
       counts.numbers += numbers;
       if (fromLabel) counts.fromLabel += numbers;
     };
@@ -3186,7 +3495,9 @@ function openQuestionsSection(internals: TriageInternals): string[] {
   const marks = NOT_FROM_A_GUIDE.filter((n) => showsLaunchCard(n.rule));
   if (marks.length) extra.push(`These rules, or parts of rules, raise an alert although no Medication Guide names the sign (2.8): ${marks.map((n) => `${ruleRef(n.rule)}: ${md(n.part)}`).join('; ')}. Is each of them right to keep? Is a sign of this kind missing?`);
   extra.push(
-    `For low blood sugar the guides list signs but, for most medications, give no instruction to call anyone. The rule ${ruleRef('hypoglycemia')} fires on the words "low blood sugar" and on two signs together; hunger, headache, weakness and anxiety or mood changes count only next to another sign (2.4). Is two the right number? Should any single sign raise the alert on its own, for example slurred speech or confusion? Should a blood sugar reading raise it, and below what number ("my blood sugar was 60" stays quiet today)?`,
+    `For low blood sugar the guides list signs but, for most medications, give no instruction to call anyone. The rule ${ruleRef('hypoglycemia')} fires on the words "low blood sugar" and on two signs together; hunger, headache, weakness and anxiety or mood changes count only next to another sign (2.4). Is two the right number? Should any single sign raise the alert on its own, for example slurred speech or confusion? ${
+      fires('my blood sugar was 60', 'hypoglycemia') ? 'A reading under 70 raises it ("my blood sugar was 60"). Is 70 the right line?' : 'Should a blood sugar reading raise it, and below what number ("my blood sugar was 60" stays quiet today)?'
+    }`,
   );
   extra.push(
     'Where a guide names a sign without saying how bad it must be, the rules fire on the plain word: any fever, any hoarseness, any dizziness, a racing heart, any change in vision (2.4). Dizziness, a racing heart and hoarseness stay quiet only when the person calls them slight. Is that too wide, or right for a reminder that is meant to come once too often?',
@@ -3200,9 +3511,8 @@ function openQuestionsSection(internals: TriageInternals): string[] {
   extra.push(
     'A match does not count when the text is about someone else, about a time long past, or a general question (2.3). So "my son can\'t breathe" and "what are the signs of low blood sugar?" raise nothing. Is that acceptable? The lists in section 2.5 show where the line sits.',
   );
-  extra.push(
-    'The guides tell the patient to call the healthcare provider or the Poison Help line, or to go to an emergency room, right away after taking too much, and to call after missing doses for some time (2.7). The app has no rule for either, and typed words such as "I took a double dose" raise nothing. Should they raise the alert? The fixed card does not name the Poison Help line.',
-  );
+  expectOutcome('I missed two doses', null, 'Section 7.2 (missed doses)');
+  extra.push('Some guides tell the patient to call the healthcare provider after missing doses for some time (2.7). The app has no rule for missed doses, and typed words such as "I missed two doses" raise nothing. Should they raise the alert?');
   const tablets = MED_GUIDE_LIST.find((g) => guideItems(g).some((i) => /andOZEMPIC/.test(i.text)));
   if (tablets) extra.push(`The label file of the guide for ${brandsOf(tablets)} has a space missing in one sentence the app shows ("RYBELSUS andOZEMPIC tablets"), and the app shows it as the file has it. Should the app keep it so, or is there a cleaner official text to copy from?`);
   const breath = triageText('short of breath', US_CONTEXT)[0];
@@ -3276,7 +3586,7 @@ function openQuestionsSection(internals: TriageInternals): string[] {
     } A person whose medication has another brand name, or none, is shown the name of the US brand of the same medication. Is that clear enough?`,
   );
   extra.push(
-    `The rule for taking too much ${ruleRef('overdose')} raises the fixed card ("Contact your doctor right away", with the call button) when a person writes that they took too much, took a dose twice, or took an extra dose (its patterns are in 2.4). The guides say to call the healthcare provider or the Poison Help line, or to go to the nearest emergency room, right away (2.7). Is the fixed card enough here, or should this alert name the Poison Help line (1-800-222-1222 in the United States) or the emergency room? Should "can I double my dose?", which the rule also raises, stay quiet?`,
+    `The rule for taking too much ${ruleRef('overdose')} raises the fixed card ("Contact your doctor right away", with the call button) when a person writes that they took too much, took a dose twice, or took an extra dose (its patterns are in 2.4). The guides say to call the healthcare provider or the Poison Help line, or to go to the nearest emergency room, right away (2.7). Is the fixed card enough here, or should this alert name the Poison Help line (1-800-222-1222 in the United States) or the emergency room?${fires('can I double my dose?', 'overdose') ? ' Should "can I double my dose?", which the rule also raises, stay quiet?' : ''}`,
   );
   for (const quietOne of QUIET_ON_PURPOSE) {
     extra.push(`${quietOne.what} raises nothing today: ${quietOne.examples.map(q).join(', ')}. ${quietOne.reason.replace(/; the reviewer is asked whether it should\.$/, '.')} Should such words raise a card, for example a gentler one with the crisis line, or a note to talk to the doctor?`);
@@ -3319,7 +3629,7 @@ function introSection(): string[] {
       'numbers and cut-offs that you would not defend.',
     ]),
   );
-  out.push('If time is short, please start with sections 4, 2 and 5. They cover what a US user sees in the first public version.', '');
+  out.push('If time is short, please start with sections 4, 2 and 5. They cover what a US user sees in the first public version. A short packet built from the same code, clinical-review-core.md, holds only those parts.', '');
   out.push('### How to mark up this document', '');
   out.push(
     ...list([
@@ -3351,6 +3661,551 @@ const wordCount = (lines: string[]): number =>
     .replace(/[|>#*`]|-{3,}/g, ' ')
     .split(/\s+/)
     .filter(Boolean).length;
+
+// ── The short packet: what the first public version shows or does ────────────
+// The short packet (clinical-review-core.md) is built from the same code as the full packet,
+// after it, so it reuses the item codes the full packet gives (R-, M-, G-, I-). It holds only
+// what the first public version shows or does. Everything switched off there stays in the full
+// packet. Every example phrase is run through the rules when the packet is built.
+
+/** The short packet must stay short enough for a fixed-fee review. Over this, the build stops. */
+const CORE_MAX_WORDS = 10_000;
+
+/**
+ * The latest run of the rules on phrases written by people who had not seen the rules: how many
+ * phrases should raise the alert, how many of those were missed, how many should raise nothing,
+ * and how many of those raised it anyway. Update it after each such run.
+ */
+const BLIND_RUN = { mustTotal: 162, mustMissed: 14, negTotal: 274, falseAlarms: 24 };
+
+/** Short plain names of the rules, for the short packet. */
+const RULE_NAMES: Record<TriageId, string> = {
+  crisis: 'Thoughts of suicide or self-harm',
+  pancreatitis: 'Severe stomach pain, or stomach pain that goes to the back',
+  chest_or_faint: 'Chest pain, fainting, a racing heart, and general emergency signs',
+  anaphylaxis: 'Swelling, trouble breathing, a severe rash: signs of a serious allergic reaction',
+  vision: 'Changes in vision',
+  hypoglycemia: 'Low blood sugar',
+  dehydration: 'Vomiting, diarrhea or nausea that does not go away, and signs of dehydration',
+  gallbladder: 'Signs of gallbladder problems',
+  thyroid: 'A lump or swelling in the neck, hoarseness, trouble swallowing',
+  pregnancy: 'Pregnancy and breastfeeding',
+  procedure: 'A surgery or procedure ahead',
+  contraception: 'Birth control pills',
+  eating_too_little: 'Eating very little for days',
+  abdominal_pain_severe: 'Stomach problems that are severe or do not go away, and bleeding',
+  overdose: 'Taking too much',
+};
+
+const coreRuleRef = (id: TriageId): string => `${ruleCode.get(id) ?? '?'} (${RULE_NAMES[id].charAt(0).toLowerCase()}${RULE_NAMES[id].slice(1)})`;
+
+interface CoreRule {
+  /**
+   * The fingerprint of the gloss this summary was written from (TRIGGERS, CRISIS_GLOSS,
+   * SIGN_GLOSS). When the patterns change, that gloss gets a new fingerprint and the build stops
+   * here until this summary has been re-read too.
+   */
+  fp: string;
+  says: string;
+  /** Five phrases that raise the alert through this rule. */
+  raise: string[];
+  /** Three phrases close to it that raise nothing at all. */
+  quiet: string[];
+}
+
+/** One short paragraph per rule that shows an alert in the first public version. */
+const CORE_RULES: Partial<Record<TriageId, CoreRule>> = {
+  crisis: {
+    fp: '9c76f86c',
+    says: 'Words about ending one\'s own life or harming oneself: "suicide", "kill myself", "want to die", "don\'t want to be alive", "don\'t want to wake up", "nobody would miss me", "end it all", a plan or a way of dying, hurting oneself on purpose, writing goodbye notes. A "no" or "not" in front does not stop it ("I do not want to die" raises it), and neither does a time long past or a "lol". It stays quiet when the words are about someone else or a general question, and for set phrases such as "suicide prevention" or "die of laughter". This rule shows its own card (part 4), not the fixed card.',
+    raise: ['I want to die', 'thinking about ending my life', "I don't want to be alive anymore", 'nobody would miss me if I was gone', 'everyone would be better off if I were gone'],
+    quiet: ['I want to diet before summer', 'that movie made me want to die of laughter', 'suicide prevention walk this weekend'],
+  },
+  pancreatitis: {
+    fp: 'b376267a',
+    says: 'Stomach pain that the person calls severe (severe, terrible, the worst, 8 out of 10 or more, doubled over, cannot stand up), and stomach pain that goes through or spreads to the back, whether or not it is called severe. Also the word "pancreatitis".',
+    raise: ['severe stomach pain', 'stomach pain that goes through to my back', 'worst belly pain of my life', 'abd pain 10/10 since last nite', 'doubled over with stomach pain'],
+    quiet: ['mild stomach ache after lunch', 'my dad has severe stomach pain', 'no stomach pain today'],
+  },
+  chest_or_faint: {
+    fp: '2f041ab4',
+    says: 'Chest pain, pressure or tightness; passing out, fainting or losing consciousness; a racing or pounding heart, unless it is called slight or follows hard exercise. Also general emergency signs that no guide names: a heart attack or stroke by name, a drooping face, one side numb or weak, slurred speech, a seizure, a collapse, the worst headache of one\'s life, a resting pulse of 120 or more or any pulse of 140 or more (not during exercise), a blood pressure of 180/120 or more, and saying one needs an ambulance or is in the emergency room now.',
+    raise: ['chest pain', 'I passed out at work', 'my heart is racing', 'my face is drooping on one side', 'pressure in my chest'],
+    quiet: ['my mom had chest pain last year', 'no chest pain', 'heart pounding after the treadmill'],
+  },
+  anaphylaxis: {
+    fp: 'ed8d9fd1',
+    says: 'Swelling of the face, lips, tongue, throat or eyelids; a throat that is closing or tight; trouble breathing, short of breath, wheezing or gasping (not after hard exercise, and not when the person says it is less than before); a rash, hives or itching that is severe, all over the body or spreading; the words "allergic reaction" or "anaphylaxis". A rash at the injection site stays quiet.',
+    raise: ['my lips are swelling', 'my throat feels like it is closing', 'short of breath', 'hives all over my body', "I can't breathe"],
+    quiet: ['less short of breath than yesterday', 'small rash at the injection site', 'out of breath after my run'],
+  },
+  vision: {
+    fp: '0f34dc72',
+    says: 'Any change in vision: blurry, hazy, double or foggy vision; seeing spots, floaters or flashes; vision that goes dark, goes in and out, gets worse or changes suddenly; losing part of one\'s sight; one eye that cannot see. The guides name "changes in vision" without saying how bad, so the plain words are enough.',
+    raise: ['my vision is blurry', "suddenly can't see out of my left eye", 'seeing double', 'lost part of my vision', 'my eyesight got worse this week'],
+    quiet: ['I need new glasses for reading', 'blurry photo of my lunch', 'my vision is fine'],
+  },
+  hypoglycemia: {
+    fp: 'bb0e0a6b/ee34539c/1c3ed2e0',
+    says: 'The words "low blood sugar", "hypoglycemia", "my sugar crashed" and the like; a reading under 70; glucagon given. Also two or more signs of low blood sugar from the guides\' list in one text: shaky, sweaty, a fast heartbeat, confused or drowsy, dizzy, blurred vision, slurred speech. Weakness, headache, hunger and anxiety or mood changes count only next to one of those, because many people on these medications have them on an ordinary day. One sign alone is not enough here (dizziness, blurred vision, slurred speech and a fast heartbeat raise the alert alone through other rules).',
+    raise: ['low blood sugar', 'my sugar is 55', 'shaky and sweaty', 'my blood sugar crashed', 'confused and shaky'],
+    quiet: ["I'm hungry", 'headache and hungry', 'what are the signs of low blood sugar?'],
+  },
+  dehydration: {
+    fp: 'e3258e0a',
+    says: 'Vomiting or diarrhea that does not stop, goes on all day or for days, or comes five times or more; nothing stays down, not even water; nausea that does not go away or lasts more than a day; passing very little or no urine, or dark brown urine; kidney pain; dizziness on standing up; feeling very dehydrated. Throwing up once, or nausea for one day, stays quiet.',
+    raise: ["vomiting won't stop", 'diarrhea for 5 days straight', "can't keep anything down", "haven't peed all day", 'nausea not going away whole week'],
+    quiet: ['threw up once this morning', 'nauseous all day', 'a little nausea after my shot'],
+  },
+  gallbladder: {
+    fp: '0d87be8f',
+    says: 'Yellow skin or eyes (jaundice); pain in the upper right stomach or under the right ribs; pain in the upper stomach; any fever the person reports as their own, also without pain; pale or clay-colored stools; gallstones or a gallbladder attack. Set phrases such as "hay fever" stay quiet.',
+    raise: ['my eyes look yellow', 'pain under my right ribs', 'I have a fever', 'clay colored stool', 'pain in my upper right stomach'],
+    quiet: ['hay fever is bad this week', 'bought a yellow shirt', 'my son has a fever'],
+  },
+  thyroid: {
+    fp: '20d5e1c2',
+    says: 'A lump, bump or swelling in the neck or under the jaw; hoarseness or a raspy voice, unless it is called slight; trouble swallowing, food getting stuck, or swallowing that hurts. Trouble swallowing a pill because of its size stays quiet.',
+    raise: ['a lump in my neck', 'my voice is hoarse', 'trouble swallowing', 'food keeps getting stuck when I swallow', 'my neck is swollen'],
+    quiet: ['a little hoarse from cheering', 'hard to swallow this big pill', 'my sister has a lump in her neck'],
+  },
+  abdominal_pain_severe: {
+    fp: '4e25a43d',
+    says: 'Stomach pain that does not go away or is constant; stomach problems the person calls severe: constipation, bloating, heartburn or reflux; no bowel movement for four days or more, or not being able to pass gas; a bowel blockage by name; blood in vomit or stool, or black and tarry stool (no guide names bleeding; it is kept as a general emergency sign).',
+    raise: ["stomach pain won't go away", 'severe constipation', 'throwing up blood', 'black tarry stool', 'constant stomach pain'],
+    quiet: ['a bit constipated', 'mild heartburn after pizza', 'stomach growling before dinner'],
+  },
+  overdose: {
+    fp: 'e00c4392',
+    says: 'Writing that one took too much: a double dose, a dose twice, an extra dose, two doses close together (two pills today, yesterday\'s and today\'s dose, a second one from someone else), the whole pen, more than prescribed, a higher strength by mistake, or the word "overdose". "Again" counts with a mistake word ("forgot", "by accident") or with a second time: "this morning and again tonight", "again a few hours later", "on Monday and again on Wednesday", "again 2 days after my last shot". It stays quiet for a plain log entry ("took my shot again today" is the weekly routine) and for a denial.',
+    raise: ['I took a double dose', 'injected twice this week by mistake', 'accidentally took 2 pills instead of one', 'took too much of my medicine', 'I took my shot again, forgot I already did it'],
+    quiet: ['took my shot, 5 mg, left thigh', "I didn't take a double dose, I checked the log", 'what should I do if I miss a dose?'],
+  },
+};
+
+/** What the short packet says about the rules that match text but show nothing in the first public version. */
+const CORE_SILENT: Partial<Record<TriageId, string>> = {
+  pregnancy: 'being pregnant, trying to get pregnant, breastfeeding',
+  procedure: 'a surgery, anesthesia, sedation, an endoscopy or a colonoscopy',
+  contraception: 'birth control pills (only for tirzepatide)',
+  eating_too_little: 'not being able to eat for days',
+};
+
+/** The guides' instruction levels in short words, for the short packet. */
+const CORE_ACTION: Record<GuideAction, string> = {
+  emergency: 'get medical help right away',
+  right_away: 'call or tell the healthcare provider right away',
+  tell: 'tell the healthcare provider, without "right away"',
+  none: 'no instruction to contact anyone',
+};
+
+interface CoreCounts {
+  words: number;
+  pages: number;
+  pagesAsWord: number;
+  questions: number;
+  examples: number;
+}
+
+function coreFrontMatter(): string[] {
+  return [
+    '## About this packet',
+    '',
+    '[APP NAME] is a phone app for adults in the United States who take a GLP-1 medication their own doctor prescribed. People log doses, weight and how they feel. The app gives no dosing advice and does not diagnose. It is not a medical device. [COMPANY LEGAL NAME] is a small company with no tie to any drug maker.',
+    '',
+    'This short packet holds only what the first public version shows or does: (1) the medication numbers, with the label words behind each; (2) the chart "Estimated medication level"; (3) the warning signs, copied word for word from the FDA Medication Guides; (4) the alert cards; (5) what raises an alert; (6) the limits we know of; (7) open questions.',
+    '',
+    'Everything that is switched off in the first public version is left out: coping cards, the cards written for each rule, daily advice, workouts, food and protein, the Chinese text, and the pattern-by-pattern detail of the rules. The full packet (clinical-review-packet.md) has all of it, built from the same code, as optional background.',
+    '',
+    '**How to mark it up.** Each item has a code (M-05, G-02, I-04, R-03), the same as in the full packet; the questions are numbered Q1, Q2 and so on. Mark an item **OK**, **Change** (with the words or number you would use, and the label section for a label fact), **Remove** or **Cannot say**, and say how serious it is: **must fix before launch**, **should fix**, or **suggestion**. A list by code is enough.',
+    '',
+    '**No endorsement.** Your review is private advice to [COMPANY LEGAL NAME]. We will not use your name or say that a clinician checked the app. What the app shows stays our decision and our responsibility.',
+    '',
+  ];
+}
+
+function coreMedicationPart(): string[] {
+  const out: string[] = [];
+  const brands = usBrands();
+  out.push('## Part 1. Medication numbers', '');
+  out.push(
+    `At setup a US user picks one of ${plural(brands.length, 'brand')}, or "Other / custom". The app uses four kinds of number from the label, and only these:`,
+    '',
+  );
+  out.push(
+    ...list([
+      `**Dose steps.** Only the first step is used: it is the grey example in the box where the person types the dose they were prescribed (${q(screenText('onb.dose.example', { dose: '[first step]' }))}). The app never suggests a dose or a step.`,
+      `**Highest dose.** A typing check only. When a person types a dose in mg above it, the app asks once, then lets them go on: ${q(screenText('dose.overMax.form', { amount: '[amount]', unit: 'mg', max: '[highest dose]', name: '[US brand]' }))}`,
+      `**Half-life and time to peak.** Used only for the chart (part 2), and kept only for weekly shots. Our rule: ${PK_RULE.charAt(0).toLowerCase()}${PK_RULE.slice(1)}`,
+      `**Wait after a pill.** On the sheet where a pill is logged: ${q(screenText('dose.fasting', { minutes: '[minutes]' }))} The main screen then counts the minutes down.`,
+    ]),
+  );
+  out.push(
+    `We read every number below from the current FDA label on DailyMed on ${LABELS_READ_ON}. Nobody outside our team has confirmed them. ${LAUNCH.curveNeedsSource ? 'The first public version uses a number only when its label words are in this table; a medication without them can only be logged. ' : ''}Words are copied as they stand; " \\| " marks a cell border in a label table. The brand name, the generic name and the way each medication is taken are from our code and were not checked against the label.`,
+    '',
+  );
+  for (const b of brands) {
+    const { brand, entry, numbers: n } = b;
+    const label = labelOf(b);
+    const how = `${entry.route === 'oral' ? 'pill' : 'shot'}, ${entry.frequency === 'daily' ? 'once a day' : 'once a week'}`;
+    out.push(`### ${brand} (${entry.ingredient ?? entry.generic.en}), ${how}`, '');
+    if (label) out.push(`FDA label version ${label.version}, effective ${isoDay(label.effective)}: ${label.url}`, '');
+    const rows: string[][] = [];
+    const add = (what: string, fullWhat: string, value: string, field: LabelField) => {
+      const fact = labelFact(entry.id, brand, field);
+      const codeOf = medRowCode.get(`${brand}|${fullWhat}`);
+      if (!codeOf) problems.push(`Short packet: no code for the row "${fullWhat}" of ${brand} in the full packet.`);
+      if (!fact) {
+        problems.push(`Short packet: ${brand} uses "${what}" but it has no label words.`);
+        return;
+      }
+      const parts = [fact.quotes.map((x) => `${q(x.text)} (${x.section})`).join('; ')];
+      if (fact.stated) parts.push(`The label states ${statedWords(fact.stated)}; the app uses ${hoursWords(hoursFromLabel(fact.stated))}.`);
+      else if (fact.rule && field === 'maxMg') parts.push(md(fact.rule));
+      if (fact.note) parts.push(`Note: ${md(fact.note)}`);
+      rows.push([codeOf ?? '?', what, value, parts.join(' '), '']);
+    };
+    if (labelFact(entry.id, brand, 'frequency')) add('How often', 'How often', entry.frequency === 'daily' ? 'Once a day' : 'Once a week', 'frequency');
+    if (n.ladderMg.length) add('Dose steps (mg)', 'Dose steps (mg)', n.ladderMg.join(', '), 'ladderMg');
+    if (n.maxMg !== null) add('Highest dose (mg)', 'Highest dose for the typing check (mg)', String(n.maxMg), 'maxMg');
+    if (n.pk) {
+      add('Half-life', 'Half-life used for the chart', hoursWords(n.pk.halfLifeH), 'halfLifeH');
+      add('Time to peak', 'Time to peak used for the chart', hoursWords(n.pk.tmaxH), 'tmaxH');
+    }
+    if (entry.route === 'oral') {
+      const fact = labelFact(entry.id, brand, 'fastingMin');
+      if (n.fastingMin) add('Wait after the pill (minutes)', 'Wait after the pill (minutes)', String(n.fastingMin), 'fastingMin');
+      else if (fact) rows.push([medRowCode.get(`${brand}|Wait after the pill (minutes)`) ?? '?', 'Wait after the pill', 'None shown', fact.quotes.map((x) => `${q(x.text)} (${x.section})`).join('; '), '']);
+    }
+    out.push(...table(['Code', 'Number', 'In the app', 'Label words (section)', 'Your correction'], rows, [1, 3, 3, 12, 3]));
+    if (!labelFactsShown(entry, LAUNCH)) out.push('Not used in the first public version: not every number has its label words.', '');
+  }
+  if (brandOptions('US').some((o) => o.entry.id === 'custom')) out.push('**Other / custom.** The person types the name. The app has no numbers for it: no typing check, no chart.', '');
+  return out;
+}
+
+function coreChartPart(): string[] {
+  const out: string[] = [];
+  const shown = usBrands().filter((b) => b.numbers.pk !== null && curveAvailable(b.entry, LAUNCH, b.brand));
+  out.push('## Part 2. The chart "Estimated medication level"', '');
+  out.push(
+    `The chart is drawn only for ${shown.map((b) => b.brand).join(', ')}: weekly shots whose two numbers were read from the label. Medications taken every day get no chart; in its place the app says ${q(screenText('curve.unavailable'))}`,
+    '',
+  );
+  out.push(
+    ...list([
+      'One compartment, first-order absorption and elimination (the Bateman function). ke = ln 2 / half-life; ka is solved so that one dose peaks exactly at the time to peak.',
+      'Every logged dose in mg is added up. Doses in other units are left out and never converted.',
+      'The number shown is 100 x level / the highest level after long-term use of the dose logged last. It has no unit. So it can drop right after a dose increase, although there is more medication in the body.',
+      'The chart shows the last 14 days and the next 7. The next 7 assume the planned doses are taken; an overdue dose is not counted until it is logged.',
+      'The same two numbers are used for every person on a medication. Weight, kidney function and age change nothing. Nothing else in the app reads the chart.',
+    ]),
+  );
+  const rows = shown.map((b) => {
+    const pk = b.numbers.pk as PkParams;
+    const f = pkFacts(pk, 168);
+    return [b.brand, hoursWords(pk.halfLifeH), hoursWords(pk.tmaxH), round(f.troughIndex), `${round(f.daysUnder[5] ?? 0, 1)} days`];
+  });
+  out.push(...table(['Weekly shot', 'Half-life used', 'Time to peak used', 'Number right before the next dose, long-term (peak = 100)', 'After the last dose, days until the number is under 5'], rows, [3, 3, 3, 4, 4]));
+  out.push('The last two columns come from running the code, not from a label, so you can judge whether the picture is believable.', '');
+  out.push(`Under the chart the app says: ${q(screenText('today.curve.note'))}`, '');
+  return out;
+}
+
+function coreGuidePart(): string[] {
+  const out: string[] = [];
+  const example = MED_GUIDE_LIST[0];
+  const exampleItems = guideItems(example);
+  out.push('## Part 3. The warning signs: the words of the Medication Guides', '');
+  out.push(
+    `The screen ${q(screenText('guide.title'))} opens from the ${q(screenText('tab.me'))} tab and from a button on every alert except the crisis card, when the app has a Medication Guide for the person's medication (not for "Other / custom"). It shows three parts of the FDA Medication Guide of the person's own medication, word for word, in the guide's order: the "most important information", the serious side effects, and the sentence about taking too much. The app adds no word, sets nothing in bold and marks no item as more urgent. Above the list the screen says (our words): ${q(screenText('guide.source', { brand: '[brand]', dated: '[date of the guide]' }))}`,
+    '',
+  );
+  out.push(`**Status:** ${COPIED_FROM_GUIDE}. A script copied the words from the label files on DailyMed and a second script checked them. The guides in use:`, '');
+  out.push(
+    ...table(
+      ['Code', 'Guide for', 'Date line', 'Label version', 'Effective'],
+      MED_GUIDE_LIST.map((g) => [guideCode.get(g.key) ?? '?', brandsOf(g), q(g.revised), g.version, isoDay(g.effective)]),
+      [1, 4, 3, 2, 2],
+    ),
+  );
+  out.push(`### The guide for ${brandsOf(example)}, in full`, '');
+  out.push(`This is what a person on ${brandsOf(example).replace(', ', ' or ')} sees. Each item has its code from the full packet.`, '');
+  const part = (section: GuideSection): string[] => {
+    const lines = [`**${md(section.question)}**`, '', md(section.intro), ''];
+    for (const item of section.items) {
+      lines.push(`- \`${guideItemCode.get(`${example.key}/${item.id}`) ?? '?'}\` ${md(item.text)}`);
+      for (const b of item.bullets) lines.push(`  - ${md(b)}`);
+      if (item.after !== undefined) lines.push('', `  ${md(item.after)}`);
+    }
+    return [...lines, ''];
+  };
+  out.push(...part(example.mostImportant), ...part(example.seriousSideEffects));
+  const overdose = guideOverdose(example);
+  if (overdose) out.push(`**${md(overdose.under)}**`, '', md(overdose.text), '');
+  out.push('### The other guides: where the instruction differs', '');
+  out.push(
+    `The other guides have the same items in nearly the same words, with their own brand names and order. Below, only where an item's instruction differs from the ${brandsOf(example)} guide, or where an item is missing. "Instruction" is our reading of the guide's words, one of: ${GUIDE_ACTIONS.map((a) => `${CORE_ACTION[a]}`).join('; ')}. Every guide in full is in the full packet.`,
+    '',
+  );
+  const exampleActions = exampleItems.filter((i) => i.action !== 'none').map((i) => `${ITEM_NAMES[i.id].toLowerCase()}: ${CORE_ACTION[i.action]}${i.stopUsing ? ', after "Stop using"' : ''}`);
+  out.push(`The ${brandsOf(example)} guide says, item by item: ${md(exampleActions.join('; '))}.`, '');
+  const diffRows: string[][] = [];
+  for (const g of MED_GUIDE_LIST.slice(1)) {
+    const items = guideItems(g);
+    const diffs: string[] = [];
+    for (const ex of exampleItems) {
+      const it = items.find((i) => i.id === ex.id);
+      if (!it) diffs.push(`${ITEM_NAMES[ex.id]}: not in this guide`);
+      else if (it.action !== ex.action || it.stopUsing !== ex.stopUsing) diffs.push(`${ITEM_NAMES[ex.id]}: ${CORE_ACTION[it.action]}${it.stopUsing ? ', after "Stop using"' : ''}`);
+    }
+    for (const it of items) if (!exampleItems.some((ex) => ex.id === it.id)) diffs.push(`${ITEM_NAMES[it.id]}: only in this guide and not in ${brandsOf(example)} (${CORE_ACTION[it.action]})`);
+    const od = guideOverdose(g);
+    if (overdose && od && od.action !== overdose.action) diffs.push(`Taking too much: ${CORE_ACTION[od.action]}`);
+    diffRows.push([guideCode.get(g.key) ?? '?', brandsOf(g), diffs.length ? md(diffs.join('. ')) : 'None']);
+  }
+  out.push(...table(['Code', 'Guide for', `Where the instruction differs from the ${brandsOf(example)} guide`], diffRows, [1, 3, 12]));
+  return out;
+}
+
+function coreCardsPart(): string[] {
+  const out: string[] = [];
+  const fixed = fixedAlertCard('US', 'en');
+  const wrote = fixedAlertCard('US', 'en', true);
+  const crisis = triageCard({ id: 'crisis', level: 'crisis' }, 'US', 'en');
+  const dial = emergencyDial('US');
+  out.push('## Part 4. The alert cards', '');
+  out.push('In the first public version every alert shows one fixed card. It names no cause. Only the self-harm rule keeps its own card.', '');
+  out.push('**The fixed card:**', '');
+  out.push(...quoteBlock([`**${md(fixed.title)}**`, '', md(fixed.body)]));
+  out.push(`When the alert comes from a question typed for the doctor (part 5), nothing was logged, so the card begins ${q(wrote.body.split(' can be')[0])} instead. Buttons: ${q(screenText('guide.open'))} (when the app has a Medication Guide for the person's medication, not for "Other / custom")${dial ? `, ${q(screenText('triage.call', { number: dial }))}` : ''} and ${q(screenText('triage.ack'))}.`, '');
+  out.push('**The crisis card** (self-harm rule only):', '');
+  out.push(...quoteBlock([`**${md(crisis.title)}**`, '', md(crisis.body)]));
+  const crisisCall = crisisCallButton();
+  out.push(`Buttons: ${dial && crisis.showEmergency ? `${q(screenText('triage.call', { number: dial }))}, ` : ''}${crisisCall ? `${q(crisisCall)} (it dials the crisis line) and ` : ''}${q(screenText('triage.ack'))}. It has no button to the Medication Guide.`, '');
+  out.push(`Under every alert: ${q(screenText('triage.note'))}`, '');
+  return out;
+}
+
+function coreRulesPart(counts: CoreCounts): string[] {
+  const out: string[] = [];
+  const launchShows = (text: string, ctx: TriageContext): boolean => alertCards(triageText(text, ctx), 'US', 'en', LAUNCH.triageDetailCards).length > 0;
+  out.push('## Part 5. What raises an alert', '');
+  const typed = typedTextPlaces().filter((p) => p.atLaunch);
+  out.push(
+    `An alert can come from two places. **The symptom buttons:** a person taps a symptom and how bad it is (table below). **Typed text:** ${typed.length ? typed.map((p) => md(p.where.charAt(0).toLowerCase() + p.where.slice(1))).join(' ') : 'none in the first public version.'} The rules are fixed word patterns. No AI is involved. Capital letters, common misspellings and phone shorthand are allowed for. A rule stays quiet when the words say the sign is denied ("no chest pain"), slight, over now, about someone else, long ago, a general question, or a figure of speech.`,
+    '',
+  );
+  const stays = [
+    buttonAlertStays ? 'An alert from a symptom button is saved with the entry and stays as a reminder at the top of the main screen for the rest of the day.' : '',
+    questionAlertLeavesNothing ? 'An alert from the questions box is shown once: nothing is logged, and once closed it is gone.' : '',
+  ].filter(Boolean);
+  if (stays.length) out.push(`**What stays on the screen.** ${stays.join(' ')}`, '');
+
+  // The symptom buttons.
+  const fixed = fixedAlertCard('US', 'en');
+  const rows = quickLogRows();
+  out.push('### The symptom buttons', '');
+  out.push(`The symptoms are: ${SYMPTOM_ORDER.map((k) => symptomLabel(k, 'en')).join(', ')}. How bad: ${[1, 2, 3].map((g) => gradeLabel(g, 'en')).join(', ')}. The screen says: ${q(screenText('symptom.severeNote'))} Only these raise an alert:`, '');
+  out.push(
+    ...table(
+      ['Symptom', 'How bad', 'Who', 'Rule', 'Card'],
+      rows.map((r) => {
+        const card = alertCards([r.hit], 'US', 'en', LAUNCH.triageDetailCards)[0]?.card;
+        return [md(symptomLabel(r.kind, 'en')), r.grades.map((g) => gradeLabel(g, 'en')).join(', '), r.who.replace(/, see 6\.7$/, ''), coreRuleRef(r.hit.id), card ? (card.title === fixed.title ? 'Fixed card' : q(card.title)) : 'None'];
+      }),
+      [3, 2, 5, 6, 2],
+    ),
+  );
+  const silentButtons = Object.keys(BUTTONS_THAT_RAISE_NOTHING).map((k) => symptomLabel(k as SymptomKind, 'en'));
+  out.push(`Every other button raises nothing, also at "${gradeLabel(3, 'en')}": ${silentButtons.join(', ')}.`, '');
+
+  // The rules, one by one.
+  out.push('### The rules, one by one', '');
+  out.push('Each rule below shows an alert in the first public version. For each: what raises it, in plain words; five phrases that raise it; three close ones that raise nothing. The script that built this packet ran every phrase through the rules.', '');
+  const glossFp = (id: TriageId): string => (id === 'crisis' ? CRISIS_GLOSS.fp : id === 'hypoglycemia' ? `${TRIGGERS[id].fp}/${SIGN_GLOSS.fp}/${SIGN_GLOSS.commonFp}` : (TRIGGERS[id]?.fp ?? ''));
+  const ruleIds = [...ruleCode.keys()] as TriageId[];
+  for (const id of ruleIds) {
+    if (!showsLaunchCard(id)) continue;
+    const r = CORE_RULES[id];
+    if (!r) {
+      problems.push(`Rule "${id}" shows an alert in the first public version but has no summary in CORE_RULES (scripts/build-review-packet.ts).`);
+      continue;
+    }
+    if (r.fp !== glossFp(id)) problems.push(`The patterns of rule "${id}" changed since its summary in CORE_RULES was written (gloss fingerprint ${glossFp(id)}, summary written for ${r.fp}). Re-read the rule, correct the summary and its phrases, then update its fp.`);
+    if (r.raise.length !== 5 || r.quiet.length !== 3) problems.push(`CORE_RULES.${id} must have five phrases that raise it and three that do not.`);
+    for (const p of r.raise) {
+      if (!fires(p, id)) problems.push(`Short packet: "${p}" no longer raises rule "${id}" (now: ${outcome(p)}).`);
+      else if (!launchShows(p, US_CONTEXT)) problems.push(`Short packet: "${p}" raises rule "${id}" but shows no alert in the first public version.`);
+    }
+    for (const p of r.quiet) expectOutcome(p, null, `Short packet (CORE_RULES.${id})`);
+    counts.examples += r.raise.length + r.quiet.length;
+    out.push(`#### ${ruleCode.get(id)} · ${RULE_NAMES[id]}`, '');
+    out.push(md(r.says), '');
+    out.push(`Raise it: ${r.raise.map(q).join('; ')}.`, '');
+    out.push(`Raise nothing: ${r.quiet.map(q).join('; ')}.`, '');
+  }
+  const silent = ruleIds.filter((id) => !showsLaunchCard(id));
+  for (const id of silent) if (!CORE_SILENT[id]) problems.push(`Rule "${id}" shows no alert in the first public version but has no line in CORE_SILENT (scripts/build-review-packet.ts).`);
+  if (silent.length) {
+    out.push(
+      `**Rules that show nothing in the first public version.** ${silent.map((id) => `${ruleCode.get(id)} matches words about ${CORE_SILENT[id] ?? '?'}`).join('; ')}. Their own cards are gentle reminders with no call button, and they are switched off until reviewed. The fixed card says "right away" and offers 911, so it is not used for them. Text that matches only these rules is saved and nothing is shown.`,
+      '',
+    );
+  }
+
+  // From the guides to the rules.
+  out.push('### From each item of the guides to a rule', '');
+  out.push('Our reading, item by item: what raises the alert when a person describes the sign as their own, or why nothing does. A sign in "quotation marks" is in the guides\' words. Where the guides differ in instruction, part 3 says how.', '');
+  const itemRows: string[][] = [];
+  for (const row of ITEM_COVERAGE) {
+    const levels = [...new Set(MED_GUIDE_LIST.flatMap((g) => guideItems(g).filter((i) => i.id === row.item).map((i) => i.action)))];
+    const name = md(ITEM_NAMES[row.item]);
+    const said = levels.length === 1 ? sentenceCase(CORE_ACTION[levels[0]]) : `Differs by guide (part 3): ${levels.map((a) => CORE_ACTION[a]).join('; ')}`;
+    if (!row.signs.length) {
+      itemRows.push([name, said, `No sign named. ${md(row.reason ?? '')}${row.reminder ? ` The reminder rule ${coreRuleRef(row.reminder)} matches such words but shows nothing (above).` : ''}`]);
+      continue;
+    }
+    const rulesOf = (sign: (typeof row.signs)[number]) => sign.rules.filter((id) => showsLaunchCard(id)).map((id) => ruleCode.get(id) ?? '?');
+    const signs = row.signs.filter((sign) => sign.alone).map((sign) => {
+      const buttons = (sign.buttons ?? []).map((b) => `the ${symptomLabel(b, 'en')} button`);
+      return `${q(sign.words[0])}: ${[...rulesOf(sign), ...buttons].join(', ')}${sign.note ? `. ${md(sign.note)}` : ''}`;
+    });
+    // Signs that count only next to another sign are named together.
+    const together = row.signs.filter((sign) => !sign.alone);
+    if (together.length) signs.push(`${together.map((sign) => q(sign.words[0])).join(', ')}: only together with another sign of the list (${[...new Set(together.flatMap(rulesOf))].join(', ')})`);
+    itemRows.push([name, said, signs.join(' · ')]);
+  }
+  const od = OTHER_COVERAGE.overdose;
+  const odLevels = [...new Set(MED_GUIDE_LIST.flatMap((g) => (guideOverdose(g) ? [guideOverdose(g)!.action] : [])))];
+  if (od.rule) itemRows.push(['Taking too much (the third part on the screen)', sentenceCase(odLevels.map((a) => CORE_ACTION[a]).join(', or ')), `${coreRuleRef(od.rule)}, when a person writes that they took too much.`]);
+  out.push(...table(['Guide item', 'The guides say', 'What raises the alert'], itemRows, [4, 4, 10]));
+  const general = NOT_FROM_A_GUIDE.filter((n) => showsLaunchCard(n.rule));
+  out.push(`**Signs no guide names, kept as general emergency signs:** ${general.map((n) => `${ruleCode.get(n.rule)}: ${md(n.part)}`).join('; ')}.`, '');
+  return out;
+}
+
+function coreLimitsPart(): string[] {
+  const out: string[] = [];
+  const pct = (a: number, b: number) => Math.round((100 * a) / b);
+  out.push('## Part 6. The limits we know of', '');
+  out.push(
+    `**The rules are a backstop, not a safety net.** Fixed word patterns miss some of the ways people describe a sign. In our latest test on phrases written by people who had not seen the rules, the rules missed ${BLIND_RUN.mustMissed} of ${BLIND_RUN.mustTotal} phrases that should raise an alert (about ${pct(BLIND_RUN.mustMissed, BLIND_RUN.mustTotal)}%), and raised an alert for ${BLIND_RUN.falseAlarms} of ${BLIND_RUN.negTotal} phrases that should not (about ${pct(BLIND_RUN.falseAlarms, BLIND_RUN.negTotal)}%). Expect misses at about that rate on wordings the rules have not seen. The reliable part is the guide's own list (part 3), which a person can open at any time.`,
+    '',
+  );
+  const quietChecks: [string, string][] = [
+    ["my son can't breathe", 'someone else'],
+    ['I had gallstones years ago', 'long ago'],
+    ['what are the signs of low blood sugar?', 'a general question'],
+    ['a little dizzy', 'called slight'],
+  ];
+  for (const [p] of quietChecks) expectOutcome(p, null, 'Short packet, part 6');
+  for (const x of QUIET_ON_PURPOSE) for (const p of x.examples) expectOutcome(p, null, 'Short packet, part 6 (QUIET_ON_PURPOSE)');
+  expectOutcome('I missed two doses', null, 'Short packet, part 6');
+  out.push('**Left quiet on purpose** (each phrase was checked):', '');
+  out.push(
+    ...list([
+      `Text about someone else, a time long past, a general question, or a sign called slight: ${quietChecks.map(([p, why]) => `${q(p)} (${why})`).join(', ')}. When in doubt the rules raise the alert.`,
+      ...QUIET_ON_PURPOSE.map((x) => `${md(x.what)}: ${x.examples.slice(0, 2).map(q).join(', ')}. No guide names it, and the self-harm rule needs words about ending one's life or harming oneself.`),
+      'One sign of low blood sugar alone, such as sweating or hunger (part 5).',
+      `The other symptom buttons (part 5), also at "${gradeLabel(3, 'en')}". For constipation and reflux the guides say "tell your healthcare provider", without "right away"; the typed words "severe constipation" do raise the alert.`,
+      'Missed doses: no rule ("I missed two doses" raises nothing). The app gives no advice about missed doses.',
+      'The four reminder rules (part 5): their words are saved and nothing is shown.',
+    ]),
+  );
+  const stops = [...new Set(MED_GUIDE_LIST.flatMap((g) => guideItems(g).filter((i) => i.stopUsing).map((i) => ITEM_NAMES[i.id].toLowerCase())))];
+  const emergencies = [...new Set(MED_GUIDE_LIST.flatMap((g) => guideItems(g).filter((i) => i.action === 'emergency').map((i) => ITEM_NAMES[i.id].toLowerCase())))];
+  const tellOnly = [...new Set(ITEM_COVERAGE.filter((c) => c.signs.some((sg) => sg.alone) && MED_GUIDE_LIST.some((g) => guideItems(g).some((i) => i.id === c.item && i.action === 'tell'))).map((c) => ITEM_NAMES[c.item].toLowerCase()))];
+  out.push('**Where the card says less than the guide:**', '');
+  out.push(
+    ...list([
+      `For ${stops.join(' and ')} the guides say "Stop using". The card does not: the app gives no advice about doses.`,
+      `For ${emergencies.join(' and ')} the guides say "get medical help right away". The card says "Contact your doctor right away" and "If it is an emergency, call 911".`,
+      'For taking too much the guides name the Poison Help line (1-800-222-1222) and the emergency room. The card names neither; the guide\'s own sentence is on the screen one tap away.',
+      'The card never says which sign it was raised for.',
+    ]),
+  );
+  out.push(`**Where the card says more than the guide:** for ${tellOnly.join('; ')}, some or all guides say only "tell your healthcare provider", without "right away". The card says "right away" for every sign.`, '');
+  const fromButtons = new Set(quickLogRows().map((r) => r.hit.id));
+  const typedOnly = ([...ruleCode.keys()] as TriageId[]).filter((id) => showsLaunchCard(id) && !fromButtons.has(id));
+  if (typedOnly.length && typedAtLaunch()) {
+    const alsoButton = ITEM_COVERAGE.some((c) => c.signs.some((sg) => (sg.buttons ?? []).length > 0 && sg.rules.some((id) => typedOnly.includes(id))));
+    out.push(
+      `**What only typing can raise.** No button leads to ${typedOnly.map(coreRuleRef).join('; ')}. In the first public version these rules can be raised only by typing in the questions box${questionAlertLeavesNothing ? ', and that alert is shown once' : ''}.${alsoButton ? ' A few of their signs also have a button through another rule (the table at the end of part 5).' : ''}`,
+      '',
+    );
+  }
+  return out;
+}
+
+function coreQuestionsPart(counts: CoreCounts): string[] {
+  const out: string[] = [];
+  const brands = usBrands();
+  const limited = brands.flatMap((b) => (b.numbers.maxMg !== null && labelFact(b.entry.id, b.brand, 'maxMg')?.note ? [medRowCode.get(`${b.brand}|Highest dose for the typing check (mg)`) ?? '?'] : []));
+  const midpoints = brands.flatMap((b) =>
+    (['halfLifeH', 'tmaxH'] as const).flatMap((field) => {
+      const fact = labelFact(b.entry.id, b.brand, field);
+      return fact?.stated?.kind === 'range' ? [`${b.brand} ${field === 'halfLifeH' ? 'half-life' : 'time to peak'}: ${fact.stated.low} to ${fact.stated.high} ${fact.stated.unit}s, the app uses ${hoursWords(hoursFromLabel(fact.stated))}`] : [];
+    }),
+  );
+  const tablets = MED_GUIDE_LIST.find((g) => guideItems(g).some((i) => /andOZEMPIC/.test(i.text)));
+  const ask: string[] = [
+    'Part 1: is every number right against the label words next to it and the current label? Correct any row by its code.',
+    `Part 1: the highest dose is the highest the label gives to any adult${limited.length ? `; the notes on ${limited.join(', ')} say where the label limits it` : ''}. Is that the right limit for a typing check?`,
+    ...(midpoints.length ? [`Part 2: where the label gives only a range, the chart uses the midpoint (${midpoints.join('; ')}). Is the midpoint acceptable for a rough chart?`] : []),
+    'Part 2: the number on the chart can drop right after a dose increase, because 100 is tied to the dose logged last. Is that acceptable at launch, with the line under the chart?',
+    'Part 1: are the wait-after-a-pill lines right for each tablet? Should the app also say how to take the tablet (empty stomach, water)?',
+    'Part 3: is each guide copied correctly and current? Name any item missing, changed or out of date.',
+    'Part 3: are the three parts (most important information, serious side effects, taking too much) the right selection, or should the common side effects be shown too?',
+    ...(tablets ? [`Part 3: the label file of the guide for ${brandsOf(tablets)} lacks a space ("RYBELSUS andOZEMPIC tablets"), and the app shows it so. Keep it?`] : []),
+    'Part 4: is one fixed card acceptable for every sign, including the signs for which the guides say only "tell your healthcare provider"?',
+    'Part 4: is it acceptable that the card does not say "stop using", and says "contact your doctor right away" where the guides say "get medical help right away"?',
+    'Part 4: should the alert for taking too much name the Poison Help line (1-800-222-1222)?',
+    'Part 4: is the crisis card right, with the crisis line "988"?',
+    'Part 4: is "If it is an emergency, call 911" right on the fixed card for every sign?',
+    'Part 5: is it acceptable that the four reminder rules show nothing at launch?',
+    'Part 5: is it acceptable that an alert from the questions box is shown once and leaves no reminder?',
+    'Part 6: is it acceptable at launch that the rules listed under "What only typing can raise" have no button? If not, which need one?',
+    'Part 5: low blood sugar needs two signs, or a reading under 70. Are both lines right?',
+    'Part 5: fever, hoarseness, dizziness, a racing heart and any change in vision raise the alert on the plain word. Is that right, or too wide?',
+    'Part 5: vomiting or diarrhea counts when it goes on, lasts all day, or comes five times or more; nausea only when it lasts more than a day or does not go away. Are these lines right?',
+    `Part 5: the Nausea and Dizziness buttons at "${gradeLabel(3, 'en')}" raise the alert; Constipation and Heartburn do not. Is that right?`,
+    'Part 6: is it acceptable that text about someone else, long ago, or a general question raises nothing?',
+    'Part 6: should low mood or hopelessness, without words about self-harm, raise a card (for example one with the crisis line)?',
+    'Part 5: should each general emergency sign that no guide names be kept?',
+    'Part 5: is any row of the table "From each item of the guides to a rule" wrong?',
+  ];
+  counts.questions = ask.length;
+  out.push('## Part 7. Open questions', '');
+  out.push('Each can be answered with yes, no, or a correction. Please add anything else you saw, with its code.', '');
+  out.push(...table(['Code', 'Question'], ask.map((a, i) => [`Q${i + 1}`, a]), [1, 15]));
+  return out;
+}
+
+/** The short packet, whole. Built after the full packet, whose item codes it reuses. */
+function buildCorePacket(counts: CoreCounts): string {
+  const body = [...coreMedicationPart(), ...coreChartPart(), ...coreGuidePart(), ...coreCardsPart(), ...coreRulesPart(counts), ...coreLimitsPart(), ...coreQuestionsPart(counts)];
+  const front = coreFrontMatter();
+  const words = Math.round((wordCount(front) + wordCount(body) + 80) / 100) * 100;
+  counts.words = words;
+  counts.pages = Math.ceil(words / WORDS_PER_PAGE.compact);
+  counts.pagesAsWord = Math.ceil(words / WORDS_PER_PAGE.word);
+  const version = hash8([...front, ...body].join('\n'));
+  return [
+    '<!-- Built by app/scripts/build-review-packet.ts (pnpm review-packet). Do not edit by hand: change the code or the script and build again. -->',
+    '',
+    '# [APP NAME]: clinical review, first public version',
+    '',
+    'From [COMPANY LEGAL NAME] · Contact: [CONTACT EMAIL] · Sent on [EFFECTIVE DATE]',
+    '',
+    `Short packet, version \`${version}\`. Built by a script from the app's code, so the texts and numbers are the ones the app uses. Text in "quotation marks" is exact app text, label text, or a phrase a person might type. About ${words.toLocaleString('en-US')} words: about ${counts.pages} pages in a compact print layout, about ${counts.pagesAsWord} as a plain Word file.`,
+    '',
+    ...front,
+    ...body,
+  ]
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n');
+}
 
 // ── Putting the packet together ──────────────────────────────────────────────
 
@@ -3446,6 +4301,14 @@ async function main(): Promise<void> {
     const hit = packetLines.findIndex((line, i) => i > 0 && pattern.test(line));
     if (hit >= 0) problems.push(`The packet would contain ${what} (line ${hit + 1}: ${packetLines[hit].slice(0, 160)}).`);
   }
+  const core: CoreCounts = { words: 0, pages: 0, pagesAsWord: 0, questions: 0, examples: 0 };
+  const corePacket = buildCorePacket(core);
+  const coreLines = corePacket.split('\n');
+  for (const [pattern, what] of FORBIDDEN_IN_PACKET) {
+    const hit = coreLines.findIndex((line, i) => i > 0 && pattern.test(line));
+    if (hit >= 0) problems.push(`The short packet would contain ${what} (line ${hit + 1}: ${coreLines[hit].slice(0, 160)}).`);
+  }
+  if (core.words > CORE_MAX_WORDS) problems.push(`The short packet has about ${core.words.toLocaleString('en-US')} words, more than the limit of ${CORE_MAX_WORDS.toLocaleString('en-US')}. Shorten it: it is meant for a fixed-fee review of the first public version.`);
   const launchCard = fixedAlertCard('US', 'en');
   if (
     launchCard.title !== 'Contact your doctor right away' ||
@@ -3462,27 +4325,44 @@ async function main(): Promise<void> {
     return;
   }
 
+  const sizes = `Full packet: about ${words.toLocaleString('en-US')} words (about ${pages} pages compact, about ${pagesAsWord} as a Word file). Short packet: about ${core.words.toLocaleString('en-US')} words (about ${core.pages} pages compact, about ${core.pagesAsWord} as a Word file).`;
   if (OPTIONS.has('--check')) {
-    const current = existsSync(OUT_FILE) ? readFileSync(OUT_FILE, 'utf8') : '';
-    if (current !== `${packet}\n`) {
-      console.error(`${OUT_FILE} is out of date. Run "pnpm review-packet".`);
-      process.exitCode = 1;
-    } else console.log('The review packet is up to date.');
+    for (const [file, text, name] of [
+      [OUT_FILE, packet, 'The full review packet'],
+      [CORE_FILE, corePacket, 'The short review packet'],
+    ] as const) {
+      const current = existsSync(file) ? readFileSync(file, 'utf8') : '';
+      if (current !== `${text}\n`) {
+        console.error(`${file} is out of date. Run "pnpm review-packet".`);
+        process.exitCode = 1;
+      } else console.log(`${name} is up to date.`);
+    }
+    console.log(sizes);
     return;
   }
 
   mkdirSync(OUT_DIR, { recursive: true });
-  writeFileSync(OUT_FILE, `${packet}\n`);
-  console.log(`Wrote ${OUT_FILE}`);
-  if (OPTIONS.has('--docx')) {
-    try {
-      execFileSync('pandoc', ['--from', 'gfm', '--to', 'docx', '--output', DOCX_FILE, OUT_FILE], { env: { ...process.env, SOURCE_DATE_EPOCH: '0' } });
-      console.log(`Wrote ${DOCX_FILE}`);
-    } catch (e) {
-      console.error(`Could not write the Word file. Is pandoc installed? ${String(e)}`);
-      process.exitCode = 1;
+  // --core writes the short packet only; without it both are written.
+  const targets: [string, string, string][] = OPTIONS.has('--core')
+    ? [[CORE_FILE, corePacket, CORE_DOCX_FILE]]
+    : [
+        [OUT_FILE, packet, DOCX_FILE],
+        [CORE_FILE, corePacket, CORE_DOCX_FILE],
+      ];
+  for (const [file, text, docx] of targets) {
+    writeFileSync(file, `${text}\n`);
+    console.log(`Wrote ${file}`);
+    if (OPTIONS.has('--docx')) {
+      try {
+        execFileSync('pandoc', ['--from', 'gfm', '--to', 'docx', '--output', docx, file], { env: { ...process.env, SOURCE_DATE_EPOCH: '0' } });
+        console.log(`Wrote ${docx}`);
+      } catch (e) {
+        console.error(`Could not write the Word file. Is pandoc installed? ${String(e)}`);
+        process.exitCode = 1;
+      }
     }
   }
+  console.log(`\n${sizes}`);
 
   // The numbers the request email quotes. They are printed here so the email can be kept in step.
   const size = [
@@ -3502,19 +4382,30 @@ async function main(): Promise<void> {
     `${questions} open questions`,
     `${items} coded items`,
   ];
-  console.log(`\nPacket version ${version}\nSize: ${size.join(', ')}.`);
+  console.log(`\nFull packet, version ${version}\nSize: ${size.join(', ')}.`);
   console.log(`Pages are estimates: about ${pages} in a compact print layout, about ${pagesAsWord} as a plain Word file.`);
+  // The short packet is the one the request email offers; the full packet is named there as background.
+  const coreSize = [
+    `about ${core.words.toLocaleString('en-US')} words`,
+    `about ${core.pages} pages`,
+    `about ${core.pagesAsWord} pages`,
+    `${meds.brands} brands`,
+    `${guides.guides} Medication Guides`,
+    `${core.examples} example phrases`,
+    `${core.questions} open questions`,
+  ];
+  console.log(`\nShort packet\nSize: ${coreSize.join(', ')}.`);
   if (existsSync(REQUEST_FILE)) {
     const request = readFileSync(REQUEST_FILE, 'utf8');
-    const stale = size.filter((phrase) => !request.includes(phrase));
+    const stale = [...coreSize, `about ${words.toLocaleString('en-US')} words`].filter((phrase) => !request.includes(phrase));
     if (stale.length) notices.push(`reviewer-request.md does not quote the current size (${stale.join(', ')}). Update the numbers in that email by hand.`);
   }
   if (existsSync(README_FILE)) {
     // The owner's guide quotes the same sizes in its own words, so only the figures are looked for.
     const readme = readFileSync(README_FILE, 'utf8');
-    const figures = [words.toLocaleString('en-US'), items, pages, pagesAsWord, triage.rules, hidden.adviceTexts, hidden.exercises, meds.brands, questions, guides.items].map(String);
+    const figures = [core.words.toLocaleString('en-US'), core.pages, core.pagesAsWord, core.questions, words.toLocaleString('en-US'), pages, pagesAsWord].map(String);
     const missing = figures.filter((n) => !new RegExp(`(?<![\\d,])${n}(?![\\d,])`).test(readme));
-    if (missing.length) notices.push(`README.md in docs/review does not quote these current sizes of the packet: ${missing.join(', ')}. Update it by hand.`);
+    if (missing.length) notices.push(`README.md in docs/review does not quote these current sizes of the two packets: ${missing.join(', ')}. Update it by hand.`);
   }
   for (const n of notices) console.log(`\nNote: ${n}`);
 }

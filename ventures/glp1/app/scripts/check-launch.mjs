@@ -6,6 +6,7 @@
 //   1. no trace of the note and photo reader (its address and its request fields), and
 //   2. no network call, except the one place that sends anonymous counts, and that one only in
 //      a build that was given a count address. The app is static files plus storage on the phone.
+//   3. no source map: no .map file anywhere in the build, and no script that points to one.
 // A switch in src/core/features.ts that is turned on by mistake, or code that reaches a hidden
 // feature around its switch, shows up here as a failed build.
 //
@@ -48,6 +49,10 @@ if (!existsSync(join(dir, 'index.html')) || !existsSync(assets)) {
   process.exit(1);
 }
 
+for (const file of readdirSync(dir, { recursive: true })) {
+  if (String(file).endsWith('.map')) problems.push(`${join(dir, String(file))} is a source map; the launch build must not ship one`);
+}
+
 const scripts = readdirSync(assets).filter((f) => f.endsWith('.js'));
 if (scripts.length === 0) problems.push(`${assets} has no script file`);
 /** How many times each network marker appears, all script files together. */
@@ -58,6 +63,7 @@ let otherFetches = 0;
 for (const file of scripts) {
   const code = readFileSync(join(assets, file), 'utf8');
   for (const marker of READER) if (code.includes(marker)) problems.push(`${file} contains "${marker}": the note and photo reader is in the launch build`);
+  if (code.includes('sourceMappingURL')) problems.push(`${file} points to a source map; the launch build must not ship one`);
   for (const marker of NETWORK) found[marker] += code.split(marker).length - 1;
   for (let at = code.indexOf('fetch('); at >= 0; at = code.indexOf('fetch(', at + 1)) {
     const call = code.slice(at, at + COUNTER_REACH);
@@ -91,4 +97,4 @@ if (problems.length) {
   process.exit(1);
 }
 const network = counterCalls ? `one network call site: anonymous counts to ${countUrl}` : 'no network calls';
-console.log(`check-launch: ${dir} ok (${scripts.length} script file${scripts.length === 1 ? '' : 's'}, no note or photo reader, ${network})`);
+console.log(`check-launch: ${dir} ok (${scripts.length} script file${scripts.length === 1 ? '' : 's'}, no note or photo reader, ${network}, no source map)`);

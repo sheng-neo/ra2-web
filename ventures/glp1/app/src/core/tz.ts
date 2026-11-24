@@ -82,8 +82,11 @@ const pad = (n: number) => String(n).padStart(2, '0');
  * 照顾夜班和晚睡的人。
  */
 export function dayKey(ms: number, tz: string, dayStartHour = 4): string {
-  const p = zonedParts(ms - dayStartHour * HOUR, tz);
-  return `${p.year}-${pad(p.month)}-${pad(p.day)}`;
+  // Read the local wall clock first, then step back a day if it is before the start of day.
+  // Subtracting the hours from the moment instead would be wrong on the days the clocks change.
+  const p = zonedParts(ms, tz);
+  const key = `${p.year}-${pad(p.month)}-${pad(p.day)}`;
+  return p.hour < dayStartHour ? shiftDayKey(key, -1) : key;
 }
 
 /** 某个 dayKey 的起始 UTC 时刻（含 dayStartHour 偏移）。 */

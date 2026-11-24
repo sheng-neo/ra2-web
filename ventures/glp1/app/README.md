@@ -116,7 +116,7 @@ Each difference is one named boolean in `src/core/features.ts` (the tables `FULL
 
 What to know:
 
-- The switches are fixed when the bundle is built, so the launch bundle does not contain the code behind a switch that is off. `scripts/check-launch.mjs` fails the launch build if its script contains the note and photo reader, or any network call (`fetch`, `XMLHttpRequest`, `sendBeacon`, `WebSocket`, ...) other than the one place that sends anonymous counts (`send()` in `src/web/counting.ts`). The check reads `VITE_COUNT_URL` the same way the build does. Without it the bundle must contain no `fetch(` at all. With it, exactly one is accepted, and it must be the counter (it is recognised by its options and by the count address). So run the check with the same `VITE_COUNT_URL` as the build; `VITE_COUNT_URL=... pnpm build:launch` does. When the launch build gets another feature that needs the network, describe its call in that script the way the counter is described, in the same change.
+- The switches are fixed when the bundle is built, so the launch bundle does not contain the code behind a switch that is off. `scripts/check-launch.mjs` fails the launch build if its script contains the note and photo reader, or any network call (`fetch`, `XMLHttpRequest`, `sendBeacon`, `WebSocket`, ...) other than the one place that sends anonymous counts (`send()` in `src/web/counting.ts`). The check reads `VITE_COUNT_URL` the same way the build does. Without it the bundle must contain no `fetch(` at all. With it, exactly one is accepted, and it must be the counter (it is recognised by its options and by the count address). So run the check with the same `VITE_COUNT_URL` as the build; `VITE_COUNT_URL=... pnpm build:launch` does. The launch build ships no source map (`vite.config.ts` turns them off for it only), and the check fails if a `.map` file is in `dist-launch/`. The full build keeps its source maps. When the launch build gets another feature that needs the network, describe its call in that script the way the counter is described, in the same change.
 - Do not use `features` as a default parameter value (`f = features`): the bundler then keeps all the code behind every switch. Read one switch instead (`x = features.curveNeedsSource`), as `derive()` does. The check above catches the mistake.
 - In the launch build the third tab is only the list of questions for the doctor, so it is labelled "Questions" and has its own box for adding one. Text typed there is still checked for danger signs: a serious hit shows the alert (it says "What you wrote", because nothing was logged), the question is kept, and no symptom is logged. A question that only matches a mild rule ("Do I need to stop before surgery?") is saved and shows nothing. So is a general question that describes no symptom ("What are the signs of low blood sugar?").
 - Export is the second card of settings in both builds, with its buttons before its note, so it is on the first screenful.
@@ -157,12 +157,12 @@ Until a pharmacist or physician has signed off, the launch build shows no warnin
 | `activated` | 引导完成当天或之后 8 天内，记了一次新的用药。引导里补填的"上一次用药"不算 | 无 |
 | `logged_week` | 激活后的每一周发一次 | 第几周、这一周有没有记过用药 |
 | `week2_active` | 激活后第 8 到 14 天里记过用药 | 无 |
-| `four_week_streak` | 激活后的 28 天按自己的排期切成一段一段（每周一针就是 4 周），每段算一次计划用药，这一段里记过就算完成。完成的达到四分之三就算达标（每周一针是 4 段里 3 段）。同一段里记几次都只算一次，所以第一周连记三天不算达标。28 天里计划用药不到两次的排期（比如每 30 天一次）不算。每天用的药：4 周里至少 3 周，每周至少有 4 天记过。只在这 28 天里判断，按这 28 天里见过的最严的排期算；28 天过完就不再看，之后改排期不会补发 | 无 |
+| `four_week_streak` | 激活后的 28 天按自己的排期切成一段一段（每周一针就是 4 周），每段算一次计划用药，这一段里记过就算完成。完成的达到四分之三就算达标（每周一针是 4 段里 3 段）。同一段里记几次都只算一次，所以第一周连记三天不算达标。28 天里计划用药不到两次的排期（比如每 30 天一次）不算。每天用的药：4 周里至少 3 周，每周至少有 4 天记过。只在这 28 天里判断，按这 28 天里见过的最严的排期算；28 天过完就不再看，之后改排期不会补发。例外：28 天过完之后才打开分享的人，这 28 天里一次也没看过排期，就在打开后第一次检查时，按当时保存的排期判断一次（达标就发，不达标以后也不再看），这样第 56 天的留存线里，算进分母的人也有机会算进分子 | 无 |
 | `paused_or_stopped` | 把用药标成暂停或停药 | 无 |
 | `wants_pro` | 点了"我想要"（点的时候正在分享计数才发） | 无 |
 
 - 不发：药名、剂量、体重、症状、任何手写的文字、时区、语言、日期和时间。（服务器会自己记下每条计数到达的日期，见下面"服务端"。）
-- "记了"按在应用里记下的那一刻算，不按填写的用药时间算。"天"按手机当地的日历日算，激活当天是第 1 天。
+- "记了"按在应用里记下的那一刻算，不按填写的用药时间算：今天补记上周的一针，算今天这一周记过，不算上周。"天"按当地钟表的日历日算，从用户自己设的"一天从几点开始"起算（夏令时切换那天也一样），激活当天是第 1 天。用的时区和"一天从几点开始"，是这个编号第一次检查时手机上的设置，之后一直用它：出差换时区、改设置，都不会把一次用药挪到别的一天或别的一周，也不会让一条消息多发或漏发。
 - 只有"新的用药"才算数：引导完成之后记下的，而且填写的用药时间不早于引导完成那天。引导之后补记以前的老记录（用药时间在引导那天之前），不算激活，也不算"这一周记过"。
 - 手机时钟被调快又调回来时，调快期间多报的那几周会在真正到来时重新报一次。服务器上同一个编号、同一周有两条时，以后到的那条为准。
 - 定义和消息格式都在 `src/core/counts.ts`。手机入队之前、服务器存之前，用同一个函数 `parseCountMessage` 检查格式。

@@ -1,6 +1,6 @@
 import { alertCards } from '../../core/alert';
 import { guideChoice } from '../../core/medGuide';
-import { emergencyDial, emergencyRegion } from '../../core/triage';
+import { crisisDial, emergencyDial, emergencyRegion } from '../../core/triage';
 import { deviceTz } from '../db';
 import type { Profile } from '../../core/types';
 import { ackTriage } from '../actions';
@@ -19,6 +19,8 @@ export function TriageModal({ profile }: { profile: Profile }) {
   if (!cards.length) return null;
   const emergency = cards.some((c) => c.card.showEmergency);
   const num = emergencyDial(where);
+  // The crisis card also gets a call button for the crisis line (988 in the US), so nobody has to dial it by hand.
+  const crisisNum = cards.some((c) => c.key === 'crisis') ? crisisDial(where) : null;
   return (
     <div className="triage-backdrop" role="alertdialog" aria-label={t('triage.aria')}>
       <div className={`triage ${cards[0].level}`}>
@@ -35,10 +37,15 @@ export function TriageModal({ profile }: { profile: Profile }) {
             {t('guide.open')}
           </button>
         )}
-        <div className="row">
+        <div className="row wrap">
           {emergency && num !== null && (
             <a className="btn danger" href={`tel:${num}`}>
               {t('triage.call', { number: num })}
+            </a>
+          )}
+          {crisisNum !== null && (
+            <a className="btn danger crisis-call" href={`tel:${crisisNum}`}>
+              {t('triage.call', { number: crisisNum })}
             </a>
           )}
           <button className="btn" onClick={() => void ackTriage(triage.rowId)}>

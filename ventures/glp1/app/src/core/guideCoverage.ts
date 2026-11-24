@@ -222,10 +222,16 @@ export const NOT_FROM_A_GUIDE: NotFromAGuide[] = [
     reason: 'No guide names chest pain; it is kept because chest pain can be an emergency whatever the medication.',
   },
   {
-    rule: 'dehydration',
-    part: 'passing very little urine, and dark brown urine',
+    rule: 'chest_or_faint',
+    part: 'a blood pressure of 180/120 or more, a feeling of dying with words about the heart, chest or breathing, and saying one is in the emergency room now',
     whole: false,
-    reason: 'The guides warn of "dehydration leading to kidney problems" but name no sign about urine; passing very little urine, and urine as dark as tea or cola, are kept as signs of that dehydration.',
+    reason: 'No guide names these; they are kept because each can be an emergency whatever the medication.',
+  },
+  {
+    rule: 'dehydration',
+    part: 'passing very little urine, dark brown urine, and kidney pain or kidney lab results that are off',
+    whole: false,
+    reason: 'The guides warn of "dehydration leading to kidney problems" but name no sign about urine or the kidneys; passing very little urine, urine as dark as tea or cola, and kidney pain or kidney lab results that are off are kept as signs of those kidney problems.',
   },
   {
     rule: 'abdominal_pain_severe',

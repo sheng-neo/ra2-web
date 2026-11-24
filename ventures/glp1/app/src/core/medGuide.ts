@@ -33,8 +33,9 @@
  *   tell, call or talk to someone. A bullet is copied whole; from running text, the sentences
  *   that carry the instruction. Two statements are left out for every guide, because they tell
  *   the patient to contact nobody: the one about sharing pens and "Keep a list of them to show
- *   your healthcare provider and pharmacist". The app does not show this part. It is a table of
- *   its own so that the screens, which do not use it, do not carry it.
+ *   your healthcare provider and pharmacist". The screen shows one entry of this table, the
+ *   sentence about taking too much (guideOverdose); the other entries are not shown. The whole
+ *   table ships in the app bundle all the same, the launch build included.
  * - The guides change. When a label is read again, write this file again from it, update
  *   MED_GUIDES_READ_ON, and re-check guideCoverage.ts.
  * - An entry says where words were read. It does not say a reviewer has confirmed anything.
