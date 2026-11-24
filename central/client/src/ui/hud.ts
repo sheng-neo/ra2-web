@@ -79,7 +79,7 @@ function creditsPanel(meta: CityMeta, close: () => void): HTMLElement {
 }
 
 export function createHud(parent: HTMLElement, opts: HudOptions): { setActive(id: string): void } {
-  const badge = h('div', { class: 'badge' }, h('b', {}, '中環急件'), ' Central Rush ', h('span', { class: 'stage' }, '· M0 白模'));
+  const badge = h('div', { class: 'badge' }, h('b', {}, '中環急件'), ' Central Rush ', h('span', { class: 'stage' }, '· R1 夜景'));
   const buttons = opts.presets.map((p) => {
     const b = h('button', { class: 'chip', type: 'button', 'aria-pressed': String(p.id === opts.active), 'data-preset': p.id }, p.label);
     b.addEventListener('click', () => opts.onPreset(p.id));

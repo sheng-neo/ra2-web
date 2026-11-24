@@ -1,9 +1,12 @@
 /**
  * 三稜塔（prism-tower）：方形平面按对角线分成四个三角柱，四柱逐级升高，顶部斜切；
- * 外立面 X 形斜撑亮线，最高柱顶一对桅杆。造型神似、不按比例复刻。
+ * 外立面 X 形斜撑白色 LED 线（静态），最高柱顶一对桅杆。造型神似、不按比例复刻。
  */
 import { FacadeMode, styleSeed } from '../facade';
-import { aabb, facadePoly, line, type LandmarkSink, type Placement, type Vec3 } from './kit';
+import { aabb, emitOf, facadePoly, line, type LandmarkSink, type Placement, type Vec3 } from './kit';
+
+/** 斜撑 LED 线（白，契约 edgeLed 2–4）。 */
+const BRACE = emitOf('crownWhite', 2.4);
 
 export function prismTower(p: Placement, sink: LandmarkSink): void {
   const s = Math.min(p.hx, p.hy);
@@ -40,13 +43,13 @@ export function prismTower(p: Placement, sink: LandmarkSink): void {
     let z = 0;
     for (; z + mod * 0.5 <= h; z += mod) {
       const z1 = Math.min(z + mod, h);
-      line(p, sink, A(z), B(z1));
-      line(p, sink, B(z), A(z1));
-      line(p, sink, A(z), B(z));
+      line(p, sink, A(z), B(z1), BRACE);
+      line(p, sink, B(z), A(z1), BRACE);
+      line(p, sink, A(z), B(z), BRACE);
     }
-    line(p, sink, A(0), A(h));
-    line(p, sink, A(h), B(h));
-    line(p, sink, A(h), [ox * 0.2, oy * 0.2, hO]);
+    line(p, sink, A(0), A(h), BRACE);
+    line(p, sink, A(h), B(h), BRACE);
+    line(p, sink, A(h), [ox * 0.2, oy * 0.2, hO], BRACE);
   }
   const top = hs[3]! + cap;
   for (const y of [-0.12 * s, 0.12 * s]) {

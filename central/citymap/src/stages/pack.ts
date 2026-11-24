@@ -25,7 +25,7 @@ const ORDER: Record<Shape, readonly string[]> = {
   origin: ['e', 'n', 'lon', 'lat'],
   source: ['id', 'license', 'attribution', 'url'],
   build: ['pipelineVersion', 'inputsDigest'],
-  building: ['id', 'src', 'footprint', 'base', 'height', 'heightSource', 'kind', 'style'],
+  building: ['id', 'src', 'footprint', 'base', 'height', 'heightSource', 'kind', 'style', 'storeys'],
   ring: ['outer', 'holes'],
   road: ['id', 'cls', 'pts', 'oneway', 'lanes', 'bridge', 'tunnel', 'level', 'speedKmh', 'name'],
   name: ['zh', 'en'],
@@ -132,7 +132,7 @@ function attributionText(city: CityFile): string {
     'Which layer comes from which source (one source per layer, never mixed feature by feature):',
     `* ${CITY_FILE} roads, rails, water, zones, props: ${odblOrigin(city)} distributed by Overture Maps Foundation.`,
     gov
-      ? `* ${CITY_FILE} buildings and landmarks (footprints, base and top heights): Lands Department Building data ` +
+      ? `* ${CITY_FILE} buildings and landmarks (footprints, base and top heights, storey counts): Lands Department Building data ` +
         `via the CSDI Portal (${CSDI_LICENSE}; not part of the ODbL database).`
       : `* ${CITY_FILE} buildings and landmarks: OpenStreetMap / Overture building footprints (ODbL-1.0; ` +
         'some footprints CC-BY-4.0 as listed above).',

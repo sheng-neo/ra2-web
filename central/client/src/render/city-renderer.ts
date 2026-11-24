@@ -1,22 +1,32 @@
 /**
  * CityRenderer：渲染层的唯一入口（PLAN §5）。持有 WebGLRenderer、场景与相机，
- * 从 CityFile 搭建全部图层，每帧做区块远近切换、雾浓度随视距调整、动画时间推进。
+ * 从 CityFile 搭建全部图层，每帧做区块远近切换、动画时间推进、海面反射与后处理。
+ * 写实化（realism spec §iii、§v）：画质档在构造时定（URL → 能力探测），HIGH 走 HDR 目标 + bloom + 输出 pass，
+ * LOW 直出画布；雾是契约里的指数高度雾（共享 uniform），不再随视距调整。
  */
-import { Color, FogExp2, PerspectiveCamera, Scene, WebGLRenderer, type Mesh, type Object3D } from 'three';
+import { PerspectiveCamera, Scene, WebGLRenderer, type Mesh, type Object3D } from 'three';
 import type { CityFile, TerrainGrid } from '@central/data';
 import type { HeightFn } from '../data/terrain';
-import { FAR_SHORE_M, buildBackdrop, buildSky } from './backdrop';
-import { buildBuildingChunks } from './buildings';
+import { buildBackdrop, buildSky } from './backdrop';
+import { buildCityBuildings } from './buildings';
 import { ChunkLayer } from './chunk-layer';
 import { buildGround } from './ground';
 import { buildLandmarks } from './landmarks';
 import { buildRails, buildZoneOutlines } from './lines';
 import { createBuildingMaterial } from './materials/building';
-import { NIGHT } from './materials/common';
 import { createNeonMaterial } from './materials/neon';
 import { createRoadMaterial } from './materials/road';
 import { createSolidMaterial } from './materials/solid';
-import { buildRoadChunks } from './roads';
+import { SHARED, advanceShared, installToneMapping } from './materials/lighting';
+import { getQuality, readParam, registerTextureBytes, setQuality, textureBytes, urlTier, type Quality, type Tier } from './materials/lighting';
+import { footprintTest } from './road-corridor';
+import { buildRoadChunks, planRoads } from './roads';
+import { dropZoneLamps } from './streets/surface';
+import { buildStreets, type Streets } from './streets';
+import { PostPipeline } from './post/pipeline';
+import { TIER_SPECS, canvasBytes, chooseQuality, msaaSamples, probeCaps, startDpr } from './quality';
+import { WaterLayer } from './water';
+import { Boats } from './boats';
 
 /** 相机离区包围盒小于此距离（米）时拆成逐块绘制。 */
 const NEAR_REGION_M = 220;
@@ -24,18 +34,27 @@ const FAR_CLIP_M = 9000;
 const BASE_FOV = 50;
 const MIN_HFOV = 50;
 
-/** 雾浓度随视距（相机到注视点，米）在对数尺度上插值：贴地约 350–600 m 能见，远观与高空放宽。 */
-export function fogDensityFor(distanceM: number): number {
-  const t = Math.min(Math.max(Math.log(distanceM / 120) / Math.log(1500 / 120), 0), 1);
-  return 0.0024 + (0.00045 - 0.0024) * t;
-}
-
 export interface RenderStats {
   calls: number;
   triangles: number;
   geometries: number;
   textures: number;
   programs: number;
+  // 画质档与管线（realism spec §iii.6）
+  tier: Tier;
+  dpr: number;
+  /** drawing buffer 像素数。 */
+  bufferPx: number;
+  msaa: number;
+  bloom: boolean;
+  reflection: boolean;
+  /** 全分辨率后处理 pass 数。 */
+  passesFull: number;
+  /** 已登记的 GPU 贴图 + 渲染目标内存（MB）。 */
+  texMB: number;
+  /** 其中平面反射 pass 的 draw call / 三角形（不在视野时为 0）。 */
+  reflCalls?: number;
+  reflTriangles?: number;
 }
 
 export type BuildStep = (label: string, fraction: number) => Promise<void>;
@@ -44,17 +63,37 @@ export class CityRenderer {
   readonly renderer: WebGLRenderer;
   readonly scene = new Scene();
   readonly camera = new PerspectiveCamera(BASE_FOV, 1, 1, FAR_CLIP_M);
-  private readonly fog = new FogExp2(NIGHT.fog, fogDensityFor(1000));
-  private readonly time = { value: 0 };
   private readonly layers: ChunkLayer[] = [];
   private readonly sky: Mesh;
+  readonly quality: Quality;
+  private readonly post: PostPipeline;
+  private water: WaterLayer | null = null;
+  private boats: Boats | null = null;
+  private streets: Streets | null = null;
+  private dpr: number;
+  private css: [number, number] = [1, 1];
+  private readonly canvasDepth: boolean;
+  /** 画布自带 MSAA 的采样数（LOW 档；HIGH 为 0）。 */
+  private readonly canvasSamples: number;
 
   constructor(canvas: HTMLCanvasElement) {
-    const dpr = window.devicePixelRatio || 1;
-    this.renderer = new WebGLRenderer({ canvas, antialias: dpr <= 2, powerPreference: 'high-performance' });
-    this.renderer.setPixelRatio(Math.min(dpr, 2));
-    this.scene.fog = this.fog;
-    this.scene.background = new Color(NIGHT.fog);
+    // 画质档：URL（?q= / #q-）优先，其次能力探测；必须在 build 之前 setQuality
+    const caps = probeCaps();
+    this.quality = chooseQuality(urlTier(), caps);
+    setQuality(this.quality);
+    const spec = TIER_SPECS[this.quality.tier];
+    const hdr = this.quality.tier === 'high' && readParam('post') !== '0'; // #post-0 调试直出
+    // HIGH 走 HDR 目标（自带深度），画布不要深度缓冲（省约 4 B/px 显存）
+    this.canvasDepth = !hdr;
+    this.renderer = new WebGLRenderer({ canvas, antialias: spec.canvasAntialias, depth: this.canvasDepth, powerPreference: 'high-performance' });
+    this.canvasSamples = spec.canvasAntialias ? Number(this.renderer.getContext().getParameter(this.renderer.getContext().SAMPLES)) || 0 : 0;
+    this.dpr = startDpr(this.quality.tier, window.devicePixelRatio || 1, window.innerWidth, window.innerHeight);
+    this.renderer.setPixelRatio(this.dpr);
+    installToneMapping(this.renderer);
+    const startPx = window.innerWidth * window.innerHeight * this.dpr * this.dpr;
+    const bloom = hdr && this.quality.bloom && readParam('bloom') !== '0';
+    this.post = new PostPipeline(this.renderer, { hdr, bloom, samples: msaaSamples(this.quality, caps, startPx) });
+    this.scene.background = SHARED.uHazeColor.value; // 背景 = 雾色 = 地平线天色
     this.sky = buildSky(FAR_CLIP_M * 0.9);
     this.scene.add(this.sky);
   }
@@ -71,32 +110,53 @@ export class CityRenderer {
     };
 
     await step('生成建築', 0.72);
-    const buildings = new ChunkLayer('buildings', buildBuildingChunks(city.buildings, ground, zones), facade);
+    const bld = buildCityBuildings(city, ground, getQuality().tier);
+    const buildings = new ChunkLayer('buildings', bld.chunks, facade);
     this.layers.push(buildings);
-    add(buildings.group);
+    add(buildings.group, ...bld.objects); // 招牌、航空灯、边缘 LED
 
     await step('生成道路', 0.8);
-    const roads = new ChunkLayer('roads', buildRoadChunks(city.roads, ground), createRoadMaterial());
+    const roadPlans = planRoads(city.roads, ground, city.props);
+    dropZoneLamps(roadPlans, zones); // 敏感区只做背景：区内的路不装路灯
+    const roads = new ChunkLayer('roads', buildRoadChunks(city.roads, ground, roadPlans, getQuality().tier === 'high', footprintTest(city.buildings)), createRoadMaterial()); // 挡土墙遇楼即停（整合）
     this.layers.push(roads);
-    add(roads.group, buildRails(city.rails, ground), buildZoneOutlines(zones, ground));
+    add(roads.group, buildRails(city.rails, ground), readParam('zones') ? buildZoneOutlines(zones, ground) : null);
+
+    await step('生成街道', 0.83);
+    this.streets = buildStreets(city, roadPlans, ground, relief);
+    add(...this.streets.objects);
 
     await step('生成地標與海港', 0.86);
     add(
       ...buildLandmarks(city.landmarks, ground, zones, {
-        facade: createBuildingMaterial(0.75),
+        facade, // 地标与楼群共用同一建筑材质
         solid: createSolidMaterial(),
-        neon: createNeonMaterial(this.time),
+        neon: createNeonMaterial(), // 静态发光条（不再变色）
       }),
-      ...buildGround(city, relief, FAR_SHORE_M, this.time),
-      buildBackdrop(createBuildingMaterial(0.32)),
+      ...buildGround(city, relief, false), // 网格外由远景山体高度场接上，不画裙坡
     );
+    // 新海面（盖在旧 0 mPD 平面之上）、远景（港岛山体两翼 + 九龙）、船
+    this.water = new WaterLayer(city, this.quality);
+    this.water.setSize(this.renderer.domElement.width, this.renderer.domElement.height);
+    const backdrop = buildBackdrop({ relief, low: this.quality.tier === 'low', bboxDm: city.meta.bbox, isWater: (x, y) => this.water!.isWater(x, y) });
+    this.water.addEmitters(backdrop.emitters);
+    this.water.addEmitters(bld.emitters); // 天台灯箱、LED 幕墙进 LOW 档倒影发光条
+    this.boats = new Boats();
+    add(this.water.mesh, ...backdrop.objects, ...this.boats.objects);
 
     await step('編譯著色器', 0.92);
+    this.water?.collect(this.scene); // 反射代理层（楼、地标、远景、天空），须在全部图层之后
     await this.renderer.compileAsync(this.scene, this.camera);
   }
 
   resize(width: number, height: number): void {
+    this.css = [width, height];
     this.renderer.setSize(width, height, false);
+    SHARED.uViewportPx.value.set(this.renderer.domElement.width, this.renderer.domElement.height);
+    // 画布默认帧缓冲也计入显存账本（HIGH：RGBA8 前后两份；LOW：4× MSAA 颜色 + 深度 + resolve）
+    registerTextureBytes('atmosphere:canvas', canvasBytes(this.renderer.domElement.width * this.renderer.domElement.height, this.canvasDepth, this.canvasSamples));
+    this.post.setSize(this.renderer.domElement.width, this.renderer.domElement.height);
+    this.water?.setSize(this.renderer.domElement.width, this.renderer.domElement.height);
     const aspect = width / Math.max(height, 1);
     this.camera.aspect = aspect;
     // 竖屏时放大垂直视角，保证水平视角不小于 MIN_HFOV
@@ -105,28 +165,59 @@ export class CityRenderer {
     this.camera.updateProjectionMatrix();
   }
 
-  /** viewDistance：相机到注视点距离（米），决定雾浓度。 */
+  /** viewDistance：相机到注视点距离（米）；只用来调雾中光幕（看得越远，相机与亮处之间的雾越厚）。 */
   frame(dt: number, viewDistance: number): void {
-    this.time.value += dt;
-    this.fog.density = fogDensityFor(viewDistance);
+    this.renderer.info.reset(); // 一帧可能多次 render，stats() 报整帧总数
+    advanceShared(dt);
     this.sky.position.copy(this.camera.position);
     for (const l of this.layers) l.update(this.camera.position, NEAR_REGION_M);
-    this.renderer.render(this.scene, this.camera);
+    this.streets?.update(dt, this.camera);
+    this.boats?.update(this.water);
+    this.water?.update(this.renderer, this.scene, this.camera); // 平面反射须在主场景之前
+    const t = Math.min(Math.max((viewDistance - 150) / 450, 0), 1);
+    this.post.render(this.scene, this.camera, 0.3 + 0.7 * t * t * (3 - 2 * t));
+  }
+
+  /** 自适应 DPR：换像素比后按当前 CSS 尺寸重建画布与目标。 */
+  setPixelRatio(dpr: number): void {
+    this.dpr = dpr;
+    this.renderer.setPixelRatio(dpr);
+    this.resize(this.css[0], this.css[1]);
+  }
+
+  /** A11 自动降档：关 bloom 与平面反射（不回升）。 */
+  downgrade(): void {
+    this.post.disableBloom();
+    this.water?.disableReflection();
   }
 
   stats(): RenderStats {
     const info = this.renderer.info;
+    const el = this.renderer.domElement;
     return {
       calls: info.render.calls,
       triangles: info.render.triangles,
       geometries: info.memory.geometries,
       textures: info.memory.textures,
       programs: info.programs?.length ?? 0,
+     
+      tier: this.quality.tier,
+      dpr: this.dpr,
+      bufferPx: el.width * el.height,
+      msaa: this.post.hdr ? this.post.samples : this.canvasSamples,
+      bloom: this.post.bloomOn,
+      reflection: this.water?.reflectionOn ?? false,
+      passesFull: this.post.passesFull,
+      texMB: Math.round((textureBytes() / (1024 * 1024)) * 10) / 10,
+      reflCalls: this.water?.reflCalls ?? 0,
+      reflTriangles: this.water?.reflTriangles ?? 0,
     };
   }
 
   /** 各分块图层的区/块数（调试用）。 */
   layerSummary(): string {
-    return this.layers.map((l) => `${l.group.name} ${l.regionCount}區/${l.chunkCount}塊`).join(' · ');
+    const parts = this.layers.map((l) => `${l.group.name} ${l.regionCount}區/${l.chunkCount}塊`);
+    if (this.water) parts.push(this.water.summary());
+    return parts.join(' · ');
   }
 }

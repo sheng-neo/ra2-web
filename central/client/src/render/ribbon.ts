@@ -1,18 +1,49 @@
 /**
- * 道路带状网格：沿中心折线左右各偏移半宽（斜接，限制斜接长度），从上往下看逆时针。
- * 左右边各自按所在位置取高度（贴地形）。
- * 高架段可加桥面厚度：两侧侧板 + 底面（横向坐标标成超出半宽，shader 画成混凝土）。
+ * 道路带状网格：沿中心折线左右各偏移（斜接，限制斜接长度），从上往下看逆时针。
+ * 横截面只有左右两个顶点：外沿 = 车行道半宽 + 该侧人行道宽（逐点给，路口处收窄为 0），
+ * 车行道 / 路缘石 / 人行道由 shader 按横向坐标 |across| 与半宽 hw 区分（不加三角形）。
+ * 高度：贴地模式左右边各按所在位置取高度；水平模式（level）左右边都取中线高度，横向不倾斜（realism C9）。
+ * 高架段可加桥面厚度：两侧侧板 + 底面；水平路面在填方 / 挖方处加竖直的护坡 / 挡土墙面。
+ * 侧板、底面、挡土墙的顶点带 FLAG_SIDE，shader 画成混凝土。
  */
 import type { FlatXY } from '@central/data';
 import { DM_TO_M, simToThree } from '../coords';
 import type { HeightFn } from '../data/terrain';
 import { MeshArrays, type AttrSpec } from './mesh-arrays';
 
+/**
+ * 顶点属性：
+ * aRoad   = (沿线距离 m, 横向偏移 m（左正）, 车行道半宽 m, 段长 m)
+ * aLane   = (车道数, 标志位 FLAG_*)
+ * aLamp   = (路灯间距 m（0 = 无灯）, 相位 m, 排布代码, 钠灯 0/1)
+ * aStreet = (灯头高 m, 灯头离中线横距 m, 店铺溢光 0–1, 种子 0–1)
+ * aPav    = (左人行道宽 m, 右人行道宽 m)
+ * aDir    = 道路前进方向（three 的 xz，单位向量）
+ */
 export const ROAD_LAYOUT: readonly AttrSpec[] = [
   { name: 'position', size: 3 },
   { name: 'aRoad', size: 4 },
   { name: 'aLane', size: 2 },
+  { name: 'aLamp', size: 4 },
+  { name: 'aStreet', size: 4 },
+  { name: 'aPav', size: 2 },
+  { name: 'aDir', size: 2 },
 ];
+
+/** 标志位（aLane.y）。 */
+export const FLAG_ONEWAY = 1;
+export const FLAG_PED = 2;
+/** 主路：路边画双黄线。 */
+export const FLAG_MAIN = 4;
+/** 侧板 / 底面 / 挡土墙（混凝土）。 */
+export const FLAG_SIDE = 8;
+/** 过路处贴片（斑马线）；再加 FLAG_SIGNAL 为灯控过路处（两道横线 + 路钉）。贴片的 aPav = (过路处中心沿线 m, 0)。 */
+export const FLAG_CROSSING = 16;
+export const FLAG_SIGNAL = 32;
+/** 过路处沿路方向的宽度（dm）。 */
+const CROSSING_HALF_DM = 20;
+/** 过路处贴片高出路面（dm）。 */
+const CROSSING_LIFT_DM = 0.3;
 
 export function newRoadArrays(): MeshArrays {
   return new MeshArrays(ROAD_LAYOUT);
@@ -21,14 +52,31 @@ export function newRoadArrays(): MeshArrays {
 export interface RibbonSpec {
   /** 中心线（dm），已去重。 */
   pts: FlatXY;
-  /** 半宽（dm）。 */
+  /** 车行道半宽（dm）。 */
   halfWidth: number;
-  /** 路面高程（dm）：参数为该顶点坐标与沿线距离（dm），左右边分别调用。 */
+  /** 路面高程（dm）：参数为该顶点坐标与沿线距离（dm），左右边分别调用（水平模式只在中线调用）。 */
   height: (x: number, y: number, along: number) => number;
   lanes: number;
   flags: number;
   /** 桥面厚度（dm）；0 表示贴地，不生成侧板。 */
   deck: number;
+  /** 每个点左 / 右人行道宽（dm），省略为 0。 */
+  pavL?: readonly number[];
+  pavR?: readonly number[];
+  /** 路灯参数（写进每个顶点的 aLamp），省略为无灯。 */
+  lamp?: readonly [number, number, number, number];
+  /** aStreet：灯头高 m、灯头横距 m、店铺溢光、种子。 */
+  street?: readonly [number, number, number, number];
+  /** 横向水平：左右边取中线高度。 */
+  level?: boolean;
+  /** 各点的水平系数（0 = 贴地，1 = 水平；省略为 1），路口处贴地，与相交道路同一张地面。 */
+  levelK?: readonly number[];
+  /** 各点中线路面高程（dm），水平模式下代替 height(中线)。 */
+  zc?: readonly number[];
+  /** 给出时（且 level）在路边与地面高差 > 阈值处生成竖直护坡（填方，朝外）/ 挡土墙（挖方，朝路）。 */
+  ground?: HeightFn;
+  /** 整合时加：(x, y)（dm）是否在楼宇轮廓内。给出时挡土墙往路外多看几米（遇楼即停），墙顶按坡后最高的地面砌。 */
+  blocked?: (x: number, y: number) => boolean;
 }
 
 /** 把折线按最大段长重采样（插点，不移动原有点）。 */
@@ -76,17 +124,62 @@ export function drapeResample(pts: FlatXY, ground: HeightFn, maxSeg: number, tol
   return out;
 }
 
-const scratch = new Float32Array(9);
+const scratch = new Float32Array(21);
+const NO_LAMP = [0, 0, 0, 0] as const;
+const NO_STREET = [8, 0, 0, 0] as const;
 
-function vertex(m: MeshArrays, x: number, y: number, z: number, along: number, across: number, s: RibbonSpec, len: number): number {
+interface Station {
+  along: number;
+  pavL: number;
+  pavR: number;
+  dx: number;
+  dz: number;
+}
+
+function vertex(m: MeshArrays, x: number, y: number, z: number, across: number, st: Station, s: RibbonSpec, len: number, flags: number): number {
   simToThree(x, y, z, scratch, 0);
-  scratch[3] = along * DM_TO_M;
+  const lamp = s.lamp ?? NO_LAMP;
+  const street = s.street ?? NO_STREET;
+  scratch[3] = st.along * DM_TO_M;
   scratch[4] = across;
   scratch[5] = s.halfWidth * DM_TO_M;
   scratch[6] = len * DM_TO_M;
   scratch[7] = s.lanes;
-  scratch[8] = s.flags;
+  scratch[8] = flags;
+  for (let k = 0; k < 4; k++) {
+    scratch[9 + k] = lamp[k]!;
+    scratch[13 + k] = street[k]!;
+  }
+  scratch[17] = st.pavL * DM_TO_M;
+  scratch[18] = st.pavR * DM_TO_M;
+  scratch[19] = st.dx;
+  scratch[20] = st.dz;
   return m.push(scratch);
+}
+
+/** 挡土墙 / 护坡的触发高差（dm）：填方或挖方 > 1.5 m（更小的高差由路廊压低地形、肉眼看不出）。 */
+const FILL_DM = 15;
+const CUT_DM = 15;
+/**
+ * 挖方侧的墙顶（整合时加）：从路缘往外按 BACK_DM 逐点取地面最高值（遇到楼宇轮廓即停，不在楼前砌墙挡住铺面），
+ * 墙顶最多比路缘地面再高 BACK_RISE_DM。两楼之间的空地若坡脚离人行道几米就陡升（半山罗便臣道），
+ * 只按路缘一点的高度砌墙会露出整片被路灯照橙的地形土堆；香港这种地方实际是一道高挡土墙。
+ */
+const BACK_DM = [20, 40, 70, 100, 140] as const;
+const BACK_RISE_DM = 100;
+
+/** 路缘 (x, y) 处供挡土墙用的地面高度；(ox, oy) 为外法线。 */
+function cutGround(ground: HeightFn, blocked: ((x: number, y: number) => boolean) | undefined, x: number, y: number, ox: number, oy: number): number {
+  const g0 = ground(x, y);
+  if (!blocked) return g0;
+  let g = g0;
+  for (const d of BACK_DM) {
+    const bx = x + ox * d;
+    const by = y + oy * d;
+    if (blocked(bx, by)) break;
+    g = Math.max(g, ground(bx, by));
+  }
+  return Math.min(g, g0 + BACK_RISE_DM);
 }
 
 export function addRibbon(m: MeshArrays, s: RibbonSpec): void {
@@ -101,8 +194,11 @@ export function addRibbon(m: MeshArrays, s: RibbonSpec): void {
   if (len <= 0) return;
   const hwM = s.halfWidth * DM_TO_M;
   const skirt = hwM + 0.5;
+  const sideFlags = s.flags | FLAG_SIDE;
   const top: { l: number; r: number }[] = [];
   const side: { l: number; r: number; lb: number; rb: number }[] = [];
+  // 挡土墙：每点左右边的 (x, y, 路面 z, 地面 z, 横向 m)
+  const edges: { L: [number, number, number, number, number]; R: [number, number, number, number, number]; st: Station }[] = [];
   for (let i = 0; i < n; i++) {
     const x = p[i * 2]!;
     const y = p[i * 2 + 1]!;
@@ -134,26 +230,42 @@ export function addRibbon(m: MeshArrays, s: RibbonSpec): void {
     const lx = -ty;
     const ly = tx;
     const ref = i > 0 ? lx * -py + ly * px : 1;
-    const off = s.halfWidth / Math.max(ref, 0.35);
-    const L = [x + lx * off, y + ly * off] as const;
-    const R = [x - lx * off, y - ly * off] as const;
-    // 左右边各取所在位置的高度；中线处地面若高出两边连线（路面横跨凸起），整段横截面抬到中线不入地
-    const zc = s.height(x, y, along[i]!);
+    const miter = 1 / Math.max(ref, 0.35);
+    const pl = s.pavL?.[i] ?? 0;
+    const pr = s.pavR?.[i] ?? 0;
+    const offL = (s.halfWidth + pl) * miter;
+    const offR = (s.halfWidth + pr) * miter;
+    const L = [x + lx * offL, y + ly * offL] as const;
+    const R = [x - lx * offR, y - ly * offR] as const;
+    const st: Station = { along: along[i]!, pavL: pl, pavR: pr, dx: tx, dz: -ty };
+    const zc = s.level && s.zc ? s.zc[i]! : s.height(x, y, along[i]!);
+    // 贴地：左右边各取所在位置的高度；中线处地面若高出两边连线（路面横跨凸起），整段横截面抬到中线不入地
     let zl = s.height(L[0], L[1], along[i]!);
     let zr = s.height(R[0], R[1], along[i]!);
     const bump = Math.max(0, zc - (zl + zr) / 2);
     zl += bump;
     zr += bump;
+    if (s.level) {
+      const k = s.levelK?.[i] ?? 1;
+      zl += (zc - zl) * k;
+      zr += (zc - zr) * k;
+    }
     top.push({
-      r: vertex(m, R[0], R[1], zr, along[i]!, -hwM, s, len),
-      l: vertex(m, L[0], L[1], zl, along[i]!, hwM, s, len),
+      r: vertex(m, R[0], R[1], zr, -(hwM + pr * DM_TO_M), st, s, len, s.flags),
+      l: vertex(m, L[0], L[1], zl, hwM + pl * DM_TO_M, st, s, len, s.flags),
     });
     if (s.deck > 0) {
       side.push({
-        r: vertex(m, R[0], R[1], zr, along[i]!, -skirt, s, len),
-        l: vertex(m, L[0], L[1], zl, along[i]!, skirt, s, len),
-        rb: vertex(m, R[0], R[1], zr - s.deck, along[i]!, -skirt, s, len),
-        lb: vertex(m, L[0], L[1], zl - s.deck, along[i]!, skirt, s, len),
+        r: vertex(m, R[0], R[1], zr, -skirt, st, s, len, sideFlags),
+        l: vertex(m, L[0], L[1], zl, skirt, st, s, len, sideFlags),
+        rb: vertex(m, R[0], R[1], zr - s.deck, -skirt, st, s, len, sideFlags),
+        lb: vertex(m, L[0], L[1], zl - s.deck, skirt, st, s, len, sideFlags),
+      });
+    } else if (s.level && s.ground) {
+      edges.push({
+        L: [L[0], L[1], zl, cutGround(s.ground, s.blocked, L[0], L[1], lx, ly), hwM + pl * DM_TO_M],
+        R: [R[0], R[1], zr, cutGround(s.ground, s.blocked, R[0], R[1], -lx, -ly), -(hwM + pr * DM_TO_M)],
+        st,
       });
     }
   }
@@ -174,4 +286,152 @@ export function addRibbon(m: MeshArrays, s: RibbonSpec): void {
       m.tri(c.rb, c.lb, d.lb);
     }
   }
+  if (edges.length === n) addWalls(m, s, edges, len, sideFlags);
 }
+
+/** 挡土墙墙顶沿路的最大坡度（墙顶高差 / 沿路距离）。 */
+export const WALL_TOP_SLOPE = 0.3;
+/** 墙高上限（m）：相邻点地面高度差都不到 1 m（确实是一整片高坡）时放宽到 BACK_RISE_DM。 */
+export const WALL_CAP_M = 6;
+/** 比这短（m，沿路）的一段挡土墙不画（零星的三角块比没有更假）。 */
+export const WALL_MIN_RUN_M = 8;
+
+/**
+ * 挖方侧挡土墙的墙顶（离路面的高度，dm，0 = 不画）：
+ * 1. 每点要挡的高差 = 地面 − 路面（≤ 0 不要）；
+ * 2. 前后各两点取最大（墙顶连成水平 / 台阶，不随单点地形起伏成尖顶）；
+ * 3. 封顶 WALL_CAP_M（相邻点地面差都 < 1 m 时放宽）；
+ * 4. 沿路坡度 ≤ WALL_TOP_SLOPE（前后两遍）；
+ * 5. 低于 CUT_DM 的点不画；连续一段短于 WALL_MIN_RUN_M 的整段不画。
+ * 纯函数（测试用）：road、ground 为各点路面与地面高度（dm），along 为沿线距离（dm）。
+ */
+export function cutWallHeights(road: readonly number[], ground: readonly number[], along: readonly number[]): number[] {
+  const n = road.length;
+  const want = road.map((r, i) => Math.max(ground[i]! - r, 0));
+  const h = want.map((_, i) => {
+    let m = 0;
+    for (let j = Math.max(0, i - 2); j <= Math.min(n - 1, i + 2); j++) m = Math.max(m, want[j]!);
+    const agree = (i === 0 || Math.abs(ground[i - 1]! - ground[i]!) < 10) && (i === n - 1 || Math.abs(ground[i + 1]! - ground[i]!) < 10);
+    return Math.min(m, agree ? BACK_RISE_DM : WALL_CAP_M * 10);
+  });
+  for (let i = 1; i < n; i++) h[i] = Math.min(h[i]!, h[i - 1]! + WALL_TOP_SLOPE * (along[i]! - along[i - 1]!));
+  for (let i = n - 2; i >= 0; i--) h[i] = Math.min(h[i]!, h[i + 1]! + WALL_TOP_SLOPE * (along[i + 1]! - along[i]!));
+  const out = h.map((v) => (v > CUT_DM ? v : 0));
+  // 去掉过短的段
+  let i = 0;
+  while (i < n) {
+    if (out[i]! <= 0) {
+      i++;
+      continue;
+    }
+    let j = i;
+    while (j + 1 < n && out[j + 1]! > 0) j++;
+    if (along[j]! - along[i]! < WALL_MIN_RUN_M * 10) for (let k = i; k <= j; k++) out[k] = 0;
+    i = j + 1;
+  }
+  return out;
+}
+
+/**
+ * 水平路面两侧的竖直墙面。
+ * - 填方（路高于地面 > FILL_DM）：护坡从地面 − 0.5 m 到路面，朝外（从坡下看得到）；
+ * - 挖方：墙顶按 cutWallHeights（水平 / 台阶状、限坡、封顶、去掉短段），朝路；一段墙的两头是竖直的端面，
+ *   不再出现「一端 0、一端几米」的三角形尖顶（半山罗便臣道尽头、皇后大道西的楔形块）。
+ */
+function addWalls(
+  m: MeshArrays,
+  s: RibbonSpec,
+  edges: { L: [number, number, number, number, number]; R: [number, number, number, number, number]; st: Station }[],
+  len: number,
+  flags: number,
+): void {
+  const alongs = edges.map((e) => e.st.along);
+  for (const key of ['L', 'R'] as const) {
+    const left = key === 'L';
+    const es = edges.map((e) => e[key]);
+    const cut = cutWallHeights(
+      es.map((e) => e[2]),
+      es.map((e) => e[3]),
+      alongs,
+    );
+    for (let i = 0; i + 1 < es.length; i++) {
+      const a = es[i]!;
+      const b = es[i + 1]!;
+      const fa = a[2] - a[3];
+      const fb = b[2] - b[3];
+      let loA: number;
+      let hiA: number;
+      let loB: number;
+      let hiB: number;
+      let outward: boolean;
+      if (cut[i]! > 0 && cut[i + 1]! > 0) {
+        loA = a[2] - 5;
+        loB = b[2] - 5;
+        hiA = a[2] + cut[i]! + 3;
+        hiB = b[2] + cut[i + 1]! + 3;
+        outward = false;
+      } else if (fa > FILL_DM && fb > FILL_DM / 2) {
+        loA = a[3] - 5;
+        loB = Math.min(b[3], b[2]) - 5;
+        hiA = a[2];
+        hiB = b[2];
+        outward = true;
+      } else if (fb > FILL_DM && fa > FILL_DM / 2) {
+        loA = Math.min(a[3], a[2]) - 5;
+        loB = b[3] - 5;
+        hiA = a[2];
+        hiB = b[2];
+        outward = true;
+      } else continue;
+      const ab = vertex(m, a[0], a[1], loA, a[4], edges[i]!.st, s, len, flags);
+      const at = vertex(m, a[0], a[1], hiA, a[4], edges[i]!.st, s, len, flags);
+      const bb = vertex(m, b[0], b[1], loB, b[4], edges[i + 1]!.st, s, len, flags);
+      const bt = vertex(m, b[0], b[1], hiB, b[4], edges[i + 1]!.st, s, len, flags);
+      // 填方（路高于地面）：左墙朝左外 = 与高架左侧板同绕向；挖方反过来朝路
+      if (outward === left) {
+        m.tri(bb, ab, at);
+        m.tri(bb, at, bt);
+      } else {
+        m.tri(ab, bb, bt);
+        m.tri(ab, bt, at);
+      }
+    }
+  }
+}
+
+/**
+ * 过路处贴片：在沿线 s（dm）处横跨整条车行道的四边形（沿路方向 ±2 m），比路面高 3 cm，与路面同材质同属性
+ * （路灯光斑一致），shader 按 FLAG_CROSSING 画斑马条纹 / 灯控横线，其余像素丢弃。水平模式用中线高度。
+ */
+export function addCrossing(m: MeshArrays, s: RibbonSpec, at: number, signal: boolean): void {
+  const p = s.pts;
+  const n = p.length >> 1;
+  if (n < 2) return;
+  const along: number[] = [0];
+  for (let i = 1; i < n; i++) along.push(along[i - 1]! + Math.hypot(p[i * 2]! - p[i * 2 - 2]!, p[i * 2 + 1]! - p[i * 2 - 1]!));
+  const len = along[n - 1]!;
+  const flags = s.flags | FLAG_CROSSING | (signal ? FLAG_SIGNAL : 0);
+  const hwM = s.halfWidth * DM_TO_M;
+  const ends: { r: number; l: number }[] = [];
+  for (const a of [Math.max(at - CROSSING_HALF_DM, 0), Math.min(at + CROSSING_HALF_DM, len)]) {
+    let i = 0;
+    while (i < n - 2 && along[i + 1]! < a) i++;
+    const seg = along[i + 1]! - along[i]! || 1;
+    const t = Math.min(Math.max((a - along[i]!) / seg, 0), 1);
+    const dx = (p[i * 2 + 2]! - p[i * 2]!) / seg;
+    const dy = (p[i * 2 + 3]! - p[i * 2 + 1]!) / seg;
+    const x = p[i * 2]! + dx * seg * t;
+    const y = p[i * 2 + 1]! + dy * seg * t;
+    const z =
+      (s.level && s.zc ? s.zc[i]! + (s.zc[i + 1]! - s.zc[i]!) * t : s.height(x, y, a)) + CROSSING_LIFT_DM;
+    const st: Station = { along: a, pavL: at, pavR: 0, dx, dz: -dy };
+    ends.push({
+      r: vertex(m, x + dy * s.halfWidth, y - dx * s.halfWidth, z, -hwM, st, s, len, flags),
+      l: vertex(m, x - dy * s.halfWidth, y + dx * s.halfWidth, z, hwM, st, s, len, flags),
+    });
+  }
+  const [a, b] = ends as [{ r: number; l: number }, { r: number; l: number }];
+  m.tri(a.r, b.r, b.l);
+  m.tri(a.r, b.l, a.l);
+}
+

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { makeFixtureCity } from '../dev/fixture';
 import { flatGround } from '../data/terrain';
 import { normalizeRing, ringCentroid } from '../geom/ring';
-import { buildBuildingChunks, inSensitive } from './buildings';
+import { buildBuildingChunks, crownColour, inSensitive, modeOf } from './buildings';
 import { buildingChunk, chunkKey } from './chunks';
 import { FacadeMode } from './facade';
 import { buildRoadChunks } from './roads';
@@ -33,7 +33,7 @@ describe('buildings / roads on the fixture city', () => {
     expect(tris).toBeGreaterThanOrEqual(city.buildings.length * 10);
   });
 
-  it('敏感区内的楼是无窗灰体（mode = Plain），区外不是', () => {
+  it('敏感区内的楼是素灰石材（mode = Plain），区外是写实化类型模式（写字楼 / 住宅 / 唐楼 / 裙楼 / 屋顶机房）', () => {
     const chunks = buildBuildingChunks(city.buildings, flatGround, zones);
     const plain = new Set<string>();
     for (const b of city.buildings) {
@@ -45,7 +45,7 @@ describe('buildings / roads on the fixture city', () => {
     for (const [key, c] of chunks) {
       const styles = c.arrays.data[2]!.filter((_, i) => i % 4 === 3);
       const modes = styles.map((s) => Math.floor(s / 256));
-      if (!plain.has(key)) expect(modes.every((m) => m === FacadeMode.Windows)).toBe(true);
+      if (!plain.has(key)) expect(modes.every((m) => m >= FacadeMode.Office && m <= FacadeMode.Plant)).toBe(true);
       plainVerts += modes.filter((m) => m === FacadeMode.Plain).length;
     }
     expect(plainVerts).toBeGreaterThan(0);
@@ -58,5 +58,36 @@ describe('buildings / roads on the fixture city', () => {
     // 高架 level 1 → 6 m
     expect(maxY).toBeGreaterThan(5.9);
     expect(maxY).toBeLessThan(6.3);
+  });
+
+  it('aBldg：层高 > 0、街面冷暖 0–0.9、墙脚地面与地形一致，逐栋恒定', () => {
+    const chunks = buildBuildingChunks(city.buildings, flatGround, zones);
+    for (const c of chunks.values()) {
+      const bldg = c.arrays.data[3]!;
+      for (let i = 0; i < bldg.length; i += 4) {
+        expect(bldg[i]!).toBeGreaterThan(2.5);
+        expect(bldg[i]!).toBeLessThan(6.5);
+        expect(bldg[i + 1]!).toBeGreaterThanOrEqual(0);
+        expect(bldg[i + 1]!).toBeLessThanOrEqual(0.9);
+        expect(bldg[i + 2]!).toBeCloseTo(0);
+        expect(Number.isInteger(bldg[i + 3]!)).toBe(true);
+      }
+    }
+  });
+
+  it('modeOf：类型按 TYPOLOGY_ORDER 映射到 5 起的模式，敏感区沿用 Plain', () => {
+    expect(modeOf('office')).toBe(FacadeMode.Office);
+    expect(modeOf('residential')).toBe(FacadeMode.Residential);
+    expect(modeOf('tenement')).toBe(FacadeMode.Tenement);
+    expect(modeOf('podium')).toBe(FacadeMode.Podium);
+    expect(modeOf('civic')).toBe(FacadeMode.Civic);
+    expect(modeOf('sensitive')).toBe(FacadeMode.Plain);
+  });
+
+  it('冠顶色：白 50 %、金 25 %、青 15 %、品红 10 %', () => {
+    expect(crownColour(0.1)).toBe(1);
+    expect(crownColour(0.6)).toBe(2);
+    expect(crownColour(0.8)).toBe(3);
+    expect(crownColour(0.95)).toBe(4);
   });
 });

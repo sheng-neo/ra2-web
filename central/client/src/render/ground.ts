@@ -1,72 +1,33 @@
 /**
- * 地面与海面：一块 0 mPD 的大平面 + 水体遮罩贴图（ground 材质据此区分陆地/海面）。
- * 有地形时再叠一张只含陆地的地形网格（terrain.bin 抽稀后的渲染网格，外沿带裙坡），海面仍是那块平面。
+ * 地面：一块 0 mPD 的大平面（只画陆地底色；海面由 water/ 图层画在它上面）。
+ * 有地形时再叠一张只含陆地的地形网格（terrain.bin 抽稀后的渲染网格，外沿带裙坡）。
+ * 地形网格用自己的材质（materials/terrain.ts：树冠 / 混凝土 / 路灯照亮的边缘），
+ * 并在道路路廊下压低（road-corridor.ts），水平路面不会被地形顶穿（realism STREETS）。
  */
-import {
-  BufferAttribute,
-  BufferGeometry,
-  CanvasTexture,
-  ClampToEdgeWrapping,
-  LinearFilter,
-  LinearMipmapLinearFilter,
-  Mesh,
-  PlaneGeometry,
-  type IUniform,
-} from 'three';
+import { BufferAttribute, BufferGeometry, Mesh, PlaneGeometry } from 'three';
 import type { CityFile, TerrainGrid } from '@central/data';
-import { DM_TO_M, simToThree, simToThreeVec } from '../coords';
-import { APRON_DM, apronFalloff } from '../data/terrain';
+import { simToThree, simToThreeVec } from '../coords';
+import { APRON_DM, apronFalloff, reliefHeight } from '../data/terrain';
 import { createGroundMaterial } from './materials/ground';
+import { getQuality } from './materials/lighting';
+import { createTerrainMaterial } from './materials/terrain';
+import { cellsUnderBuildings, renderedTerrain } from './road-corridor';
+import { cachedRoadPlans } from './roads';
+import { groundMask } from './streets/ground-mask';
 
-/** 遮罩分辨率（米/像素）。 */
-const MASK_M = 4;
 const OUTER_M = 14000;
 
-function waterMask(city: CityFile): CanvasTexture {
-  const [x0, y0, x1, y1] = city.meta.bbox;
-  const w = Math.ceil(((x1 - x0) * DM_TO_M) / MASK_M);
-  const h = Math.ceil(((y1 - y0) * DM_TO_M) / MASK_M);
-  const canvas = document.createElement('canvas');
-  canvas.width = w;
-  canvas.height = h;
-  const g = canvas.getContext('2d')!;
-  g.fillStyle = '#000';
-  g.fillRect(0, 0, w, h);
-  g.fillStyle = '#fff';
-  // 像素栅格正好铺满 bbox（每像素略小于 MASK_M）：贴图边缘那一列/行完全落在数据范围内。
-  // 若按整 MASK_M 取整，最后一列有一截伸出 bbox、只被海面多边形盖住一部分，
-  // 范围外按边缘像素延伸时会被当成陆地（鸟瞰东北角那块直边浅色楔形）。
-  const px = (x: number) => ((x - x0) / (x1 - x0)) * w;
-  const py = (y: number) => ((y1 - y) / (y1 - y0)) * h;
-  for (const ring of city.water) {
-    g.beginPath();
-    for (const r of [ring.outer, ...(ring.holes ?? [])]) {
-      for (let i = 0; i < r.length; i += 2) {
-        if (i === 0) g.moveTo(px(r[i]!), py(r[i + 1]!));
-        else g.lineTo(px(r[i]!), py(r[i + 1]!));
-      }
-      g.closePath();
-    }
-    g.fill('evenodd');
-  }
-  const tex = new CanvasTexture(canvas);
-  tex.wrapS = ClampToEdgeWrapping;
-  tex.wrapT = ClampToEdgeWrapping;
-  tex.magFilter = LinearFilter;
-  tex.minFilter = LinearMipmapLinearFilter;
-  tex.generateMipmaps = true;
-  return tex;
-}
-
-/** 裙坡各圈离网格边的距离（占 APRON_DM 的比例），越往外越疏。 */
-const APRON_RINGS = [0, 0.03, 0.08, 0.16, 0.28, 0.45, 0.7, 1];
+/** 裙坡各圈离网格边的距离（占 APRON_DM 的比例），越往外越疏；LOW 档用疏的一套。 */
+const APRON_RINGS = [0, 0.04, 0.12, 0.28, 0.55, 1];
+const APRON_RINGS_LOW = [0, 0.08, 0.28, 0.7, 1];
 
 /**
  * 陆地地形网格：只输出至少有一个角是陆地（≠ 0）的格子；海面交给 0 mPD 的大平面。
+ * hidden（可选，按格子下标）标记的格子不画（完全在楼宇里面，见 road-corridor.cellsUnderBuildings）。
  * 每格沿 (i, j)–(i+1, j+1) 对角线分成两个三角形（与 data/terrain.reliefHeight 一致），从上往下看逆时针。
  * 网格外沿再向外铺一圈裙坡：高度按 apronFalloff 从边上的值降到 0，范围边缘不会出现断崖。
  */
-export function reliefGeometry(grid: TerrainGrid): BufferGeometry {
+export function reliefGeometry(grid: TerrainGrid, hidden?: Uint8Array, apronRings: readonly number[] = APRON_RINGS): BufferGeometry {
   const { x0, y0, cell, nx, ny, heights: h } = grid;
   const pos: number[] = [];
   const idx: number[] = [];
@@ -86,6 +47,7 @@ export function reliefGeometry(grid: TerrainGrid): BufferGeometry {
     for (let i = 0; i + 1 < nx; i++) {
       const a = j * nx + i;
       if (h[a] === 0 && h[a + 1] === 0 && h[a + nx] === 0 && h[a + nx + 1] === 0) continue;
+      if (hidden?.[a]) continue;
       const p00 = node(i, j);
       const p10 = node(i + 1, j);
       const p11 = node(i + 1, j + 1);
@@ -112,7 +74,7 @@ export function reliefGeometry(grid: TerrainGrid): BufferGeometry {
     if (h0 === 0) return null;
     const x = x0 + e.i * cell;
     const y = y0 + e.j * cell;
-    return APRON_RINGS.map((t, r) =>
+    return apronRings.map((t, r) =>
       r === 0 ? node(e.i, e.j) : vertex(x + e.nx * t * APRON_DM, y + e.ny * t * APRON_DM, h0 * apronFalloff(t)),
     );
   });
@@ -121,7 +83,7 @@ export function reliefGeometry(grid: TerrainGrid): BufferGeometry {
     const b = rings[(k + 1) % edge.length];
     if (!a || !b) continue;
     // 前进方向左侧是网格（逆时针），外圈在右侧：(a[r], a[r+1], b[r+1]) 从上往下看逆时针
-    for (let r = 0; r + 1 < APRON_RINGS.length; r++) idx.push(a[r]!, a[r + 1]!, b[r + 1]!, a[r]!, b[r + 1]!, b[r]!);
+    for (let r = 0; r + 1 < apronRings.length; r++) idx.push(a[r]!, a[r + 1]!, b[r + 1]!, a[r]!, b[r + 1]!, b[r]!);
   }
   const g = new BufferGeometry();
   g.setAttribute('position', new BufferAttribute(new Float32Array(pos), 3));
@@ -130,19 +92,32 @@ export function reliefGeometry(grid: TerrainGrid): BufferGeometry {
   return g;
 }
 
-/** 返回地面网格：0 mPD 的大平面（海面，也是平地模式的地面），有地形时再加陆地网格。farShore 为对岸岸线的模拟 y（米）。 */
-export function buildGround(city: CityFile, relief: TerrainGrid | null, farShore: number, time: IUniform<number>): Mesh[] {
+/**
+ * 返回地面网格：0 mPD 的大平面（陆地底色，也是平地模式的地面），有地形时再加陆地网格。
+ * apron = false（整合时加）：不画网格外的裙坡——远景（backdrop.ts）的山体高度场在网格边上正好接上地形，
+ * 裙坡全被它盖住或与它穿插，只是白白多出 1.4–1.8 万个三角形（LOW 档全城视角正好卡在 30 万上限）。
+ */
+export function buildGround(city: CityFile, relief: TerrainGrid | null, apron = true): Mesh[] {
   const [x0, y0, x1, y1] = city.meta.bbox;
-  const rect: [number, number, number, number] = [x0 * DM_TO_M, y0 * DM_TO_M, (x1 - x0) * DM_TO_M, (y1 - y0) * DM_TO_M];
-  const material = createGroundMaterial(waterMask(city), rect, farShore, time);
+  const material = createGroundMaterial();
   const [cx, , cz] = simToThreeVec((x0 + x1) / 2, (y0 + y1) / 2, 0);
   const plane = new PlaneGeometry(OUTER_M, OUTER_M);
   plane.rotateX(-Math.PI / 2);
   plane.translate(cx, 0, cz);
-  const sea = new Mesh(plane, material);
-  sea.name = 'ground';
-  if (!relief) return [sea];
-  const land = new Mesh(reliefGeometry(relief), material);
+  const base = new Mesh(plane, material);
+  base.name = 'ground';
+  if (!relief) return [base];
+  // 地形：路廊下压低后的网格 + 地形材质（遮罩与道路规划和街道层共用同一份缓存）
+  const plans = cachedRoadPlans(city.roads, reliefHeight(relief));
+  const mask = groundMask(city, plans);
+  const low = getQuality().tier === 'low';
+  const geometry = reliefGeometry(
+    renderedTerrain(relief, plans, city.buildings).grid,
+    cellsUnderBuildings(relief, city.buildings),
+    !apron ? [] : low ? APRON_RINGS_LOW : APRON_RINGS,
+  );
+  geometry.computeVertexNormals();
+  const land = new Mesh(geometry, createTerrainMaterial(mask.texture, mask.rect));
   land.name = 'terrain';
-  return [land, sea];
+  return [land, base];
 }

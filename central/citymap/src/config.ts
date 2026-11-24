@@ -4,7 +4,7 @@
 import path from 'node:path';
 
 /** 管线版本：输出格式或算法变化时递增（写进 meta.build.pipelineVersion）。 */
-export const PIPELINE_VERSION = '0.3.0';
+export const PIPELINE_VERSION = '0.4.0';
 
 export const OVERTURE_RELEASE = '2026-11-18.0';
 

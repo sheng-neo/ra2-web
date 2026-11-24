@@ -22,7 +22,7 @@ central.json and terrain.bin are generated from the following sources:
 
 Which layer comes from which source (one source per layer, never mixed feature by feature):
 * central.json roads, rails, water, zones, props: OpenStreetMap data (© OpenStreetMap contributors) and some TomTom road segments, both ODbL-1.0, distributed by Overture Maps Foundation.
-* central.json buildings and landmarks (footprints, base and top heights): Lands Department Building data via the CSDI Portal (CSDI-Terms; not part of the ODbL database).
+* central.json buildings and landmarks (footprints, base and top heights, storey counts): Lands Department Building data via the CSDI Portal (CSDI-Terms; not part of the ODbL database).
 * terrain.bin (ground elevation): Civil Engineering and Development Department 2020 LiDAR DTM via the CSDI Portal (CSDI-Terms; not part of the ODbL database).
 
 Changes made: features re-projected to HK1980 Grid (EPSG:2326) in local decimetres; footprints simplified

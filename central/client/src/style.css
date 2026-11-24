@@ -331,3 +331,11 @@ body {
     display: none;
   }
 }
+
+/* 照片模式（#photo）：只留常驻地图署名，便于与实拍照片并排比较 */
+.photo .badge,
+.photo .presets,
+.photo .credits-btn,
+.photo .hint {
+  display: none !important;
+}

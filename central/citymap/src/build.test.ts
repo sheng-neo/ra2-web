@@ -91,6 +91,21 @@ describe('建筑（LandsD 整层）', () => {
     expect(new Set(city.buildings.map((b) => b.heightSource))).toEqual(new Set(['landsd', 'heuristic']));
   });
 
+  it('层数：取自 LandsD Storeys 的正整数，塔楼大多有；层高（高 ÷ 层数）中位数落在 3–4.5 m', () => {
+    const towers = city.buildings.filter((b) => b.kind === 'tower');
+    const withStoreys = towers.filter((b) => b.storeys !== undefined);
+    expect(withStoreys.length / towers.length).toBeGreaterThan(0.6);
+    for (const b of city.buildings) {
+      if (b.storeys === undefined) continue;
+      expect(Number.isInteger(b.storeys)).toBe(true);
+      expect(b.storeys).toBeGreaterThan(0);
+    }
+    const f2f = withStoreys.map((b) => b.height / 10 / b.storeys!).sort((a, b) => a - b);
+    const mid = f2f[f2f.length >> 1]!;
+    expect(mid).toBeGreaterThan(3);
+    expect(mid).toBeLessThan(4.5);
+  });
+
   it('楼底：中位数贴地（±1 m），≥ 95% 不埋进地面 3 m 以下；缺高程的楼取轮廓最低顶点的地形', () => {
     const ground = groundOf(grid);
     const d = city.buildings.map((b) => b.base - lowestGround(b.footprint.outer, ground)).sort((a, b) => a - b);

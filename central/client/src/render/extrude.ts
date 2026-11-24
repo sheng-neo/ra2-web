@@ -8,7 +8,7 @@
 import { ShapeUtils, Vector2 } from 'three';
 import type { FlatXY } from '@central/data';
 import { DM_TO_M } from '../coords';
-import { facadeVertex } from './facade';
+import { facadeVertex, type BldgAttr } from './facade';
 import type { MeshArrays } from './mesh-arrays';
 import { visibleSpans, type WallCut } from './walls';
 
@@ -30,6 +30,27 @@ export interface ExtrudeSpec {
   roof?: boolean;
   /** 各边不画的部分（共面墙去重，见 walls.ts）；ring 0 为外环，1.. 为洞。 */
   cuts?: (ring: number, edge: number) => readonly WallCut[] | undefined;
+  /** 逐栋 aBldg（层高、街面冷暖、墙脚地面、特征位，见 facade.ts）；省略为全 0。 */
+  bldg?: BldgAttr;
+  /** 每画一块墙面回调一次（铺面招牌摆放用）：模拟坐标 dm 的起止点、高程区间与立面 u 起点（米）。 */
+  onSpan?: (span: WallSpanInfo) => void;
+}
+
+/** 实际画出的一块墙面（onSpan 回调参数）。 */
+export interface WallSpanInfo {
+  ring: number;
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+  /** 墙面底 / 顶高程（dm）。 */
+  z0: number;
+  z1: number;
+  /** 起点的立面 u（米）。 */
+  u0: number;
+  /** 外法线（模拟坐标，单位向量）。 */
+  nx: number;
+  ny: number;
 }
 
 function addWalls(m: MeshArrays, ring: FlatXY, ringIndex: number, s: ExtrudeSpec, u0: number): number {
@@ -59,12 +80,13 @@ function addWalls(m: MeshArrays, ring: FlatXY, ringIndex: number, s: ExtrudeSpec
       const ub = u + w.s1 * DM_TO_M;
       const va = (w.z0 - s.base) * DM_TO_M;
       const vb = (w.z1 - s.base) * DM_TO_M;
-      const a = facadeVertex(m, xa, ya, w.z0, nx, ny, 0, ua, va, h, s.style);
-      const b = facadeVertex(m, xb, yb, w.z0, nx, ny, 0, ub, va, h, s.style);
-      const c = facadeVertex(m, xb, yb, w.z1, nx, ny, 0, ub, vb, h, s.style);
-      const d = facadeVertex(m, xa, ya, w.z1, nx, ny, 0, ua, vb, h, s.style);
+      const a = facadeVertex(m, xa, ya, w.z0, nx, ny, 0, ua, va, h, s.style, s.bldg);
+      const b = facadeVertex(m, xb, yb, w.z0, nx, ny, 0, ub, va, h, s.style, s.bldg);
+      const c = facadeVertex(m, xb, yb, w.z1, nx, ny, 0, ub, vb, h, s.style, s.bldg);
+      const d = facadeVertex(m, xa, ya, w.z1, nx, ny, 0, ua, vb, h, s.style, s.bldg);
       m.tri(a, b, c);
       m.tri(a, c, d);
+      s.onSpan?.({ ring: ringIndex, x0: xa, y0: ya, x1: xb, y1: yb, z0: w.z0, z1: w.z1, u0: ua, nx, ny });
     }
     u += len * DM_TO_M;
   }
@@ -83,7 +105,7 @@ function addRoof(m: MeshArrays, s: ExtrudeSpec): void {
   const pts = [...contour, ...holes.flat()];
   const h = (s.top - s.base) * DM_TO_M;
   const base = m.vertexCount;
-  for (const p of pts) facadeVertex(m, p.x, p.y, s.top, 0, 0, 1, p.x * DM_TO_M, p.y * DM_TO_M, h, s.style);
+  for (const p of pts) facadeVertex(m, p.x, p.y, s.top, 0, 0, 1, p.x * DM_TO_M, p.y * DM_TO_M, h, s.style, s.bldg);
   for (const f of faces) {
     const [i, j, k] = f as [number, number, number];
     const a = pts[i]!;

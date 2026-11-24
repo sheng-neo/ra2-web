@@ -1,7 +1,12 @@
 /**
  * 冒烟 + 截图：vite build → 仿生产的静态服务器 → Playwright（无头 Chromium，SwiftShader）打开页面，
- * 等 window.__central.ready，断言零 console error、draw call ≤ 150、三角形 ≤ 30 万（PLAN §7.2 中档）、
- * 地图数据实际下载量 ≤ 1 MB，按三种视口截图。
+ * 等 window.__central.ready，按三种视口截图并断言（写实化 realism spec §v 的两档预算）：
+ * - 零 console error；地图数据实际下载量 ≤ 1 MB；
+ * - draw call ≤ 150（每个机位、两档都是）；三角形 HIGH ≤ 60 万、LOW ≤ 30 万（按 stats().tier 判档）；
+ * - 全分辨率后处理 pass ≤ 2（stats().passesFull）；
+ * - LOW 档（?q=low#q-low，另跑一轮）：stats().tier === 'low'、bloom 与平面反射都关；
+ * - 手机横屏按 iPhone 的 DPR 2、桌面按 2560×1440 各再跑一次：GPU 贴图 + 渲染目标 + 画布 ≤ 64 MB（stats().texMB），
+ *   起始 buffer > 1.2 Mpx 时不开 MSAA。
  *
  * 仿生产：与红警的 packages/server/src/static.ts 行为一致——产物挂在 /central/ 下，不压缩、
  * 不给 Content-Length、目录不做 301，未知路径回退到站点根的 index.html（text/html）。
@@ -30,7 +35,12 @@ const outDir = process.env.SHOT_DIR || path.join(os.tmpdir(), 'central-shots');
 const args = process.argv.slice(2);
 const only = args.find((a) => a.startsWith('--only='))?.slice(7);
 const MAX_CALLS = 150;
-const MAX_TRIANGLES = 300_000;
+/** 三角形上限：HIGH（iPhone 17 / 桌面）60 万、LOW 30 万（realism spec §v）。 */
+const MAX_TRIANGLES = { high: 600_000, low: 300_000 };
+/** 全分辨率后处理 pass 上限（bloom 在半分辨率以下，不计）。 */
+const MAX_PASSES_FULL = 2;
+/** GPU 贴图 + 渲染目标内存上限（MB，手机 DPR 2）。 */
+const MAX_TEX_MB = 64;
 /** 地图数据（city/ 下的请求）实际传输字节上限：PLAN §7.1 MVP 1 MB，服务器不压缩也要满足。 */
 const MAX_DATA_BYTES = 1024 * 1024;
 /** 产物挂载的子路径（与 Dockerfile 一致）。 */
@@ -69,6 +79,16 @@ const VIEWPORTS = [
   { name: 'desktop', width: 1280, height: 720, mobile: false, presets: ['harbour', 'statue', 'aerial'] },
   { name: 'phone-land', width: 874, height: 402, mobile: true, presets: ['harbour', 'statue'] },
   { name: 'phone-port', width: 402, height: 874, mobile: true, presets: ['harbour'] },
+  // iPhone 17 横屏的真实像素（DPR 2 → 1748×804 ≈ 1.4 Mpx）：查显存账本与 MSAA 规则
+  { name: 'phone-dpr2', width: 874, height: 402, mobile: true, dsf: 2, presets: ['harbour'], memCheck: true, onlyCity: true },
+  // 1440p 桌面窗口：CSS 尺寸本身就超过 HIGH 的 buffer 上限，DPR 要降到 1 以下才守得住 64 MB（含画布）
+  { name: 'desktop-1440', width: 2560, height: 1440, mobile: false, presets: ['harbour'], memCheck: true, onlyCity: true },
+];
+
+/** 画质档轮次：auto（URL 不指定，能力探测；无头 Chromium 一般是 HIGH）与 LOW（?q=low#q-low，只测真实数据）。 */
+const RUNS = [
+  { name: 'auto', query: '', hash: '' },
+  { name: 'low', query: 'q=low', hash: '#q-low', onlyCity: true, viewports: ['desktop', 'phone-land'] },
 ];
 
 const waitFrames = (page, n) =>
@@ -103,14 +123,18 @@ async function run() {
       report.push({ target: 'no-slash', url: `${MOUNT}?fixture=1`, ok: !err && errors.length === 0 });
       await page.close();
     }
-    for (const t of targets.filter((x) => !only || x.name === only)) {
+    for (const run of RUNS) for (const t of targets.filter((x) => !only || x.name === only)) {
+      if (run.onlyCity && t.name !== 'city') continue;
       for (const vp of VIEWPORTS) {
+        if (run.viewports && !run.viewports.includes(vp.name)) continue;
+        if (vp.onlyCity && (t.name !== 'city' || run.name !== 'auto')) continue;
         const ctx = await browser.newContext({
           viewport: { width: vp.width, height: vp.height },
-          deviceScaleFactor: 1,
+          deviceScaleFactor: vp.dsf ?? 1,
           isMobile: vp.mobile,
           hasTouch: vp.mobile,
         });
+        const tag = `${t.name}/${run.name}/${vp.name}`;
         const page = await ctx.newPage();
         const errors = [];
         page.on('console', (m) => m.type() === 'error' && errors.push(m.text()));
@@ -118,34 +142,45 @@ async function run() {
         const sizes = [];
         page.on('requestfinished', (r) => sizes.push(r.sizes().then((s) => ({ url: r.url(), bytes: s.responseBodySize }))));
         const t0 = Date.now();
-        await page.goto(base + t.query);
+        const qs = [t.query.replace(/^\?/, ''), run.query].filter(Boolean).join('&');
+        await page.goto(`${base}${qs ? `?${qs}` : ''}${run.hash}`);
         await page.waitForFunction('window.__central && (window.__central.ready || window.__central.error)', null, {
           timeout: 180000,
         });
         const err = await page.evaluate('window.__central.error ?? null');
-        if (err) failures.push(`${t.name}/${vp.name}: 啟動錯誤 ${err}`);
+        if (err) failures.push(`${tag}: 啟動錯誤 ${err}`);
         const loadMs = Date.now() - t0;
         const done = await Promise.all(sizes);
         const totalBytes = done.reduce((n, s) => n + s.bytes, 0);
         const dataBytes = done.filter((s) => s.url.includes('/city/')).reduce((n, s) => n + s.bytes, 0);
-        if (dataBytes > MAX_DATA_BYTES) failures.push(`${t.name}/${vp.name}: 地圖數據下載 ${dataBytes} B > ${MAX_DATA_BYTES}`);
+        if (dataBytes > MAX_DATA_BYTES) failures.push(`${tag}: 地圖數據下載 ${dataBytes} B > ${MAX_DATA_BYTES}`);
         // 等加载层淡出
         await page.waitForTimeout(900);
         for (const preset of vp.presets) {
           await page.evaluate(`window.__central.setView(${JSON.stringify(preset)}, true)`);
           await waitFrames(page, 3);
           const stats = await page.evaluate('window.__central.stats()');
-          const file = path.join(outDir, `${t.name}-${vp.name}-${preset}.png`);
+          const file = path.join(outDir, `${t.name}-${run.name}-${vp.name}-${preset}.png`);
           await page.screenshot({ path: file });
-          report.push({ target: t.name, viewport: vp.name, preset, loadMs, totalBytes, dataBytes, ...stats });
-          if (stats.calls > MAX_CALLS) failures.push(`${t.name}/${vp.name}/${preset}: draw calls ${stats.calls} > ${MAX_CALLS}`);
-          if (stats.triangles > MAX_TRIANGLES) {
-            failures.push(`${t.name}/${vp.name}/${preset}: 三角形 ${stats.triangles} > ${MAX_TRIANGLES}`);
+          report.push({ target: t.name, run: run.name, viewport: vp.name, preset, loadMs, totalBytes, dataBytes, ...stats });
+          const at = `${tag}/${preset}`;
+          if (stats.calls > MAX_CALLS) failures.push(`${at}: draw calls ${stats.calls} > ${MAX_CALLS}`);
+          const triCap = MAX_TRIANGLES[stats.tier] ?? MAX_TRIANGLES.low;
+          if (stats.triangles > triCap) failures.push(`${at}: 三角形 ${stats.triangles} > ${triCap}（${stats.tier}）`);
+          if (!(stats.passesFull <= MAX_PASSES_FULL)) failures.push(`${at}: 全分辨率 pass ${stats.passesFull} > ${MAX_PASSES_FULL}`);
+          if (run.name === 'low') {
+            if (stats.tier !== 'low') failures.push(`${at}: 畫質檔 ${stats.tier}，應為 low`);
+            if (stats.bloom !== false) failures.push(`${at}: LOW 檔不應開 bloom`);
+            if (stats.reflection !== false) failures.push(`${at}: LOW 檔不應開平面反射`);
+          }
+          if (vp.memCheck) {
+            if (!(stats.texMB <= MAX_TEX_MB)) failures.push(`${at}: GPU 貼圖 ${stats.texMB} MB > ${MAX_TEX_MB}`);
+            if (stats.tier === 'high' && stats.bufferPx > 1.2e6 && stats.msaa !== 0) failures.push(`${at}: 起始 buffer ${stats.bufferPx} px > 1.2 Mpx 卻開了 MSAA ${stats.msaa}`);
           }
         }
         const summary = await page.evaluate('window.__central.summary()');
-        report.push({ target: t.name, viewport: vp.name, summary });
-        if (errors.length) failures.push(`${t.name}/${vp.name}: console error ×${errors.length}: ${errors.slice(0, 3).join(' | ')}`);
+        report.push({ target: t.name, run: run.name, viewport: vp.name, summary });
+        if (errors.length) failures.push(`${tag}: console error ×${errors.length}: ${errors.slice(0, 3).join(' | ')}`);
         await ctx.close();
       }
     }

@@ -1,9 +1,12 @@
 /**
  * 海港塔（harbour-spire）：切角方塔分四级收分，楼顶一圈竖向鳍片组成开口冠顶，四角最高。
- * 切角处有竖向亮线。造型神似、不按比例复刻。
+ * 切角处有竖向 LED 线；冠顶鳍片白光泛光（约 2.7，过曝成白）；立面每 15–25 层一道避难层通亮带。造型神似、不按比例复刻。
  */
-import { FacadeMode, styleSeed } from '../facade';
-import { box, chamferSquare, line, prism, type LandmarkSink, type Placement } from './kit';
+import { FEATURE, FacadeMode, styleSeed } from '../facade';
+import { box, chamferSquare, emitOf, line, prism, type LandmarkSink, type Placement } from './kit';
+
+/** 切角处的竖向 LED 线（白，契约 edgeLed 2–4）。 */
+const CORNER = emitOf('crownWhite', 2.2);
 
 const TIERS: readonly [number, number, number][] = [
   [0, 0.44, 1],
@@ -16,16 +19,17 @@ export function harbourSpire(p: Placement, sink: LandmarkSink): void {
   const a = Math.min(p.hx, p.hy);
   const bodyH = p.height * 0.9;
   const crownH = p.height - bodyH;
-  const style = p.style(styleSeed(3, 2, 0, 1), FacadeMode.Windows);
+  const style = p.style(styleSeed(3, 2, 0, 1), FacadeMode.Office);
+  const bldg = p.bldg(4.2, FEATURE.refuge);
   for (const [f0, f1, k] of TIERS) {
     const ring = chamferSquare(a * k, a * k * 0.2);
     const z0 = f0 * bodyH;
     const z1 = f1 * bodyH;
-    prism(p, sink, ring, z0, z1, style);
+    prism(p, sink, ring, z0, z1, style, bldg);
     for (let i = 0; i < ring.length; i += 2) {
       const x = ring[i]! * 1.004;
       const y = ring[i + 1]! * 1.004;
-      line(p, sink, [x, y, z0], [x, y, z1]);
+      line(p, sink, [x, y, z0], [x, y, z1], CORNER, 0.15);
     }
   }
   // 冠顶鳍片：沿顶层轮廓等距排布，高度按方位角在四角取峰
@@ -56,7 +60,7 @@ export function harbourSpire(p: Placement, sink: LandmarkSink): void {
       const ny = -dx / len;
       const peak = Math.pow(Math.abs(Math.sin(2 * Math.atan2(y, x))), 1.5);
       const fh = crownH * (0.35 + 0.65 * peak);
-      box(p, sink, [x, y, bodyH + fh / 2], [nx * 1.3, ny * 1.3, 0], [-ny * 0.35, nx * 0.35, 0], [0, 0, fh / 2], [0.72, 0.82, 1.0], 0.55);
+      box(p, sink, [x, y, bodyH + fh / 2], [nx * 1.3, ny * 1.3, 0], [-ny * 0.35, nx * 0.35, 0], [0, 0, fh / 2], [0.92, 0.95, 1.0], 0.85);
       break;
     }
   }

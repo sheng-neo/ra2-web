@@ -1,11 +1,11 @@
 /**
- * 纯色构件材质（地标的钢架、桅杆、冠顶鳍片等）：顶点色 × 夜间光照 + 自发光。
- * 布局：position、normal、color(3)、aGlow(1，0 = 只受光，1 = 完全自发光)。
+ * 纯色构件材质（地标的钢架、桅杆、冠顶鳍片等），按共享光照契约：顶点色 × cityAmbient + 自发光（aGlow × GLOW_SCALE）。
+ * 布局：position、normal、color(3，线性反照率 / 发光色)、aGlow(1，0 = 只受光，1 = 完全自发光)。
  */
 import { ShaderMaterial } from 'three';
 import { simToThree } from '../../coords';
 import { MeshArrays, type AttrSpec } from '../mesh-arrays';
-import { GLSL_OUTPUT, GLSL_FOG_PARS_FRAG, GLSL_FOG_VERT, GLSL_NIGHT_LIGHT, withFog } from './common';
+import { GLSL_CITY_LIGHT, GLSL_FINISH, GLSL_HAZE, GLSL_SHARED_PARS, sharedUniforms } from './lighting';
 
 export const SOLID_LAYOUT: readonly AttrSpec[] = [
   { name: 'position', size: 3 },
@@ -46,40 +46,43 @@ attribute float aGlow;
 varying vec3 vColor;
 varying float vGlow;
 varying vec3 vNormalW;
-varying float vLift;
-#include <fog_pars_vertex>
+varying vec3 vWorld;
 void main() {
   vColor = color;
   vGlow = aGlow;
   vNormalW = normalize(mat3(modelMatrix) * normal);
   vec4 world = modelMatrix * vec4(position, 1.0);
-  vLift = world.y;
-  vec4 mvPosition = viewMatrix * world;
-  gl_Position = projectionMatrix * mvPosition;
-  ${GLSL_FOG_VERT}
+  vWorld = world.xyz;
+  gl_Position = projectionMatrix * viewMatrix * world;
 }
 `;
 
 const fragmentShader = /* glsl */ `
+${GLSL_SHARED_PARS}
+${GLSL_HAZE}
+${GLSL_CITY_LIGHT}
 varying vec3 vColor;
 varying float vGlow;
 varying vec3 vNormalW;
-varying float vLift;
-${GLSL_FOG_PARS_FRAG}
-${GLSL_NIGHT_LIGHT}
+varying vec3 vWorld;
 void main() {
   vec3 n = normalize(vNormalW);
-  vec3 col = vColor * mix(nightLight(n, vLift) * 0.25, vec3(1.0), vGlow);
-  ${GLSL_OUTPUT}
+  // 离地高度取世界高度（地标在海旁平地，楼底约 0–15 mPD）；街面冷暖取中性
+  vec3 surface = vColor * cityAmbient(n, vWorld.y - 5.0, 0.3) * (1.0 - vGlow);
+  vec3 emissive = vColor * vGlow * GLOW_SCALE;
+  vec3 col = applyHaze(surface, emissive, vWorld);
+  ${GLSL_FINISH}
 }
 `;
 
+/** aGlow = 1 时的发光亮度（线性，契约 EMISSIVE.crownWash 上限附近）。 */
+export const GLOW_SCALE = 3.2;
+
 export function createSolidMaterial(): ShaderMaterial {
   return new ShaderMaterial({
-    uniforms: withFog({}),
+    uniforms: sharedUniforms(),
     vertexShader,
-    fragmentShader,
+    fragmentShader: fragmentShader.replace('GLOW_SCALE', GLOW_SCALE.toFixed(2)),
     vertexColors: true,
-    fog: true,
   });
 }

@@ -43,7 +43,7 @@ describe('landmark builders', () => {
   for (const [id, build] of Object.entries(LANDMARK_BUILDERS)) {
     it(`${id}：生成非空几何，绕向与法线一致，高度不超过 placement.height`, () => {
       for (const rot of [0, 0.7, -2.1]) {
-        const sink: LandmarkSink = { facade: newFacadeArrays(), solid: newSolidArrays(), neon: newNeonArrays(), lines: [] };
+        const sink: LandmarkSink = { facade: newFacadeArrays(), solid: newSolidArrays(), neon: newNeonArrays() };
         const p = new Placement(placement(id, rot), flatGround, []);
         expect(p.hx).toBeCloseTo(25);
         expect(p.hy).toBeCloseTo(25);
@@ -61,7 +61,7 @@ describe('landmark builders', () => {
   it('敏感区内的地标退化成无窗灰体、不出霓虹', () => {
     const pl = placement('neon-centre', 0);
     const zone = { id: 'z', kind: 'military' as const, area: { outer: [0, 0, 3000, 0, 3000, 4000, 0, 4000] } };
-    const sink: LandmarkSink = { facade: newFacadeArrays(), solid: newSolidArrays(), neon: newNeonArrays(), lines: [] };
+    const sink: LandmarkSink = { facade: newFacadeArrays(), solid: newSolidArrays(), neon: newNeonArrays() };
     LANDMARK_BUILDERS['neon-centre']!(new Placement(pl, flatGround, [zone]), sink);
     expect(sink.neon.vertexCount).toBe(0);
     const styles = sink.facade.data[2]!.filter((_, i) => i % 4 === 3);

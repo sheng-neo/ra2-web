@@ -76,6 +76,14 @@ export function resolveHeight(raw: RawBuilding, areaM2: number): { m: number; so
   return { m: heuristicHeightM(raw, areaM2), source: 'heuristic' };
 }
 
+/** 源数据的地上层数（取整）；缺失、非有限或 ≤ 0 时返回 undefined（Building.storeys 省略）。 */
+export function storeysOf(raw: Pick<RawBuilding, 'floors'>): number | undefined {
+  const f = raw.floors;
+  if (f === undefined || !Number.isFinite(f)) return undefined;
+  const n = Math.round(f);
+  return n > 0 ? n : undefined;
+}
+
 export function kindOf(subtype: string | undefined, cls: string | undefined, heightM: number, areaM2: number): BuildingKind {
   if (subtype && CIVIC.has(subtype)) return 'civic';
   if (subtype && INDUSTRIAL.has(subtype)) return 'industrial';
@@ -133,7 +141,7 @@ export function buildBuildings(
       const areaM2 = ringArea(footprint.outer) / 100;
       const { m, source } = resolveHeight(raw, areaM2);
       const key = k === 0 ? raw.rawId : `${raw.rawId}#${k}`;
-      out.push({
+      const b: Building = {
         id: shortId(`${src}:${key}`),
         src,
         footprint,
@@ -142,7 +150,10 @@ export function buildBuildings(
         heightSource: source,
         kind: raw.kind ?? kindOf(raw.subtype, raw.cls, m, areaM2),
         style: hashU32(key, 'style') & 255,
-      });
+      };
+      const storeys = storeysOf(raw);
+      if (storeys !== undefined) b.storeys = storeys;
+      out.push(b);
       refs.set(raw.ref.id, raw.ref);
     });
   }

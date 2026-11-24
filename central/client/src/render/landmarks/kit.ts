@@ -1,17 +1,19 @@
 /**
  * 地标构件工具：局部坐标（米，x 右 / y 前 / z 上，原点在地标中心地面）→ 模拟坐标（dm）。
- * 所有地标的立面、纯色构件、霓虹、线框分别写进四个共享缓冲，最后各合成一个 draw call。
+ * 所有地标的立面、纯色构件、静态发光条分别写进三个共享缓冲，最后各合成一个 draw call。
+ * 写实化一轮：立面走与楼群相同的建筑材质（aBldg 带层高、街面冷暖、墙脚地面、特征位）；
+ * 霓虹与线框改为静态颜色的发光条（materials/neon.ts），颜色取冠顶色板，不变色。
  */
 import type { FlatXY, LandmarkPlacement, SensitiveZone } from '@central/data';
-import { simToThree } from '../../coords';
 import type { HeightFn } from '../../data/terrain';
 import { normalizeRing } from '../../geom/ring';
 import { inSensitive } from '../buildings';
 import { extrudePrism } from '../extrude';
-import { FacadeMode, facadeVertex, hash01, styleCode } from '../facade';
+import { FacadeMode, facadeVertex, hash01, styleCode, type BldgAttr } from '../facade';
 import type { MeshArrays } from '../mesh-arrays';
 import { lowestAlongRings } from '../walls';
-import { neonVertex } from '../materials/neon';
+import { lightColour, streetWarmth, type LightName } from '../materials/lighting';
+import { neonLine, neonVertex } from '../materials/neon';
 import { solidVertex } from '../materials/solid';
 
 export type Vec3 = readonly [number, number, number];
@@ -20,10 +22,18 @@ export type Rgb = readonly [number, number, number];
 export interface LandmarkSink {
   facade: MeshArrays;
   solid: MeshArrays;
+  /** 静态发光条（灯带、边缘 LED 线）。 */
   neon: MeshArrays;
-  /** 线段端点（three 坐标，米）。 */
-  lines: number[];
 }
+
+/** 发光色 × 亮度（线性 RGB，契约 EMISSIVE 标尺）。 */
+export function emitOf(name: LightName, intensity: number): Rgb {
+  const c = lightColour(name);
+  return [c.r * intensity, c.g * intensity, c.b * intensity];
+}
+
+/** 边缘 LED 线的缺省发光（白，契约 edgeLed 2–4）。 */
+export const EDGE_WHITE: Rgb = emitOf('crownWhite', 2.6);
 
 export class Placement {
   readonly cx: number;
@@ -92,10 +102,24 @@ export class Placement {
   style(seed: number, mode: FacadeMode): number {
     return styleCode(seed, this.sensitive ? FacadeMode.Plain : mode, this.rnd);
   }
+
+  /** 立面 aBldg：层高 f2f（米）与特征位（facade.FEATURE；敏感区清零）。 */
+  bldg(f2f = 4, feature = 0): BldgAttr {
+    const groundM = (this.base - this.footing * 10) / 10 + 0.5;
+    return [f2f, streetWarmth(this.cx / 10, this.cy / 10, groundM), groundM, this.sensitive ? 0 : feature];
+  }
 }
 
 /** 局部棱柱：环为局部米坐标（逆时针），z0..z1 米。立面 v 以地标地面为基准，使各段楼层线对齐。 */
-export function prism(p: Placement, sink: LandmarkSink, ring: readonly number[], z0: number, z1: number, style: number): void {
+export function prism(
+  p: Placement,
+  sink: LandmarkSink,
+  ring: readonly number[],
+  z0: number,
+  z1: number,
+  style: number,
+  bldg: BldgAttr = p.bldg(),
+): void {
   extrudePrism(sink.facade, {
     outer: p.ringToSim(ring),
     holes: [],
@@ -104,11 +128,12 @@ export function prism(p: Placement, sink: LandmarkSink, ring: readonly number[],
     top: p.base + z1 * 10,
     style,
     uOffset: p.rnd * 50,
+    bldg,
   });
 }
 
 /** 凸多边形面（局部米坐标，从外面看逆时针），写进立面缓冲；u 取面内水平坐标，v 取高度。 */
-export function facadePoly(p: Placement, sink: LandmarkSink, pts: readonly Vec3[], style: number): void {
+export function facadePoly(p: Placement, sink: LandmarkSink, pts: readonly Vec3[], style: number, bldg: BldgAttr = p.bldg()): void {
   const a = pts[0]!;
   const b = pts[1]!;
   const c = pts[2]!;
@@ -129,7 +154,7 @@ export function facadePoly(p: Placement, sink: LandmarkSink, pts: readonly Vec3[
   const h = p.height;
   const ids = pts.map((q) => {
     const [x, y, z] = p.toSim(q[0], q[1], q[2]);
-    return facadeVertex(sink.facade, x, y, z, snx, sny, snz, q[0] * tx + q[1] * ty + p.rnd * 50, q[2], h, style);
+    return facadeVertex(sink.facade, x, y, z, snx, sny, snz, q[0] * tx + q[1] * ty + p.rnd * 50, q[2], h, style, bldg);
   });
   for (let i = 1; i + 1 < ids.length; i++) sink.facade.tri(ids[0]!, ids[i]!, ids[i + 1]!);
 }
@@ -174,23 +199,21 @@ export function aabb(p: Placement, sink: LandmarkSink, min: Vec3, max: Vec3, rgb
   box(p, sink, c, [(max[0] - min[0]) / 2, 0, 0], [0, (max[1] - min[1]) / 2, 0], [0, 0, (max[2] - min[2]) / 2], rgb, glow);
 }
 
-/** 霓虹四边形（双面），phase 取各顶点离地高度。 */
-export function neonQuad(p: Placement, sink: LandmarkSink, a: Vec3, b: Vec3, c: Vec3, d: Vec3): void {
+/** 静态发光四边形（双面），emit 为线性发光（已乘亮度）。敏感区内不画。 */
+export function neonQuad(p: Placement, sink: LandmarkSink, a: Vec3, b: Vec3, c: Vec3, d: Vec3, emit: Rgb): void {
+  if (p.sensitive) return;
   const ids = [a, b, c, d].map((q) => {
     const [x, y, z] = p.toSim(q[0], q[1], q[2]);
-    return neonVertex(sink.neon, x, y, z, q[2]);
+    return neonVertex(sink.neon, x, y, z, emit);
   });
   sink.neon.tri(ids[0]!, ids[1]!, ids[2]!);
   sink.neon.tri(ids[0]!, ids[2]!, ids[3]!);
 }
 
-export function line(p: Placement, sink: LandmarkSink, a: Vec3, b: Vec3): void {
-  for (const q of [a, b]) {
-    const [x, y, z] = p.toSim(q[0], q[1], q[2]);
-    const v = [0, 0, 0];
-    simToThree(x, y, z, v);
-    sink.lines.push(...v);
-  }
+/** 一条静态发光线（边缘 LED，取代 M0 的 1 像素线框）：半宽 halfWidthM 米，远处保持最小像素宽。敏感区内不画。 */
+export function line(p: Placement, sink: LandmarkSink, a: Vec3, b: Vec3, emit: Rgb = EDGE_WHITE, halfWidthM = 0.2): void {
+  if (p.sensitive) return;
+  neonLine(sink.neon, p.toSim(a[0], a[1], a[2]), p.toSim(b[0], b[1], b[2]), emit, halfWidthM);
 }
 
 /** 切角正方形（八边形）环，半边长 a、切角 ch，逆时针。 */

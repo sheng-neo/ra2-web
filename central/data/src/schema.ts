@@ -62,6 +62,11 @@ export interface Building {
   kind: BuildingKind;
   /** 立面风格种子 0–255（窗格密度、色温、亮灯率等由客户端按种子决定）。 */
   style: number;
+  /**
+   * 地上层数（正整数；地政总署 Storeys，Overture 层建筑取 num_floors）。未知或 ≤ 0 时省略。
+   * 写实化一轮新增的可选字段（不改 CITY_FORMAT_VERSION）：客户端用 height / storeys 估层高，区分写字楼（约 4 m）与住宅（约 2.9 m）。
+   */
+  storeys?: number;
 }
 
 export type RoadClass =

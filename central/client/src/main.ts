@@ -1,8 +1,10 @@
 /**
  * 《中環急件》Central Rush · M0：夜色白模中环，手机横屏优先。
  *
- * URL 参数：?fixture=1 用合成城市；?perf=1 显示性能面板；?view=harbour|statue|aerial 初始机位；
- * ?terrain=1/0 强制加载 / 不加载 terrain.bin。
+ * URL 参数（?query 与 #hash 都认，artifact 链接只透传 #hash；见 lighting.ts readParam）：
+ * fixture=1 用合成城市；perf 显示性能面板；view=harbour|statue|aerial 初始机位；terrain=1/0 强制加载 / 不加载 terrain.bin；
+ * q=low|high 画质档；t=<小时> 当地钟点（18–26，默认 20）；haze=humid|clear 天气；adaptive 自动化测试下也开自适应 DPR；
+ * post-0 / bloom-0 后处理调试开关；photo 照片模式（只留地图署名）。例：#q-low&perf、#view-statue,t-21.5、#photo。
  * 调试钩子：window.__central（ready、stats()、setView()），供 Playwright 冒烟脚本读取。
  * 数据路径一律相对页面（index.html 保证 /central 无结尾斜杠时也按 /central/ 解析）。
  */
@@ -19,6 +21,8 @@ import { createHud } from './ui/hud';
 import { LoadingScreen } from './ui/loading';
 import { Notice } from './ui/notice';
 import { PerfHud } from './ui/perf-hud';
+import { HAZE, SHARED, readParam } from './render/materials/lighting';
+import { AdaptiveDpr, DowngradeWatch, adaptiveLadder } from './render/quality';
 
 export interface CentralDebug {
   ready: boolean;
@@ -47,8 +51,8 @@ const ROAM_MARGIN_M = 300;
 
 const nextFrame = () => new Promise<void>((r) => requestAnimationFrame(() => r()));
 
-async function getCity(params: URLSearchParams, loading: LoadingScreen): Promise<CityFile> {
-  if (params.get('fixture') === '1') {
+async function getCity(loading: LoadingScreen): Promise<CityFile> {
+  if (readParam('fixture') === '1') {
     const { makeFixtureCity } = await import('./dev/fixture');
     return makeFixtureCity();
   }
@@ -58,18 +62,53 @@ async function getCity(params: URLSearchParams, loading: LoadingScreen): Promise
   });
 }
 
+/** 钟点与天气预设（#t-21.5、#haze-humid / #haze-clear）。 */
+function applyAtmosphereParams(): void {
+  const t = Number(readParam('t'));
+  if (Number.isFinite(t) && t >= 18 && t <= 26) SHARED.uClock.value = t;
+  const haze = readParam('haze');
+  if (haze === 'humid') {
+    SHARED.uHazeDensity.value = 1 / 2500;
+    SHARED.uCloudBase.value = 300;
+    SHARED.uCloudDensity.value = 1 / 250;
+  } else if (haze === 'clear') {
+    SHARED.uHazeDensity.value = 1 / 8000;
+  } else {
+    SHARED.uHazeDensity.value = 1 / HAZE.extinctionM;
+  }
+}
+
 async function main(app: HTMLElement, loading: LoadingScreen): Promise<void> {
-  const params = new URLSearchParams(location.search);
+  // 调试钩子先挂上（读参数、下载数据出错时冒烟脚本也能读到 __central.error）
   const debug: CentralDebug = {
     ready: false,
-    stats: () => ({ calls: 0, triangles: 0, geometries: 0, textures: 0, programs: 0 }),
+    stats: () => ({
+      calls: 0,
+      triangles: 0,
+      geometries: 0,
+      textures: 0,
+      programs: 0,
+      tier: 'high',
+      dpr: 1,
+      bufferPx: 0,
+      msaa: 0,
+      bloom: false,
+      reflection: false,
+      passesFull: 0,
+      texMB: 0,
+    }),
     setView: () => {},
     lookFrom: () => {},
     summary: () => '',
   };
   window.__central = debug;
+  // 参数一律经 readParam（?query 或 #hash）；data/terrain 的 wantsTerrain 仍收 URLSearchParams
+  const params = new URLSearchParams();
+  const terrainFlag = readParam('terrain');
+  if (terrainFlag !== null) params.set('terrain', terrainFlag);
+  applyAtmosphereParams();
 
-  const city = await getCity(params, loading);
+  const city = await getCity(loading);
   const grid = wantsTerrain(city.meta, params)
     ? await loadTerrain(TERRAIN_URL, (loaded, total) =>
         loading.progress(total ? 0.65 + (loaded / total) * 0.05 : null, `下載地形數據 ${(loaded / 1024).toFixed(0)} KB`),
@@ -102,7 +141,8 @@ async function main(app: HTMLElement, loading: LoadingScreen): Promise<void> {
   const [x0, y0, x1, y1] = city.meta.bbox;
   const [ax, , az] = simToThreeVec(x0, y0, 0);
   const [bx, , bz] = simToThreeVec(x1, y1, 0);
-  const startId = PRESETS.some((p) => p.id === params.get('view')) ? params.get('view')! : PRESETS[0]!.id;
+  const viewParam = readParam('view');
+  const startId = PRESETS.some((p) => p.id === viewParam) ? viewParam! : PRESETS[0]!.id;
   const rig = new OrbitRig(
     presetView(PRESETS.find((p) => p.id === startId)!),
     {
@@ -123,7 +163,14 @@ async function main(app: HTMLElement, loading: LoadingScreen): Promise<void> {
     hud.setActive(id);
   };
   const hud = createHud(app, { presets: PRESETS, active: startId, onPreset: (id) => setView(id), meta: city.meta });
-  const perf = params.get('perf') === '1' ? new PerfHud(app, () => view.stats(), () => view.layerSummary()) : null;
+  // 照片模式：隐藏标题牌、机位按钮、鸣谢按钮与提示，只留地图署名（与实拍照片并排比较用）
+  if (readParam('photo') !== null) app.classList.add('photo');
+  const perfFlag = readParam('perf');
+  const perf = perfFlag !== null && perfFlag !== '0' ? new PerfHud(app, () => view.stats(), () => view.layerSummary()) : null;
+  // 自适应 DPR（自动化测试下默认关闭，#adaptive 打开）与 A11 自动降档
+  const adaptiveOn = !navigator.webdriver || readParam('adaptive') !== null;
+  const adaptive = adaptiveOn ? new AdaptiveDpr(adaptiveLadder(view.quality.tier, view.stats().dpr), view.stats().dpr) : null;
+  const downgrade = adaptiveOn && view.quality.tier === 'high' ? new DowngradeWatch() : null;
 
   // iOS Safari：阻止页面级双指缩放手势
   document.addEventListener('gesturestart', (e) => e.preventDefault());
@@ -139,6 +186,11 @@ async function main(app: HTMLElement, loading: LoadingScreen): Promise<void> {
     rig.apply(view.camera);
     view.frame(dt, rig.current.distance);
     perf?.tick(dt);
+    if (adaptive && frames > 30) {
+      const next = adaptive.sample(dt * 1000, now);
+      if (next !== null) view.setPixelRatio(next);
+      if (downgrade?.sample(dt * 1000, now, adaptive.atBottom)) view.downgrade();
+    }
     if (++frames === 2) {
       debug.ready = true;
       loading.done();

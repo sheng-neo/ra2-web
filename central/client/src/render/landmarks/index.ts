@@ -1,8 +1,8 @@
 /**
  * 地标图层：按 placement.id 选参数化 builder；未知 id 用原轮廓挤出白模兜底。
- * 全部地标共用四个缓冲（立面 / 纯色构件 / 霓虹 / 线框），各自合成一个对象，最多 4 个 draw call。
+ * 全部地标共用三个缓冲（立面 / 纯色构件 / 静态发光条），各自合成一个对象，最多 3 个 draw call。
  */
-import { BufferAttribute, BufferGeometry, LineBasicMaterial, LineSegments, Mesh, type Material, type Object3D } from 'three';
+import { Mesh, type Material, type Object3D } from 'three';
 import type { LandmarkPlacement, SensitiveZone } from '@central/data';
 import type { HeightFn } from '../../data/terrain';
 import { normalizeRing } from '../../geom/ring';
@@ -38,14 +38,16 @@ function fallback(p: Placement, sink: LandmarkSink): void {
     bottom: p.base - p.footing * 10,
     base: p.base,
     top: p.base + p.p.height,
-    style: p.style(0, FacadeMode.Windows),
+    style: p.style(0, FacadeMode.Office),
     uOffset: p.rnd * 50,
+    bldg: p.bldg(),
   });
 }
 
 export interface LandmarkMaterials {
   facade: Material;
   solid: Material;
+  /** 静态发光条（materials/neon.ts）。 */
   neon: Material;
 }
 
@@ -55,7 +57,7 @@ export function buildLandmarks(
   zones: readonly SensitiveZone[],
   mats: LandmarkMaterials,
 ): Object3D[] {
-  const sink: LandmarkSink = { facade: newFacadeArrays(), solid: newSolidArrays(), neon: newNeonArrays(), lines: [] };
+  const sink: LandmarkSink = { facade: newFacadeArrays(), solid: newSolidArrays(), neon: newNeonArrays() };
   for (const l of list) {
     const p = new Placement(l, ground, zones);
     (LANDMARK_BUILDERS[l.id] ?? fallback)(p, sink);
@@ -71,14 +73,5 @@ export function buildLandmarks(
   mesh('landmarks-facade', sink.facade, mats.facade);
   mesh('landmarks-solid', sink.solid, mats.solid);
   mesh('landmarks-neon', sink.neon, mats.neon);
-  if (sink.lines.length > 0) {
-    const g = new BufferGeometry();
-    g.setAttribute('position', new BufferAttribute(new Float32Array(sink.lines), 3));
-    g.computeBoundingSphere();
-    const lines = new LineSegments(g, new LineBasicMaterial({ color: 0xe8ecff, fog: true }));
-    lines.name = 'landmarks-lines';
-    lines.matrixAutoUpdate = false;
-    out.push(lines);
-  }
   return out;
 }
