@@ -3,7 +3,7 @@
  * 相机远离时整区一次 draw call；靠近时拆回逐块子网格（共享 GPU 缓冲，只换 draw range），
  * 由 three 按块包围球做视锥剔除。这样全城鸟瞰也只有十来个 draw call。
  */
-import { Box3, Group, Mesh, type Material, type Vector3 } from 'three';
+import { Box3, Group, Mesh, type Frustum, type Material, type Vector3 } from 'three';
 import { regionOf, chunkKey, type ChunkCoord } from './chunks';
 import { mergeArrays, subGeometry, type MeshArrays } from './mesh-arrays';
 
@@ -47,10 +47,19 @@ export class ChunkLayer {
     }
   }
 
-  /** 相机到区包围盒的距离小于 nearM（米）时拆成逐块。 */
-  update(camera: Vector3, nearM: number): void {
+  /**
+   * 相机到区包围盒的距离小于 nearM（米）时拆成逐块。
+   * 复审修正：给了视锥时，近区里大部分块（≥ 60 %、至少 4 块）都在视野内就仍画整区——拆开只省下几块的三角形，
+   * 却要多几个 draw call（上环海旁斜看时道路、楼群各拆出四十多块，超过 150 个的上限）。
+   */
+  update(camera: Vector3, nearM: number, frustum?: Frustum): void {
     for (const r of this.regions) {
-      const near = r.box.distanceToPoint(camera) < nearM;
+      let near = r.box.distanceToPoint(camera) < nearM;
+      if (near && frustum && r.leaves.length >= 4) {
+        let v = 0;
+        for (const l of r.leaves) if (frustum.intersectsObject(l)) v++;
+        if (v >= Math.max(4, Math.ceil(0.6 * r.leaves.length))) near = false;
+      }
       if (near === r.near) continue;
       r.near = near;
       r.whole.visible = !near;

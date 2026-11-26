@@ -13,6 +13,11 @@
  * - warmth：街面主光源冷暖 0–1（lighting.streetWarmth，0 = 白光 LED 区，1 = 钠灯区），定楼底街面反光的颜色
  * - ground：墙脚地面高程（mPD，米）。shader 用 世界高度 − ground 算离街高度（铺面、街面反光、墙脚压暗）
  * - feature：整数位域，见 FEATURE
+ *
+ * aPhoto = (s, t, page, phase)（R3 真实贴面新增）：
+ * - s、t：贴图页里的纹理坐标（0–1，左上为原点，见 facades/layout.ts）；
+ * - page：贴图页号（整数），−1 = 这块面没有照片（程序立面）；
+ * - phase：楼层线相位（米，楼底起算；照片检测到的真楼层，窗灯按它排），没有时为 0。
  */
 import { simToThree } from '../coords';
 import { MeshArrays, type AttrSpec } from './mesh-arrays';
@@ -22,6 +27,7 @@ export const FACADE_LAYOUT: readonly AttrSpec[] = [
   { name: 'normal', size: 3 },
   { name: 'aFacade', size: 4 },
   { name: 'aBldg', size: 4 },
+  { name: 'aPhoto', size: 4 },
 ];
 
 /** 立面模式（shader 里按 floor(style / 256) 分支）。 */
@@ -99,9 +105,14 @@ export type BldgAttr = readonly [f2f: number, warmth: number, ground: number, fe
 
 export const NO_BLDG: BldgAttr = [0, 0, 0, 0];
 
-const scratch = new Float32Array(14);
+/** 逐顶点 aPhoto 值（见文件头）。 */
+export type PhotoAttr = readonly [s: number, t: number, page: number, phase: number];
 
-/** 写一个立面顶点：位置为模拟坐标（dm），法线为模拟坐标系方向（单位向量）。bldg 省略时为全 0（旧调用方）。 */
+export const NO_PHOTO: PhotoAttr = [0, 0, -1, 0];
+
+const scratch = new Float32Array(18);
+
+/** 写一个立面顶点：位置为模拟坐标（dm），法线为模拟坐标系方向（单位向量）。bldg 省略时为全 0（旧调用方），photo 省略时没有照片。 */
 export function facadeVertex(
   m: MeshArrays,
   x: number,
@@ -115,6 +126,7 @@ export function facadeVertex(
   h: number,
   style: number,
   bldg: BldgAttr = NO_BLDG,
+  photo: PhotoAttr = NO_PHOTO,
 ): number {
   simToThree(x, y, z, scratch, 0);
   simToThree(nx, ny, nz, scratch, 3, 1);
@@ -126,6 +138,10 @@ export function facadeVertex(
   scratch[11] = bldg[1];
   scratch[12] = bldg[2];
   scratch[13] = bldg[3];
+  scratch[14] = photo[0];
+  scratch[15] = photo[1];
+  scratch[16] = photo[2];
+  scratch[17] = photo[3];
   return m.push(scratch);
 }
 

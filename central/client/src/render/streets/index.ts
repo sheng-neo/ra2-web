@@ -24,7 +24,8 @@ import { busStopLanes } from './kerbside'; // [r2:streetlife]
 import { TramSystem, tramStopIslands } from './trams'; // [r2:trams]
 import { POLE_CLEAR_M, TramOccupancy, tramLaneConflicts, tramRouteProximity } from './tram-traffic'; // [r2:fix] 车流给电车让路、杆不立在路轨上
 import { threeToSim } from '../../coords';
-import { VehicleRenderer, type VehiclePose } from './vehicles';
+import { VehicleRenderer, type VehicleDebug, type VehiclePose } from './vehicles'; // [r3:liveries]
+import { busStopHints } from './liveries/fleet'; // [r3:liveries]
 import { LampField } from './tram/trackbed';
 
 /** MVP 核心区（模拟坐标，米）：经度 114.155–114.1612、纬度 22.2785–22.2875 换算到本地原点。 */
@@ -35,6 +36,7 @@ const TRAFFIC_SEED = 20261124;
 export interface Streets {
   objects: Object3D[];
   trams: TramSystem; // [r2:trams]
+  vehicles(): VehicleDebug[]; // [r3:liveries] 调试钩子 __central.vehicles()
   update(dt: number, camera: Camera): void;
   /** 调试摘要。 */
   summary(): string;
@@ -134,7 +136,8 @@ export function buildStreets(city: CityFile, plans: readonly RoadPlan[], ground:
   const traffic = buildTraffic(lanes, plans, zones, signals, life, trams, high ? 900 : 260); // [r2:fix]
   let buses = 0;
   for (let i = 0; i < traffic.n; i++) if (isBusKind(traffic.kind[i]!)) buses++; // [r2:streetlife]
-  const vehicles = new VehicleRenderer(traffic.n - buses, buses, new LampField(allLamps)); // [r2:fix] 近处车身受路灯照
+  const vehicles = new VehicleRenderer(traffic.n - buses, buses, new LampField(allLamps), high ? 60 : 30); // [r2:fix] 近处车身受路灯照；[r3:liveries] 字 60 m（LOW 30 m）内画
+  vehicles.setStopHints(busStopHints(traffic.initialDwellers(), lanes)); // [r3:liveries] 开场停站的巴士挂该站真实路线
   const moving = new GlowBatch(traffic.n * 4 + trams.lightCapacity + 8, 'traffic-lights'); // [r2:trams]
   const poses: VehiclePose[] = Array.from({ length: traffic.n }, () => ({ x: 0, y: 0, z: 0, hx: 1, hz: 0, kind: 0, brake: false, seed: 0 }));
   const pose = { x: 0, y: 0, z: 0, hx: 1, hz: 0 };
@@ -142,6 +145,7 @@ export function buildStreets(city: CityFile, plans: readonly RoadPlan[], ground:
   return {
     objects: [glow.mesh, poles.mesh, sigPoles.mesh, ...trees.map((t) => t.mesh), ...bridges.objects, vehicles.cars, vehicles.buses, ...trams.objects, moving.mesh, ...life.objects], // [r2:trams] [r2:streetlife]
     trams, // [r2:trams]
+    vehicles: () => vehicles.debug(poses, traffic.v), // [r3:liveries]
     update(_dt, camera) {
       poles.update(camera);
       bridges.update(camera); // [r2:streetlife]

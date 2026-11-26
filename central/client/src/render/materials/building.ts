@@ -12,16 +12,29 @@
  * 远处：所有几何细节（竖梃、窗间墙、灯具、窗机）都是盒式滤波的周期脉冲，像素再大也保持正确的平均覆盖率；
  * 楼层小于半个像素时按 2^L 层合并成一个「代表楼层」抽样（亮灯率的期望不变），两级之间交叉淡化，远看不闪。
  * 片元最后 applyHaze（表面吃满雾、发光项只吃 uLightHaze）+ GLSL_FINISH。
+ *
+ * R3 真实贴面（PHOTO，city.meta.facades 存在时）：aPhoto = (s, t, 页号, 楼层线相位)，见 facade.ts、facades/layout.ts。
+ * - 取样：远景图集（每页一格）总在；页在近景池里（NEAR_PHOTO，HIGH 档）时按淡入权重换成近景页（facades/streamer.ts）。
+ *   RGBA：alpha 码 0 = 无照片、135–255 = 连续玻璃度（255 − 120 g）、24 + k = 照片里认出的独立窗（亮灯种子 k = 0..89）。
+ * - 夜景（photoFacade）：照片是去过日照的白天反照率。实墙 = 反照率 ×（城市环境照度 + 中环峡谷光）；
+ *   玻璃 = 很暗的有色玻璃（远景格的色相）+ 夜空 / 街面的菲涅尔反射（不留白天的天空蓝、倒影与眩光）。
+ * - 窗灯：楼层用照片检测到的层高与相位（v 减相位后再分层），亮灯仍是原来的租户 / 住户逻辑；光只落在照片的玻璃上，
+ *   独立窗整扇按自己的种子亮或灭。程序立面只在照片区边缘交叉淡化。
+ * - 屋顶：照片反照率按夜景压暗；铺面区（离街 0–4.6 m）与敏感区一律程序立面。
  */
 import { ShaderMaterial, type IUniform } from 'three';
 import { GLSL_HASH } from './common';
-import { GLSL_CITY_LIGHT, GLSL_FINISH, GLSL_HAZE, GLSL_SHARED_PARS, getQuality, lightColour, sharedUniforms } from './lighting';
+import { GLSL_CITY_LIGHT, GLSL_FINISH, GLSL_HAZE, GLSL_SHARED_PARS, getQuality, lightColour, readParam, sharedUniforms } from './lighting';
 import { GLSL_WINDOWS } from '../windows';
 
 const vertexShader = /* glsl */ `
 attribute vec4 aFacade;
 attribute vec4 aBldg;
+attribute vec4 aPhoto;
 varying vec3 vFacade;
+varying vec2 vPhotoUV;
+flat varying float vPhotoPage;
+flat varying float vPhase;
 // 风格码与逐栋参数恒定：flat 避免插值误差把 hash 输入搅成噪点
 flat varying float vStyle;
 flat varying vec4 vBldg;
@@ -31,6 +44,9 @@ void main() {
   vFacade = aFacade.xyz;
   vStyle = aFacade.w;
   vBldg = aBldg;
+  vPhotoUV = aPhoto.xy;
+  vPhotoPage = aPhoto.z;
+  vPhase = aPhoto.w;
   vNormalW = normalize(mat3(modelMatrix) * normal);
   vec4 world = modelMatrix * vec4(position, 1.0);
   vWorld = world.xyz;
@@ -59,6 +75,137 @@ flat varying float vStyle;
 flat varying vec4 vBldg;
 varying vec3 vNormalW;
 varying vec3 vWorld;
+varying vec2 vPhotoUV;
+flat varying float vPhotoPage;
+flat varying float vPhase;
+
+#ifdef PHOTO
+// 远景图集与近景页都是 RGBA：颜色 sRGB；alpha 码 0 = 无照片、135–255 = 连续玻璃度（255 − 120 g）、24 + k = 独立窗（种子 k = 0..89）
+uniform sampler2D uPhotoFarCol;
+// (列数, 行数, 已加载的淡入权重 0–1, 每格像素)
+uniform vec4 uPhotoFarGrid;
+#ifdef NEAR_PHOTO
+uniform highp sampler2DArray uPhotoNearCol;
+uniform sampler2D uPhotoSlots;
+#endif
+#endif
+
+// 照片取样：valid 0–1、反照率（线性，近景页在池里时按淡入权重换成近景）、远景反照率（玻璃色相用，没有白天倒影的细节）、
+// 玻璃度（表面用，双线性）、发光用玻璃度与独立窗种子（近处按最近纹素取 alpha 码：窗边不会因插值变成「半玻璃」而亮一圈）、
+// 近景权重。导数在分支之前求（分支里用 textureGrad）。
+void photoSample(out float valid, out vec3 alb, out vec3 farAlb, out float glass, out float glassE, out float winK, out float nearW) {
+  valid = 0.0;
+  alb = vec3(0.0);
+  farAlb = vec3(0.0);
+  glass = 0.0;
+  glassE = -1.0;
+  winK = -1.0;
+  nearW = 0.0;
+#ifdef PHOTO
+  vec2 uv = clamp(vPhotoUV, 0.0, 1.0);
+  float pg = max(vPhotoPage, 0.0);
+  vec2 cell = vec2(mod(pg, uPhotoFarGrid.x), floor(pg / uPhotoFarGrid.x));
+  // 复审修正：远景格之间没有外延边，格内向里收半个纹素（不取到相邻页的颜色）
+  float hpx = 0.5 / max(uPhotoFarGrid.w, 1.0);
+  vec2 fuv = (cell + clamp(uv, vec2(hpx), vec2(1.0 - hpx))) / uPhotoFarGrid.xy;
+  // 远景格之间没有外延边：导数限在约 4 个纹素以内（mip 不越过相邻页太多）
+  float lim = 4.0 / (uPhotoFarGrid.x * max(uPhotoFarGrid.w, 1.0));
+  vec2 fdx = dFdx(fuv);
+  vec2 fdy = dFdy(fuv);
+  fdx *= min(1.0, lim / max(length(fdx), 1e-9));
+  fdy *= min(1.0, lim / max(length(fdy), 1e-9));
+  vec2 ndx = dFdx(vPhotoUV);
+  vec2 ndy = dFdy(vPhotoUV);
+  float nearValid = -1.0;
+  float nearGlass = 0.0;
+  if (vPhotoPage < -0.5 || uPhotoFarGrid.z <= 0.0) {
+    glassE = 0.0;
+    return;
+  }
+  vec4 f = textureGrad(uPhotoFarCol, fuv, fdx, fdy);
+  farAlb = f.rgb;
+  vec3 a = f.rgb;
+  float code = f.a * 255.0;
+#ifdef NEAR_PHOTO
+  vec4 sl = texelFetch(uPhotoSlots, ivec2(int(pg + 0.5), 0), 0);
+  if (sl.r < 0.999) {
+    float layer = floor(sl.r * 255.0 + 0.5);
+    vec4 nv = textureGrad(uPhotoNearCol, vec3(uv, layer), ndx, ndy);
+    nearW = sl.g;
+    a = mix(a, nv.rgb, nearW);
+    float nc = nv.a * 255.0;
+    code = mix(code, nc, nearW);
+    // 近处（一个纹素 ≥ 约 0.6 像素）：发光按最近纹素的 alpha 码——独立窗整扇用自己的种子，窗边不插值
+    float texPx = max(length(ndx), length(ndy)) * 1024.0;
+    if (nearW > 0.99 && texPx < 1.6) {
+      // 双线性足迹里的 4 个纹素：权重最大的独立窗定种子，同一扇窗的纹素权重和（锐化）就是光的形状——
+      // 窗边抗锯齿、不跨到墙上，也不会因插值把窗边当成「半玻璃」按程序格亮一圈
+      vec2 tc = uv * 1024.0 - 0.5;
+      ivec2 i0 = ivec2(floor(tc));
+      vec2 fr = tc - floor(tc);
+      int Ly = int(layer);
+      float cs[4];
+      cs[0] = texelFetch(uPhotoNearCol, ivec3(clamp(i0, ivec2(0), ivec2(1023)), Ly), 0).a * 255.0;
+      cs[1] = texelFetch(uPhotoNearCol, ivec3(clamp(i0 + ivec2(1, 0), ivec2(0), ivec2(1023)), Ly), 0).a * 255.0;
+      cs[2] = texelFetch(uPhotoNearCol, ivec3(clamp(i0 + ivec2(0, 1), ivec2(0), ivec2(1023)), Ly), 0).a * 255.0;
+      cs[3] = texelFetch(uPhotoNearCol, ivec3(clamp(i0 + ivec2(1, 1), ivec2(0), ivec2(1023)), Ly), 0).a * 255.0;
+      float ws[4];
+      ws[0] = (1.0 - fr.x) * (1.0 - fr.y);
+      ws[1] = fr.x * (1.0 - fr.y);
+      ws[2] = (1.0 - fr.x) * fr.y;
+      ws[3] = fr.x * fr.y;
+      float bw = 0.0;
+      float bk = -1.0;
+      float gc = 0.0;
+      float vc = 0.0;
+      for (int i = 0; i < 4; i++) {
+        bool isWin = cs[i] > 17.0 && cs[i] < 125.0;
+        if (isWin && ws[i] > bw) {
+          bw = ws[i];
+          bk = floor(cs[i] - 24.0 + 0.5);
+        }
+        if (cs[i] > 17.0) vc += ws[i];
+        if (!isWin && cs[i] > 17.0) gc += ws[i] * clamp((255.0 - cs[i]) / 120.0, 0.0, 1.0);
+        if (isWin) gc += ws[i];
+      }
+      // 复审修正：「无照片 0」与「实墙 255」之间双线性插值会落进玻璃码段，照片边上一圈假玻璃暗边；
+      // 近处按 4 个纹素逐个解码：有效度、玻璃度（只在有效纹素上平均）分开算
+      nearValid = vc;
+      nearGlass = gc / max(vc, 1e-4);
+      if (bk >= 0.0) {
+        // R3 整合：窗形按列 / 行分开插值再相乘（直角窗角，不是双线性等值线的圆角「药丸」），边缘宽约 1 像素；
+        // 放大到一个纹素 ≥ 4 像素时，窗边内侧约 6 cm 画一圈暗窗框（近看不再是一块平的光板）
+        float m[4];
+        for (int i = 0; i < 4; i++) m[i] = abs(cs[i] - 24.0 - bk) < 0.5 ? 1.0 : 0.0;
+        float ax = mix(max(m[0], m[2]), max(m[1], m[3]), fr.x);
+        float ay = mix(max(m[0], m[1]), max(m[2], m[3]), fr.y);
+        float hw = clamp(0.5 * texPx, 0.03, 0.25);
+        float cov = smoothstep(0.5 - hw, 0.5 + hw, ax) * smoothstep(0.5 - hw, 0.5 + hw, ay);
+        float frameK = 1.0 - smoothstep(0.15, 0.3, texPx);
+        float frame = mix(1.0, 0.3 + 0.7 * smoothstep(0.66, 0.8, ax) * smoothstep(0.66, 0.8, ay), frameK);
+        winK = clamp(bk, 0.0, 89.0);
+        glassE = cov * frame;
+      } else {
+        glassE = gc / max(vc, 1e-4);
+      }
+    }
+  }
+#endif
+  // uPhotoFarGrid.z：远景图集到了以后 0–1 淡入（从程序立面过渡）
+  valid = smoothstep(6.0, 20.0, code) * uPhotoFarGrid.z;
+  glass = clamp((255.0 - code) / 120.0, 0.0, 1.0);
+  if (nearValid >= 0.0) {
+    valid = smoothstep(0.35, 0.65, nearValid) * uPhotoFarGrid.z;
+    glass = nearGlass;
+  }
+  if (glassE < 0.0) glassE = glass;
+  alb = a;
+#if defined(PHOTO_DEBUG) && PHOTO_DEBUG > 2
+  // 离散色：红 = 实墙（≥ 200）、绿 = 玻璃（125–200）、蓝 = 独立窗码（20–125）、黑 = 无照片
+  alb = code >= 200.0 ? vec3(0.8, 0.0, 0.0) : code >= 125.0 ? vec3(0.0, 0.8, 0.0) : code >= 20.0 ? vec3(0.0, 0.0, 0.8) : vec3(0.0);
+#endif
+#endif
+}
 
 const int OFS = 4096;
 // 天顶色（#14151c 线性）与街面反射色，用于玻璃的菲涅尔反射
@@ -493,6 +640,135 @@ void podiumUpper(float u, float lift, float v, int key, int feat, vec3 amb, vec3
   }
 }
 
+// ---------------------------------------------------------------- R3 真实贴面的夜景
+// 照片是去过日照的白天反照率。实墙 = 反照率 ×（城市环境照度 + 中环「峡谷光」：邻楼窗光、招牌、雾光，随高度缓降）；
+// 玻璃 = 很暗的有色玻璃（只取远景格的色相，白天的倒影图案不要）+ 夜空 / 街面的菲涅尔反射。
+// 亮灯（复审修正）：
+// - 写字楼按楼层 × 租户段（officeLit）成片亮，照片检测到楼层时独立窗也按它所在的楼层 / 租户亮（不再一扇一个随机种子的「纸屑」），
+//   没检测到楼层的楼独立窗仍按自己的种子整扇亮；住宅窗按单位 / 窗。
+// - 光的形状 = 照片玻璃（独立窗按纹素逐个定形；连续玻璃二值化，不再跟着照片噪点、倒影成斑驳光斑）
+//   × 竖梃（1.5 m）× 楼层内剖面（楼板 / 窗间墙暗带、视线高度中等、天花灯槽亮带与一排灯具点）。
+// - 亮度按契约 windowOffice 0.25–0.6（整窗平均），只有灯具点 > 1。
+// - 近处（像素 < 约 5 cm）：照片实墙加石材板缝 / 瓷砖缝与细颗粒，玻璃加竖梃与楼层横档（照片 4 px/m 本身是糊的）。
+float officeProf(float y, float wfv, float u, float wu, bool home) {
+  // y：楼层内 0–1（0 = 楼层线）。窗台以下与楼板处暗、视线高度中等、天花灯槽亮
+  float vis = fband(y, wfv, 0.2, 0.88);
+  float low = fband(y, wfv, 0.2, 0.38);
+  float ceil_ = fband(y, wfv, 0.7, 0.86);
+  if (home) return vis * (0.6 - 0.25 * low) + ceil_ * 0.3;
+  float row = fband(y, wfv, 0.8, 0.84) * fpulse(u / 0.6, wu / 0.6, 0.5, 0.22);
+  return vis * (0.5 - 0.3 * low) + ceil_ * 0.45 + row * 1.2;
+}
+
+void photoFacade(vec3 alb, vec3 farAlb, float g, float gE, float winK, float u, float v, float F, bool floorsKnown, int key, bool home,
+                 int feat, float lift, vec3 amb, vec3 refl, float fres, out vec3 surf, out vec3 emit) {
+  float wu = fwidth(u);
+  float wv = fwidth(v);
+  // 峡谷光（邻楼窗光、招牌、街灯的漫反射与雾光，中性偏暖）：Y ≈ 0.035（街面）→ 0.016（150 m 以上），加上 cityAmbient；
+  // 浅色石材 / 瓷砖（反照率 0.45）在 20 m 以上约 0.01–0.02、深色金属约 0.004（导演规格：0.004–0.02，底部 10–20 m 由街面项抬到 0.04–0.06）
+  vec3 canyon = (uHazeColor * 0.6 + vec3(0.040, 0.036, 0.030)) * (0.45 + 0.55 * exp(-max(lift, 0.0) / 120.0)) * 0.52;
+  vec3 solid = alb * (amb + canyon);
+  float M = 1.5 + 0.15 * hash3(key, 3, 1);
+  float fv = v / F;
+  float wfv = wv / F;
+  // 近处细节：照片一个纹素放大到 5 像素以上才有，远处为 0（平均亮度不变）
+  float det = 1.0 - smoothstep(0.02, 0.06, max(wu, wv));
+  if (det > 0.0) {
+    float grain = (vnoise(vec2(u, v) * 7.0) - 0.5) * 0.1 + (vnoise(vec2(u, v) * 23.0 + 5.3) - 0.5) * 0.08;
+    // 住宅瓷砖缝（20 cm）/ 写字楼石材板缝（1.2 × 0.75 m）
+    float joint = home ? max(fpulse(u / 0.2, wu / 0.2, 0.5, 0.03), fpulse(v / 0.2, wv / 0.2, 0.5, 0.03))
+                       : max(fpulse(u / 1.2 + 0.5, wu / 1.2, 0.5, 0.006), fpulse(v / 0.75 + 0.5, wv / 0.75, 0.5, 0.009));
+    solid *= 1.0 + det * (grain - (home ? 0.12 : 0.25) * joint) * (1.0 - g);
+  }
+  // 未亮灯玻璃：夜空 / 街面反射（glassRefl）+ 很暗的底色，照片色相最多 20 %（白天的倒影图案不要）：Y ≈ 0.003–0.015
+  float fl0 = max(dot(farAlb, vec3(0.2126, 0.7152, 0.0722)), 0.02);
+  vec3 hue = mix(vec3(1.0), clamp(farAlb / fl0, 0.4, 1.8), 0.2);
+  vec3 gsurf = hue * vec3(0.0035, 0.0037, 0.0045) + refl * fres;
+  // 竖梃（1.5 m）、楼层横档（检测到楼层时在楼层线上）：浅灰铝框，近处才看得出
+  float mullU = fpulse(u / M + 0.5, wu / M, 0.5, 0.035 / M);
+  float mullV = floorsKnown ? fpulse(fv + 0.5, wfv, 0.5, 0.06 / F) : 0.0;
+  float mull = max(mullU, mullV) * (1.0 - smoothstep(0.05, 0.2, wu));
+  gsurf = mix(gsurf, vec3(0.03) * amb + refl * fres * 0.5, mull);
+  surf = mix(solid, gsurf, g);
+
+  float clock = (feat & 128) != 0 ? min(uClock, 19.0) : uClock;
+  int fl = int(floor(fv)) + OFS;
+  float y = fract(fv);
+  vec2 ml = mergeLevel(wfv);
+  int L0 = int(ml.x);
+  // 竖梃与每 6 个窗距一道结构柱把光切开（远处按覆盖率淡化）
+  float glassU = 1.0 - fpulse(u / M + 0.5, wu / M, 0.5, 0.04 / M);
+  if (!home) glassU *= 1.0 - 0.85 * fpulse(u / (6.0 * M) + 0.5, wu / (6.0 * M), 0.5, 0.3 / (6.0 * M));
+  float lit;
+  vec3 lc;
+  float B;
+  float cellW;
+  float shape;
+  if (winK >= 0.0 && (home || !floorsKnown)) {
+    // 照片里认出的独立窗、按自己的种子整扇亮（住宅：一户一窗各自开灯；写字楼没检测到楼层时窗跨不跨楼层线不知道）
+    int k = int(winK + 0.5);
+    lit = step(hash3(key, 5000 + k, home ? 61 : 62), home ? homeLitTarget(uClock) : officeLitTarget(clock));
+    float th = hash3(key, 5000 + k, 66);
+    lc = home ? (th < 0.6 ? uHomeW : uHomeC) : (th < 0.11 ? mix(uOfficeW, uOfficeN, 0.45) : (th < 0.7 ? uOfficeN : uOfficeC));
+    float hb = hash3(key, 5000 + k, 67);
+    B = home ? 0.22 + 0.28 * hb : 0.32 + 0.4 * hb * hb;
+    // 约三成住宅窗、一成写字楼窗拉了窗帘（偏暖、暗三成，近处有竖褶）
+    float cur = step(hash3(key, 5000 + k, 68), home ? 0.3 : 0.1);
+    lc = mix(lc, uHomeW, 0.5 * cur);
+    B *= 1.0 - 0.3 * cur;
+    float nearK = 1.0 - smoothstep(0.025, 0.07, wu);
+    float folds = 0.86 + 0.14 * sin(u * (28.0 + 14.0 * hash3(key, 5000 + k, 69)));
+    // 窗里上亮下暗（天花灯），检测到楼层时按楼层内位置，否则按楼层格的平滑周期
+    float grad = floorsKnown ? 0.7 + 0.5 * smoothstep(0.35, 0.8, y) : 0.84 + 0.2 * cos(6.2832 * (fv - 0.82));
+    B *= mix(1.0, grad * mix(1.0, folds, cur), nearK);
+    cellW = M;
+    shape = gE * (home ? 1.0 : glassU) * 0.85;
+    // 窗框错跨楼层线时，楼板那一条暗（照片窗框没对齐楼层的楼）
+    if (floorsKnown) shape *= 1.0 - fpulse(fv + 0.5, wfv, 0.5, 0.35 / F);
+  } else {
+    if (home) {
+      float Wf = 6.0 + 3.0 * hash3(key, 42, 0);
+      int nWin = 2 + int(hash3(key, 43, 0) * 3.0);
+      float slotW = Wf / float(nWin);
+      int slotG = int(floor(u / slotW));
+      int flat_ = slotG / nWin;
+      int slot = slotG - flat_ * nWin;
+      int rf = repFloor(key, fl, L0);
+      lit = homeWindowLit(key, rf, flat_, slot, uClock);
+      if (ml.y > 0.0) lit = mix(lit, homeWindowLit(key, repFloor(key, fl, L0 + 1), flat_, slot, uClock), ml.y);
+      cellW = slotW;
+      float nFar = exp2(ml.x + ml.y) * max(1.0, wu / slotW);
+      if (nFar > 1.01) lit = mix(homeLitTarget(uClock), lit, inversesqrt(sqrt(nFar)));
+      int fk = rf * 613 + flat_;
+      lc = hash3(key, fk, 66) < 0.6 ? uHomeW : uHomeC;
+      B = 0.3 + 0.35 * hash3(key, fk, 67);
+    } else {
+      int bay = int(floor(u / M));
+      vec3 s0 = officeLit(key, repFloor(key, fl, L0), bay, clock);
+      lit = s0.x;
+      if (ml.y > 0.0) lit = mix(lit, officeLit(key, repFloor(key, fl, L0 + 1), bay, clock).x, ml.y);
+      float nFar = exp2(ml.x + ml.y) * max(1.0, wu / M / 12.0);
+      if (nFar > 1.01) lit = mix(officeLitTarget(clock), lit, inversesqrt(sqrt(nFar)));
+      int tk = int(s0.y) * 977 + int(s0.z);
+      float th = hash3(key, tk, 27);
+      lc = th < 0.11 ? mix(uOfficeW, uOfficeN, 0.45) : (th < 0.7 ? uOfficeN : uOfficeC);
+      float hb = hash3(key, tk, 28);
+      // 整层通亮的楼层亮且匀，其余租户近似对数正态；整窗平均落在契约 windowOffice 0.25–0.6
+      B = s0.z < -0.5 ? 0.95 + 0.35 * hb : 0.6 + 0.9 * hb * hb;
+      B = mix(0.95, B, inversesqrt(sqrt(max(nFar, 1.0))));
+      cellW = M;
+    }
+    // 连续玻璃二值化：照片玻璃度只决定「是不是玻璃」，不再逐像素调光（倒影、阴影、噪点不进灯光）
+    float gb = winK >= 0.0 ? gE : smoothstep(0.35, 0.65, gE);
+    shape = gb * glassU * officeProf(y, wfv, u, wu, home);
+  }
+  float perWin = mix(1.0, 0.75 + 0.5 * hash12(vec2(floor(u / cellW) + 0.5, float(fl) * 1.7)), 1.0 - smoothstep(0.6, 1.6, wu / cellW));
+  emit = lc * (B * lit * shape * perWin);
+  // 熄灯处的走廊 / 邻室溢光（很暗）
+  float spill = 0.006 + 0.014 * hash3(key, fl, 35);
+  emit += (home ? uHomeW * 0.4 : uOfficeN) * spill * (1.0 - lit) * (winK >= 0.0 ? gE : smoothstep(0.35, 0.65, gE)) * fband(y, wfv, 0.2, 0.86);
+}
+
 void main() {
   float style = vStyle;
   int m = int(floor(style / 256.0) + 0.5);
@@ -515,12 +791,29 @@ void main() {
   vec3 V = normalize(cameraPosition - vWorld);
   vec3 surf = vec3(0.0);
   vec3 emit = vec3(0.0);
+  float pv;
+  vec3 pAlb;
+  vec3 pFar;
+  float pGlass;
+  float pGlassE;
+  float pWin;
+  float pNear;
+  photoSample(pv, pAlb, pFar, pGlass, pGlassE, pWin, pNear);
+  if (m == 1) pv = 0.0;
+  // 楼层线相位：照片检测到的真楼层（v、h 都减相位，楼层格与亮灯按它排）；相位 > 0 = 检测到楼层（buildings.ts 只在用照片楼层时给相位）
+  float vs = vFacade.y - vPhase;
+  bool floorsKnown = vPhase > 0.001;
 
   if (roof) {
     // 屋顶（R2 修复轮）：深灰混凝土 + 低频斑驳，再加一点夜空雾光（天光托底），从上面看退台、机房的轮廓分得出；
     // 仍比亮着的立面暗
     float k = vnoise(vWorld.xz * 0.35) * 0.6 + vnoise(vWorld.xz * 0.05) * 0.4;
     vec3 conc = vec3(0.18, 0.176, 0.17) * (0.75 + 0.5 * k);
+    // R3：屋顶照片（去过日照的反照率）按夜景压暗，与程序屋顶同一亮度量级（契约屋顶 Y 0.002–0.015）
+    // 复审修正：浅色屋顶照片封顶到程序屋顶的亮度量级（反照率 ≤ 0.2，保留色相），夜里不再比墙亮
+    vec3 ra = pAlb * 0.6;
+    ra *= min(1.0, 0.2 / max(dot(ra, vec3(0.2126, 0.7152, 0.0722)), 1e-3));
+    conc = mix(conc, ra, pv);
     surf = conc * amb + conc * uHazeColor * 0.6;
   } else {
     float fres;
@@ -542,6 +835,9 @@ void main() {
       surf *= 1.0 - 0.3 * rim;
     } else if (shops && lift < shopTop) {
       shopfront(u, lift, key, m, shopTop, amb, n, V, surf, emit);
+      pv = 0.0;
+    } else if (pv > 0.995) {
+      photoFacade(pAlb, pFar, pGlass, pGlassE, pWin, u, vs, F, floorsKnown, key, m == 6 || m == 7, feat, lift, amb, refl, fres, surf, emit);
     } else if (m == 8 && !parapet) {
       podiumUpper(u, lift, v, key, feat, amb, refl, fres, tint, surf, emit);
     } else if (m == 10) {
@@ -568,7 +864,7 @@ void main() {
       float cap = fband(v, fwidth(v), h - 0.15, h);
       surf = alb * amb * (1.0 + 0.6 * cap);
     } else if (m == 6 || m == 7) {
-      residential(u, v, F, key, m == 7, tint, amb, refl, fres, lift, surf, emit);
+      residential(u, vs, F, key, m == 7, tint, amb, refl, fres, lift, surf, emit);
     } else if (m == 9) {
       // 公共建筑：暖色石材、竖长窗、少量暖光
       float wu = fwidth(u);
@@ -585,7 +881,15 @@ void main() {
       // 写字楼（含旧模式 0 / 2 / 3 与地标）
       int fam = m == 3 ? (body == 2 ? 1 : body == 3 ? 2 : 0) : body;
       float M = 1.2 + 0.1 * float(bayLv);
-      office(u, v, h, F, M, key, fam, tint, amb, refl, fres, feat, m == 2, n, V, surf, emit);
+      office(u, vs, h - vPhase, F, M, key, fam, tint, amb, refl, fres, feat, m == 2, n, V, surf, emit);
+    }
+    // R3：照片区边缘（valid 0–1）与程序立面交叉淡化
+    if (pv > 0.0 && pv <= 0.995) {
+      vec3 sP;
+      vec3 eP;
+      photoFacade(pAlb, pFar, pGlass, pGlassE, pWin, u, vs, F, floorsKnown, key, m == 6 || m == 7, feat, lift, amb, refl, fres, sP, eP);
+      surf = mix(surf, sP, pv);
+      emit = mix(emit, eP, pv);
     }
     // 冠顶泛光：顶部 8–15 m，静态单色，自下而上渐弱
     int crown = feat & 7;
@@ -604,6 +908,10 @@ void main() {
   // 墙脚压暗（接地处 −30 %，2 m 内恢复）
   surf *= 0.7 + 0.3 * smoothstep(0.0, 2.0, lift);
   vec3 col = applyHaze(surf, emit, vWorld);
+#ifdef PHOTO_DEBUG
+  // 调试（#facadedebug=1/2/3）：照片按白天反照率直出 / 红 = 玻璃度、绿 = 近景页、蓝 = 独立窗 / 红 = alpha 码、绿 = 窗种子
+  if (pv > 0.0) col = mix(col, PHOTO_DEBUG > 2 ? pAlb : PHOTO_DEBUG > 1 ? vec3(pGlass, pNear, pWin >= 0.0 ? 0.3 + pWin / 128.0 : 0.0) * 0.6 : pAlb * 0.6, pv);
+#endif
   ${GLSL_FINISH}
 }
 `;
@@ -616,8 +924,9 @@ const v3 = (name: string) => {
 /**
  * 建筑材质（楼群与地标共用一份）。
  * HIGH 档开近处室内映射（ROOM_MAPPING：写字楼开敞办公室、铺内），LOW 档不开（规格 §v）。建材质时读一次画质档。
+ * photo：真实贴面的 uniform（facades/streamer.ts）；给了就开 PHOTO，有近景池（near）再开 NEAR_PHOTO。
  */
-export function createBuildingMaterial(): ShaderMaterial {
+export function createBuildingMaterial(photo?: { uniforms: Record<string, IUniform>; near: boolean }): ShaderMaterial {
   const uniforms: Record<string, IUniform> = {
     ...sharedUniforms(),
     uOfficeN: v3('officeNeutral'),
@@ -628,8 +937,14 @@ export function createBuildingMaterial(): ShaderMaterial {
     uShop: v3('shopWarm'),
     uTube: v3('tubeCool'),
     uCrown: { value: ['crownWhite', 'crownGold', 'crownCyan', 'crownMagenta'].map((n) => lightColour(n)) },
+    ...(photo?.uniforms ?? {}),
   };
   const defines: Record<string, number> = {};
   if (getQuality().tier === 'high') defines.ROOM_MAPPING = 1;
+  if (photo) defines.PHOTO = 1;
+  if (photo?.near) defines.NEAR_PHOTO = 1;
+  const dbg = photo ? readParam('facadedebug') : null;
+  // 只接受 1–3 的整数（进 GLSL #define；#facadedebug=2.5 之类原来会让着色器编不过）
+  if (dbg !== null) defines.PHOTO_DEBUG = Math.min(3, Math.max(1, Math.round(Number(dbg)) || 1));
   return new ShaderMaterial({ uniforms, vertexShader, fragmentShader, defines });
 }

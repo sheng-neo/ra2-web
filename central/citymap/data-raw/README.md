@@ -37,10 +37,27 @@
 与 2D 楼的匹配（覆盖 + 楼底 + 主屋面高度三者一致）、
 敏感区与地标遮罩都在管线 `src/stages/building-parts.ts` 里做（调参不用重新下载）。
 
+## `landsd/landsd-3dvm-facades.json.gz` 与 `client/public/city/facades/*.webp`（真实贴面一轮 R3）
+
+由 `fetch/landsd_3d_tex_bake.py` 生成（Python 3.11+、numpy、Pillow 自带的 libwebp；不需要任何额外工具；说明见脚本文件头，
+条款见 `landsd/TERMS.md` 第 8 节）。数据集是地政总署「可視化三維地圖（個別模型）」**带照片纹理**的 glTF（同一网站、同一条款）。
+脚本一幅一幅下载 16 幅图幅 zip（每幅 0.04–2.7 GB，共约 15.5 GB），只读 `BUILDING/*`，把每个模型的照片三角形**投影到我们自己的墙面与屋面**
+（墙：每个环展开成「周长 × 高度」的墙带；屋顶：每块棱柱外环外包框上的俯视图），逐幅把投影结果缓存到仓库外的目录（可随时中断续跑），
+然后删 zip。打包时再按楼去日照、分玻璃 / 实墙 / 独立窗、按 4 px/m（墙）/ 3 px/m（屋顶）重新取样、按 Hilbert 序装进 1024² 的页。
+仓库里**只有派生结果**：每页一个 RGBA WebP（颜色有损；alpha 无损，是「无照片 / 连续玻璃度 / 独立窗种子」码），一张远景图集（每页缩成 128²）
+与它的半分辨率版（LOW 档），文件名带内容哈希；没有网格、原始贴图、名称或 zip。清单 `landsd-3dvm-facades.json.gz` 记：
+
+- 参数（页边长、切片宽、密度量化、alpha 码的含义）、每个页文件与远景图集的 sha256 与字节数；
+- 每栋楼：几何指纹（轮廓、楼底、楼高、分层体块的 sha256 前 12 位，管线按它把引用接回 `Building.facade`，几何变了的楼自动退回程序立面）、
+  检测到的层高与楼层线相位、每块棱柱的密度与每片墙 / 屋顶在页里的位置与外包框；
+- `excluded`：敏感区里的楼、照片里有脚手架 / 绿网 / 工地围板的楼（自动检测 + 人工复查）；`stats`：模型数、三角形、投影像素、页数等。
+
+`pnpm citymap` 只读清单、校验每个页文件的 sha256 与字节数、把引用接到楼上（`src/stages/facades.ts`），不碰图像、不需要 Python。
+
 ## 哪些文件 M0 用到了
 
 - 用到：`segment`、`infrastructure`、`land_use`、`water`、`land`（Overture）；`landsd-buildings`、`cedd-dtm-2020-1m`、
-  `landsd-3dvm-parts`（R2 起，港府）。
+  `landsd-3dvm-parts`（R2 起，港府）、`landsd-3dvm-facades`（R3 起，港府）。
 - 暂未用到，留给后续里程碑：`connector.parquet`（M3 车道图）、`landsd-pedestrian-routes`（v1 天桥与扶梯）、
   `building.parquet`（只在 `pnpm citymap --buildings=overture` 对照时用；产物的建筑层来自地政总署）。
   是否先从仓库里删掉这些文件，由项目负责人决定（共约 2.1 MB）。

@@ -14,7 +14,7 @@ import { LANDMARKS } from './overrides/landmarks';
 import { REF_EAST_ASIA_BUILDINGS, REF_OSM, REF_OVERTURE, REF_TOMTOM } from './sources/refs';
 import { CITY_FILE, collectStrings, packCity, packOutputs, TERRAIN_FILE } from './stages/pack';
 import { project, projectRectBounds } from './stages/project';
-import { REF_CEDD_DTM, REF_LANDSD_3DVM, REF_LANDSD_BUILDINGS } from './stages/terrain-refs';
+import { REF_CEDD_DTM, REF_LANDSD_3DVM, REF_LANDSD_3DVM_TEX, REF_LANDSD_BUILDINGS } from './stages/terrain-refs';
 import { PARTS } from './stages/building-parts';
 
 let city: CityFile;
@@ -242,6 +242,17 @@ describe('LOD2 分层体块（地政总署 3D 模型）', () => {
     expect(city.meta.sources.map((s) => s.id)).toContain(REF_LANDSD_3DVM.id);
   });
 
+  it('R3 真实贴面：两千多栋楼有 facade，meta.facades 列出页文件，署名列出带纹理的 3D 数据；敏感区里的楼没有', () => {
+    const textured = city.buildings.filter((b) => b.facade);
+    expect(textured.length).toBeGreaterThan(2000);
+    expect(city.meta.facades?.pages.length).toBeGreaterThan(100);
+    expect(city.meta.sources.map((s) => s.id)).toContain(REF_LANDSD_3DVM_TEX.id);
+    for (const b of textured) {
+      const [cx, cy] = ringCentroid(b.footprint.outer);
+      for (const z of city.zones.sensitive) expect(pointInRing(cx, cy, z.area.outer)).toBe(false);
+    }
+  });
+
   it('格式：parts[0] 不带环、顶高于楼底；其余逆时针整数环、顶严格高于底座、按顶升序；每栋 ≤ 12 块', () => {
     for (const b of layered()) {
       const p = b.parts!;
@@ -390,7 +401,7 @@ describe('红线与字符串', () => {
   });
 
   it('自由文本只有路名、地标虚构名和署名；其余字符串都是 ID 或枚举', () => {
-    const REFS = [REF_OSM, REF_OVERTURE, REF_TOMTOM, REF_EAST_ASIA_BUILDINGS, REF_LANDSD_BUILDINGS, REF_LANDSD_3DVM, REF_CEDD_DTM];
+    const REFS = [REF_OSM, REF_OVERTURE, REF_TOMTOM, REF_EAST_ASIA_BUILDINGS, REF_LANDSD_BUILDINGS, REF_LANDSD_3DVM, REF_LANDSD_3DVM_TEX, REF_CEDD_DTM];
     const ENUM = new Set([
       'central-city', 'EPSG:2326', 'dm', 'ovt',
       'tower', 'podium', 'house', 'civic', 'industrial', 'other',
@@ -407,6 +418,12 @@ describe('红线与字符串', () => {
         expect(REFS.some((r) => r[key] === s), where).toBe(true);
       } else if (/^meta\.build\./.test(where)) {
         expect(s).toMatch(/^[0-9a-f.]+$/);
+      } else if (/^meta\.facades\./.test(where)) {
+        // R3 真实贴面：目录名、带内容哈希的贴图文件名、排除的楼号
+        if (where === 'meta.facades.dir') expect(s).toBe('facades');
+        else if (/^meta\.facades\.pages\[\d+\]$/.test(where)) expect(s, where).toMatch(/^p\d{3}-[0-9a-f]{8}\.webp$/);
+        else if (/^meta\.facades\.far\.(file|low)$/.test(where)) expect(s, where).toMatch(/^far(-low)?-[0-9a-f]{8}\.webp$/);
+        else expect(s, where).toMatch(/^[0-9a-f]{10}$/);
       } else if (/^landmarks\[\d+\]\.id$/.test(where)) {
         expect(landmarkIds.has(s)).toBe(true);
       } else if (/\.id$|\.replaces\[\d+\]$/.test(where)) {

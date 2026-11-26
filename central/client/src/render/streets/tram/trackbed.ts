@@ -10,7 +10,7 @@
 import { BufferAttribute, BufferGeometry, Mesh, ShaderMaterial } from 'three';
 import { simToThree } from '../../../coords';
 import { GLSL_CITY_LIGHT, GLSL_FINISH, GLSL_HAZE, GLSL_SHARED_PARS, lightColour, sharedUniforms } from '../../materials/lighting';
-import { POOL_LED, POOL_SODIUM } from '../../materials/road';
+import { GLSL_YELLOW_BOX, POOL_LED, POOL_LED_HEX, POOL_SODIUM } from '../../materials/road';
 import type { StreetLamp } from '../lamps';
 import { ROUTE_STEP_M, projectOnRoute, routePoint, type TramRoute } from './route';
 
@@ -21,7 +21,7 @@ export const HALF_GAUGE_M = 0.5335;
 export class LampField {
   private readonly cells = new Map<number, number[]>();
   private static readonly CELL = 20;
-  private readonly led = lightColour('ledWhite');
+  private readonly led = lightColour(POOL_LED_HEX); // [R3] 与路面同一光斑色（中性白光 LED）
   private readonly sodium = lightColour('sodium');
   constructor(private readonly lamps: readonly StreetLamp[]) {
     lamps.forEach((l, i) => {
@@ -103,6 +103,7 @@ float vnoise(vec2 p) {
   vec2 u = f * f * (3.0 - 2.0 * f);
   return mix(mix(hash12(i), hash12(i + vec2(1.0, 0.0)), u.x), mix(hash12(i + vec2(0.0, 1.0)), hash12(i + vec2(1.0, 1.0)), u.x), u.y);
 }
+${GLSL_YELLOW_BOX}
 void main() {
   float along = vBed.x;
   float across = vBed.y;
@@ -132,6 +133,9 @@ void main() {
   if (vBed.z > 8.5 && head < 0.05 && groove * cover < 0.05) discard;
   vec3 alb = mix(concrete, vec3(0.012), groove * cover);
   alb = mix(alb, vec3(0.3, 0.3, 0.31), clamp(head, 0.0, 1.0));
+  // R3：黄色方格路口连轨道板一起画（钢轨头上不画）
+  float ybox = yellowBox(vec2(vWorld.x, -vWorld.z), max(aa, aaL)) * (1.0 - clamp(head, 0.0, 1.0)) * (1.0 - groove * cover);
+  alb = mix(alb, vec3(0.62, 0.42, 0.02), ybox);
   vec3 irr = cityAmbient(vec3(0.0, 1.0, 0.0), 0.0, uWarmth) * 0.6 + vLamp;
   // 轨头掠射反光：灯光在抛光轨面上的亮线
   vec3 V = normalize(cameraPosition - vWorld);

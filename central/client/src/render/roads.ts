@@ -19,6 +19,7 @@ import { streetWarmth } from './materials/lighting';
 import { groupByChunk, polylineChunk, type ChunkCoord } from './chunks';
 import type { MeshArrays } from './mesh-arrays';
 import { FLAG_MAIN, FLAG_ONEWAY, FLAG_PED, addCrossing, addRibbon, drapeResample, newRoadArrays } from './ribbon';
+import { studdedCrossing } from './stations/rules';
 import {
   LampPattern,
   POLE_KERB_OFFSET_M,
@@ -81,6 +82,15 @@ const SHOPS: Partial<Record<RoadClass, number>> = {
 };
 
 const MAIN_CLASSES: ReadonlySet<RoadClass> = new Set(['motorway', 'trunk', 'primary', 'secondary']);
+
+/** 中环核心区（模拟米，与 streets/index.ts CORE_RECT_M 相同；这里另写一份，免得 roads.ts 依赖街道层）。 */
+const CORE_RECT: readonly [number, number, number, number] = [14, -485, 652, 512];
+/** 核心区一律白光 LED 的街（街名是事实信息）：电车与巴士走廊，分车道时有的车道标成 tertiary。 */
+const CORE_LED_STREETS: ReadonlySet<string> = new Set(['Des Voeux Road Central', 'Connaught Road Central', "Queen's Road Central", 'Pedder Street']);
+const inCoreRect = (x: number, y: number) => x >= CORE_RECT[0] && x <= CORE_RECT[2] && y >= CORE_RECT[1] && y <= CORE_RECT[3];
+/** 复审修正：核心区一律白光 LED 的范围（模拟米，含街市与码头前地；半山由 streetWarmth ≥ 0.45 排除）。 */
+const LED_CORE: readonly [number, number, number, number] = [-20, -380, 720, 512];
+const inLedCore = (x: number, y: number) => x >= LED_CORE[0] && x <= LED_CORE[2] && y >= LED_CORE[1] && y <= LED_CORE[3];
 
 export function isRendered(r: Road): boolean {
   return LIFT_DM[r.cls] !== undefined && !r.tunnel;
@@ -154,8 +164,12 @@ export interface RoadPlan {
   shops: number;
   /** 0–1 的稳定随机数（shader 种子）。 */
   seed: number;
-  /** 路面上的过路处：沿线位置（dm）、是否有交通灯（有灯画两道横线 + 路钉，否则斑马线）。 */
-  crossings: { s: number; signal: boolean }[];
+  /**
+   * 路面上的过路处：沿线位置（dm）、是否有交通灯（15 m 内，车流与行人让行用）；
+   * studs（R3 STATIONS）：20 m 内有交通灯 = 灯控过路处，路面画两行路钉 + 停车线 + 望右，不画斑马线（与行人灯杆同一判定）；
+   * quiet：离敏感区太近（streets/surface.ts dropZoneLamps 标），不画触觉砖与望右字。
+   */
+  crossings: { s: number; signal: boolean; studs?: boolean; quiet?: boolean }[];
 }
 
 /** 可驾驶道路车行道的线段空间索引（判人行道是否落进别的路）。 */
@@ -415,7 +429,10 @@ export function planRoads(roads: readonly Road[], ground: HeightFn, props: Parti
         spacing: rule.spacing,
         phase,
         pattern,
-        sodium: unit(lampSeed, 3) < sodiumProbability(r.cls, warmth),
+        // [r3:stations] 中环核心区的主干道（德辅道中、干诺道中、皇后大道中……）一律白光 LED：照片 14 / 22 的主路都是中性白光，
+        // 路面饱和度 ≤ 0.22。复审修正：核心区（不上山的部分）的横街、服务路、行人路也一律白光（原来约四成钠灯，
+        // 德辅道中电车轨、人行道上一块块橙褐色光斑）；钠灯只留在半山与上环
+        sodium: !(inLedCore(mid.x / 10, mid.y / 10) && warmth < 0.45) && !(inCoreRect(mid.x / 10, mid.y / 10) && warmth < 0.45 && (MAIN_CLASSES.has(r.cls) || CORE_LED_STREETS.has(r.name?.en ?? ''))) && unit(lampSeed, 3) < sodiumProbability(r.cls, warmth),
         headH: rule.headH,
         inset: rule.postTop ? Math.max(hwM - 0.4, 0.5) : Math.max(hwM + POLE_KERB_OFFSET_M - rule.overhang, 0.5),
         poleLat: rule.postTop ? Math.max(hwM - 0.4, 0.5) : hwM + POLE_KERB_OFFSET_M,
@@ -465,7 +482,7 @@ function assignCrossings(plans: RoadPlan[], crossings: FlatXY, signals: FlatXY):
     if (best.p.crossings.some((c) => Math.abs(c.s - best.s) < 80)) continue;
     let signal = false;
     for (let k = 0; k + 1 < signals.length; k += 2) if (Math.hypot(signals[k]! - x, signals[k + 1]! - y) < 150) signal = true;
-    best.p.crossings.push({ s: best.s, signal });
+    best.p.crossings.push({ s: best.s, signal, studs: signal || studdedCrossing(x, y, signals) }); // [r3:stations]
   }
 }
 
@@ -646,7 +663,7 @@ export function buildRoadChunks(
     for (const p of g.items) {
       const spec = ribbonOf(p, walls ? ground : null, blocked);
       addRibbon(arrays, spec);
-      for (const c of p.crossings) addCrossing(arrays, spec, c.s, c.signal);
+      for (const c of p.crossings) addCrossing(arrays, spec, c.s, c.studs ?? c.signal, p.road.oneway, c.quiet === true); // [r3:stations] 灯控过路处画路钉、单行方向定停车线与望左
     }
     if (arrays.vertexCount > 0) out.set(key, { coord: g.coord, arrays });
   }

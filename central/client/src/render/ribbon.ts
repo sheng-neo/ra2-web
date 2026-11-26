@@ -37,7 +37,7 @@ export const FLAG_PED = 2;
 export const FLAG_MAIN = 4;
 /** 侧板 / 底面 / 挡土墙（混凝土）。 */
 export const FLAG_SIDE = 8;
-/** 过路处贴片（斑马线）；再加 FLAG_SIGNAL 为灯控过路处（两道横线 + 路钉）。贴片的 aPav = (过路处中心沿线 m, 0)。 */
+/** 过路处贴片（斑马线）；再加 FLAG_SIGNAL 为灯控过路处（两行路钉 + 停车线，R3）。贴片的 aPav = (过路处中心沿线 m, crossingCode)。 */
 export const FLAG_CROSSING = 16;
 export const FLAG_SIGNAL = 32;
 /** 过路处沿路方向的宽度（dm）。 */
@@ -399,11 +399,28 @@ function addWalls(
   }
 }
 
+/** 灯控过路处贴片沿路方向的半宽（dm）：两行路钉（±1.4 m）+ 两头停车线（±3.1 m）。 */
+const STUD_HALF_DM = 36;
+/** 路缘外的触觉引导砖贴片最深（dm）与需要的最窄人行道（dm）。 */
+const PAD_DEEP_DM = 18;
+const PAD_MIN_PAV_DM = 14;
+
 /**
- * 过路处贴片：在沿线 s（dm）处横跨整条车行道的四边形（沿路方向 ±2 m），比路面高 3 cm，与路面同材质同属性
- * （路灯光斑一致），shader 按 FLAG_CROSSING 画斑马条纹 / 灯控横线，其余像素丢弃。水平模式用中线高度。
+ * 过路处贴片代码（写进贴片顶点 aPav.y）：(单行方向 + 1) + 3 × 左侧有路缘 + 6 × 右侧有路缘。纯函数，测试用。
+ * 着色器解码：dir = mod(k, 3) − 1，左 = mod(floor(k / 3), 2)，右 = floor(k / 6)。
  */
-export function addCrossing(m: MeshArrays, s: RibbonSpec, at: number, signal: boolean): void {
+export function crossingCode(oneway: 0 | 1 | -1, kerbL: boolean, kerbR: boolean): number {
+  return oneway + 1 + (kerbL ? 3 : 0) + (kerbR ? 6 : 0);
+}
+
+/**
+ * 过路处贴片：在沿线 s（dm）处横跨整条车行道的四边形，比路面高 3 cm，与路面同材质同属性（路灯光斑一致）。
+ * R3 STATIONS：斑马线贴片沿路 ±2 m；灯控过路处（signal）±3.6 m（两行路钉 + 停车线，见 materials/road.ts）。
+ * 两侧有 ≥ 1.4 m 人行道时，贴片再伸出路缘外 ≤ 1.8 m（降低的路缘 + 1.2 m 黄色触觉警示砖）；aPav = (中心沿线 m, crossingCode)。
+ * quiet（离敏感区太近）：不伸出路缘、不写望右，只画车行道上的路钉 / 斑马线。
+ * 水平模式用中线高度，贴地模式逐点取高度。
+ */
+export function addCrossing(m: MeshArrays, s: RibbonSpec, at: number, signal: boolean, oneway: 0 | 1 | -1 = 0, quiet = false): void {
   const p = s.pts;
   const n = p.length >> 1;
   if (n < 2) return;
@@ -411,9 +428,19 @@ export function addCrossing(m: MeshArrays, s: RibbonSpec, at: number, signal: bo
   for (let i = 1; i < n; i++) along.push(along[i - 1]! + Math.hypot(p[i * 2]! - p[i * 2 - 2]!, p[i * 2 + 1]! - p[i * 2 - 1]!));
   const len = along[n - 1]!;
   const flags = s.flags | FLAG_CROSSING | (signal ? FLAG_SIGNAL : 0);
-  const hwM = s.halfWidth * DM_TO_M;
-  const ends: { r: number; l: number }[] = [];
-  for (const a of [Math.max(at - CROSSING_HALF_DM, 0), Math.min(at + CROSSING_HALF_DM, len)]) {
+  const half = signal ? STUD_HALF_DM : CROSSING_HALF_DM;
+  // 过路处中心的人行道宽（dm）
+  let ic = 0;
+  while (ic < n - 2 && along[ic + 1]! < at) ic++;
+  const pavAt = (arr: readonly number[] | undefined) => (arr ? Math.min(arr[ic] ?? 0, arr[ic + 1] ?? 0) : 0);
+  const pl = !quiet && pavAt(s.pavL) >= PAD_MIN_PAV_DM ? Math.min(pavAt(s.pavL), PAD_DEEP_DM) : 0;
+  const pr = !quiet && pavAt(s.pavR) >= PAD_MIN_PAV_DM ? Math.min(pavAt(s.pavR), PAD_DEEP_DM) : 0;
+  // 望右字画在有路缘（有人行道）的一侧；quiet（近敏感区）两侧都不画
+  const code = crossingCode(oneway, pl > 0, pr > 0);
+  // 横向四个断点（dm，左正）：右人行道外沿、右路缘、左路缘、左人行道外沿
+  const cuts = [-(s.halfWidth + pr), -s.halfWidth, s.halfWidth, s.halfWidth + pl];
+  const ends: number[][] = [];
+  for (const a of [Math.max(at - half, 0), Math.min(at + half, len)]) {
     let i = 0;
     while (i < n - 2 && along[i + 1]! < a) i++;
     const seg = along[i + 1]! - along[i]! || 1;
@@ -422,16 +449,21 @@ export function addCrossing(m: MeshArrays, s: RibbonSpec, at: number, signal: bo
     const dy = (p[i * 2 + 3]! - p[i * 2 + 1]!) / seg;
     const x = p[i * 2]! + dx * seg * t;
     const y = p[i * 2 + 1]! + dy * seg * t;
-    const z =
-      (s.level && s.zc ? s.zc[i]! + (s.zc[i + 1]! - s.zc[i]!) * t : s.height(x, y, a)) + CROSSING_LIFT_DM;
-    const st: Station = { along: a, pavL: at, pavR: 0, dx, dz: -dy };
-    ends.push({
-      r: vertex(m, x + dy * s.halfWidth, y - dx * s.halfWidth, z, -hwM, st, s, len, flags),
-      l: vertex(m, x - dy * s.halfWidth, y + dx * s.halfWidth, z, hwM, st, s, len, flags),
-    });
+    const zc = s.level && s.zc ? s.zc[i]! + (s.zc[i + 1]! - s.zc[i]!) * t : s.height(x, y, a);
+    const st: Station = { along: a, pavL: at, pavR: code * 10, dx, dz: -dy };
+    ends.push(
+      cuts.map((c) => {
+        const vx = x - dy * c;
+        const vy = y + dx * c;
+        const z = (s.level ? zc : s.height(vx, vy, a)) + CROSSING_LIFT_DM;
+        return vertex(m, vx, vy, z, c * DM_TO_M, st, s, len, flags);
+      }),
+    );
   }
-  const [a, b] = ends as [{ r: number; l: number }, { r: number; l: number }];
-  m.tri(a.r, b.r, b.l);
-  m.tri(a.r, b.l, a.l);
+  const [A, B] = ends as [number[], number[]];
+  for (let k = 0; k < 3; k++) {
+    if ((k === 0 && pr <= 0) || (k === 2 && pl <= 0)) continue;
+    m.tri(A[k]!, B[k]!, B[k + 1]!);
+    m.tri(A[k]!, B[k + 1]!, A[k + 1]!);
+  }
 }
-

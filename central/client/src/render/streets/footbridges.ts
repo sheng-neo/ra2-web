@@ -20,6 +20,8 @@ import { createLifeMaterial } from './life-material';
 import { linearRGB, type V3 } from './prop-geometry';
 
 const TIER_M = 6;
+/** 中环至半山自动扶梯的路段名（OSM）。 */
+const ESCALATOR = /Escalator/i;
 const HALF_W = 2.25;
 const DECK_T = 0.6;
 const PARAPET_H = 1.1;
@@ -63,6 +65,8 @@ export function footbridgeChunks(
   const roofTop: Face = { alb: linearRGB('#7c7b78') };
   const pier: Face = { alb: linearRGB('#6f6a62') };
   const white: Face = { alb: linearRGB('#d8d6d2') };
+  // 自动扶梯走道：米色地砖（照片 18 #c2a17b，夜里按反照率暗一些）
+  const escDeck: Face = { alb: linearRGB('#8f7656') };
   for (const r of roads) {
     if (!isFootbridge(r)) continue;
     const tiers = footbridgeTiers(r);
@@ -113,11 +117,12 @@ export function footbridgeChunks(
       // 每 2 m 取样：段内任一处在车行道 / 电车路上方就算跨路
       let over = false;
       for (let k = 0, m = Math.max(1, Math.ceil(lenM / 2)); k <= m && !over; k++) over = overRoad(ax + ((bx - ax) * k) / m, ay + ((by - ay) * k) / m);
-      const style = bridgeStyle(over, seed + i * 31);
+      const escalator = ESCALATOR.test(r.name?.en ?? ''); // [r3:stations] 中环至半山自动扶梯
+      const style = escalator ? 'canopy' : bridgeStyle(over, seed + i * 31);
       const u0 = along;
       const u1 = along + lenM;
       // 桥面（朝上）、桥底（朝下，筒灯）
-      b.quad(aR(0), bR(0), bL(0), aL(0), deck, undefined, L4(0));
+      b.quad(aR(0), bR(0), bL(0), aL(0), escalator ? escDeck : deck, undefined, L4(0));
       b.quad(aL(-DECK_T), bL(-DECK_T), bR(-DECK_T), aR(-DECK_T), { alb: linearRGB('#9d9a95'), kind: K_SOFFIT }, [
         [u0, HALF_W],
         [u1, HALF_W],
@@ -127,7 +132,7 @@ export function footbridgeChunks(
       const roofed = style !== 'open';
       const top = roofed ? ROOF_H + ROOF_T : PARAPET_H;
       // 两侧：从桥底到顶（玻璃廊）或到栏杆顶（开敞）；aux 1 = 开敞（栏杆以上透空）
-      const sideFace: Face = { alb: linearRGB('#2a2e31'), kind: K_GLAZING, aux: style === 'glazed' ? 0 : 1 };
+      const sideFace: Face = { alb: linearRGB('#2a2e31'), kind: K_GLAZING, aux: escalator ? 2 : style === 'glazed' ? 0 : 1 };
       const sideTop = style === 'glazed' ? top : PARAPET_H;
       b.quad(bL(-DECK_T), aL(-DECK_T), aL(sideTop), bL(sideTop), sideFace, [
         [u1, -DECK_T],
@@ -141,7 +146,37 @@ export function footbridgeChunks(
         [u1, sideTop],
         [u0, sideTop],
       ], [base - DECK_T, base - DECK_T, base + sideTop, base + sideTop]);
-      if (roofed) {
+      if (escalator) {
+        // 拱形顶棚：两侧 2.6 m 起拱、屋脊 3.35 m（三折），两面都画（life-material 双面），uv = (沿线 m, 离桥面 m)
+        const arch: [number, number][] = [
+          [1, 2.6],
+          [0.55, 3.15],
+          [-0.55, 3.15],
+          [-1, 2.6],
+        ];
+        const roof: Face = { alb: linearRGB('#b08a55'), kind: K_GLAZING, aux: 3 };
+        const P = (end: 'a' | 'b', f: number, h: number): V3 => {
+          const [x, y, z] = end === 'a' ? [ax, ay, za] : [bx, by, zb];
+          return T(x + lx * f, y + ly * f, z, h);
+        };
+        for (let k = 0; k < 3; k++) {
+          const [f0, h0] = arch[k]!;
+          const [f1, h1] = arch[k + 1]!;
+          const v0 = k === 1 ? 3.25 : h0;
+          const v1 = k === 1 ? 3.25 : h1;
+          b.quad(P('a', f0, h0), P('b', f0, h0), P('b', f1, h1), P('a', f1, h1), roof, [
+            [u0, v0],
+            [u1, v0],
+            [u1, v1],
+            [u0, v1],
+          ], [base + h0, base + h0, base + h1, base + h1]);
+        }
+        // 拱肋立柱（每段两端，奶白）
+        for (const side of [1, -1]) {
+          const c = side > 0 ? aL(0) : aR(0);
+          b.box([c[0], c[1] + PARAPET_H, c[2]], [0.08, 2.6 - PARAPET_H, 0.08], { alb: linearRGB('#d8d2c0') }, { bottom: null, top: null });
+        }
+      } else if (roofed) {
         b.quad(aR(top), bR(top), bL(top), aL(top), roofTop, undefined, L4(top));
         if (style === 'canopy') {
           // 檐口（白）、棚底（筒灯）、细柱

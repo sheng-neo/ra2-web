@@ -190,3 +190,55 @@ Disclaimer of the platform”，即第 1 节的 CSDI 条款）→ 每幅 1:1000 
 
 > 部分資料來源：香港特別行政區政府地政總署「可視化三維地圖（無紋理模型）」，經可視化三維地圖網站（3d.map.gov.hk）及空間數據共享平台（CSDI，portal.csdi.gov.hk）取得；資料的知識產權屬香港特別行政區政府所有。資料已為本遊戲轉換（三維模型的屋面簡化為分層輪廓並套合二維建築輪廓，不保留網格及紋理），政府不對本遊戲負責，亦不代表政府認可。
 
+
+## 8. 可視化三維地圖（個別模型，带照片纹理）：同一网站、同一条款（真实贴面一轮 R3 新增）
+
+负责人 2026-11-26 的决定（PLAN §1 已改）：楼宇要用真实的物理贴面，越真实越好。第 7 节里「不带 0 的 `GLTF/` 是带照片纹理的版本，
+PLAN §1 不用」一句由此作废：`fetch/landsd_3d_tex_bake.py` 下载的正是 `https://download.map.gov.hk/api/3d-zip/GLTF/<图幅>.zip?key=…`
+（带纹理的个别模型；key 每次从 CSDI 图幅索引 `landsd_rcd_1671676915450_88604` 读，不进仓库）。
+
+条款核对日期：**2026-11-26**。重新抓取第 7 节的三个网页，内容 sha256 与第 7 节**完全相同**（条款没有变）：
+
+| 来源 | 网址 | 抓取内容 sha256 |
+|---|---|---|
+| 网站外壳 | <https://3d.map.gov.hk/download-api> | `70f7e0f25a7acdaa070e6d8838910b851eb5ef813bbf95053ce88b04fb76b30b` |
+| 条款正文（`app.d1a5765b.js`，V1.0.2） | <https://3d.map.gov.hk/mapviewer/app/js/app.d1a5765b.js> | `a3958941f935bb40458af598922a41ffb38e649db02e9269054e563190ab5693` |
+| Download API 页面组件 | <https://3d.map.gov.hk/mapviewer/app/js/174.bbc58423.js> | `7a077091c508af229be31b9c87f6b28c20072fc00fe57640768e322747a57f4b` |
+| CSDI 数据集页（个别模型） | <https://portal.csdi.gov.hk/geoportal/?datasetId=landsd_rcd_1671676915450_88604> | `7e6cb38071aab5b5d75ecb257bb059ff41642a16be2b12ff748cf07e24626bc9` |
+| CSDI 元数据 XML（个别模型，R1 时抓取） | `csdi_landsd_rcd_1671676915450_88604.xml` | `37ef4a2890d3c88152c610de37eb0fae13754083e2227a731dc9f334ecb3137b` |
+
+**带纹理与无纹理在同一个下载页、同一个「Terms and Conditions of Use」框后面**（`174.bbc58423.js` 的格式选单，逐字）：
+
+> `{value:"textured",label:"Textured",isCategory:!0},{value:"CESIUM",label:"CESIUM"},{value:"FBX",label:"FBX"},{value:"GLTF",label:"GLTF"},{value:"MAX",label:"MAX"},{value:"OBJ",label:"OBJ"},{value:"OSGB",label:"OSGB"},{value:"nonTextured",label:"Non-Textured",isCategory:!0},{value:"FBX0",label:"FBX"},{value:"GLTF0",label:"GLTF"},{value:"MAX0",label:"MAX"}],this.format=this.formatOption[2]`
+
+（默认选中的 `formatOption[2]` 就是带纹理的 GLTF。）
+
+**CSDI 元数据（个别模型，逐字）**
+
+> The 3D Visualisation Map (Individualised models) is a set of digital data of 3D models featuring geometry models and texture maps to represent the geometrical shape, appearance and position of different types of ground objects, including building, infrastructure, vegetation, waterbody, terrain and generic (others). The dataset covers the whole territory of Hong Kong. You can click the link below to access the 3D Visualisation Map (https://3d.map.gov.hk).
+
+> Please refer to the Terms of Use and Disclaimer of the platform
+
+**条款里与照片有关的定义（第 7 节已引，逐字重复）**
+
+> “Data” include the “Spatial Data ” (Note 1) and all other contents provided by the Government and / or other organisations (such organisations are referred to as “the relevant organisations”) to the public on this website; “Spatial Data” include all data in the form of digital maps, text, graphics, drawings, diagrams, photographs, compilation of data, data specifications and metadata and Application Programming Interface (“API”).
+
+> You are allowed to browse, download, distribute, reproduce, hyperlink to and print the Data for both commercial and non-commercial purposes on a free-of-charge basis on the condition that: […] you shall identify clearly the Government and this website as the source of the Data and acknowledge the Government  and the relevant organisations’ ownership of the intellectual property rights in the Data and in all copies thereof […]
+
+**结论（不是法律意见）**
+
+- 照片纹理是条款定义的 “Spatial Data”（“photographs”），与无纹理模型同一网站、同一条款：允许下载、分发、复制，商业或非商业，
+  条件是署名（政府 + 本网站）与声明知识产权。条款没有禁止，所以继续。
+- **处理方式**：不分发模型、网格、原始贴图或 zip。`landsd_3d_tex_bake.py` 把每栋楼的照片按我们自己的简化墙面 / 屋面重新投影、
+  按 4 px/m（墙）/ 3 px/m（屋顶）重新取样、去掉白天日照（低频亮度归一）、分出玻璃 / 实墙 / 独立窗（alpha 码），打包成
+  `client/public/city/facades/*.webp`（文件名带内容哈希）。这同样属于条款没有明文授予的 “modify / adapt”，署名如实写明，上线前法律核对的范围一并包括。
+- **不贴照片的楼**：敏感区（军事 / 政府）里的楼与模型（模型本身也不当作邻楼的贴图来源）、地标替换掉的楼（`landmarks[].replaces`，本来就不在楼表里）、
+  照片里有脚手架 / 绿网 / 工地围板的楼（自动检测 + 人工复查，清单的 `excluded.scaffold`）。
+- **合理使用**：后台线程一幅一幅顺序下载（同一时刻一条连接、幅间停 3 s），断线按 HTTP Range 续传，不重复下载已缓存的幅。
+- **模型编号**：带纹理模型的编号与无纹理快照（`landsd-3dvm-parts.json.gz`）只差倒数第二个字母（如 `…063A0` 对 `…063C0`）；
+  本轮按几何投影，不靠编号对应，所以不需要这条规则。
+- **署名**（原样使用；写进 `meta.sources`（`REF_LANDSD_3DVM_TEX`）、ATTRIBUTION.txt 与 `sources.json`）：
+
+> Contains 3D building data and photo textures from the Lands Department, HKSAR Government (3D Visualisation Map, Individualised models), obtained from the 3D Visualisation Map website (3d.map.gov.hk) through the Common Spatial Data Infrastructure (CSDI) Portal (portal.csdi.gov.hk). Intellectual property rights in the data are owned by the Government of the Hong Kong Special Administrative Region. The photo textures have been processed (projected onto simplified building walls and roofs, resampled, re-lit for night and reduced) for this game; the Government is not responsible for, and does not endorse, this game.
+
+> 部分資料來源：香港特別行政區政府地政總署「可視化三維地圖（個別模型）」的三維建築及照片紋理，經可視化三維地圖網站（3d.map.gov.hk）及空間數據共享平台（CSDI，portal.csdi.gov.hk）取得；資料的知識產權屬香港特別行政區政府所有。照片紋理已為本遊戲處理（投影到簡化的建築牆面及屋頂、重新取樣、按夜景重新打光及縮小），政府不對本遊戲負責，亦不代表政府認可。

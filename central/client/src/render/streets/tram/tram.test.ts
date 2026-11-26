@@ -8,9 +8,12 @@ import { planRoads } from '../../roads';
 import { streetLamps } from '../lamps';
 import { RenderedSurface, dropZoneLamps, inZones, outsideZones } from '../surface';
 import { TramSystem, tramStopIslands } from '../trams';
-import { destAtlasLayout } from './atlas';
+import { destAtlasLayout, destTile } from './atlas';
 import { POLE_LEN_M, POLE_PIVOT, SKIRT_Y_M, TRAM_LEN_M, TRAM_W_M, CORNICE_Y_M, ROOF_TOP_M, bodyLoop, tramGeometry } from './body';
-import { ALLOWED_PLACE_NAMES, DESTINATIONS, HERITAGE_SHARE, LiveryKind, WRAP_PALETTES, carLivery, evokesOperatorLivery, hexHsl } from './livery';
+import { FLEET_MAX, LiveryKind, SPECIAL_FLEET, STANDARD, STANDARD_SHARE, WRAP_PALETTES, WRAP_PATTERNS, carLivery, fleetNumbers, fleetPool, tramFleet } from './livery';
+import { TRAM_DESTINATIONS } from '../transit-data';
+import { AD_WORDS } from '../liveries/atlas';
+import { SIGN_WORDS } from '../../signs/whitelist';
 import { simplify3 } from './overhead';
 import { ROUTE_STEP_M, chainTracks, projectOnRoute, resampleEven, routePose, sampleAt, spreadOffsets, tramDirection, wireHeights } from './route';
 import { BELL_LEAD_S, bellBetween, carState, carTimetable, motionAt, speedProfile, type CarState } from './schedule';
@@ -108,53 +111,75 @@ describe('速度曲线与停站（纯函数）', () => {
   });
 });
 
-describe('涂装与目的地牌（红线）', () => {
-  it('目的地全部在允许地名名单里；西行只去堅尼地城 / 西營盤', () => {
-    for (const d of DESTINATIONS) {
-      expect(ALLOWED_PLACE_NAMES.has(d.zh)).toBe(true);
-      expect(ALLOWED_PLACE_NAMES.has(d.en)).toBe(true);
-    }
-    for (const c of destAtlasLayout()) {
-      expect(ALLOWED_PLACE_NAMES.has(c.zh)).toBe(true);
-      expect(ALLOWED_PLACE_NAMES.has(c.en)).toBe(true);
-    }
-    for (let k = 0; k < 200; k++) {
-      const w = carLivery(k, true);
-      expect(['堅尼地城', '西營盤']).toContain(DESTINATIONS[w.dest]!.zh);
-      const e = carLivery(k, false);
-      expect(['筲箕灣', '北角', '銅鑼灣', '跑馬地']).toContain(DESTINATIONS[e.dest]!.zh);
+describe('涂装、车队编号与目的地牌（R3 真实涂装）', () => {
+  it('目的地只取 transit-data 的电车目的地；西行显示西端总站、东行显示东端；图集格文字与之一致', () => {
+    const west = new Set(TRAM_DESTINATIONS.filter((d) => d.westbound).map((d) => d.zh));
+    const east = new Set(TRAM_DESTINATIONS.filter((d) => !d.westbound).map((d) => d.zh));
+    expect([...west].sort()).toEqual(['上環(西港城)', '堅尼地城', '石塘咀'].sort());
+    expect(west.has('西營盤')).toBe(false);
+    const texts = new Set(TRAM_DESTINATIONS.flatMap((d) => [d.zh, d.en]));
+    const tiles = destAtlasLayout();
+    expect(tiles).toHaveLength(TRAM_DESTINATIONS.length * 2);
+    for (const c of tiles) expect(texts.has(c.text)).toBe(true);
+    TRAM_DESTINATIONS.forEach((d, i) => {
+      expect(tiles.find((t) => t.tile === destTile(i, 0))!.text).toBe(d.zh);
+      expect(tiles.find((t) => t.tile === destTile(i, 1))!.text).toBe(d.en);
+    });
+    for (let k = 0; k < 400; k++) {
+      expect(west.has(TRAM_DESTINATIONS[carLivery(k, true, false, 1).dest]!.zh)).toBe(true);
+      expect(east.has(TRAM_DESTINATIONS[carLivery(k, false, k % 3 === 0, 1).dest]!.zh)).toBe(true);
     }
   });
-  it('涂装比例：广告车身 ≥ 70 %，传统深绿按 HERITAGE_SHARE；确定性', () => {
-    const n = 2000;
-    let wrap = 0;
-    let heritage = 0;
+  it('车队：标准涂装 20–30 %（恰好 round(n/4)），主角车一定是标准车；车队编号每车唯一、在 1–170、不用 28 / 128；确定性', () => {
+    for (const n of [29, 40, 12]) {
+      const cars = Array.from({ length: n }, (_, i) => ({ seed: (i % 2) * 1000 + i + 1, westbound: i % 2 === 0 }));
+      const f = tramFleet(cars, [2, 5]);
+      const std = f.filter((l) => l.kind === LiveryKind.Standard).length;
+      expect(std).toBe(Math.round(n * STANDARD_SHARE));
+      expect(std / n).toBeGreaterThanOrEqual(0.2);
+      expect(std / n).toBeLessThanOrEqual(0.3);
+      expect(f[2]!.kind).toBe(LiveryKind.Standard);
+      expect(f[5]!.kind).toBe(LiveryKind.Standard);
+      const nums = f.map((l) => l.fleet);
+      expect(new Set(nums).size).toBe(n);
+      for (const x of nums) {
+        expect(x).toBeGreaterThanOrEqual(1);
+        expect(x).toBeLessThanOrEqual(FLEET_MAX);
+        expect(SPECIAL_FLEET).not.toContain(x);
+      }
+      expect(tramFleet(cars, [2, 5])).toEqual(f);
+    }
+    expect(fleetPool()).toHaveLength(168);
+    expect(new Set(fleetNumbers(168, 7)).size).toBe(168);
+  });
+  it('标准涂装按照片 01：车身 #42605d、车顶 #374c50、防撞杠 #2c2b30；广告车用自拟配色，广告字只来自招牌白名单', () => {
+    const s = carLivery(5, true, true, 29);
+    expect(s.kind).toBe(LiveryKind.Standard);
+    expect(s.colours).toEqual([STANDARD.body, STANDARD.roof, STANDARD.bumper]);
+    expect(s.word).toBe(-1);
+    expect(s.perforated).toBe(false);
+    let words = 0;
+    let perf = 0;
+    const n = 3000;
     for (let k = 0; k < n; k++) {
-      const l = carLivery(k, k % 2 === 0);
-      if (l.kind === LiveryKind.Wrap) wrap++;
-      if (l.kind === LiveryKind.Heritage) heritage++;
-      expect(carLivery(k, k % 2 === 0)).toEqual(l);
+      const w = carLivery(k, k % 2 === 0, false, 1);
+      expect(w.kind).toBe(LiveryKind.Wrap);
+      expect(WRAP_PALETTES.some((p) => p[0] === w.colours[0] && p[1] === w.colours[1] && p[2] === w.colours[2])).toBe(true);
+      expect(w.pattern).toBeGreaterThanOrEqual(0);
+      expect(w.pattern).toBeLessThan(WRAP_PATTERNS);
+      if (w.word >= 0) {
+        words++;
+        expect(SIGN_WORDS as readonly string[]).toContain(AD_WORDS[w.word]);
+      }
+      if (w.perforated) perf++;
     }
-    expect(wrap / n).toBeGreaterThan(0.7);
-    expect(Math.abs(heritage / n - HERITAGE_SHARE)).toBeLessThan(0.03);
-    expect(carLivery(3, true, 0).kind).not.toBe(LiveryKind.Heritage);
+    expect(words / n).toBeGreaterThan(0.35);
+    expect(words / n).toBeLessThan(0.55);
+    expect(perf / n).toBeGreaterThan(0.22);
+    expect(perf / n).toBeLessThan(0.38);
   });
-  it('不出现营运商式「绿 / 青 + 米白」上下两色：生成的车里没有上层绿、下层浅（或反过来）的分色车', () => {
-    expect(evokesOperatorLivery(LiveryKind.Wrap, 2, ['#127a80', '#f6ead2', '#202020'])).toBe(true);
-    expect(evokesOperatorLivery(LiveryKind.Wrap, 2, ['#d8326e', '#f6ead2', '#202020'])).toBe(false);
-    let checked = 0;
-    for (let k = 0; k < 3000; k++) {
-      const l = carLivery(k, k % 2 === 0);
-      if (l.kind === LiveryKind.Heritage) continue;
-      expect(evokesOperatorLivery(l.kind, l.pattern, l.colours), `车 ${k} ${l.colours.join(',')} 图案 ${l.pattern}`).toBe(false);
-      checked++;
-    }
-    expect(checked).toBeGreaterThan(2500);
-    // 配色表里不再有深绿
-    for (const p of WRAP_PALETTES) for (const c of p) expect(!(hexHsl(c)[0] > 100 && hexHsl(c)[0] < 160 && hexHsl(c)[2] < 0.3)).toBe(true);
-  });
-  it('配色表只有颜色（12 组、合法十六进制）', () => {
-    expect(WRAP_PALETTES).toHaveLength(12);
+  it('配色表只有颜色（合法十六进制）', () => {
+    expect(WRAP_PALETTES.length).toBeGreaterThanOrEqual(12);
     for (const p of WRAP_PALETTES) for (const c of p) expect(c).toMatch(/^#[0-9a-f]{6}$/);
   });
 });
@@ -360,5 +385,20 @@ describe('真实数据上的电车', () => {
     let w1 = false;
     for (let t = 0; t <= 15; t += 0.5) if (sys.debugCars(t).some((c) => c.atStop === 'W1')) w1 = true;
     expect(w1).toBe(true);
+  });
+  it('R3：开场进 W1 的车与 30 s 后第一辆停 E2 的车是标准深绿涂装；车队里标准车 20–30 %、编号唯一、目的地都是真实总站', () => {
+    const at = (t: number, id: string) => sys.debugCars(t).find((c) => c.atStop === id);
+    let w1: ReturnType<typeof at>;
+    for (let t = 0; t <= 15 && !w1; t += 0.5) w1 = at(t, 'W1');
+    expect(w1?.livery).toBe('standard');
+    let e2: ReturnType<typeof at>;
+    for (let t = 30; t <= 600 && !e2; t += 1) e2 = at(t, 'E2');
+    expect(e2?.livery).toBe('standard');
+    const cars = sys.debugCars(0);
+    const std = cars.filter((c) => c.livery === 'standard').length / cars.length;
+    expect(std).toBeGreaterThanOrEqual(0.2);
+    expect(std).toBeLessThanOrEqual(0.3);
+    expect(new Set(cars.map((c) => c.fleet)).size).toBe(cars.length);
+    for (const c of cars) expect(TRAM_DESTINATIONS.some((d) => d.zh === c.dest.zh && d.en === c.dest.en && d.westbound === (c.track === 0))).toBe(true);
   });
 });

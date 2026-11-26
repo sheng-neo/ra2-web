@@ -27,12 +27,13 @@ import type { RoadPlan } from '../roads';
 import type { StreetLamp } from './lamps';
 import { linearRGB, type V3 } from './prop-geometry';
 import { destAtlasTexture } from './tram/atlas';
-import { LAMP_Y_M, LAMP_Z_M, TRAM_HALF_SIDE_M, tramGeometry } from './tram/body';
+import { CLUSTER_Y_M, CLUSTER_Z_M, LAMP_Y_M, STACK_Y_M, STACK_Z_M, TRAM_BULGE_M, TRAM_HALF_SIDE_M, tramGeometry } from './tram/body'; // [r3:liveries]
 import { aimPole } from './tram/pole';
 import { tramContext } from './tram/context';
 import { NearInstances, RIDE_FRAME_SCALE, islandGeometry, placeMatrix, poleGeometry, rideFrameGeometry, type NearItem } from './tram/infra';
 import { createPropMaterial } from './prop-material';
-import { carLivery, hash01, type CarLivery } from './tram/livery';
+import { LiveryKind, hash01, tramFleet, type CarLivery } from './tram/livery'; // [r3:liveries]
+import { TRAM_DESTINATIONS } from './transit-data'; // [r3:liveries]
 import { createTramMaterial } from './tram/material';
 import { placeOverhead, type OverheadPlan } from './tram/overhead';
 import { buildRoutes, projectOnRoute, resampleEven, routePose, type RoutePose, type TramRoute } from './tram/route';
@@ -64,6 +65,12 @@ export interface TramCarDebug {
   speed: number;
   /** 停在哪个站（站 id），在走为 null。 */
   atStop: string | null;
+  /** 涂装：标准深绿 / 广告车身（R3）。 */ // [r3:liveries]
+  livery: 'standard' | 'wrap'; // [r3:liveries]
+  /** 车队编号。 */ // [r3:liveries]
+  fleet: number; // [r3:liveries]
+  /** 目的地牌。 */ // [r3:liveries]
+  dest: { zh: string; en: string }; // [r3:liveries]
 }
 
 export interface TramBell {
@@ -112,6 +119,8 @@ interface Car {
   col: [V3, V3, V3];
   state: CarState;
   seed: number;
+  /** 车的种子（涂装、目的地按它定）。 */ // [r3:liveries]
+  key: number; // [r3:liveries]
 }
 
 /** 站岛遮篷色带（柔和、通用，不用营运商绿色）。 */
@@ -124,7 +133,7 @@ const TAIL = lightColour('tailLight');
 /** 架空线杆顶（m，infra.ts poleGeometry：9 m 杆 + 杆帽）。 */
 const POLE_TOP_M = 9.2;
 
-/** 每车光点：两头灯 + 两尾灯。 */
+/** 每车光点：车头中线头灯 + 车尾两角红灯 + 车尾观者左侧的红灯（R3：照片 01–03 只有一盏头灯）。 */ // [r3:liveries]
 const LIGHTS_PER_CAR = 4;
 
 class TramLod {
@@ -133,6 +142,7 @@ class TramLod {
   readonly col1: InstancedBufferAttribute;
   readonly col2: InstancedBufferAttribute;
   readonly meta: InstancedBufferAttribute;
+  readonly meta2: InstancedBufferAttribute; // [r3:liveries]
   readonly st: InstancedBufferAttribute;
   n = 0;
   constructor(lod: 0 | 1, cap: number, material: ReturnType<typeof createTramMaterial>) {
@@ -142,11 +152,13 @@ class TramLod {
     this.col1 = mk(3);
     this.col2 = mk(3);
     this.meta = mk(4);
+    this.meta2 = mk(4); // [r3:liveries]
     this.st = mk(4);
     geo.setAttribute('iCol0', this.col0);
     geo.setAttribute('iCol1', this.col1);
     geo.setAttribute('iCol2', this.col2);
     geo.setAttribute('iMeta', this.meta);
+    geo.setAttribute('iMeta2', this.meta2); // [r3:liveries]
     geo.setAttribute('iState', this.st);
     this.mesh = new InstancedMesh(geo, material, cap);
     this.mesh.name = lod === 0 ? 'trams-near' : 'trams-far';
@@ -156,7 +168,7 @@ class TramLod {
   commit(): void {
     this.mesh.count = this.n;
     this.mesh.instanceMatrix.needsUpdate = true;
-    for (const a of [this.col0, this.col1, this.col2, this.meta, this.st]) a.needsUpdate = true;
+    for (const a of [this.col0, this.col1, this.col2, this.meta, this.meta2, this.st]) a.needsUpdate = true; // [r3:liveries]
   }
 }
 
@@ -225,14 +237,16 @@ export class TramSystem {
       const tts = routeTimetables(this.profiles[ri]!, rs.map((s) => baseDwell(s.seed)), 1000 + ri * 77, first, r.westbound ? 10 : 22);
       tts.forEach((tt, k) => {
         const seed = ri * 1000 + k + 1;
-        // 第 0 号车（开场进 W1 / E1 的那辆）一定是抽象广告车身（比例传 −1）：传统深绿涂装待负责人定（livery.ts HERITAGE_SHARE），不当主角
-        const livery = carLivery(seed, r.westbound, k === 0 ? -1 : undefined);
-        const col = livery.colours.map((h) => linearRGB(h)) as [V3, V3, V3];
-        this.cars.push({ route: ri, tt, livery, col, state: { s: 0, v: 0, atStop: -1, tau: 0 }, seed: hash01(seed * 7 + 1) });
+        this.cars.push({ route: ri, tt, livery: null as unknown as CarLivery, col: [[0, 0, 0], [0, 0, 0], [0, 0, 0]], state: { s: 0, v: 0, atStop: -1, tau: 0 }, seed: hash01(seed * 7 + 1), key: seed }); // [r3:liveries]
       });
     });
+    // [r3:liveries] 车队涂装：约 25 % 标准深绿、其余广告车身，车队编号每车唯一；
+    // [r3:liveries] 主角车是标准深绿：开场进 W1 的西行第 0 号车（「電車」机位）、开场 30 s 后第一辆停 E2 的东行车（「tram-livery」机位）
+    const heroes = [this.cars.findIndex((c) => this.routes[c.route]!.westbound && c.key % 1000 === 1), this.firstAtAnchor('E2', 30, 600)]; // [r3:liveries]
+    const fleet = tramFleet(this.cars.map((c) => ({ seed: c.key, westbound: this.routes[c.route]!.westbound })), heroes); // [r3:liveries]
+    this.cars.forEach((c, i) => { c.livery = fleet[i]!; c.col = c.livery.colours.map((h) => linearRGB(h)) as [V3, V3, V3]; }); // [r3:liveries]
     this.carPos = new Float32Array(this.cars.length * 4);
-    const material = createTramMaterial(destAtlasTexture());
+    const material = createTramMaterial(destAtlasTexture(), high ? 60 : 30); // [r3:liveries] 字只在 60 m（LOW 30 m）内画
     const cap = Math.max(this.cars.length, 1);
     this.lods = [new TramLod(0, cap, material), new TramLod(1, cap, material)];
     this.objects.push(this.lods[0].mesh, this.lods[1].mesh);
@@ -282,6 +296,22 @@ export class TramSystem {
   }
 
   private readonly cab: Mesh;
+
+  /** [r3:liveries] 时刻 t0 之后（逐秒扫到 t1）第一辆停在锚点站 anchor 的车的下标；没有返回 −1（纯计算）。 */
+  private firstAtAnchor(anchor: string, t0: number, t1: number): number {
+    const st: CarState = { s: 0, v: 0, atStop: -1, tau: 0 };
+    const idx = this.routes.map((r) => this.stops.filter((s) => s.route === r.id).findIndex((s) => s.anchor === anchor));
+    for (let t = t0; t <= t1; t++) {
+      for (let i = 0; i < this.cars.length; i++) {
+        const car = this.cars[i]!;
+        const k = idx[car.route]!;
+        if (k < 0) continue;
+        carState(this.profiles[car.route]!, car.tt, t, st);
+        if (st.atStop === k) return i;
+      }
+    }
+    return -1;
+  }
 
   get count(): number {
     return this.cars.length;
@@ -342,7 +372,7 @@ export class TramSystem {
       this.sphere.center.set(x, y + 2.3, z);
       this.sphere.radius = 5.6;
       const visible = this.frustum.intersectsSphere(this.sphere);
-      // 车灯：头灯两盏（车头下角）、尾灯两盏；朝向相机才亮（从车后看不到头灯）
+      // 车灯（R3）：车头中线一盏头灯；车尾两角红灯 + 观者左侧红灯；朝向相机才亮（从车后看不到头灯） // [r3:liveries]
       const fx = cam.x - x;
       const fz = cam.z - z;
       const facing = (hx * fx + hz * fz) / (Math.hypot(fx, fz) || 1);
@@ -351,12 +381,13 @@ export class TramSystem {
       // 右手方向（three）：(−hz, 0, hx)
       const rx = -hz;
       const rz = hx;
-      const half = TRAM_HALF_SIDE_M + 0.3;
-      for (let side = -1; side <= 1; side += 2) {
-        const lx = side * LAMP_Z_M;
-        lights.setXYZ(li++, x + hx * half + rx * lx, y + LAMP_Y_M, z + hz * half + rz * lx, HEAD, 7 * headK, 0.09);
-        lights.setXYZ(li++, x - hx * half + rx * lx, y + LAMP_Y_M + 0.02, z - hz * half + rz * lx, TAIL, 2 * tailK, 0.07);
-      }
+      const half = TRAM_HALF_SIDE_M + TRAM_BULGE_M + 0.04; // [r3:liveries]
+      lights.setXYZ(li++, x + hx * half, y + LAMP_Y_M, z + hz * half, HEAD, 8 * headK, 0.11); // [r3:liveries]
+      for (let side = -1; side <= 1; side += 2) { // [r3:liveries]
+        const lx = side * CLUSTER_Z_M[2]!; // [r3:liveries]
+        lights.setXYZ(li++, x - hx * (half - 0.2) + rx * lx, y + CLUSTER_Y_M, z - hz * (half - 0.2) + rz * lx, TAIL, 1.8 * tailK, 0.05); // [r3:liveries]
+      } // [r3:liveries]
+      lights.setXYZ(li++, x - hx * (half - 0.2) - rx * STACK_Z_M, y + STACK_Y_M[0], z - hz * (half - 0.2) - rz * STACK_Z_M, TAIL, 1.4 * tailK, 0.045); // [r3:liveries]
       if (!visible) continue;
       const lod = dist < near ? l0 : l1;
       const k = lod.n++;
@@ -368,7 +399,8 @@ export class TramSystem {
       lod.col1.setXYZ(k, c1[0], c1[1], c1[2]);
       lod.col2.setXYZ(k, c2[0], c2[1], c2[2]);
       const lv = car.livery;
-      lod.meta.setXYZW(k, lv.kind, lv.pattern, lv.dest + lv.destStyle * 8, lv.postsBody ? 0.7 : 0.2);
+      lod.meta.setXYZW(k, lv.kind, lv.pattern, lv.dest, lv.seed); // [r3:liveries]
+      lod.meta2.setXYZW(k, lv.fleet, lv.word, lv.perforated ? 1 : 0, 0); // [r3:liveries]
       // 集电杆：杆头搭在接触线上离杆座 4 m 的点（仰角、偏角）
       const aim = aimPole(r, car.state.s, pose, this.tip);
       const sodium = this.lampField.at(x, y, z, this.lampE, 2.2);
@@ -479,6 +511,9 @@ export class TramSystem {
         heading: Math.atan2(pose.hy, pose.hx),
         speed: st.v,
         atStop: st.atStop >= 0 ? (stops[st.atStop]?.id ?? null) : null,
+        livery: car.livery.kind === LiveryKind.Standard ? 'standard' : 'wrap', // [r3:liveries]
+        fleet: car.livery.fleet, // [r3:liveries]
+        dest: { zh: TRAM_DESTINATIONS[car.livery.dest]!.zh, en: TRAM_DESTINATIONS[car.livery.dest]!.en }, // [r3:liveries]
       };
     });
   }

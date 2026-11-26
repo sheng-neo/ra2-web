@@ -92,7 +92,7 @@ describe('真实数据上的路灯', () => {
     expect(close).toBe(0);
   });
 
-  it('颜色比例：核心区 60–80 % 白光 LED（2026 年主路、次干道多已换 LED），半山（地面 > 60 mPD）≥ 60 % 钠灯', () => {
+  it('颜色比例：核心区（不上山的部分）几乎全是白光 LED（复审修正：横街、服务路也换了），半山（地面 > 60 mPD）≥ 60 % 钠灯', () => {
     let core = 0;
     let coreLed = 0;
     let hill = 0;
@@ -117,8 +117,8 @@ describe('真实数据上的路灯', () => {
     }
     expect(core).toBeGreaterThan(200);
     expect(hill).toBeGreaterThan(100);
-    expect(coreLed / core).toBeGreaterThanOrEqual(0.6);
-    expect(coreLed / core).toBeLessThanOrEqual(0.8);
+    // 核心区矩形的南缘已上半山（streetWarmth ≥ 0.45 的段仍可用钠灯），所以不是 100 %
+    expect(coreLed / core).toBeGreaterThanOrEqual(0.85);
     expect(hillSodium / hill).toBeGreaterThanOrEqual(0.6);
   });
 });

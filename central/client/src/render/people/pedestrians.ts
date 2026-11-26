@@ -134,7 +134,7 @@ function prism(
 const fromFront = (a: number) => Math.abs(Math.atan2(Math.sin(a), Math.cos(a)));
 
 /**
- * LOD0 人形（身高 1.7 m，面朝 +x，z 为左右），约 146 个三角形（R2 修复轮，取代方块人）：
+ * LOD0 人形（身高 1.7 m，面朝 +x，z 为左右），约 182 个三角形（R2 修复轮，取代方块人；R3 复审：八棱三段头、斜挎包）：
  * - 头：六棱、两段（下巴收窄 → 眉线最宽 → 头顶收圆）+ 顶盖；头顶、后脑与两侧是头发，脸在前；
  *   颈后一面「长发」（按人随机，着色器里换成头发或皮肤）；
  * - 躯干：六棱、两段（胯 → 胸 → 肩线收窄成斜肩）+ 顶盖；
@@ -176,12 +176,15 @@ export function figureGeometry(): InstancedBufferGeometry {
     [SHOULDER_Y + 0.04, 0.05, 0.05],
     [1.5, 0.048, 0.048],
   ], 4, Math.PI / 4, (a) => (fromFront(a) > 2.5 ? P_HAIR_LONG : P_SKIN), 0);
-  // 头：下巴 → 眉线 → 头顶；脸（前方 ±60° 的面）是皮肤，其余头发
+  // 头（复审修正：八棱三段，不再是六棱「蛋头」）：下巴 → 颧骨 → 眉线 → 头顶；脸与额头是皮肤，两侧鬓角，其余头发（发冠略大一圈）
   prism(b, 0.01, 0, [
-    [1.49, 0.075, 0.062],
-    [1.62, 0.1, 0.086],
-    [1.71, 0.072, 0.062],
-  ], 6, -Math.PI / 6, (a, seg) => (seg === 0 && fromFront(a) < 1.2 ? P_SKIN : seg === 0 && fromFront(a) < 2.2 ? P_HAIR_SIDE : P_HAIR), 0, { y: 1.74, part: P_HAIR });
+    [1.49, 0.068, 0.056],
+    [1.56, 0.09, 0.078],
+    [1.63, 0.1, 0.087],
+    [1.715, 0.078, 0.068],
+  ], 8, -Math.PI / 8, (a, seg) => (seg <= 1 && fromFront(a) < 1.0 ? P_SKIN : seg <= 1 && fromFront(a) < 2.0 ? P_HAIR_SIDE : seg === 2 && fromFront(a) < 0.75 ? P_SKIN : P_HAIR), 0, { y: 1.75, part: P_HAIR });
+  // 斜挎包 / 公文包（右胯旁，深色）
+  box(b, 0.02, -0.21, 0.8, 1.06, [0.2, 0.07], [0.18, 0.06], P_SHOE, 0, true);
   // 手机屏（胸前右手，只在有手机的实例上显示）
   const base = b.pos.length / 3;
   for (const [y, z] of [

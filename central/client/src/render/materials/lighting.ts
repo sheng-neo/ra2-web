@@ -85,8 +85,9 @@ export const EMISSIVE = {
 export const LIGHT_HEX = {
   /** 高压钠灯 ~2100 K：横街、山路、旧区。 */
   sodium: '#ff9a3c',
-  /** 白光 LED 路灯 ~4000 K：主干道。 */
-  ledWhite: '#ffd6aa',
+  /** 白光 LED 路灯 ~4400 K：主干道。复审修正：原来 #ffd6aa（约 3500 K）太暖太饱和，电车深青绿照成橄榄绿、城巴黄照成橙；
+   *  照片 02 实测约 4450 K、照片 14 中性 LED。 */
+  ledWhite: '#ffe6cc',
   /** 写字楼：中性白 ~5600 K（主）/ 冷白偏绿 ~6500 K / 暖白 3000 K（10–15 %）。 */
   officeNeutral: '#fff0dc',
   officeCool: '#f1f6ee',
@@ -266,6 +267,11 @@ vec3 hazeLight(vec3 emissive, vec3 wp) {
  * 所以天光底数很低（约为街面反光的 6 %），20 m 以上的墙 Y ≤ 0.01，不再是整面均匀发亮的「纸板」。
  */
 export const GLSL_CITY_LIGHT = /* glsl */ `
+// 复审修正：照度的「相机白平衡」——向自身亮度收 k（0–1），亮度不变、色偏减小。车身、站台等真实涂装面用
+// （照片是按约 4300 K 白平衡拍的：白光 LED 下电车的深青绿仍是青绿、城巴的黄仍是黄，不会被暖光带成橄榄绿 / 橙）。
+vec3 neutralLight(vec3 irr, float k) {
+  return mix(irr, vec3(dot(irr, vec3(0.2126, 0.7152, 0.0722))), k);
+}
 vec3 cityAmbient(vec3 n, float lift, float warmth) {
   float up = 0.55 + 0.45 * n.y;
   vec3 skyC = vec3(0.015, 0.015, 0.019) * up;

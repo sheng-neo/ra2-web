@@ -41,12 +41,14 @@ describe('真实数据：路边设施（栏杆、护柱、行人灯、巴士站�
   const rails = railPanels(plans, ctx, sites, stops, at);
   const inZ = (x: number, y: number) => inZones(zones, x * 10, y * 10);
 
-  it('巴士站：6 m 内去重、候车亭四角都在人行道上（不进车行道、楼、敏感区），候车区 3–8 人', () => {
+  it('巴士站：6 m 内去重、候车亭四角都在人行道上（不进车行道、楼、敏感区），候车区 3–8 人（只有站牌的站 1–3 人）', () => {
     expect(stops.length).toBeGreaterThan(30);
+    // R3：放不下候车亭的站只立站牌（length 0），只是少数
+    expect(stops.filter((b) => b.length === 0).length).toBeLessThanOrEqual(5);
     for (let i = 0; i < stops.length; i++) {
       for (let j = i + 1; j < stops.length; j++) expect(Math.hypot(stops[i]!.x - stops[j]!.x, stops[i]!.y - stops[j]!.y)).toBeGreaterThan(BUS_DEDUPE_M - 1e-6);
       const b = stops[i]!;
-      expect(b.length).toBeGreaterThanOrEqual(5.7 - 1e-6);
+      if (b.length > 0) expect(b.length).toBeGreaterThanOrEqual(5.7 - 1e-6);
       expect(b.length).toBeLessThanOrEqual(12);
       for (const a of [-0.5, 0.5])
         for (const c of [-0.5, 0.5]) {
@@ -55,10 +57,10 @@ describe('真实数据：路边设施（栏杆、护柱、行人灯、巴士站�
           expect(footOk(ctx, x, y, b.plan, 0.15)).toBe(true);
         }
     }
-    for (const w of busWaitingAreas(stops, plans)) {
-      expect(w.count).toBeGreaterThanOrEqual(3);
+    busWaitingAreas(stops, plans).forEach((w, i) => {
+      expect(w.count).toBeGreaterThanOrEqual(stops[i]!.length > 0 ? 3 : 1);
       expect(w.count).toBeLessThanOrEqual(8);
-    }
+    });
   });
 
   it('栏杆：路缘外 0.4 m、片长 ≤ 2.4 m；斑马线两侧各让 2.5 m、巴士站上落客段不装；不进敏感区、楼', () => {

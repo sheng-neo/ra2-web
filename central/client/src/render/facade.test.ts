@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { FacadeMode, NO_BLDG, RND_STEPS, facadeKey, facadeVertex, newFacadeArrays, styleCode } from './facade';
+import { FacadeMode, NO_BLDG, NO_PHOTO, RND_STEPS, facadeKey, facadeVertex, newFacadeArrays, styleCode } from './facade';
 
 describe('styleCode / facadeKey', () => {
   it('逐栋随机数量化成 1/4096：float32 精确可表示，shader 读到的值与 TS 相同', () => {
@@ -33,8 +33,17 @@ describe('facadeVertex', () => {
     const m = newFacadeArrays();
     facadeVertex(m, 0, 0, 0, 0, 0, 1, 1, 2, 3, styleCode(0, FacadeMode.Windows, 0));
     facadeVertex(m, 0, 0, 0, 0, 0, 1, 1, 2, 3, 0, [4, 0.5, 12, 8]);
-    expect(m.layout.map((a) => a.name)).toEqual(['position', 'normal', 'aFacade', 'aBldg']);
+    expect(m.layout.map((a) => a.name)).toEqual(['position', 'normal', 'aFacade', 'aBldg', 'aPhoto']);
     expect(m.data[3]!.slice(0, 4)).toEqual([...NO_BLDG]);
     expect(m.data[3]!.slice(4, 8)).toEqual([4, 0.5, 12, 8]);
+  });
+
+  it('aPhoto 缺省为「没有照片」（页 −1），给了就照写（R3）', () => {
+    const m = newFacadeArrays();
+    facadeVertex(m, 0, 0, 0, 0, 0, 1, 1, 2, 3, 0);
+    facadeVertex(m, 0, 0, 0, 0, 0, 1, 1, 2, 3, 0, NO_BLDG, [0.25, 0.5, 7, 1.25]);
+    expect(m.data[4]!.slice(0, 4)).toEqual([...NO_PHOTO]);
+    expect(NO_PHOTO[2]).toBe(-1);
+    expect(m.data[4]!.slice(4, 8)).toEqual([0.25, 0.5, 7, 1.25]);
   });
 });

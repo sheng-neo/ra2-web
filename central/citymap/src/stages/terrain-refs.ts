@@ -73,6 +73,26 @@ export const REF_LANDSD_3DVM: SourceRef = {
   url: 'https://portal.csdi.gov.hk/geoportal/?datasetId=landsd_rcd_1742809441342_98380',
 };
 
+/**
+ * 地政总署「可視化三維地圖（個別模型）」的照片纹理（R3）：同一网站、同一条款（TERMS.md 第 8 节）。
+ * 照片已投影到简化的墙面与屋顶、重新取样、按夜景重新打光并缩小；措辞与 landsd_3d_tex_bake.py 的 ATTRIBUTION 逐字一致。
+ */
+export const REF_LANDSD_3DVM_TEX: SourceRef = {
+  id: 'landsd/3dvm-individualised-2026',
+  license: CSDI_LICENSE,
+  attribution:
+    'Contains 3D building data and photo textures from the Lands Department, HKSAR Government (3D Visualisation Map, ' +
+    'Individualised models), obtained from the 3D Visualisation Map website (3d.map.gov.hk) through the Common Spatial Data ' +
+    'Infrastructure (CSDI) Portal (portal.csdi.gov.hk). Intellectual property rights in the data are owned by the Government ' +
+    'of the Hong Kong Special Administrative Region. The photo textures have been processed (projected onto simplified ' +
+    'building walls and roofs, resampled, re-lit for night and reduced) for this game; the Government is not responsible ' +
+    'for, and does not endorse, this game.\n' +
+    '部分資料來源：香港特別行政區政府地政總署「可視化三維地圖（個別模型）」的三維建築及照片紋理，經可視化三維地圖網站' +
+    '（3d.map.gov.hk）及空間數據共享平台（CSDI，portal.csdi.gov.hk）取得；資料的知識產權屬香港特別行政區政府所有。' +
+    '照片紋理已為本遊戲處理（投影到簡化的建築牆面及屋頂、重新取樣、按夜景重新打光及縮小），政府不對本遊戲負責，亦不代表政府認可。',
+  url: 'https://portal.csdi.gov.hk/geoportal/?datasetId=landsd_rcd_1671676915450_88604',
+};
+
 export const REF_LANDSD_BUILDINGS: SourceRef = {
   id: 'landsd/building-2026-10-20',
   license: CSDI_LICENSE,

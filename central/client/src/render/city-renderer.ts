@@ -4,7 +4,7 @@
  * 写实化（realism spec §iii、§v）：画质档在构造时定（URL → 能力探测），HIGH 走 HDR 目标 + bloom + 输出 pass，
  * LOW 直出画布；雾是契约里的指数高度雾（共享 uniform），不再随视距调整。
  */
-import { PerspectiveCamera, Scene, WebGLRenderer, type Camera, type Mesh, type Object3D } from 'three';
+import { Frustum, Matrix4, PerspectiveCamera, Scene, WebGLRenderer, type Camera, type Mesh, type Object3D } from 'three';
 import type { CityFile, TerrainGrid } from '@central/data';
 import type { HeightFn } from '../data/terrain';
 import { buildBackdrop, buildSky } from './backdrop';
@@ -26,7 +26,9 @@ import { buildStreets, type Streets } from './streets';
 import { PostPipeline } from './post/pipeline';
 import { TIER_SPECS, canvasBytes, chooseQuality, msaaSamples, probeCaps, startDpr } from './quality';
 import { WaterLayer } from './water';
-import { Boats } from './boats';
+import { Boats, type BoatDebug } from './boats'; // [r3:liveries]
+import type { VehicleDebug } from './streets/vehicles'; // [r3:liveries]
+import { FacadeStreamer, type FacadeDebug } from './facades/streamer';
 
 /** 相机离区包围盒小于此距离（米）时拆成逐块绘制。 */
 const NEAR_REGION_M = 220;
@@ -55,6 +57,16 @@ export interface RenderStats {
   /** 其中平面反射 pass 的 draw call / 三角形（不在视野时为 0）。 */
   reflCalls?: number;
   reflTriangles?: number;
+  /** R3 真实贴面：贴面贴图显存（MB，已含在 texMB 里）、视野要的页还有几张没到、已下载的贴图字节数。 */
+  facadeMB?: number;
+  facadePending?: number;
+  facadeBytes?: number;
+}
+
+/** 贴面贴图的位置（相对页面的目录前缀与文件名后缀，见 main.ts FACADE_SUFFIX）。 */
+export interface FacadeSource {
+  base: string;
+  suffix: string;
 }
 
 export type BuildStep = (label: string, fraction: number) => Promise<void>;
@@ -64,6 +76,9 @@ export class CityRenderer {
   readonly scene = new Scene();
   readonly camera = new PerspectiveCamera(BASE_FOV, 1, 1, FAR_CLIP_M);
   private readonly layers: ChunkLayer[] = [];
+  /** 分块图层判断「近区大部分在视野里」用（每帧重算，不分配）。 */
+  private readonly layerFrustum = new Frustum();
+  private readonly layerPm = new Matrix4();
   private readonly sky: Mesh;
   readonly quality: Quality;
   private readonly post: PostPipeline;
@@ -71,6 +86,7 @@ export class CityRenderer {
   private boats: Boats | null = null;
   private streets: Streets | null = null;
   private buildingsUpdate: ((camera: Camera) => void) | null = null;
+  private facades: FacadeStreamer | null = null; // [r3:facades]
   private dpr: number;
   private css: [number, number] = [1, 1];
   private readonly canvasDepth: boolean;
@@ -103,9 +119,14 @@ export class CityRenderer {
    * 分阶段搭建；每阶段之后 await step，让加载界面有机会刷新。
    * relief 为地形渲染网格（没有地形时为 null），ground 是在同一网格上取高度的函数。
    */
-  async build(city: CityFile, ground: HeightFn, relief: TerrainGrid | null, step: BuildStep): Promise<void> {
+  async build(city: CityFile, ground: HeightFn, relief: TerrainGrid | null, step: BuildStep, facadeSrc?: FacadeSource): Promise<void> {
     const zones = city.zones.sensitive;
-    const facade = createBuildingMaterial();
+    // R3 真实贴面：有贴图集时建流式加载器，把它的贴图 uniform 交给建筑材质
+    if (city.meta.facades && facadeSrc) {
+      const mobile = navigator.maxTouchPoints > 0 || (typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches);
+      this.facades = new FacadeStreamer({ renderer: this.renderer, meta: city.meta.facades, ...facadeSrc, tier: this.quality.tier, mobile });
+    }
+    const facade = createBuildingMaterial(this.facades ? { uniforms: this.facades.uniforms, near: this.facades.near } : undefined);
     const add = (...objs: (Object3D | null)[]) => {
       for (const o of objs) if (o) this.scene.add(o);
     };
@@ -113,6 +134,7 @@ export class CityRenderer {
     await step('生成建築', 0.72);
     const bld = buildCityBuildings(city, ground, getQuality().tier);
     this.buildingsUpdate = bld.update;
+    if (bld.pageBoxes) this.facades?.setBoxes(bld.pageBoxes, bld.pageEntries);
     const buildings = new ChunkLayer('buildings', bld.chunks, facade);
     this.layers.push(buildings);
     add(buildings.group, ...bld.objects); // 招牌、航空灯、边缘 LED
@@ -153,6 +175,13 @@ export class CityRenderer {
 
   resize(width: number, height: number): void {
     this.css = [width, height];
+    // 复审修正：窗口变大（平板、折叠屏、桌面拉窗口）时按档位的 drawing buffer 上限重新封顶 DPR（原来只在开场算一次，
+    // 874×402 @2 拉到 1280×720 后画布 2560×1440、账本 174 MB）；只往下压，变小后不自动升回（自适应 DPR 管升降）
+    const cap = this.dprCap(width, height);
+    if (this.dpr > cap + 1e-6) {
+      this.dpr = cap;
+      this.renderer.setPixelRatio(cap);
+    }
     this.renderer.setSize(width, height, false);
     SHARED.uViewportPx.value.set(this.renderer.domElement.width, this.renderer.domElement.height);
     // 画布默认帧缓冲也计入显存账本（HIGH：RGBA8 前后两份；LOW：4× MSAA 颜色 + 深度 + resolve）
@@ -172,10 +201,15 @@ export class CityRenderer {
     this.renderer.info.reset(); // 一帧可能多次 render，stats() 报整帧总数
     advanceShared(dt);
     this.sky.position.copy(this.camera.position);
-    for (const l of this.layers) l.update(this.camera.position, NEAR_REGION_M);
+    this.camera.updateMatrixWorld();
+    this.layerPm.multiplyMatrices(this.camera.projectionMatrix, this.camera.matrixWorldInverse);
+    this.layerFrustum.setFromProjectionMatrix(this.layerPm);
+    // 只在 HIGH 档按视锥合并近区（省 draw call，多一点三角形）；LOW 档三角形上限更紧，照旧逐块拆
+    for (const l of this.layers) l.update(this.camera.position, NEAR_REGION_M, this.quality.tier === 'high' ? this.layerFrustum : undefined);
     this.streets?.update(dt, this.camera);
     this.buildingsUpdate?.(this.camera);
-    this.boats?.update(this.water);
+    this.facades?.update(this.camera);
+    this.boats?.update(this.water, this.camera); // [r3:liveries] 视野外的船不画
     this.water?.update(this.renderer, this.scene, this.camera); // 平面反射须在主场景之前
     const t = Math.min(Math.max((viewDistance - 150) / 450, 0), 1);
     this.post.render(this.scene, this.camera, 0.3 + 0.7 * t * t * (3 - 2 * t));
@@ -186,8 +220,22 @@ export class CityRenderer {
     return this.streets?.trams ?? null; // [r2:trams]
   } // [r2:trams]
 
+  /** 调试钩子（R3 LIVERIES）：全部车辆与船（模拟坐标，米）。 */ // [r3:liveries]
+  vehicles(): VehicleDebug[] { // [r3:liveries]
+    return this.streets?.vehicles() ?? []; // [r3:liveries]
+  } // [r3:liveries]
+  boatList(): BoatDebug[] { // [r3:liveries]
+    return this.boats?.debug() ?? []; // [r3:liveries]
+  } // [r3:liveries]
+
+  /** 这个 CSS 尺寸下档位允许的最大 DPR（drawing buffer ≤ TIER_SPECS.bufferCapPx，见 quality.startDpr）。 */
+  private dprCap(width: number, height: number): number {
+    return startDpr(this.quality.tier, window.devicePixelRatio || 1, Math.max(width, 1), Math.max(height, 1));
+  }
+
   /** 自适应 DPR：换像素比后按当前 CSS 尺寸重建画布与目标。 */
   setPixelRatio(dpr: number): void {
+    dpr = Math.min(dpr, this.dprCap(this.css[0], this.css[1]));
     this.dpr = dpr;
     this.renderer.setPixelRatio(dpr);
     this.resize(this.css[0], this.css[1]);
@@ -219,10 +267,47 @@ export class CityRenderer {
       texMB: Math.round((textureBytes() / (1024 * 1024)) * 10) / 10,
       reflCalls: this.water?.reflCalls ?? 0,
       reflTriangles: this.water?.reflTriangles ?? 0,
+      ...(this.facades?.stats() ?? { facadeMB: 0, facadePending: 0, facadeBytes: 0 }),
     };
   }
 
+  /** 首帧画完：贴面开始流式下载（不算进首帧前的数据量）。 */
+  facadesBegin(): void {
+    this.facades?.begin();
+  }
+
+  /** 视野要的贴面页都到了（没有贴面时立即兑现）。 */
+  facadesIdle(): Promise<void> {
+    return this.facades?.idle() ?? Promise.resolve();
+  }
+
+  /** 贴面流式加载的调试状态（没有贴面时为 null）。 */
+  facadesDebug(): FacadeDebug | null {
+    return this.facades?.debug() ?? null;
+  }
+
   /** 各分块图层的区/块数（调试用）。 */
+  /** 调试（复审修正）：下一帧按物体名（没有名字用父物体名）统计 draw call，看是谁超了 150 个的上限。 */
+  drawCounts(): Promise<Record<string, number>> {
+    const r = this.renderer as unknown as { renderBufferDirect: (...a: unknown[]) => unknown };
+    const orig = r.renderBufferDirect;
+    const tally: Record<string, number> = {};
+    r.renderBufferDirect = function (this: unknown, ...a: unknown[]) {
+      const obj = a[4] as { name?: string; parent?: { name?: string } | null; type?: string } | undefined;
+      const k = obj?.name || obj?.parent?.name || obj?.type || '?';
+      tally[k] = (tally[k] ?? 0) + 1;
+      return orig.apply(this, a);
+    };
+    return new Promise((resolve) => {
+      requestAnimationFrame(() =>
+        requestAnimationFrame(() => {
+          r.renderBufferDirect = orig;
+          resolve(tally);
+        }),
+      );
+    });
+  }
+
   layerSummary(): string {
     const parts = this.layers.map((l) => `${l.group.name} ${l.regionCount}區/${l.chunkCount}塊`);
     if (this.water) parts.push(this.water.summary());

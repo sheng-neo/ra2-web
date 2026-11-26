@@ -5,7 +5,8 @@
  * - 护柱：每个有人过路的过路处两侧路缘、斑马线两边各 1–2 根不锈钢护柱。
  * - 行人灯杆：灯控过路处两侧路缘各一支（灯头朝对面路缘，按钮箱朝候车的人）。
  * - 巴士站：props.busStops 6 m 内去重，落到最近的地面可驾驶道路人行道上（人行道 ≥ 2.4 m），
- *   沿路 6–12 m 的候车亭（两种：弧顶 / 平顶），候车区交给行人（3–8 人）。
+ *   沿路 6–12 m 的候车亭（R3：中环大会堂款百叶顶棚，两种跨距），候车区交给行人（3–8 人）；
+ *   放不下候车亭的站（人行道 1.5–2.4 m，或亭子会碰楼 / 杆）只立一支站牌（length = 0）。
  * - 垃圾桶、消防栓：沿人行道 60 / 90 m 左右一个（种子）。
  */
 import type { FlatXY } from '@central/data';
@@ -55,7 +56,7 @@ export interface BusStop {
   ty: number;
   nx: number;
   ny: number;
-  /** 候车亭长度（m）与类型（0 弧顶、1 平顶）。 */
+  /** 候车亭长度（m，0 = 只有站牌、没有候车亭）与类型（R3：0 = 每跨有横撑、1 = 无）。 */
   length: number;
   type: 0 | 1;
   plan: number;
@@ -108,22 +109,38 @@ export function busStops(
     let i = 0;
     while (i < p.along.length - 1 && p.along[i + 1]! < best.s) i++;
     const pav = Math.min((side > 0 ? p.pavL : p.pavR)[i] ?? 0, (side > 0 ? p.pavL : p.pavR)[i + 1] ?? 0) / 10;
-    if (pav < 2.4) continue;
     const seed = hash32(Math.round(x * 10) * 73856093 ^ Math.round(y * 10) * 19349663);
     const type: 0 | 1 = unit(seed, 1) < 0.45 ? 0 : 1;
     const length = type === 0 ? 1.9 * (3 + Math.floor(unit(seed, 2) * 3)) : 2.6 * (3 + Math.floor(unit(seed, 2) * 2));
     // 整合（R2）：亭子范围里有电车架空线杆等（avoid）时，沿路缘前后挪 2.5 / 5 m
-    for (const shift of avoid ? SHELTER_SHIFTS_M : [0]) {
+    let placed = false;
+    for (const shift of pav >= 2.4 ? (avoid ? SHELTER_SHIFTS_M : [0]) : []) {
       const st = shelterAt(p, k, s + shift, side, length, ctx, avoid);
       if (!st) continue;
       // 与已放的候车亭重叠就跳过
+      placed = true;
       if (out.some((o) => Math.hypot(o.x - st.cx, o.y - st.cy) < (o.length + length) / 2 + 1)) break;
       out.push({ x: st.cx, y: st.cy, z: surface(st.cx * 10, st.cy * 10) / 10, tx: st.tx, ty: st.ty, nx: st.nx, ny: st.ny, length, type, plan: k, s: s + shift, side, seed });
       break;
     }
+    // [r3:stations] 放不下候车亭（人行道窄、贴着楼或花槽）的站：只立一支站牌（长度 0，香港很多站就是这样，照片 22 长江集团中心）
+    // 站点投影落在路段两头（路口转角）时，挪进路段 3 m
+    const sf = Math.min(Math.max(s, 3), p.len / 10 - 3);
+    let jf = 0;
+    while (jf < p.along.length - 1 && p.along[jf + 1]! < sf * 10) jf++;
+    const pavF = Math.min((side > 0 ? p.pavL : p.pavR)[jf] ?? 0, (side > 0 ? p.pavL : p.pavR)[jf + 1] ?? 0) / 10;
+    if (!placed && pavF >= FLAG_ONLY_PAV_M) {
+      const st = shelterAt(p, k, sf, side, 0, ctx, avoid);
+      if (st && !out.some((o) => Math.hypot(o.x - st.cx, o.y - st.cy) < o.length / 2 + 2)) {
+        out.push({ x: st.cx, y: st.cy, z: surface(st.cx * 10, st.cy * 10) / 10, tx: st.tx, ty: st.ty, nx: st.nx, ny: st.ny, length: 0, type, plan: k, s: sf, side, seed });
+      }
+    }
   }
   return out;
 }
+
+/** 只立站牌（不放候车亭）的站要的最窄人行道（m）。 */
+export const FLAG_ONLY_PAV_M = 1.5;
 
 /** 候车亭沿路挪位的候选（m）：先原位。 */
 const SHELTER_SHIFTS_M = [0, 2.5, -2.5, 5, -5];
@@ -208,11 +225,11 @@ export function busWaitingAreas(stops: readonly BusStop[], plans: readonly RoadP
     return {
       centre: [b.x + b.nx * across, b.y + b.ny * across] as const,
       axis: [b.tx, b.ty] as const,
-      length: b.length + 1,
+      length: b.length > 0 ? b.length + 1 : 3,
       width: 0.8,
       z: b.z,
       face: [b.nx, b.ny] as const,
-      count: 3 + Math.floor(unit(b.seed, 9) * 6),
+      count: b.length > 0 ? 3 + Math.floor(unit(b.seed, 9) * 6) : 1 + Math.floor(unit(b.seed, 9) * 3),
       seed: b.seed,
     };
   });

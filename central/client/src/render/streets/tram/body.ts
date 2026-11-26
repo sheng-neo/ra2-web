@@ -6,6 +6,8 @@
  *   裙板 0.35–0.65（暗、内收）· 下层板 0.65–1.60 · 下层窗带 1.60–2.40（内收）· 两层间广告带 2.40–3.40 ·
  *   上层窗带 3.40–4.20（内收）· 檐口 4.20–4.40（略外凸）· 拱顶。
  * 窗、门、窗柱、涂装、目的地牌、车厢内部都在片元着色器里按局部坐标画（tram/material.ts），几何只给形体。
+ * R3（真实涂装）：两端车头中线一盏圆头灯（车尾那盏不亮）、两下角白 / 琥珀 / 红灯组、观者左侧上下两盏红灯（照片 01–03），
+ * 白色百叶冷气箱；裙板按分区着色（两端黑色防撞杠上画车队编号）。
  *
  * 顶点属性（顶点属性槽有限：实例矩阵占 4 个，再加 5 个实例属性，总数要 ≤ 16）：
  * position、normal、aAlb（固定色分区的反照率）、aZWE = (分区 ZONE, 绕车身一周的展开坐标 m, 发光倍率 k：发光 = aAlb × k)。
@@ -14,7 +16,10 @@
  */
 import { BufferAttribute, BufferGeometry } from 'three';
 import { linearRGB } from '../prop-geometry';
-import { SKIRT_DARK } from './livery';
+import { STANDARD } from './livery';
+
+/** 车底、裙板暗色（不随涂装）。 */
+const SKIRT_DARK = '#26292a';
 
 export const TRAM_HALF_SIDE_M = 4.0;
 export const TRAM_BULGE_M = 0.35;
@@ -27,9 +32,17 @@ export const ROOF_TOP_M = 4.58;
 /** 集电杆座（杆坐标原点）：车顶中部偏前 0.4 m。 */
 export const POLE_PIVOT: readonly [number, number, number] = [0.4, 4.74, 0];
 export const POLE_LEN_M = 4.0;
-/** 车头灯 / 车尾灯位置（局部坐标）。 */
-export const LAMP_Y_M = 0.62;
-export const LAMP_Z_M = 0.78;
+/** 车头灯（R3：两端车头中线上各一盏圆灯，Ø 0.25 m，中心 0.18 H ≈ 0.79 m；车尾那盏不亮）。 */
+export const LAMP_Y_M = 0.79;
+export const HEADLAMP_R_M = 0.125;
+/** 车角灯组（两端下角：白色示廓、琥珀转向、红色尾灯，横排），横向位置（|z|）与高度。 */
+export const CLUSTER_Y_M = 0.74;
+export const CLUSTER_Z_M: readonly [number, number, number] = [0.8, 0.9, 1.0];
+/** 两端「观者左侧」上下两盏红灯（约 0.25 H）。 */
+export const STACK_Y_M: readonly [number, number] = [1.02, 1.14];
+export const STACK_Z_M = 0.95;
+/** R2 的两角车灯横向位置（保留给旧调用方；R3 光点改用 CLUSTER_Z_M）。 */
+export const LAMP_Z_M = CLUSTER_Z_M[2];
 
 /** 分区代码（与 material.ts 一致）。 */
 export const ZONE = {
@@ -360,7 +373,8 @@ export function tramGeometry(opts: TramGeometryOptions = { lod: 0 }): BufferGeom
   const ledgeC = linearRGB('#2c2e30');
   if (near) {
     // 分段车身：裙板（固定暗色）+ 五段涂装带，凹凸 3 cm
-    ring(g, loop, SKIRT_Y_M, 0.65, 0.04, skirt);
+    // 裙板 / 防撞杠按分区着色（两端黑色防撞杠上要画车队编号，R3）
+    ring(g, loop, SKIRT_Y_M, 0.65, 0.04, null);
     ledge(g, loop, 0.65, 0.04, 0, skirt);
     ring(g, loop, 0.65, 1.6, 0, null);
     ledge(g, loop, 1.6, 0, 0.03, ledgeC);
@@ -393,24 +407,36 @@ export function tramGeometry(opts: TramGeometryOptions = { lod: 0 }): BufferGeom
     // 车顶：集电杆座（中部偏前）、百叶通风箱（近车尾）
     g.box([POLE_PIVOT[0], ROOF_TOP_M - 0.02, 0], [0.9, 0.14, 0.7], [0.05, 0.052, 0.055]);
     g.box([POLE_PIVOT[0], ROOF_TOP_M + 0.1, 0], [0.3, 0.08, 0.3], [0.03, 0.03, 0.03]);
-    g.box([-2.7, ROOF_TOP_M - 0.03, 0], [1.8, 0.34, 0.5], linearRGB('#8d918f'));
-    // 车头灯（白）、车尾灯（红）：灯罩发光，另有光点精灵（GlowBatch）
+    // 白色百叶冷气箱（照片 01 #c8c7c9）
+    g.box([-2.7, ROOF_TOP_M - 0.03, 0], [1.8, 0.34, 0.9], linearRGB(STANDARD.ac));
+    for (let k = 0; k < 5; k++) g.box([-3.4 + k * 0.35, ROOF_TOP_M - 0.03, 0.451], [0.06, 0.3, 0.01], linearRGB('#6e7072'), ['bottom', 'top', 'nz', 'px', 'nx']);
+    // R3：车头中线一盏圆头灯（Ø 0.25 m、中心 0.79 m，镀铬圈）；车尾同位置那盏不亮（双头车，照片 01–03）
     const head = [6, 6.1, 6.3];
-    const tail = [1.6, 0.03, 0.025];
+    const chrome = [0.32, 0.33, 0.34];
+    disc(g, [TRAM_HALF_SIDE_M + TRAM_BULGE_M - 0.005, LAMP_Y_M, 0], 1, 0, HEADLAMP_R_M + 0.025, chrome, [0, 0, 0]);
+    disc(g, [TRAM_HALF_SIDE_M + TRAM_BULGE_M + 0.005, LAMP_Y_M, 0], 1, 0, HEADLAMP_R_M, [0.6, 0.6, 0.6], head);
+    disc(g, [-TRAM_HALF_SIDE_M - TRAM_BULGE_M + 0.005, LAMP_Y_M, 0], -1, 0, HEADLAMP_R_M + 0.025, chrome, [0, 0, 0]);
+    disc(g, [-TRAM_HALF_SIDE_M - TRAM_BULGE_M - 0.005, LAMP_Y_M, 0], -1, 0, HEADLAMP_R_M, [0.1, 0.1, 0.1], [0, 0, 0]);
+    // 两端下角灯组（白示廓、琥珀转向、红尾灯）：车头白灯微亮，车尾红灯亮
+    const tail = [1.8, 0.035, 0.03];
     for (const sz of [-1, 1]) {
-      const z = sz * LAMP_Z_M;
-      const dx = fanAt(z);
-      disc(g, [TRAM_HALF_SIDE_M + dx, LAMP_Y_M, z], 1, 0, 0.085, [0.6, 0.6, 0.6], head);
-      disc(g, [-TRAM_HALF_SIDE_M - dx, LAMP_Y_M + 0.02, z], -1, 0, 0.07, [0.3, 0.006, 0.005], tail);
+      for (let k = 0; k < 3; k++) {
+        const z = sz * CLUSTER_Z_M[k]!;
+        const dx = fanAt(z);
+        const albF = k === 0 ? [0.6, 0.6, 0.58] : k === 1 ? [0.5, 0.3, 0.06] : [0.35, 0.02, 0.02];
+        const emF = k === 0 ? [1.4, 1.45, 1.5] : [0, 0, 0];
+        const emR = k === 2 ? tail : [0, 0, 0];
+        disc(g, [TRAM_HALF_SIDE_M + dx, CLUSTER_Y_M, z], 1, 0, 0.04, albF, emF);
+        disc(g, [-TRAM_HALF_SIDE_M - dx, CLUSTER_Y_M, z], -1, 0, 0.04, albF, emR);
+      }
+    }
+    // 两端观者左侧的上下两盏红灯（车头：观者左 = +z；车尾：观者左 = −z）
+    for (const y of STACK_Y_M) {
+      const dxF = fanAt(STACK_Z_M);
+      disc(g, [TRAM_HALF_SIDE_M + dxF, y, STACK_Z_M], 1, 0, 0.035, [0.35, 0.02, 0.02], [0, 0, 0]);
+      disc(g, [-TRAM_HALF_SIDE_M - dxF, y, -STACK_Z_M], -1, 0, 0.035, [0.35, 0.02, 0.02], [1.5, 0.03, 0.025]);
     }
     pole(g, 6);
-    // 车头上角的小示廓灯（琥珀）、车尾上角（红）
-    for (const sz of [-1, 1]) {
-      const z = sz * 0.95;
-      const dx = fanAt(z);
-      disc(g, [TRAM_HALF_SIDE_M + dx - 0.02, 3.3, z], 1, 0, 0.045, [0.5, 0.32, 0.08], [1.6, 1.0, 0.25]);
-      disc(g, [-TRAM_HALF_SIDE_M - dx + 0.02, 3.3, z], -1, 0, 0.045, [0.4, 0.02, 0.02], [1.3, 0.06, 0.06]);
-    }
     // 拉绳（杆头 → 车尾车顶），三点两段、中间下垂
     const rope = [0.55, 0.52, 0.48];
     const r0 = g.pos.length / 3;
@@ -420,7 +446,7 @@ export function tramGeometry(opts: TramGeometryOptions = { lod: 0 }): BufferGeom
       g.index.push(a, a + 1, a + 3, a, a + 3, a + 2);
     }
   } else {
-    ring(g, loop, SKIRT_Y_M, 0.65, 0, skirt);
+    ring(g, loop, SKIRT_Y_M, 0.65, 0, null);
     ring(g, loop, 0.65, CORNICE_Y_M, 0, null);
     roof(g, loop, [
       [0, CORNICE_Y_M],

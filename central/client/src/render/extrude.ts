@@ -8,7 +8,8 @@
 import { ShapeUtils, Vector2 } from 'three';
 import type { FlatXY } from '@central/data';
 import { DM_TO_M } from '../coords';
-import { facadeVertex, type BldgAttr } from './facade';
+import { facadeVertex, type BldgAttr, type PhotoAttr } from './facade';
+import { phaseOnly, roofPhotoAttr, wallPhotoAttr, wallSegments, type RoofPhoto, type WallPhoto } from './facades/layout';
 import type { MeshArrays } from './mesh-arrays';
 import { visibleSpans, type WallCut } from './walls';
 
@@ -39,6 +40,14 @@ export interface ExtrudeSpec {
   bldg?: BldgAttr;
   /** 每画一块墙面回调一次（铺面招牌摆放用）：模拟坐标 dm 的起止点、高程区间与立面 u 起点（米）。 */
   onSpan?: (span: WallSpanInfo) => void;
+  /**
+   * R3 真实贴面：墙 / 屋顶的照片（facades/layout.ts）；省略或 null 时没有照片。
+   * 有墙面照片时，跨切片边界的墙面在边界处切开（每块只取一片），高于 zMax 的部分不用照片。
+   */
+  wallPhoto?: WallPhoto | null;
+  roofPhoto?: RoofPhoto | null;
+  /** 楼层线相位（米，写进 aPhoto.w；没有照片的面也带上，窗灯按真楼层排）。 */
+  phase?: number;
 }
 
 /** 实际画出的一块墙面（onSpan 回调参数）。 */
@@ -61,7 +70,21 @@ export interface WallSpanInfo {
 function addWalls(m: MeshArrays, ring: FlatXY, ringIndex: number, s: ExtrudeSpec, u0: number): number {
   const n = ring.length >> 1;
   const h = (s.top - s.base) * DM_TO_M;
+  const none = phaseOnly(s.phase ?? 0);
+  const ph = s.wallPhoto ?? null;
   let u = u0;
+  // 沿环累计米数（墙带的列坐标，与烘焙一致：按 dm 的边长累计再 × 0.1）
+  let perim = 0;
+  const quad = (xa: number, ya: number, xb: number, yb: number, z0: number, z1: number, ua: number, ub: number, nx: number, ny: number, pa: PhotoAttr[]) => {
+    const va = (z0 - s.base) * DM_TO_M;
+    const vb = (z1 - s.base) * DM_TO_M;
+    const a = facadeVertex(m, xa, ya, z0, nx, ny, 0, ua, va, h, s.style, s.bldg, pa[0]);
+    const b = facadeVertex(m, xb, yb, z0, nx, ny, 0, ub, va, h, s.style, s.bldg, pa[1]);
+    const c = facadeVertex(m, xb, yb, z1, nx, ny, 0, ub, vb, h, s.style, s.bldg, pa[2]);
+    const d = facadeVertex(m, xa, ya, z1, nx, ny, 0, ua, vb, h, s.style, s.bldg, pa[3]);
+    m.tri(a, b, c);
+    m.tri(a, c, d);
+  };
   for (let i = 0; i < n; i++) {
     const j = (i + 1) % n;
     const x0 = ring[i * 2]!;
@@ -77,23 +100,42 @@ function addWalls(m: MeshArrays, ring: FlatXY, ringIndex: number, s: ExtrudeSpec
     const cuts = s.cuts?.(ringIndex, i);
     const spans = cuts ? visibleSpans(len, s.bottom, s.top, cuts) : [{ s0: 0, s1: len, z0: s.bottom, z1: s.top }];
     for (const w of spans) {
-      const xa = x0 + (dx * w.s0) / len;
-      const ya = y0 + (dy * w.s0) / len;
-      const xb = x0 + (dx * w.s1) / len;
-      const yb = y0 + (dy * w.s1) / len;
-      const ua = s.uProject ? (xa * dx + ya * dy) / len * DM_TO_M + s.uOffset : u + w.s0 * DM_TO_M;
-      const ub = s.uProject ? ua + (w.s1 - w.s0) * DM_TO_M : u + w.s1 * DM_TO_M;
-      const va = (w.z0 - s.base) * DM_TO_M;
-      const vb = (w.z1 - s.base) * DM_TO_M;
-      const a = facadeVertex(m, xa, ya, w.z0, nx, ny, 0, ua, va, h, s.style, s.bldg);
-      const b = facadeVertex(m, xb, yb, w.z0, nx, ny, 0, ub, va, h, s.style, s.bldg);
-      const c = facadeVertex(m, xb, yb, w.z1, nx, ny, 0, ub, vb, h, s.style, s.bldg);
-      const d = facadeVertex(m, xa, ya, w.z1, nx, ny, 0, ua, vb, h, s.style, s.bldg);
-      m.tri(a, b, c);
-      m.tri(a, c, d);
+      const at = (sd: number): [number, number] => [x0 + (dx * sd) / len, y0 + (dy * sd) / len];
+      const uAt = (sd: number): number => (s.uProject ? ((x0 + (dx * sd) / len) * dx + (y0 + (dy * sd) / len) * dy) / len * DM_TO_M + s.uOffset : u + sd * DM_TO_M);
+      const [xa, ya] = at(w.s0);
+      const [xb, yb] = at(w.s1);
+      const ua = uAt(w.s0);
+      if (!ph) {
+        quad(xa, ya, xb, yb, w.z0, w.z1, ua, s.uProject ? ua + (w.s1 - w.s0) * DM_TO_M : u + w.s1 * DM_TO_M, nx, ny, [none, none, none, none]);
+      } else {
+        // 按切片边界与外包框切开；框外、照片高程范围以外的部分另画没有照片的块
+        const pStart = perim * DM_TO_M;
+        for (const seg of wallSegments(ph, ringIndex, pStart + w.s0 * DM_TO_M, pStart + w.s1 * DM_TO_M)) {
+          const sa = (seg.p0 - pStart) / DM_TO_M;
+          const sb = (seg.p1 - pStart) / DM_TO_M;
+          const [qa, ra] = at(sa);
+          const [qb, rb] = at(sb);
+          const u1 = ua + (sa - w.s0) * DM_TO_M;
+          const u2 = ua + (sb - w.s0) * DM_TO_M;
+          const lo = seg.piece ? Math.min(Math.max(seg.zLo, w.z0), w.z1) : w.z1;
+          const hi = seg.piece ? Math.min(Math.max(seg.zHi, lo), w.z1) : w.z1;
+          if (lo > w.z0) quad(qa, ra, qb, rb, w.z0, lo, u1, u2, nx, ny, [none, none, none, none]);
+          if (hi > lo) {
+            const pa = [
+              wallPhotoAttr(ph, seg.piece, seg.k, seg.p0, lo),
+              wallPhotoAttr(ph, seg.piece, seg.k, seg.p1, lo),
+              wallPhotoAttr(ph, seg.piece, seg.k, seg.p1, hi),
+              wallPhotoAttr(ph, seg.piece, seg.k, seg.p0, hi),
+            ];
+            quad(qa, ra, qb, rb, lo, hi, u1, u2, nx, ny, pa);
+          }
+          if (seg.piece && hi < w.z1) quad(qa, ra, qb, rb, Math.max(hi, w.z0), w.z1, u1, u2, nx, ny, [none, none, none, none]);
+        }
+      }
       s.onSpan?.({ ring: ringIndex, x0: xa, y0: ya, x1: xb, y1: yb, z0: w.z0, z1: w.z1, u0: ua, nx, ny });
     }
     u += len * DM_TO_M;
+    perim += len;
   }
   return u;
 }
@@ -110,7 +152,11 @@ function addRoof(m: MeshArrays, s: ExtrudeSpec): void {
   const pts = [...contour, ...holes.flat()];
   const h = (s.top - s.base) * DM_TO_M;
   const base = m.vertexCount;
-  for (const p of pts) facadeVertex(m, p.x, p.y, s.top, 0, 0, 1, p.x * DM_TO_M, p.y * DM_TO_M, h, s.style, s.bldg);
+  const none = phaseOnly(s.phase ?? 0);
+  for (const p of pts) {
+    const pa = s.roofPhoto ? roofPhotoAttr(s.roofPhoto, p.x, p.y) : none;
+    facadeVertex(m, p.x, p.y, s.top, 0, 0, 1, p.x * DM_TO_M, p.y * DM_TO_M, h, s.style, s.bldg, pa);
+  }
   for (const f of faces) {
     const [i, j, k] = f as [number, number, number];
     const a = pts[i]!;

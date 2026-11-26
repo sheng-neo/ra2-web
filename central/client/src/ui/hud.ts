@@ -68,7 +68,7 @@ function creditsPanel(meta: CityMeta, close: () => void): HTMLElement {
       ? h(
           'p',
           {},
-          '建築輪廓與高度（地政總署）及地形（土木工程拓展署）來自香港特別行政區政府，經空間數據共享平台（CSDI）取得，按 ',
+          '建築輪廓與高度、三維建築模型及其照片紋理（地政總署）及地形（土木工程拓展署）來自香港特別行政區政府，經空間數據共享平台（CSDI）取得，按 ',
           link(CSDI_TERMS_URL, 'CSDI 使用條款'),
           ' 使用，不屬 ODbL 數據；資料的知識產權屬香港特別行政區政府所有，政府不對本作負責，亦不代表政府認可。',
         )
@@ -78,12 +78,17 @@ function creditsPanel(meta: CityMeta, close: () => void): HTMLElement {
       { class: 'note' },
       '所有地標均為虛構命名的風格化造型，不含任何標誌，並非真實建築的複製品。本作是獨立的原創作品，與任何公司、品牌或機構均無關聯，亦不代表其認可。',
     ),
+    h(
+      'p',
+      { class: 'note' },
+      '電車、巴士、小巴、的士、渡輪及港鐵的名稱、塗裝與標誌屬各營運商所有，僅用以重現街景，各營運商與本作沒有關聯，亦不代表其認可；車身廣告均為虛構。',
+    ),
     h('p', { class: 'note' }, `數據版本：${meta.build.pipelineVersion} · ${meta.build.inputsDigest.slice(0, 12)}`),
   );
 }
 
 export function createHud(parent: HTMLElement, opts: HudOptions): { setActive(id: string): void; setRide(on: boolean): void } {
-  const badge = h('div', { class: 'badge' }, h('b', {}, '中環急件'), ' Central Rush ', h('span', { class: 'stage' }, '· R2 細節'));
+  const badge = h('div', { class: 'badge' }, h('b', {}, '中環急件'), ' Central Rush ', h('span', { class: 'stage' }, '· R3 真實貼面'));
   const buttons = opts.presets.map((p) => {
     const b = h('button', { class: 'chip', type: 'button', 'aria-pressed': String(p.id === opts.active), 'data-preset': p.id }, p.label);
     b.addEventListener('click', () => opts.onPreset(p.id));

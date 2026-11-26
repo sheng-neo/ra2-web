@@ -18,7 +18,7 @@ import { footprintTest } from '../road-corridor';
 import type { RoadPlan } from '../roads';
 import { Crowd, type WaitingArea } from '../people/crowd';
 import { Pedestrians } from '../people/pedestrians';
-import { buildCrossingSites, buildWalkPaths, crossingRect, walkContext, type CrossingSite, type WalkPath } from '../people/walkways';
+import { buildCrossingSites, buildWalkPaths, crossingRect, footOk, walkContext, type CrossingSite, type WalkPath } from '../people/walkways'; // [r3:stations] footOk
 import {
   K_GLASS,
   NearFurniture,
@@ -37,6 +37,7 @@ import { createLifeMaterial } from './life-material';
 import { ISLAND_H_M, inIsland } from './tram/stops';
 import { crossingPhase, type SignalHead } from './signals';
 import { buildStatueSquare } from './statue-square';
+import { stationsFurniture } from '../stations'; // [r3:stations]
 import type { TrafficCrossing } from './traffic';
 
 export interface StreetLife {
@@ -210,6 +211,9 @@ export function buildStreetLife(
   for (const p of pedPoles) put(2, p.x, p.y, p.z, p.dx, p.dy, 1, p.aux, REACH.pole[tier]);
   for (const b of bits) put(b.kind === 0 ? 3 : 4, b.x, b.y, b.z, b.dx, b.dy, 1, 0, REACH.bits[tier]);
   for (const s of stops) put(shelterT(s.type, s.length), s.x, s.y, s.z, s.tx, s.ty, 1, (s.seed % 997) / 997, REACH.shelter[tier]);
+  const st = stationsFurniture({ zones, stops, islands: tram?.islands ?? [], buildings: city.buildings, surface, high: opts.high, footOk: (x, y) => footOk(ctx, x, y, -1, 0.1) }, templates.length); // [r3:stations] 站牌、站岛灯箱与站名牌、港铁出口、码头正面
+  templates.push(...st.templates); // [r3:stations]
+  items.push(...st.items); // [r3:stations]
   // 候车亭玻璃单独一个半透明网格（只在近处有候车亭时多 1 个 draw call）
   const [solidT, glassT] = splitTemplates(templates, K_GLASS);
   const furniture = new NearFurniture(solidT, items, createLifeMaterial(0.4), opts.high ? 140000 : 40000, opts.high ? 240000 : 70000, 'street-furniture');
@@ -251,6 +255,6 @@ export function buildStreetLife(
       peds.update(camera, t);
     },
     summary: () =>
-      `行人 ${crowd.walkers.length + crowd.crossers.length + crowd.waiters.length}（畫 ${peds.drawn}）· 過路處 ${sites.filter((s) => s.kerbs).length}/${sites.length} · 欄杆 ${rails.length} · 巴士站 ${stops.length} · 設施 ${furniture.drawnItems}/${items.length}`,
+      `行人 ${crowd.walkers.length + crowd.crossers.length + crowd.waiters.length}（畫 ${peds.drawn}）· 過路處 ${sites.filter((s) => s.kerbs).length}/${sites.length} · 欄杆 ${rails.length} · 巴士站 ${stops.length} · 設施 ${furniture.drawnItems}/${items.length} · 站牌 ${st.counts.flags} 站名 ${st.counts.plates} 港鐵 ${st.counts.mtr} 碼頭 ${st.counts.piers}`, // [r3:stations]
   };
 }

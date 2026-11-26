@@ -48,6 +48,18 @@ describe('起始 DPR', () => {
     expect(startDpr('high', 2, 1440, 900)).toBe(1.25);
     // 1024×768 @2 = 3.1 Mpx → 1.75 时 2.41 Mpx 仍超 → 1.5
     expect(startDpr('high', 2, 1024, 768)).toBe(1.5);
+    // LOW（画布 4× MSAA，约 40 B/px）：1280×720 @2 → DPR 1（0.92 Mpx）；1440×900 @1 刚好 1.3 Mpx；画布都 ≤ 52 MB
+    expect(startDpr('low', 2, 1280, 720)).toBe(1);
+    expect(startDpr('low', 1, 1440, 900)).toBe(1);
+    for (const [w, h, d] of [
+      [1280, 720, 2],
+      [1440, 900, 2],
+      [1920, 1080, 1],
+      [874, 402, 3],
+    ] as const) {
+      const px = w * h * startDpr('low', d, w, h) ** 2;
+      expect(canvasBytes(px, true, 4) / 2 ** 20).toBeLessThanOrEqual(52);
+    }
     for (const tier of ['high', 'low'] as const) {
       const d = startDpr(tier, 2, 874, 402);
       expect(874 * 402 * d * d).toBeLessThanOrEqual(TIER_SPECS[tier].bufferCapPx);

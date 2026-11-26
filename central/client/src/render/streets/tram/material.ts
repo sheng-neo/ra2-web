@@ -1,23 +1,24 @@
 /**
- * 电车车身材质（R2 TRAMS T1 / T3 / T4 / T5）：光照契约 v1（线性 HDR、cityAmbient、applyHaze、GLSL_FINISH）。
+ * 电车车身材质（R2 TRAMS T1 / T3，R3 LIVERIES 换成真实涂装）：光照契约 v1（线性 HDR、cityAmbient、applyHaze、GLSL_FINISH）。
  *
  * 片元着色器按局部坐标（vLocal：x 向前、y 离轨顶、z 向右）画：
- * - 窗与门（圆角矩形 SDF + fwidth 抗锯齿）：上层每侧 8 扇（1.0 m 一格、窗柱 0.1 m、上部 25 % 有气窗横档）；
- *   左侧（车门侧）下层：短端窗 · 出口门 · 4 扇窗 · 入口门 · 短端窗；右侧下层 7 扇窗、无门；两端每层 3 扇圆角窗。
- * - 车厢内部（interior mapping，无额外几何）：视线穿过玻璃后与每层车厢的盒子求交：天花（冷白灯管最亮）、
- *   地板、对面窗（看出去是暗的街景）与窗柱、端墙；再与座椅背、乘客（头 = 球、身体 = 盒）求最近交点，
- *   座椅背与乘客是暗剪影。上层冷白（tubeCool）略亮于下层；传统涂装车上层是暖色柚木天花（照片 05）。
- * - 涂装：抽象广告车身（5 种图案：斜条、大圆点、色块、渐变波浪、对角分色）/ 传统深绿 + 米色带 / 白车身 + 色带；
- *   窗柱随车身色或深灰。车身不写字、无标志、无编号。
- * - 目的地牌：两端两层之间，1.4 × 0.46 m，地名图集（只含允许地名）；橙色 LED 点阵或红底黄字，亮度 1.6–2.2。
+ * - 窗与门（圆角矩形 SDF + fwidth 抗锯齿）：上层每侧 8 扇（1.0 m 一格、上部 25 % 有气窗横档）；下层两侧相同（照片 01 / 03：
+ *   两侧都有门）：车尾小方窗 · 入口门 · 5 扇带顶窗的窗 · 出口门 · 司机位窄窗；两端每层 3 扇圆角窗（上 0.76–0.94 H、下 0.32–0.53 H）。
+ * - 车厢内部（interior mapping，无额外几何）：天花灯管、对面窗、座椅背、乘客剪影；上层冷白较亮，下层偏暖较暗（照片 02）。
+ * - 涂装（livery.ts）：标准深青绿（窗柱同色、车顶 #374c50）或虚构广告车身（6 种几何插画图案，窗柱、檐口、车顶两侧都包，
+ *   可带一个白名单行业通称；约三成下层两扇窗贴网点透视贴）。裙板、防撞杠、车顶面不包。
+ * - 目的地牌：两端两层之间正中，1.0 × 0.34 m，黑底琥珀 LED 点阵，一行字，中文 / 英文每 4 s 轮换（字取自共用图集）。
+ * - 车队编号：两端顶角（字高 0.085 m）与防撞杠右侧（0.14 m），白色窄身数字；只在近处画（HIGH 60 m、LOW 30 m）。
  * - 集电杆：顶点在杆坐标里，按实例的杆角（iState.x，由接触线高度算出）绕杆座转；至少约 0.6 像素粗。
- * 实例属性：iCol0/1/2（线性三色）、iMeta（涂装种类、图案、目的地格、种子）、iState（杆仰角、路灯照度、杆偏角、钠灯比例）。
+ * 实例属性：iCol0/1/2（线性三色）、iMeta（涂装种类、图案、目的地、种子）、iMeta2（车队编号、广告字、透视贴）、
+ * iState（杆仰角、路灯照度、杆偏角、钠灯比例）。
  */
 import { ShaderMaterial, Vector3, type Texture } from 'three';
 import { GLSL_CITY_LIGHT, GLSL_FINISH, GLSL_HAZE, GLSL_SHARED_PARS, lightColour, sharedUniforms } from '../../materials/lighting';
 import { POLE_LEN_M, POLE_PIVOT } from './body';
-import { DEST_ROWS } from './atlas';
-import { DEST_BOX, DEST_LED } from './livery';
+import { DEST_SWAP_S } from './atlas';
+import { DEST_LED, STANDARD, WRAP_ROOF } from './livery';
+import { liveryAtlasGlsl } from '../liveries/atlas';
 import { linearRGB } from '../prop-geometry';
 
 const v3 = (c: readonly number[]) => `vec3(${c.map((x) => x.toFixed(4)).join(', ')})`;
@@ -30,6 +31,7 @@ attribute vec3 iCol0;
 attribute vec3 iCol1;
 attribute vec3 iCol2;
 attribute vec4 iMeta;
+attribute vec4 iMeta2;
 attribute vec4 iState;
 uniform vec3 uPivot;
 varying vec3 vLocal;
@@ -42,6 +44,7 @@ varying vec3 vC0;
 varying vec3 vC1;
 varying vec3 vC2;
 varying vec4 vMeta;
+varying vec4 vMeta2;
 varying vec4 vState;
 varying float vZone;
 varying float vWrap;
@@ -103,6 +106,7 @@ void main() {
   vC1 = iCol1;
   vC2 = iCol2;
   vMeta = iMeta;
+  vMeta2 = iMeta2;
   vState = iState;
   vZone = aZone;
   vWrap = aZWE.y;
@@ -114,10 +118,12 @@ const FRAG = /* glsl */ `
 ${GLSL_SHARED_PARS}
 ${GLSL_HAZE}
 ${GLSL_CITY_LIGHT}
-uniform sampler2D uDest;
+${liveryAtlasGlsl()}
 uniform vec3 uTube;
-uniform vec3 uWood;
+uniform vec3 uTubeLow;
+uniform float uTextFar;
 uniform vec3 uLed;
+uniform vec3 uDestLed;
 uniform vec3 uSodium;
 uniform float uWarmth;
 varying vec3 vLocal;
@@ -130,6 +136,7 @@ varying vec3 vC0;
 varying vec3 vC1;
 varying vec3 vC2;
 varying vec4 vMeta;
+varying vec4 vMeta2;
 varying vec4 vState;
 varying float vZone;
 varying float vWrap;
@@ -162,7 +169,9 @@ float hitSphere(vec3 ro, vec3 rd, vec3 c, float r) {
 }
 
 // ---- 车厢内部（interior mapping）：p = 玻璃上的点，d = 视线方向（朝车内），返回出射亮度（线性）----
-vec3 interior(vec3 p, vec3 d, bool upper, float seed, bool detail, bool heritage) {
+vec3 interior(vec3 p, vec3 d, bool upper, float seed, bool detail) {
+  // R3：上层冷白、较亮（#9094a4 ≈ 8000 K），下层偏暖、较暗（#a69c90 ≈ 5400 K）——照片 02
+  vec3 T = upper ? uTube : uTubeLow;
   float y0 = upper ? 2.58 : 0.62;
   float y1 = upper ? 4.26 : 2.47;
   vec3 bmin = vec3(-4.2, y0, -1.1);
@@ -182,15 +191,12 @@ vec3 interior(vec3 p, vec3 d, bool upper, float seed, bool detail, bool heritage
       // 天花：两条纵向灯管（亮）+ 板面；传统车上层是柚木天花、横向木肋
       float aaT = max(fwidth(h.z), 1e-3);
       float tube = 1.0 - smoothstep(0.035, 0.035 + aaT, abs(abs(h.z) - 0.45));
-      if (heritage && upper) {
-        float rib = smoothstep(0.42, 0.5, abs(fract(h.x / 0.55) - 0.5));
-        col = uWood * (0.75 - 0.3 * rib) + uTube * 1.4 * tube;
-      } else {
+      {
         // 板缝（横向每 0.6 m）、灯管外壳（灯管两侧暗边）、两条纵向扶手（暗）
         float seam = 1.0 - smoothstep(0.0, 0.012 + aaT, abs(fract(h.x / 0.6) - 0.5) * 0.6 - 0.288);
         float housing = 1.0 - smoothstep(0.07, 0.08 + aaT, abs(abs(h.z) - 0.45));
         float rail = 1.0 - smoothstep(0.012, 0.012 + aaT, abs(abs(h.z) - 0.18));
-        col = uTube * (ceilY * (1.0 - 0.25 * seam) * (1.0 - 0.35 * housing * (1.0 - tube)) + 0.55 * tube) * (1.0 - 0.85 * rail);
+        col = T * (ceilY * (1.0 - 0.25 * seam) * (1.0 - 0.35 * housing * (1.0 - tube)) + 0.55 * tube) * (1.0 - 0.85 * rail);
       }
     } else {
       col = vec3(0.045, 0.043, 0.04);
@@ -206,16 +212,16 @@ vec3 interior(vec3 p, vec3 d, bool upper, float seed, bool detail, bool heritage
       float post = smoothstep(pitchW * 0.5 - 0.07, pitchW * 0.5 - 0.04, u);
       // 街景：下暗上略亮（对面楼的灯光），没有大块色斑
       vec3 outside = vec3(0.05, 0.055, 0.07) * (0.75 + 0.5 * hash12(floor(h.xy * vec2(1.3, 3.0)) + seed * 17.0)) * (0.8 + 0.5 * smoothstep(wy0, wy1, h.y));
-      col = mix(outside, uTube * 0.3, post);
+      col = mix(outside, T * 0.3, post);
     } else if (h.y >= wy1) {
-      col = uTube * 0.6;
+      col = T * 0.6;
     } else {
       // 窗下墙板 / 座椅靠背：暗带
-      col = uTube * 0.13;
+      col = T * 0.13;
     }
   } else {
     // 两端：上层是端窗（暗），下层是司机位隔板
-    col = upper ? vec3(0.06, 0.065, 0.075) + uTube * 0.12 : uTube * 0.3;
+    col = upper ? vec3(0.06, 0.065, 0.075) + T * 0.12 : T * 0.3;
   }
   if (detail) {
     // 座椅与乘客：沿车长按排，从入射处那一排起最多看 4 排
@@ -264,7 +270,7 @@ vec3 interior(vec3 p, vec3 d, bool upper, float seed, bool detail, bool heritage
             t = hitBox(p, inv, b0, b1);
             if (t < tBest) {
               tBest = t;
-              hitCol = heritage ? vec3(0.21, 0.105, 0.054) : vec3(0.105, 0.111, 0.12);
+              hitCol = vec3(0.105, 0.111, 0.12);
               topLight = smoothstep(y0 + 0.86, y0 + 0.93, p.y + d.y * t) * 0.05;
             }
           }
@@ -319,106 +325,111 @@ vec3 interior(vec3 p, vec3 d, bool upper, float seed, bool detail, bool heritage
         topLight = 0.08;
       }
     }
-    if (hitCol.x >= 0.0) col = hitCol * uTube + uTube * topLight;
+    if (hitCol.x >= 0.0) col = hitCol * T + T * topLight;
   }
   return col;
 }
 
-// ---- 窗、门开口：返回到最近开口的 SDF（负 = 在开口内），door = 1 表示门，c / hb = 开口中心与半尺寸 ----
-float openings(float zone, float a, float y, out float door, out vec2 c, out vec2 hb) {
+// ---- 窗、门开口（R3：两侧都有两道门，照片 01 / 03）：返回到最近开口的 SDF（负 = 在开口内），door = 1 表示门，c / hb = 开口中心与半尺寸 ----
+float openings(float zone, float a, float y, out float door, out vec2 c, out vec2 hb, out float idx) {
   door = 0.0;
+  idx = -1.0;
   if (zone > 2.5) {
-    // 两端：每层三扇圆角窗（横坐标 = 局部 z）
-    float cy = y > 2.9 ? 3.8 : 2.0;
-    float hy = y > 2.9 ? 0.35 : 0.38;
-    float k = clamp(floor((a + 0.44) / 0.88) , -1.0, 1.0);
+    // 两端：每层三扇圆角窗（中间宽、两边窄；横坐标 = 局部 z）；上层 0.76–0.94 H，下层 0.32–0.53 H
+    bool up = y > 2.9;
+    float cy = up ? 3.74 : 1.87;
+    float hy = up ? 0.40 : 0.46;
+    float k = clamp(floor((a + 0.44) / 0.88), -1.0, 1.0);
     c = vec2(k * 0.80, cy);
-    hb = vec2(k == 0.0 ? 0.4 : 0.32, hy);
-    return sdBox(vec2(a, y) - c, hb, 0.08);
+    hb = vec2(k == 0.0 ? 0.41 : 0.31, hy);
+    return sdBox(vec2(a, y) - c, hb, 0.09);
   }
   if (y > 2.9) {
+    // 上层每侧 8 扇
     float k = clamp(floor(a + 4.0), 0.0, 7.0);
     c = vec2(-4.0 + k + 0.5, 3.805);
     hb = vec2(0.45, 0.355);
+    idx = k;
     return sdBox(vec2(a, y) - c, hb, 0.05);
   }
-  if (zone > 1.5) {
-    // 右侧下层：7 扇窗
-    float w = 8.0 / 7.0;
-    float k = clamp(floor((a + 4.0) / w), 0.0, 6.0);
-    c = vec2(-4.0 + (k + 0.5) * w, 2.0);
-    hb = vec2(w * 0.5 - 0.055, 0.38);
-    return sdBox(vec2(a, y) - c, hb, 0.05);
-  }
-  // 左侧（车门侧）下层，车尾 → 车头：端窗、入口门、4 扇窗、出口门、小端窗
-  vec4 o[8];
-  o[0] = vec4(-3.34, 2.0, 0.56, 0.38);
-  o[1] = vec4(-2.24, 1.57, 0.44, 0.85);
-  o[2] = vec4(-1.21, 2.0, 0.46, 0.38);
-  o[3] = vec4(-0.19, 2.0, 0.46, 0.38);
-  o[4] = vec4(0.83, 2.0, 0.46, 0.38);
-  o[5] = vec4(1.85, 2.0, 0.46, 0.38);
-  o[6] = vec4(2.88, 1.57, 0.44, 0.85);
-  o[7] = vec4(3.66, 2.0, 0.26, 0.38);
+  // 下层（两侧相同，车尾 → 车头）：车尾小方窗、入口门、5 扇窗（带顶窗）、出口门、车头司机位窄窗
+  vec4 o[9];
+  o[0] = vec4(-3.62, 2.04, 0.22, 0.24);
+  o[1] = vec4(-2.95, 1.53, 0.42, 0.83);
+  o[2] = vec4(-1.96, 2.0, 0.43, 0.38);
+  o[3] = vec4(-0.98, 2.0, 0.43, 0.38);
+  o[4] = vec4(0.0, 2.0, 0.43, 0.38);
+  o[5] = vec4(0.98, 2.0, 0.43, 0.38);
+  o[6] = vec4(1.96, 2.0, 0.43, 0.38);
+  o[7] = vec4(2.95, 1.53, 0.42, 0.83);
+  o[8] = vec4(3.66, 2.0, 0.24, 0.38);
   float best = 1e9;
-  for (int i = 0; i < 8; i++) {
+  for (int i = 0; i < 9; i++) {
     float dd = sdBox(vec2(a, y) - o[i].xy, o[i].zw, 0.05);
     if (dd < best) {
       best = dd;
       c = o[i].xy;
       hb = o[i].zw;
-      door = (i == 1 || i == 6) ? 1.0 : 0.0;
+      door = (i == 1 || i == 7) ? 1.0 : 0.0;
+      idx = float(i);
     }
   }
   return best;
 }
 
-// ---- 涂装（u = 绕车身展开坐标 m，y = 离轨顶 m）----
-vec3 livery(float u, float y) {
-  float kind = floor(vMeta.x + 0.5);
+// ---- 虚构广告车身图案（u = 绕车身展开坐标 m，y = 离轨顶 m；p = 侧面局部 (x, y)，side = 是否侧面）----
+vec3 wrapLivery(float u, float y, vec2 p, bool side) {
   float pat = floor(vMeta.y + 0.5);
   float sd = vMeta.w;
-  if (kind == 1.0) {
-    // 传统：深绿车身，两层之间米色带
-    return (y > 2.4 && y < 3.4) ? vC1 : vC0;
-  }
-  if (kind == 2.0) {
-    // 白车身 + 一道色带 + 细线
-    if (y > 2.52 && y < 2.74) return vC1;
-    if (y > 0.7 && y < 0.78) return vC2;
-    return vC0;
-  }
-  vec2 q = vec2(u, y);
   float aa = max(fwidth(u), 1e-3);
   if (pat < 0.5) {
-    // 斜条
-    float t = fract((u + y * 0.85 + sd * 10.0) / 3.4);
-    vec3 c = mix(vC0, vC1, smoothstep(0.0, aa / 3.4, t) * (1.0 - smoothstep(0.36, 0.36 + aa / 3.4, t)));
-    return mix(c, vC2, smoothstep(0.42, 0.42 + aa / 3.4, t) * (1.0 - smoothstep(0.5, 0.5 + aa / 3.4, t)));
+    // 大斜色块（宽带）+ 细边线
+    float t = fract((u + y * 0.9 + sd * 10.0) / 5.2);
+    vec3 c = mix(vC0, vC1, smoothstep(0.0, aa / 5.2, t) * (1.0 - smoothstep(0.42, 0.42 + aa / 5.2, t)));
+    return mix(c, vC2, smoothstep(0.46, 0.46 + aa / 5.2, t) * (1.0 - smoothstep(0.52, 0.52 + aa / 5.2, t)));
   }
   if (pat < 1.5) {
-    // 大圆点（每 2.3 m 一格，半径随机）
-    vec2 g = q / 2.3 + vec2(sd * 5.0, 0.0);
+    // 大圆点（每 2.4 m 一格，半径随机），部分带圈
+    vec2 g = vec2(u, y) / 2.4 + vec2(sd * 5.0, 0.0);
     vec2 cell = floor(g);
     vec2 f = fract(g) - 0.5;
-    float r = 0.18 + 0.25 * hash12(cell + sd * 31.0);
+    float r = 0.2 + 0.24 * hash12(cell + sd * 31.0);
     float dc = length(f) - r;
-    float ring = abs(dc + 0.06) - 0.025;
-    vec3 c = mix(vC0, vC1, 1.0 - smoothstep(-aa, aa, dc * 2.3));
-    return mix(c, vC2, (1.0 - smoothstep(-aa, aa, ring * 2.3)) * step(0.5, hash12(cell + 3.7)));
+    float ring = abs(dc + 0.07) - 0.03;
+    vec3 c = mix(vC0, vC1, 1.0 - smoothstep(-aa, aa, dc * 2.4));
+    return mix(c, vC2, (1.0 - smoothstep(-aa, aa, ring * 2.4)) * step(0.5, hash12(cell + 3.7)));
   }
   if (pat < 2.5) {
-    // 色块：下层板一色，两层间广告带里一大块强调色
-    if (y < 1.6) return vC1;
-    float s0 = 2.0 + sd * 6.0;
-    float inBlock = step(s0, mod(u, 10.0)) * step(mod(u, 10.0), s0 + 3.5) * step(2.5, y) * step(y, 3.3);
-    return mix(vC0, vC2, inBlock);
+    // 插画：上下渐变的「天空」、地平线色带、一个大圆（太阳 / 星球）
+    vec3 c = mix(vC1, vC0, smoothstep(0.8, 4.2, y));
+    float hz = abs(y - (1.45 + 0.12 * sin(u * 0.9 + sd * 7.0))) - 0.12;
+    c = mix(c, vC2, 1.0 - smoothstep(-0.01, 0.01, hz));
+    float disc = length(vec2(mod(u + sd * 9.0, 10.3) - 6.0, y - 2.9)) - 0.95;
+    return mix(c, vC2, 1.0 - smoothstep(-aa, aa, disc));
   }
   if (pat < 3.5) {
-    // 渐变 + 波浪线
+    // 几何拼成的吉祥物（侧面正中一张大圆脸：两只眼、一道笑弧）+ 底色与腰带
+    vec3 c = vC0;
+    c = mix(c, vC1, step(abs(y - 1.1), 0.25));
+    if (side) {
+      vec2 q = p - vec2(-0.3 + (sd - 0.5) * 1.6, 2.75);
+      float face = length(q * vec2(1.0, 1.12)) - 1.05;
+      c = mix(c, vC2, 1.0 - smoothstep(-0.01, 0.01, face));
+      vec2 e = vec2(abs(q.x) - 0.36, q.y - 0.22);
+      float eye = length(e) - 0.15;
+      c = mix(c, vec3(0.04), (1.0 - smoothstep(-0.01, 0.01, eye)) * step(face, 0.0));
+      float pupil = length(e - vec2(0.04, 0.03)) - 0.05;
+      c = mix(c, vec3(0.9), (1.0 - smoothstep(-0.01, 0.01, pupil)) * step(face, 0.0));
+      float smile = abs(length(q - vec2(0.0, 0.2)) - 0.55) - 0.045;
+      c = mix(c, vC1, (1.0 - smoothstep(-0.01, 0.01, smile)) * step(q.y, -0.05) * step(face, 0.0));
+    }
+    return c;
+  }
+  if (pat < 4.5) {
+    // 渐变 + 波浪条
     float g = 0.5 + 0.5 * sin(u * 0.45 + sd * 6.28);
     vec3 c = mix(vC0, vC1, smoothstep(0.2, 0.8, g) * smoothstep(0.4, 3.8, y));
-    float wave = abs(y - (2.9 + 0.32 * sin(u * 0.7 + sd * 9.0))) - 0.07;
+    float wave = abs(y - (2.9 + 0.32 * sin(u * 0.7 + sd * 9.0))) - 0.09;
     return mix(c, vC2, 1.0 - smoothstep(-0.01, 0.01, wave));
   }
   // 对角分色
@@ -427,88 +438,132 @@ vec3 livery(float u, float y) {
   return mix(c, vC2, 1.0 - smoothstep(0.05, 0.08, abs(edge)));
 }
 
+float lumaT(vec3 c) {
+  return dot(c, vec3(0.2126, 0.7152, 0.0722));
+}
+
 void main() {
   vec3 n = normalize(vN);
   vec3 V = normalize(cameraPosition - vWorld);
   float zone = floor(vZone + 0.5);
-  bool heritage = floor(vMeta.x + 0.5) == 1.0;
+  bool standard = floor(vMeta.x + 0.5) == 1.0;
+  float camDist = length(vLocal - vCamL);
+  // 字（车队编号、目的地字、广告字）只在近处画（HIGH 60 m、LOW 30 m）；更远只剩色块
+  bool nearText = camDist < uTextFar;
   vec3 albedo = vAlb;
   vec3 emit = vEm;
   float glass = 0.0;
   float spec = 0.35;
   vec3 inside = vec3(0.0);
   if (zone == 5.0) {
-    albedo = ${v3(linearRGB('#c9ccc8'))} * 0.85;
+    // 车顶：标准车 #374c50；广告车车顶两侧（第一圈坡面）也包，顶面不包
+    albedo = standard ? vC1 : (vLocal.y < 4.49 ? wrapLivery(vWrap, vLocal.y, vLocal.xy, false) : WRAP_ROOF_C);
   } else if (zone == 6.0) {
     albedo = vec3(0.03);
   } else if (zone == 7.0) {
     albedo = vAlb;
   } else if (zone > 0.5) {
     float y = vLocal.y;
-    float a = zone > 2.5 ? vLocal.z : vLocal.x;
-    vec3 body = livery(vWrap, y);
-    vec3 post = heritage ? vC2 : (vMeta.w > 0.4 ? body : ${v3(linearRGB('#3a3d40'))});
+    bool endZ = zone > 2.5;
+    float a = endZ ? vLocal.z : vLocal.x;
+    // 观者右手方向的坐标（字从左到右读）：车头面 −z、车尾面 +z、右侧面 +x、左侧面 −x
+    float px = zone > 3.5 ? vLocal.z : (zone > 2.5 ? -vLocal.z : (zone > 1.5 ? vLocal.x : -vLocal.x));
+    vec3 body = standard ? vC0 : wrapLivery(vWrap, y, vLocal.xy, !endZ);
+    // 裙板与两端防撞杠不包、不随涂装（黑 #2c2b30）
+    if (y < 0.65) body = endZ ? BUMPER_C : SKIRT_C;
+    // 广告字（行业通称，白名单）：两侧两层之间的广告带，观者右半边
+    if (!standard && !endZ && nearText && vMeta2.y > -0.5 && y > 2.45 && y < 3.35) {
+      float m = livTex(livCell(LIV_ADWORDS, LIV_ADWORDS_COLS, vMeta2.y), vec2((px - 0.95) / 1.1, (3.25 - y) / 0.64));
+      vec3 ink = lumaT(vC0) > 0.25 ? vec3(0.02) : vec3(0.82);
+      body = mix(body, ink, m);
+    }
     albedo = body;
-    bool winBand = (y > 1.6 && y < 2.4) || (y > 3.4 && y < 4.2);
     float door;
     vec2 c;
     vec2 hb;
-    float d = openings(zone, a, y, door, c, hb);
-    bool doorZone = door > 0.5 && y > 0.65;
+    float widx;
+    float d = openings(zone, a, y, door, c, hb, widx);
     float aa = max(fwidth(d), 1e-4);
-    if (winBand || doorZone) {
+    bool inBand = y > 0.65 && y < 4.2;
+    if (inBand && d < aa) {
       float inGlass = 1.0 - smoothstep(-aa, aa, d);
-      albedo = post;
-      if (doorZone) {
+      if (door > 0.5) {
         // 门：两扇折门，每扇一块长玻璃（下部实板），门框深灰
         vec2 q = vec2(a, y) - c;
         float lx = abs(q.x);
-        float leafGlass = step(0.05, lx) * step(lx, hb.x - 0.05) * step(1.0, y) * step(y, 2.34);
+        float leafGlass = step(0.05, lx) * step(lx, hb.x - 0.05) * step(1.0, y) * step(y, 2.3);
         inGlass *= leafGlass;
-        albedo = mix(post, ${v3(linearRGB('#2e3134'))}, step(d, 0.0));
+        albedo = mix(albedo, DOOR_C, step(d, 0.0) * (1.0 - leafGlass));
       }
-      // 上层气窗横档（窗高上部 25 %）
+      // 车头挡风窗上一支雨刮（P1，照片 01–03）
+      if (endZ && y < 2.4 && abs(a) < 0.42) {
+        vec2 wa = vec2(-0.22, 1.47);
+        vec2 wb = vec2(0.12, 2.02);
+        vec2 pw = vec2(a, y) - wa;
+        vec2 bw = wb - wa;
+        float dw = length(pw - bw * clamp(dot(pw, bw) / dot(bw, bw), 0.0, 1.0));
+        inGlass *= smoothstep(0.008, 0.008 + aa * 2.0, dw);
+      }
+      // 上层气窗横档（窗高上部 25 %）；下层窗的顶窗横档
       if (y > 3.4) inGlass *= smoothstep(0.012, 0.012 + aa * 4.0, abs(y - 3.99));
+      else if (!endZ && door < 0.5 && widx > 1.5 && widx < 6.5) inGlass *= smoothstep(0.012, 0.012 + aa * 4.0, abs(y - 2.2));
+      // 网点单向透视贴（P1）：广告车下层第 2、3 扇窗盖一层广告（远看约一半透）
+      bool film = !standard && !endZ && vMeta2.z > 0.5 && y < 2.45 && widx > 2.5 && widx < 4.5;
       if (inGlass > 0.001) {
         bool upper = y > 2.9;
         vec3 dir = normalize(vLocal - vCamL);
-        float dist = length(vLocal - vCamL);
-        vec3 ins = interior(vLocal, dir, upper, vMeta.w, dist < 70.0, heritage);
-        inside = ins * inGlass;
-        glass = inGlass;
+        vec3 ins = interior(vLocal, dir, upper, vMeta.w, camDist < 70.0);
+        float cover = 0.0;
+        if (film) {
+          vec2 dp = fract(vec2(a, y) / 0.012) - 0.5;
+          float fw = fwidth(a / 0.012);
+          cover = mix(1.0 - smoothstep(0.28, 0.36, length(dp)), 0.55, smoothstep(0.25, 0.7, fw));
+        }
+        inside = ins * inGlass * (1.0 - cover);
+        glass = inGlass * (1.0 - cover);
       }
     }
-    // 目的地牌（两端，两层之间）
-    if (zone > 2.5) {
-      vec2 dq = vec2(a, y) - vec2(0.0, 2.79);
-      float db = sdBox(dq, vec2(0.74, 0.27), 0.04);
+    if (endZ) {
+      // 目的地牌（两层之间正中，0.57–0.65 H，1.0 × 0.34 m）：黑底琥珀 LED，一行字，中文 / 英文轮换
+      vec2 dq = vec2(px, y) - vec2(0.0, 2.68);
+      float db = sdBox(dq, vec2(0.5, 0.17), 0.03);
       if (db < 0.0) {
-        float u = zone < 3.5 ? (0.7 - a) / 1.4 : (a + 0.7) / 1.4;
-        float vv = (y - 2.56) / 0.46;
-        float tile = floor(vMeta.z + 0.5);
-        float style = step(7.5, tile);
-        tile = mod(tile, 8.0);
-        float inside2 = step(0.0, u) * step(u, 1.0) * step(0.0, vv) * step(vv, 1.0);
-        float m = texture2D(uDest, vec2(clamp(u, 0.0, 1.0), 1.0 - (tile + 1.0) / ${DEST_ROWS.toFixed(1)} + clamp(vv, 0.0, 1.0) / ${DEST_ROWS.toFixed(1)})).r * inside2;
-        albedo = vec3(0.01);
-        if (style < 0.5) {
-          // 橙色 LED 点阵：近处看得到点，远处退成平均
-          vec2 dots = fract(vec2(u * 96.0, vv * 18.0)) - 0.5;
-          float fw = fwidth(u * 96.0);
-          float dotK = mix(1.0 - smoothstep(0.28, 0.42, length(dots)), 0.55, smoothstep(0.3, 0.8, fw));
-          emit += ${v3(linearRGB(DEST_LED.fg))} * (2.2 / 0.45) * m * dotK + ${v3(linearRGB(DEST_LED.bg))} * 0.5;
-        } else {
-          emit += ${v3(linearRGB(DEST_BOX.bg))} * 3.0 * inside2 + ${v3(linearRGB(DEST_BOX.fg))} * 2.6 * m;
-        }
+        albedo = vec3(0.008);
         spec = 0.6;
+        vec2 uv = vec2((px + 0.47) / 0.94, (2.83 - y) / 0.30);
+        if (nearText) {
+          float lang = mod(floor(uTime / DEST_SWAP + vMeta.w * 2.0), 2.0);
+          vec4 r = livCell(LIV_TRAMDEST, LIV_TRAMDEST_COLS, vMeta.z * 2.0 + lang);
+          // LED 点阵：近处看得到点（约 1 cm），远处退成平均
+          vec2 grid = vec2(96.0, 30.0);
+          vec2 cellUv = (floor(uv * grid) + 0.5) / grid;
+          float m = livTex(r, cellUv);
+          float fw = fwidth(uv.x * grid.x);
+          float dotK = mix(1.0 - smoothstep(0.3, 0.45, length(fract(uv * grid) - 0.5)), 0.6, smoothstep(0.3, 0.8, fw));
+          emit += uDestLed * 2.1 * smoothstep(0.25, 0.6, m) * dotK + LEDBG_C * 0.3;
+        } else {
+          emit += uDestLed * 0.45 * step(0.08, uv.y) * step(uv.y, 0.92) * step(0.1, uv.x) * step(uv.x, 0.9);
+        }
+      }
+      // 车队编号（白色窄身数字）：两端顶角贴着转角（≈ 0.97 H，字高 0.095 m，侧面斜看也看得到）与防撞杠右侧（字高 0.14 m）
+      if (nearText) {
+        float fleet = vMeta2.x;
+        float m = 0.0;
+        if (y > 4.2) m = livNumber(vec2(px, y), vec2(-0.92, 4.29), 0.095, fleet) + livNumber(vec2(px, y), vec2(0.92, 4.29), 0.095, fleet);
+        else if (y < 0.64 && y > 0.36) m = livNumber(vec2(px, y), vec2(0.62, 0.5), 0.14, fleet);
+        albedo = mix(albedo, vec3(0.78), clamp(m, 0.0, 1.0));
       }
     }
   }
   // 照明：城市环境光 + 车身所在位置的路灯照度（CPU 每帧按附近路灯算，iState.y）
   vec3 lampC = mix(uLed, uSodium, vState.w);
-  vec3 irr = cityAmbient(n, vLocal.y, uWarmth) + lampC * vState.y * mix(0.45, 0.8, max(n.y, 0.0));
+  // 复审修正：车身按「相机白平衡」照（neutralLight），真实涂装的深青绿不被暖光带偏
+  vec3 irr = neutralLight(cityAmbient(n, vLocal.y, uWarmth) + lampC * vState.y * mix(0.45, 0.8, max(n.y, 0.0)), 0.6);
   float fres = pow(1.0 - clamp(abs(dot(n, V)), 0.0, 1.0), 4.0);
-  vec3 surface = albedo * irr * (1.0 - glass) + uHazeColor * fres * mix(spec * 0.5, 0.9, glass) * max(n.y + 0.4, 0.2);
+  // 光面漆：路灯在车身上的一点高光（不反射天空）
+  vec3 R = reflect(-V, n);
+  float lampSpec = pow(max(R.y, 0.0), 16.0) * vState.y * (standard ? 0.08 : 0.05) * (1.0 - glass);
+  vec3 surface = albedo * irr * (1.0 - glass) + uHazeColor * fres * mix(spec * 0.5, 0.9, glass) * max(n.y + 0.4, 0.2) + lampC * lampSpec;
   // 玻璃：车内光透过（菲涅耳反射多时透得少）
   emit += inside * (1.0 - 0.6 * fres);
   vec3 col = applyHaze(surface, emit, vWorld);
@@ -516,17 +571,29 @@ void main() {
 }
 `;
 
-export function createTramMaterial(dest: Texture | null): ShaderMaterial {
+export function createTramMaterial(atlas: Texture | null, textFarM = 60): ShaderMaterial {
   return new ShaderMaterial({
     uniforms: {
       ...sharedUniforms(),
-      uDest: { value: dest },
+      uLiv: { value: atlas },
+      uTextFar: { value: textFarM },
       uPivot: { value: new Vector3(...POLE_PIVOT) },
-      uTube: { value: lightColour('tubeCool') },
-      uWood: { value: lightColour('#c98d52').multiplyScalar(0.9) },
+      // 上层冷白（照片 02 #9094a4，≈ 8000 K），下层偏暖（#a69c90，≈ 5400 K）且暗一些（vehicleCabin 0.4–1.0）
+      uTube: { value: lightColour('#dde4f6') },
+      uTubeLow: { value: lightColour('#f4e7d4').multiplyScalar(0.78) },
+      // 复审修正：路灯（车身受光）用白光 LED；琥珀色只给目的地牌（原来车身被琥珀色照着，深青绿成了橄榄绿）
       uLed: { value: lightColour('ledWhite') },
+      uDestLed: { value: lightColour(DEST_LED.fg) },
       uSodium: { value: lightColour('sodium') },
       uWarmth: { value: 0.4 },
+    },
+    defines: {
+      WRAP_ROOF_C: v3(linearRGB(WRAP_ROOF)),
+      BUMPER_C: v3(linearRGB(STANDARD.bumper)),
+      SKIRT_C: v3(linearRGB('#26292a')),
+      DOOR_C: v3(linearRGB('#2e3134')),
+      LEDBG_C: v3(linearRGB(DEST_LED.bg)),
+      DEST_SWAP: DEST_SWAP_S.toFixed(1),
     },
     vertexShader: VERT,
     fragmentShader: FRAG,

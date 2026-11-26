@@ -42,6 +42,8 @@ export interface CityMeta {
   sources: SourceRef[];
   /** 管线版本与全部输入快照 sha256 的组合摘要，用于判断产物是否过期。 */
   build: { pipelineVersion: string; inputsDigest: string };
+  /** 真实贴面的贴图集（R3 新增的可选字段）；没有贴面数据时省略。 */
+  facades?: FacadeMeta;
 }
 
 export type BuildingKind = 'tower' | 'podium' | 'house' | 'civic' | 'industrial' | 'other';
@@ -82,6 +84,52 @@ export interface Building {
    *   环都是简单多边形（不自交、无重复点，洞在外环内且不相碰）；简化后通常 ≤ 16 点，个别曲线 / 简化会自交的环用细简化或原像素边界环（可达约 200 点）。
    */
   parts?: BuildingPart[];
+  /**
+   * 真实贴面（R3 新增的可选字段，不改 CITY_FORMAT_VERSION）：地政总署「可視化三維地圖（個別模型）」的照片纹理，
+   * 由 fetch/landsd_3d_tex_bake.py 离线投影到我们自己的墙与屋顶上、去日照、打包成贴图页（见 CityMeta.facades）。
+   * 没有照片、在敏感区里、被判为有脚手架 / 绿网、或几何指纹与烘焙时不同的楼一律省略（客户端照旧画程序立面）。
+   */
+  facade?: BuildingFacade;
+}
+
+/**
+ * 一栋楼的贴面引用（见 Building.facade）。坐标约定（客户端 render/facades/layout.ts 按此计算纹理坐标）：
+ * - 每块棱柱的每个环展开成一条墙带：列 c = P × d（P 为沿环从第 0 个顶点起累计的米数，环按外环逆时针、洞顺时针归一后），
+ *   行 r = (棱柱顶 − z) × d（米）；墙带按 tile 宽切片，第 k 片的片内列 cl = c − k × tile。
+ *   每片只存有照片的外包框：片内列 [c0, c0 + w)、行 [r0, r0 + h) 放在页里 (x, y) 起，纹素 = (x + cl − c0, y + r − r0)；框外没有照片。
+ * - 屋顶：外环外包框上的俯视图（不裁边），纹素 = (x + (X − minX) × dr, y + (maxY − Y) × dr)（米）。
+ * - 密度 d = dq / densityQ、dr = drq / densityQ（px/m，见 FacadeMeta）。
+ */
+export interface BuildingFacade {
+  /** 检测到的层高与楼层线相位：[层高 cm, 相位 cm]（楼层线 = 楼底 + 相位 + k × 层高，在窗间墙 / 楼板中线）。检测不到时省略。 */
+  f?: [number, number];
+  /**
+   * 每块棱柱一项：有 parts（且客户端能按 parts 分块）时与 parts 的序号对齐，否则只有一项（整栋）。
+   * 每项 [dq, drq, 屋顶页, 屋顶 x, 屋顶 y, 环 0 的切片数 n, n × (页, x, y, c0, r0, w, h), 环 1 的切片数, ...]；
+   * 页 = −1 表示该片 / 屋顶没有照片；空数组表示这块没有照片。
+   */
+  p: number[][];
+}
+
+/** 贴面贴图集（见 Building.facade）：页文件、远景图集与参数。 */
+export interface FacadeMeta {
+  /** 贴图文件目录（相对 city/）。 */
+  dir: string;
+  /** 页边长（px）、墙带切片宽（px）、密度量化（d = q / densityQ px/m）。 */
+  page: number;
+  tile: number;
+  densityQ: number;
+  /**
+   * 页文件名（下标即页号）。每个文件是 page × page 的 RGBA WebP：RGB = sRGB 颜色（去过日照的反照率），
+   * alpha 码 = 0 无照片；135–255 有照片、连续玻璃度 g（255 − 120 g，实墙 255）；24 + k（k = 0..89）照片里认出的独立窗（亮灯种子 k）。
+   */
+  pages: string[];
+  /** 远景图集：每页缩成 cell × cell，cols 列 rows 行；同样 RGBA（alpha 只有连续玻璃度）。low 为 LOW 档用的半分辨率版。 */
+  far: { file: string; low: string; cols: number; rows: number; cell: number };
+  /** 全部贴图文件的字节数。 */
+  bytes: number;
+  /** 照片里有明显脚手架 / 绿网 / 工地围板、整栋不用照片的楼号（照旧画程序立面）；没有时省略。 */
+  excluded?: string[];
 }
 
 /** 一块分层体块（见 Building.parts）。 */

@@ -5,7 +5,8 @@ import { bridgeStyle, footbridgeChunks } from './footbridges';
 import { buildLanes } from './lanes';
 import { AMBER_END, GREEN_END, PED_BLOCK_START, PED_FLASH, PED_GREEN, PED_RED, crossingClosed, pedCycle, pedSignalState } from './signals';
 import { BUS_LEN_M, KIND_LEN_M, SIM_DT, Traffic, VehicleKind, laneThrough, pickKind } from './traffic';
-import { BUS_LIVERIES, MINIBUS_CREAM, MINIBUS_GREEN, MINIBUS_RED, busGeometry, carGeometry, vehicleLook } from './vehicles';
+import { LIVERY_HEX, busGeometry, carGeometry, vehicleLook } from './vehicles'; // [r3:liveries]
+import { Scheme } from './liveries/fleet'; // [r3:liveries]
 import { sideStreetSpan } from '../signs/placement';
 
 describe('行人灯（S3）', () => {
@@ -116,27 +117,30 @@ describe('车流扩充（S3 让行、S5 车型、巴士站）', () => {
 });
 
 describe('车辆外观（S5，纯函数）', () => {
-  it('出租车法定红色 + 银顶 + 顶灯；小巴米色、约 70 % 红顶 30 % 绿顶；双层巴士约 30 % 抽象车身广告、其余为通用双色', () => {
+  // [r3:liveries] R3 真实涂装：营运商比例与颜色的详细测试在 liveries/fleet.test.ts
+  it('的士红车身 + 银顶 + 顶灯（MPV 高车身）；小巴米色、约 65 % 绿顶 35 % 红顶；双层巴士城巴 / 九巴、约 35 % 虚构车身广告', () => {
     const taxi = vehicleLook(VehicleKind.Taxi, 1);
-    expect(taxi.body).toBe('#c41e1e');
+    expect(taxi.body).toBe(LIVERY_HEX.taxiRed);
+    expect(taxi.fleet.scheme).toBe(Scheme.Taxi);
+    expect(taxi.variant).toBe(1);
     expect(taxi.emit).toBe(1);
-    let red = 0;
+    let gmb = 0;
     let wraps = 0;
     const n = 4000;
     for (let i = 0; i < n; i++) {
       const m = vehicleLook(VehicleKind.Minibus, i);
-      expect(m.body).toBe(MINIBUS_CREAM);
-      expect([MINIBUS_RED, MINIBUS_GREEN]).toContain(m.band);
-      if (m.band === MINIBUS_RED) red++;
+      expect([Scheme.Gmb, Scheme.Rmb]).toContain(m.fleet.scheme);
+      if (m.fleet.scheme === Scheme.Gmb) gmb++;
       const b = vehicleLook(VehicleKind.Bus, i);
+      expect([Scheme.Citybus, Scheme.KmbRed, Scheme.KmbGold]).toContain(b.fleet.scheme);
       if (b.wrap > 0) wraps++;
-      else expect(BUS_LIVERIES.some(([body, band]) => body === b.body && band === b.band)).toBe(true);
     }
-    expect(red / n).toBeGreaterThan(0.65);
-    expect(red / n).toBeLessThan(0.75);
-    expect(wraps / n).toBeGreaterThan(0.25);
-    expect(wraps / n).toBeLessThan(0.35);
+    expect(gmb / n).toBeGreaterThan(0.6);
+    expect(gmb / n).toBeLessThan(0.7);
+    expect(wraps / n).toBeGreaterThan(0.3);
+    expect(wraps / n).toBeLessThan(0.4);
     expect(vehicleLook(VehicleKind.Van, 3).body).toBe('#e4e4e0');
+    expect(vehicleLook(VehicleKind.Car, 3).fleet.scheme).toBe(Scheme.Car);
   });
 
   it('几种车型共用一个网格（变形目标），三角形数不随车型增加', () => {

@@ -17,16 +17,19 @@ export const TERRAIN_FILE = 'terrain.bin';
 
 type Shape =
   | 'city' | 'meta' | 'origin' | 'source' | 'build' | 'building' | 'ring' | 'road' | 'name'
-  | 'rail' | 'zones' | 'zone' | 'props' | 'landmark' | 'part';
+  | 'rail' | 'zones' | 'zone' | 'props' | 'landmark' | 'part' | 'facade' | 'facades' | 'far';
 
 const ORDER: Record<Shape, readonly string[]> = {
   city: ['format', 'version', 'meta', 'buildings', 'roads', 'rails', 'water', 'zones', 'props', 'landmarks'],
-  meta: ['origin', 'crs', 'unit', 'bbox', 'sources', 'build'],
+  meta: ['origin', 'crs', 'unit', 'bbox', 'sources', 'build', 'facades'],
   origin: ['e', 'n', 'lon', 'lat'],
   source: ['id', 'license', 'attribution', 'url'],
   build: ['pipelineVersion', 'inputsDigest'],
-  building: ['id', 'src', 'footprint', 'base', 'height', 'heightSource', 'kind', 'style', 'storeys', 'parts'],
+  building: ['id', 'src', 'footprint', 'base', 'height', 'heightSource', 'kind', 'style', 'storeys', 'parts', 'facade'],
   part: ['ring', 'holes', 'top'],
+  facade: ['f', 'p'],
+  facades: ['dir', 'page', 'tile', 'densityQ', 'pages', 'far', 'bytes', 'excluded'],
+  far: ['file', 'low', 'cols', 'rows', 'cell'],
   ring: ['outer', 'holes'],
   road: ['id', 'cls', 'pts', 'oneway', 'lanes', 'bridge', 'tunnel', 'level', 'speedKmh', 'name'],
   name: ['zh', 'en'],
@@ -42,8 +45,9 @@ const CHILD: Partial<Record<Shape, Record<string, Shape>>> = {
     meta: 'meta', buildings: 'building', roads: 'road', rails: 'rail', water: 'ring',
     zones: 'zones', props: 'props', landmarks: 'landmark',
   },
-  meta: { origin: 'origin', sources: 'source', build: 'build' },
-  building: { footprint: 'ring', parts: 'part' },
+  meta: { origin: 'origin', sources: 'source', build: 'build', facades: 'facades' },
+  building: { footprint: 'ring', parts: 'part', facade: 'facade' },
+  facades: { far: 'far' },
   road: { name: 'name' },
   zones: { playable: 'ring', sensitive: 'zone' },
   zone: { area: 'ring' },
@@ -116,6 +120,9 @@ const govBuildings = (city: CityFile): boolean => city.buildings.some((b) => b.s
 /** 有多少栋楼带 LOD2 分层体块（地政总署 3D 模型派生）。 */
 const partsCount = (city: CityFile): number => city.buildings.filter((b) => b.parts).length;
 
+/** 有多少栋楼带真实贴面（R3，地政总署个别模型的照片纹理派生）。 */
+const facadeCount = (city: CityFile): number => city.buildings.filter((b) => b.facade).length;
+
 /** ODbL 图层的来源描述：OSM 为主，用到 TomTom 路段时如实写上。 */
 function odblOrigin(city: CityFile): string {
   const tomtom = city.meta.sources.some((s) => s.id === REF_TOMTOM.id);
@@ -129,7 +136,9 @@ function attributionText(city: CityFile): string {
   const lines = [
     '中環急件 Central Rush — 地圖數據鳴謝 / Map data attribution',
     '',
-    `${CITY_FILE} and ${TERRAIN_FILE} are generated from the following sources:`,
+    facadeCount(city) > 0
+      ? `${CITY_FILE}, ${TERRAIN_FILE} and ${city.meta.facades?.dir ?? 'facades'}/*.webp are generated from the following sources:`
+      : `${CITY_FILE} and ${TERRAIN_FILE} are generated from the following sources:`,
     '',
     ...sourceLines(city),
     '',
@@ -147,6 +156,17 @@ function attributionText(city: CityFile): string {
           `  (Non-textured models) via 3d.map.gov.hk and the CSDI Portal (${CSDI_LICENSE}; not part of the ODbL database).`,
         ]
       : []),
+    ...(facadeCount(city) > 0
+      ? [
+          `* ${city.meta.facades?.dir ?? 'facades'}/*.webp (facade and roof photo textures of ${facadeCount(city)} buildings): ` +
+            'Lands Department 3D Visualisation Map',
+          `  (Individualised models) via 3d.map.gov.hk and the CSDI Portal (${CSDI_LICENSE}; not part of the ODbL database).`,
+        ]
+      : []),
+    // 复审修正：客户端代码里的公共交通站点（client/src/render/streets/transit-data.ts）也是 ODbL 数据
+    '* Bus / minibus / tram stop positions, stop names and route numbers compiled into the client (client/src/render/streets/transit-data.ts): ' +
+      'OpenStreetMap data (© OpenStreetMap contributors, ODbL-1.0) distributed by Overture Maps Foundation; stop names that name ' +
+      'companies, buildings or government sites replaced by street names or fictional landmark names.',
     `* ${TERRAIN_FILE} (ground elevation): Civil Engineering and Development Department 2020 LiDAR DTM via the ` +
       `CSDI Portal (${CSDI_LICENSE}; not part of the ODbL database).`,
     '',
@@ -160,14 +180,21 @@ function attributionText(city: CityFile): string {
           'fitted to the 2D footprints (no meshes, textures or names kept; none inside sensitive zones or landmarks);',
         ]
       : []),
+    ...(facadeCount(city) > 0
+      ? [
+          'photo textures of the 3D models projected onto the simplified building walls and roofs, resampled to about 0.25-0.4 m per pixel,',
+          'de-lit (daylight shading reduced) and reduced; glass areas detected for night rendering (no meshes or names kept; none',
+          'inside sensitive zones; buildings showing scaffolding or construction netting excluded);',
+        ]
+      : []),
     'props inside sensitive (military / government) zones removed; terrain resampled to a 5 m grid, outliers',
     'and small gaps repaired, with the sea set to 0 mPD.',
     '',
     'The OpenStreetMap-derived database is licensed under ODbL-1.0; see LICENSE-ODbL.txt.',
     `Data marked ${CSDI_LICENSE} is used under the CSDI Portal Terms and Conditions of Use`,
     '(https://portal.csdi.gov.hk/csdi-webpage/doc/TNC); it is not relicensed.',
-    ...(partsCount(city) > 0
-      ? ['The building parts also follow the Terms and Conditions of Use of the 3D Visualisation Map website',
+    ...(partsCount(city) > 0 || facadeCount(city) > 0
+      ? ['The building parts and photo textures also follow the Terms and Conditions of Use of the 3D Visualisation Map website',
         '(https://3d.map.gov.hk), which require the same attribution.']
       : []),
     '',

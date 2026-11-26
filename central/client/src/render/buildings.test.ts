@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { makeFixtureCity } from '../dev/fixture';
 import { flatGround } from '../data/terrain';
 import { normalizeRing, ringCentroid } from '../geom/ring';
-import { buildBuildingChunks, crownColour, inSensitive, modeOf } from './buildings';
+import { buildBuildingChunks, crownColour, hasRoofPhoto, hasWallPhoto, inSensitive, modeOf } from './buildings';
+import { parseRecord } from './facades/layout';
 import { buildingChunk, chunkKey } from './chunks';
 import { FacadeMode } from './facade';
 import { buildRoadChunks } from './roads';
@@ -60,7 +61,8 @@ describe('buildings / roads on the fixture city', () => {
     expect(maxY).toBeLessThan(6.3);
   });
 
-  it('aBldg：层高 > 0、街面冷暖 0–0.9、墙脚地面与地形一致，逐栋恒定', () => {
+  // 全套测试并发、机器忙时这一条（真实数据、逐顶点检查）超过默认 5 s：给显式超时
+  it('aBldg：层高 > 0、街面冷暖 0–0.9、墙脚地面与地形一致，逐栋恒定', { timeout: 30000 }, () => {
     const chunks = buildBuildingChunks(city.buildings, flatGround, zones);
     for (const c of chunks.values()) {
       const bldg = c.arrays.data[3]!;
@@ -89,5 +91,18 @@ describe('buildings / roads on the fixture city', () => {
     expect(crownColour(0.6)).toBe(2);
     expect(crownColour(0.8)).toBe(3);
     expect(crownColour(0.95)).toBe(4);
+  });
+});
+
+describe('照片墙 / 屋顶（R3）', () => {
+  const rec = (roofPage: number, wallPage: number) => parseRecord([64, 48, roofPage, 0, 0, 1, wallPage, 0, 0, 0, 0, 10, 10], 16);
+  const pl = (...recs: (ReturnType<typeof rec>)[]) => ({ photo: { f2f: null, phase: 0, parted: false, records: recs } });
+  it('有照片的屋顶不加程序机房、有照片的墙不加程序冷气机', () => {
+    expect(hasRoofPhoto(pl(rec(2, -1)))).toBe(true);
+    expect(hasWallPhoto(pl(rec(2, -1)))).toBe(false);
+    expect(hasWallPhoto(pl(rec(-1, 0)))).toBe(true);
+    expect(hasRoofPhoto(pl(rec(-1, 0)))).toBe(false);
+    expect(hasRoofPhoto({ photo: null })).toBe(false);
+    expect(hasWallPhoto({ photo: null })).toBe(false);
   });
 });

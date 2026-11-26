@@ -644,6 +644,18 @@ export class Traffic {
     this.reset();
   }
 
+  /**
+   * 开场就停在站上的车（setBusStops 安排的）：车辆下标、车道、停靠点（沿车道 m）。
+   * R3 LIVERIES 用它让这辆车挂该站真实停靠的路线（liveries/fleet.ts busStopHints）。
+   */
+  initialDwellers(): { i: number; lane: number; s: number }[] {
+    const out: { i: number; lane: number; s: number }[] = [];
+    this.initial.forEach((v, i) => {
+      if (v.dwell && v.served !== undefined) out.push({ i, lane: v.lane, s: v.served });
+    });
+    return out;
+  }
+
   /** 巴士 i 前方 60 m 内未停过的站：车头到停靠点的距离（m），没有返回 Infinity。 */
   private busStopAhead(i: number, lane: number, front: number): number {
     const list = this.stops[lane];

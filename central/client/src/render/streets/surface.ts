@@ -13,6 +13,7 @@ import { threeToSim } from '../../coords';
 import type { HeightFn } from '../../data/terrain';
 import { pointInRing } from '../../geom/ring';
 import { centreZ, pointAt, type RoadPlan } from '../roads';
+import { ZONE_CLEAR_M, zoneDistance } from '../stations/rules';
 
 /** 地面道路的空间索引：线段 → 所属道路、半宽（车行道 + 两侧人行道较宽者，dm）。 */
 export class RenderedSurface {
@@ -96,9 +97,16 @@ export function outsideZones<T>(items: readonly T[], zones: readonly SensitiveZo
   return items.filter((t) => !pos.some((f) => threeInZones(zones, f(t))));
 }
 
-/** 中点落在敏感区里的路不装路灯（路面光斑与灯头一起去掉）。原地改 plans。 */
+/**
+ * 中点落在敏感区里的路不装路灯（路面光斑与灯头一起去掉）。原地改 plans。
+ * R3 STATIONS：离敏感区不到「半宽 + 1.8 m 触觉砖 + 3 m」的过路处标 quiet（不画触觉砖与望右字，只留车行道上的路钉 / 斑马线）。
+ */
 export function dropZoneLamps(plans: RoadPlan[], zones: readonly SensitiveZone[]): void {
   for (const p of plans) {
+    for (const c of p.crossings) {
+      const a = pointAt(p.pts, p.along, c.s);
+      if (zoneDistance(zones, a.x / 10, a.y / 10) < p.hw / 10 + 1.8 + ZONE_CLEAR_M) c.quiet = true; // [r3:stations]
+    }
     if (!p.lamps) continue;
     const mid = pointAt(p.pts, p.along, p.len / 2);
     if (inZones(zones, mid.x, mid.y)) p.lamps = null;

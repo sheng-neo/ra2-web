@@ -7,6 +7,7 @@
 import { BufferAttribute, BufferGeometry, DynamicDrawUsage, Mesh, type Camera, type Material } from 'three';
 import { linearRGB, scale3, type V3 } from './prop-geometry';
 import { lightColour } from '../materials/lighting';
+import type { AtlasRect } from '../stations/atlas';
 
 /** 设施种类（kind，见 life-material）。 */
 export const K_PLAIN = 0;
@@ -19,6 +20,16 @@ export const K_GLAZING = 6;
 export const K_GLASS = 7;
 export const K_SOFFIT = 8;
 export const K_UPLIT = 9;
+/** R3 STATIONS 新增（见 life-material）。 */
+export const K_ATLAS = 10;
+export const K_LOUVRE = 11;
+export const K_ADWALL = 12;
+export const K_STAIRWELL = 13;
+export const K_STAINLESS = 14;
+export const K_TILES = 15;
+export const K_TACTILE = 16;
+export const K_REDBAND = 17;
+export const K_LCD = 18;
 
 export interface Face {
   alb?: V3;
@@ -318,71 +329,210 @@ export function hydrantTemplate(): Template {
 }
 
 /**
- * 候车亭（长 L，沿 +x 居中，+z 朝路）：
- * type 0 弧顶——1.9 m 一跨的白 / 淡紫拱架、半透明弧形顶（三折）、背板，棚底冷白光带；
- * type 1 平顶——2.6 m 一跨的平顶棚（2.6 m 高）、玻璃背板、一端 1.2 × 1.8 m 抽象色块灯箱。
- * 外加站牌（空白路线牌 + 亮着的空白时间表箱）。≤ 250 个三角形。
+ * 候车亭（长 L，沿 +x 居中，+z 朝路；R3 STATIONS 改成中环大会堂一带的款式，照片 14）：
+ * 2.2 m 一跨的灰色不锈钢后柱，向路边斜升的百叶玻璃顶棚（后 2.55 m、前 2.85 m，横向金属百叶 + 暗玻璃，棚底一条冷白灯管），
+ * 玻璃背板（半透明网格另画）、−x 端（上游）1.25 × 1.85 m 背光广告灯箱（冷色调虚构广告，1.5–2.0，全站最亮）、
+ * 木面倚靠长凳、+x 端棚下吊一块实时到站屏。type 只决定跨距的细节（0 = 每跨有横撑、1 = 无），两种长度由 kerbside 给。
+ * 站牌（营运商站牌、实时资讯柱）不在这里，见 stopFlagTemplate。约 150 个三角形。
  */
 export function shelterTemplate(type: 0 | 1, length: number): Template {
   const b = new LifeBuilder();
+  // 只有站牌的站（length 0）：不画候车亭
+  if (length <= 0) return b.template();
   const tube = scale3(lightColour('tubeCool').toArray() as unknown as V3, 1.1);
   const glass: Face = { alb: [0.05, 0.06, 0.065], kind: K_GLASS };
+  const frame = linearRGB('#8c9196');
   const half = length / 2;
-  if (type === 0) {
-    const bays = Math.round(length / 1.9);
-    const roofY = [2.35, 2.62, 2.7, 2.6];
-    const roofZ = [0.75, 0.35, -0.15, -0.6];
-    for (let i = 0; i <= bays; i++) {
-      const x = -half + (i * length) / bays;
-      const col = i % 2 === 0 ? linearRGB('#d8d8d4') : linearRGB('#b9a9c4');
-      // 拱架：背柱 + 前柱（细）
-      b.box([x, 0, -0.62], [0.08, 2.6, 0.08], { alb: col }, { bottom: null, top: null });
-      b.box([x, 0, 0.7], [0.06, 2.33, 0.06], { alb: col }, { bottom: null, top: null });
-    }
-    // 弧顶三折（双面）
-    for (let k = 0; k < 3; k++) {
-      b.quad([-half, roofY[k]!, roofZ[k]!], [half, roofY[k]!, roofZ[k]!], [half, roofY[k + 1]!, roofZ[k + 1]!], [-half, roofY[k + 1]!, roofZ[k + 1]!], { alb: linearRGB('#8f9aa3') });
-    }
-    // 棚底光带
-    b.quad([-half + 0.2, 2.6, -0.1], [half - 0.2, 2.6, -0.1], [half - 0.2, 2.62, -0.35], [-half + 0.2, 2.62, -0.35], { alb: [0.6, 0.6, 0.6], em: tube });
-    // 背板：一格一块浅米色板（照片 16），离地 0.3–2.0 m，格间留缝
-    for (let i = 0; i < bays; i++) {
-      const xa = -half + (i * length) / bays + 0.1;
-      const xb = -half + ((i + 1) * length) / bays - 0.1;
-      b.quad([xb, 0.3, -0.64], [xa, 0.3, -0.64], [xa, 2.0, -0.64], [xb, 2.0, -0.64], { alb: linearRGB('#a08f6c') });
-    }
-  } else {
-    const bays = Math.round(length / 2.6);
-    for (let i = 0; i <= bays; i++) {
-      const x = -half + (i * length) / bays;
-      b.box([x, 0, -0.55], [0.1, 2.6, 0.1], { alb: linearRGB('#3c4247') }, { bottom: null, top: null });
-    }
-    // 平顶（厚 0.18 m，底面亮）
-    b.box([0, 2.6, 0.05], [length + 0.3, 0.18, 1.6], { alb: linearRGB('#c4c7c9') }, { bottom: { alb: [0.5, 0.5, 0.5], em: scale3(tube, 0.55) } });
-    // 玻璃背板（uv 以米计：着色器画磨砂带与竖框）
-    b.quad([half, 0.12, -0.55], [-half, 0.12, -0.55], [-half, 2.5, -0.55], [half, 2.5, -0.55], glass, [
-      [0, 0],
-      [length, 0],
-      [length, 2.38],
-      [0, 2.38],
-    ]);
-    // 端头灯箱（抽象色块，aux = 种子）
-    b.box([half - 0.05, 0.25, 0.05], [0.25, 1.85, 1.25], { alb: [0.05, 0.05, 0.05] }, { bottom: null });
-    const lb: Face = { alb: [0.3, 0.3, 0.3], em: scale3(lightColour('lightboxWhite').toArray() as unknown as V3, 1.5), kind: K_LIGHTBOX, useAux: true };
-    b.quad([half + 0.08, 0.35, 0.62], [half + 0.08, 0.35, -0.52], [half + 0.08, 2.0, -0.52], [half + 0.08, 2.0, 0.62], lb);
-    b.quad([half - 0.18, 0.35, -0.52], [half - 0.18, 0.35, 0.62], [half - 0.18, 2.0, 0.62], [half - 0.18, 2.0, -0.52], lb);
+  const bays = Math.max(1, Math.round(length / 2.2));
+  const yBack = 2.55;
+  const yFront = 2.85;
+  const zBack = -0.75;
+  const zFront = 0.95;
+  for (let i = 0; i <= bays; i++) {
+    const x = -half + (i * length) / bays;
+    b.box([x, 0, -0.62], [0.1, yBack + 0.05, 0.1], { alb: frame, kind: K_STAINLESS }, { bottom: null, top: null });
+    // 悬臂：柱顶斜向路边的扁钢梁
+    b.quad([x - 0.04, yBack - 0.05, -0.62], [x - 0.04, yFront - 0.1, zFront - 0.1], [x - 0.04, yFront - 0.02, zFront - 0.1], [x - 0.04, yBack + 0.05, -0.62], { alb: frame });
+    if (type === 0 && i < bays) b.box([x + length / bays / 2, 2.32, -0.62], [length / bays - 0.1, 0.05, 0.05], { alb: frame }, { bottom: null });
   }
-  // 长凳
-  b.box([0, 0.42, -0.35], [Math.min(length - 1, 3.5), 0.06, 0.38], { alb: linearRGB('#7a7f84') }, { bottom: null });
-  // 站牌：杆 + 空白路线牌（只有一条色带）+ 亮着的空白时间表箱
-  const px = -half - 0.6;
-  b.box([px, 0, 0.55], [0.08, 3.1, 0.08], { alb: POLE }, { bottom: null });
-  b.box([px, 2.45, 0.55], [0.06, 0.6, 0.5], { alb: linearRGB('#e8e8e4') }, { bottom: null });
-  b.box([px + 0.04, 2.95, 0.55], [0.03, 0.08, 0.5], { alb: linearRGB('#b0283a') }, { bottom: null, top: null });
-  b.box([px, 1.0, 0.55], [0.14, 0.75, 0.55], { alb: [0.04, 0.04, 0.04] }, { bottom: null });
-  const tt: Face = { alb: [0.4, 0.4, 0.4], em: scale3(lightColour('lightboxWhite').toArray() as unknown as V3, 1.15) };
-  b.quad([px + 0.075, 1.05, 0.8], [px + 0.075, 1.05, 0.3], [px + 0.075, 1.7, 0.3], [px + 0.075, 1.7, 0.8], tt);
-  b.quad([px - 0.075, 1.05, 0.3], [px - 0.075, 1.05, 0.8], [px - 0.075, 1.7, 0.8], [px - 0.075, 1.7, 0.3], tt);
+  // 斜顶棚：上下两面都是百叶（uv 以米计）
+  const roof = (y0: number, y1: number, top: boolean) => {
+    const f: Face = { alb: linearRGB('#7d8287'), kind: K_LOUVRE, em: top ? [0, 0, 0] : scale3(tube, 0.04) };
+    const uv: [number, number][] = [
+      [0, 0],
+      [length + 0.3, 0],
+      [length + 0.3, 1.7],
+      [0, 1.7],
+    ];
+    if (top) b.quad([-half - 0.15, y0, zBack], [half + 0.15, y0, zBack], [half + 0.15, y1, zFront], [-half - 0.15, y1, zFront], f, uv);
+    else b.quad([half + 0.15, y0, zBack], [-half - 0.15, y0, zBack], [-half - 0.15, y1, zFront], [half + 0.15, y1, zFront], f, uv);
+  };
+  roof(yBack + 0.06, yFront + 0.06, true);
+  roof(yBack, yFront, false);
+  // 前檐（0.12 m 灰色铝板）与后檐
+  b.quad([-half - 0.15, yFront - 0.06, zFront], [half + 0.15, yFront - 0.06, zFront], [half + 0.15, yFront + 0.08, zFront], [-half - 0.15, yFront + 0.08, zFront], { alb: linearRGB('#a9adb0') });
+  // 棚底冷白灯管
+  const zt = 0.1;
+  const yt = yBack + ((zt - zBack) / (zFront - zBack)) * (yFront - yBack) - 0.03;
+  b.quad([-half + 0.3, yt, zt - 0.05], [half - 0.3, yt, zt - 0.05], [half - 0.3, yt, zt + 0.05], [-half + 0.3, yt, zt + 0.05], { alb: [0.6, 0.6, 0.6], em: tube });
+  // 玻璃背板（uv 以米计：着色器画磨砂带与竖框）
+  b.quad([half, 0.12, -0.6], [-half, 0.12, -0.6], [-half, 2.4, -0.6], [half, 2.4, -0.6], glass, [
+    [0, 0],
+    [length, 0],
+    [length, 2.28],
+    [0, 2.28],
+  ]);
+  // −x 端广告灯箱（冷色调虚构广告：抽象色块，aux = 种子），不锈钢框
+  const lx = -half + 0.12;
+  b.box([lx, 0.15, 0.08], [0.26, 2.0, 1.4], { alb: frame, kind: K_STAINLESS }, { bottom: null });
+  const lb: Face = { alb: [0.3, 0.3, 0.3], em: scale3(lightColour('#a8e6e4').toArray() as unknown as V3, 1.7), kind: K_LIGHTBOX, useAux: true };
+  b.quad([lx - 0.14, 0.25, -0.53], [lx - 0.14, 0.25, 0.7], [lx - 0.14, 2.08, 0.7], [lx - 0.14, 2.08, -0.53], lb);
+  b.quad([lx + 0.14, 0.25, 0.7], [lx + 0.14, 0.25, -0.53], [lx + 0.14, 2.08, -0.53], [lx + 0.14, 2.08, 0.7], lb);
+  // 木面倚靠长凳（0.75 m 高、略向后倾）+ 两支撑
+  const bl = Math.min(length - 1.6, 4.5);
+  const wood = linearRGB('#6b4a33');
+  b.box([0.3, 0.7, -0.42], [bl, 0.08, 0.26], { alb: wood }, { bottom: { alb: wood } });
+  for (const x of [0.3 - bl / 2 + 0.3, 0.3 + bl / 2 - 0.3]) b.box([x, 0, -0.5], [0.06, 0.7, 0.06], { alb: frame }, { bottom: null, top: null });
+  // +x 端棚下的实时到站屏（两面）
+  const sx = half - 0.9;
+  b.box([sx, 2.0, 0.2], [0.07, 0.42, 0.95], { alb: [0.02, 0.02, 0.022] }, { bottom: null });
+  b.quad([sx + 0.036, 2.04, 0.62], [sx + 0.036, 2.04, -0.22], [sx + 0.036, 2.38, -0.22], [sx + 0.036, 2.38, 0.62], { alb: [0.01, 0.01, 0.01], kind: K_LCD });
+  b.quad([sx - 0.036, 2.04, -0.22], [sx - 0.036, 2.04, 0.62], [sx - 0.036, 2.38, 0.62], [sx - 0.036, 2.38, -0.22], { alb: [0.01, 0.01, 0.01], kind: K_LCD });
+  b.box([sx, 2.42, 0.2], [0.03, yBack + 0.25 - 2.42, 0.03], { alb: frame }, { bottom: null, top: null });
+  return b.template();
+}
+
+/** 图集字牌的四角 uv（从正面看：左下、右下、右上、左上）。 */
+function atlasUv(r: AtlasRect): [number, number][] {
+  return [
+    [r.u0, r.v0],
+    [r.u1, r.v0],
+    [r.u1, r.v1],
+    [r.u0, r.v1],
+  ];
+}
+
+/**
+ * 双面字牌（局部：牌面在 x = x0 的 y–z 平面，宽 z0→z1、高 y0→y1）：+x 面与 −x 面各一块，两面都正着读。
+ * rect 为 null 时退成纯色（avg）。em：背光牌的发光倍率（0 = 只反光）。
+ */
+export function addAtlasSign(b: LifeBuilder, x0: number, y0: number, y1: number, z0: number, z1: number, rect: AtlasRect | null, avg: V3, em = 0, thick = 0.03): void {
+  const face: Face = rect ? { alb: avg, em: [em, em, em], kind: K_ATLAS } : { alb: avg, em: scale3(avg, em) };
+  const uv = rect ? atlasUv(rect) : undefined;
+  const t = thick / 2 + 0.002;
+  // +x 面：从 +x 看，左→右 = −z
+  b.quad([x0 + t, y0, z1], [x0 + t, y0, z0], [x0 + t, y1, z0], [x0 + t, y1, z1], face, uv);
+  // −x 面：从 −x 看，左→右 = +z
+  b.quad([x0 - t, y0, z0], [x0 - t, y0, z1], [x0 - t, y1, z1], [x0 - t, y1, z0], face, uv);
+  b.box([x0, y0 - 0.01, (z0 + z1) / 2], [thick, y1 - y0 + 0.02, Math.abs(z1 - z0) + 0.02], { alb: linearRGB('#5c6166') }, { bottom: null, px: null, nx: null });
+}
+
+/** 站牌绕杆转的角度（弧度，约 35°）。 */
+export const FLAG_TURN_RAD = 0.61;
+
+/** 把 src 的面绕竖轴（局部 x = cx、z = cz）转 a 弧度后并进 dst（x' = x cos a + z sin a，z' = −x sin a + z cos a）。 */
+export function appendRotated(dst: LifeBuilder, src: LifeBuilder, a: number, cx: number, cz: number): void {
+  const c = Math.cos(a);
+  const s = Math.sin(a);
+  const base = dst.vertexCount;
+  for (let v = 0; v < src.vertexCount; v++) {
+    const x = src.pos[v * 3]! - cx;
+    const z = src.pos[v * 3 + 2]! - cz;
+    dst.pos.push(cx + x * c + z * s, src.pos[v * 3 + 1]!, cz - x * s + z * c);
+    const nx = src.nrm[v * 3]!;
+    const nz = src.nrm[v * 3 + 2]!;
+    dst.nrm.push(nx * c + nz * s, src.nrm[v * 3 + 1]!, -nx * s + nz * c);
+    for (let k = 0; k < 3; k++) {
+      dst.alb.push(src.alb[v * 3 + k]!);
+      dst.em.push(src.em[v * 3 + k]!);
+      dst.k.push(src.k[v * 3 + k]!);
+    }
+    dst.uv.push(src.uv[v * 2]!, src.uv[v * 2 + 1]!);
+    dst.useAux.push(src.useAux[v]!);
+  }
+  for (const i of src.index) dst.index.push(i + base);
+}
+
+/**
+ * 巴士 / 小巴站牌（局部：+x 下游 = 车头停的一端，+z 朝路）：灰杆 3.0 m，牌面垂直于路缘（0.6 × 0.45 m，离地 2.3–2.75 m，
+ * 两面都印），下面一支实时资讯柱（暗色箱、背光屏）。小巴站牌（gmb）是 1.0 × 0.5 m（方牌 + 路线圆牌）。
+ */
+export function stopFlagTemplate(rect: AtlasRect | null, gmb: boolean, avg: V3): Template {
+  const b = new LifeBuilder();
+  const z = 0.55;
+  b.box([0, 0, z], [0.08, 3.0, 0.08], { alb: POLE }, { bottom: null });
+  // 牌面绕杆转 FLAG_TURN_RAD：迎着来车的一面略朝马路（对面街上看得到字，不是正侧面一条线）
+  const f = new LifeBuilder();
+  if (gmb) addAtlasSign(f, 0, 2.2, 2.7, z - 1.02, z - 0.02, rect, avg, 0.05);
+  else addAtlasSign(f, 0, 2.3, 2.75, z - 0.62, z - 0.02, rect, avg, 0.05);
+  appendRotated(b, f, FLAG_TURN_RAD, 0, z);
+  // 实时资讯柱
+  b.box([0.0, 0, z - 0.5], [0.16, 1.75, 0.32], { alb: [0.04, 0.045, 0.05] }, { bottom: null });
+  const tt: Face = { alb: [0.2, 0.2, 0.2], kind: K_LCD };
+  b.quad([0.081, 1.0, z - 0.36], [0.081, 1.0, z - 0.64], [0.081, 1.6, z - 0.64], [0.081, 1.6, z - 0.36], tt);
+  b.quad([-0.081, 1.0, z - 0.64], [-0.081, 1.0, z - 0.36], [-0.081, 1.6, z - 0.36], [-0.081, 1.6, z - 0.64], tt);
+  return b.template();
+}
+
+/**
+ * 电车站名牌（局部 = 站岛坐标：x 沿行驶方向、z 朝轨道）：站岛两端（xs 列出的位置）各一支杆 + 1.0 × 0.5 m 双面牌
+ * （深绿底白字 + 白框站号），背光 0.6。
+ */
+export function tramPlateTemplate(rect: AtlasRect | null, xs: readonly number[], zPost: number, base: number): Template {
+  const b = new LifeBuilder();
+  for (const x of xs) {
+    b.box([x, base, zPost], [0.08, 2.6, 0.08], { alb: POLE }, { bottom: null });
+    addAtlasSign(b, x, base + 1.95, base + 2.45, zPost + 0.04, zPost + 1.04, rect, linearRGB('#2b4f42'), 0.6);
+  }
+  return b.template();
+}
+
+/**
+ * 电车站岛灯箱广告墙（照片 13；局部 = 站岛坐标）：车道一侧整条 1.5 m 高的背光灯箱（离台面 0.25 m），
+ * 遮篷檐口一条 0.6 m 白色檐板（底边绿带，不发光），中间是透空的玻璃缝。两面各自画（字都正读），虚构广告见 life-material kind 12。
+ */
+export function islandAdTemplate(len: number, canopyLen: number, hw: number, base: number, canopyY: number, seed: number): Template {
+  const b = new LifeBuilder();
+  const z = -hw + 0.12;
+  const x0 = -len / 2;
+  const x1 = len / 2;
+  const em = 1.9;
+  const wall = (zz: number, sgn: number, sd: number, ya: number, yb: number, xa: number, xb: number) => {
+    const f: Face = { alb: [0.2, 0.2, 0.2], em: [em, em, em], kind: K_ADWALL, aux: sd };
+    const L = xb - xa;
+    const H = yb - ya;
+    // sgn = −1：朝 −z（车道）；从 −z 看，左→右 = −x
+    if (sgn < 0)
+      b.quad([xb, ya, zz], [xa, ya, zz], [xa, yb, zz], [xb, yb, zz], f, [
+        [0, 0],
+        [L, 0],
+        [L, H],
+        [0, H],
+      ]);
+    else
+      b.quad([xa, ya, zz], [xb, ya, zz], [xb, yb, zz], [xa, yb, zz], f, [
+        [0, 0],
+        [L, 0],
+        [L, H],
+        [0, H],
+      ]);
+  };
+  const steel = linearRGB('#6f7478');
+  // 灯箱墙：框（顶、底、两端）+ 两面灯片
+  b.box([0, base + 0.2, z], [len + 0.1, 0.05, 0.16], { alb: steel }, { bottom: null });
+  b.box([0, base + 1.75, z], [len + 0.1, 0.06, 0.16], { alb: steel }, { bottom: null });
+  for (const x of [x0 - 0.03, x1 + 0.03]) b.box([x, base, z], [0.06, 1.81, 0.16], { alb: steel }, { bottom: null });
+  wall(z - 0.07, -1, seed, base + 0.25, base + 1.75, x0, x1);
+  wall(z + 0.07, 1, (seed + 0.37) % 1, base + 0.25, base + 1.75, x0, x1);
+  // 檐口（车道一侧）。复审修正（R2 照片 10）：0.6 m 的白色檐板 + 底边一道绿色细带，不发光（原来是一条亮着的广告灯带，
+  // 比灯箱还抢眼）；夜里靠路灯与遮篷下的灯管照着
+  const zf = -hw - 0.12;
+  const xa = -canopyLen / 2;
+  const xb = canopyLen / 2;
+  const fasciaW: Face = { alb: linearRGB('#d9dbd8') };
+  const fasciaG: Face = { alb: linearRGB('#2f6b4a') };
+  b.quad([xb, canopyY + 0.12, zf], [xa, canopyY + 0.12, zf], [xa, canopyY + 0.6, zf], [xb, canopyY + 0.6, zf], fasciaW);
+  b.quad([xb, canopyY, zf], [xa, canopyY, zf], [xa, canopyY + 0.12, zf], [xb, canopyY + 0.12, zf], fasciaG);
   return b.template();
 }
 

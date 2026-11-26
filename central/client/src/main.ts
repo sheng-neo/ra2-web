@@ -23,6 +23,9 @@ import { Notice } from './ui/notice';
 import { PerfHud } from './ui/perf-hud';
 import { HAZE, SHARED, SIM_CLOCK, readParam } from './render/materials/lighting'; // [r2:trams] SIM_CLOCK
 import type { TramCarDebug } from './render/streets/trams'; // [r2:trams]
+import type { FacadeDebug } from './render/facades/streamer'; // [r3:facades]
+import type { VehicleDebug } from './render/streets/vehicles'; // [r3:liveries]
+import type { BoatDebug } from './render/boats'; // [r3:liveries]
 import { AdaptiveDpr, DowngradeWatch, adaptiveLadder } from './render/quality';
 import { AudioEngine, initialMute, readStoredMute, writeStoredMute } from './audio/engine'; // [r2:trams]
 
@@ -34,10 +37,20 @@ export interface CentralDebug {
   /** 任意机位（模拟坐标，米），立即生效。 */
   lookFrom(eye: [number, number, number], target: [number, number, number]): void;
   summary(): string;
+  /** 下一帧按物体名统计 draw call（调试，复审修正时加）。 */
+  drawCounts?(): Promise<Record<string, number>>;
   /** 电车（模拟坐标，米；heading 弧度自东逆时针）。 */
   trams?(): { t: number; cars: TramCarDebug[] }; // [r2:trams]
   /** 音频状态：AudioContext 是否已建（只在用户手势后）、状态、是否静音、已播铃声数。 */
   audio?(): { ready: boolean; state: string; muted: boolean; played: number }; // [r2:trams]
+  /** R3 真实贴面：视野要的贴面页都到了（远景图集 + 近景页）时兑现。 */
+  facadesIdle?(): Promise<void>; // [r3:facades]
+  /** R3 真实贴面的流式加载状态（页数、常驻、显存、待办、失败、已下载字节、本帧上传、让出次数、排除的楼数）。 */
+  facades?(): FacadeDebug | null; // [r3:facades]
+  /** 车辆（模拟坐标，米）：车型、营运商、路线、速度（R3 LIVERIES）。 */ // [r3:liveries]
+  vehicles?(): VehicleDebug[]; // [r3:liveries]
+  /** 船（模拟坐标，米）：是否在开、营运商、船名（R3 LIVERIES）。 */ // [r3:liveries]
+  boats?(): BoatDebug[]; // [r3:liveries]
 }
 
 declare global {
@@ -49,6 +62,8 @@ declare global {
 /** 生产构建下载 gzip 版（见 vite.config.ts），开发服务器直接给原文件。 */
 const DATA_SUFFIX = import.meta.env.PROD ? '.gz' : '';
 const CITY_URL = `city/central.json${DATA_SUFFIX}`;
+/** 贴面贴图（city/facades/*.webp）的文件名后缀：artifact 副本若不收 .webp，可把文件改名并只改这里。 */
+export const FACADE_SUFFIX = ''; // [r3:facades]
 const TERRAIN_URL = `city/terrain.bin${DATA_SUFFIX}`;
 /** WebGL 上下文丢失后等系统归还的时间；超时才请玩家重新整理。 */
 const CONTEXT_RESTORE_WAIT_MS = 5000;
@@ -139,10 +154,16 @@ async function main(app: HTMLElement, loading: LoadingScreen): Promise<void> {
     view.resize(w, h);
   };
   fitSize();
-  await view.build(city, ground, relief, async (label, fraction) => {
-    loading.progress(fraction, label);
-    await nextFrame();
-  });
+  await view.build(
+    city,
+    ground,
+    relief,
+    async (label, fraction) => {
+      loading.progress(fraction, label);
+      await nextFrame();
+    },
+    { base: 'city/', suffix: FACADE_SUFFIX }, // [r3:facades]
+  );
 
   const [x0, y0, x1, y1] = city.meta.bbox;
   const [ax, , az] = simToThreeVec(x0, y0, 0);
@@ -257,6 +278,7 @@ async function main(app: HTMLElement, loading: LoadingScreen): Promise<void> {
     }
     if (++frames === 2) {
       debug.ready = true;
+      view.facadesBegin(); // [r3:facades]
       loading.done();
     }
   });
@@ -265,8 +287,13 @@ async function main(app: HTMLElement, loading: LoadingScreen): Promise<void> {
   debug.setView = setView;
   debug.lookFrom = (eye, target) => rig.flyTo(viewFromEye(eye, target), 1e-3);
   debug.summary = () => view.layerSummary();
+  debug.drawCounts = () => view.drawCounts();
   debug.trams = () => ({ t: SIM_CLOCK.t, cars: view.trams?.debugCars(SIM_CLOCK.t) ?? [] }); // [r2:trams]
   debug.audio = () => ({ ready: audio.ready, state: audio.state, muted: audio.isMuted, played: audio.played }); // [r2:trams]
+  debug.facadesIdle = () => view.facadesIdle(); // [r3:facades]
+  debug.facades = () => view.facadesDebug(); // [r3:facades]
+  debug.vehicles = () => view.vehicles(); // [r3:liveries]
+  debug.boats = () => view.boatList(); // [r3:liveries]
 }
 
 /**

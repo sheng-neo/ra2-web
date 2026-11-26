@@ -6,8 +6,9 @@
  * - 建筑（及由建筑轮廓得出的地标摆放）：默认地政总署 Building（CSDI 条款），可整层换回 Overture；
  * - 地形：CEDD 2020 LiDAR DTM（CSDI 条款），单独写 terrain.bin。
  */
+import path from 'node:path';
 import { CITY_FORMAT, CITY_FORMAT_VERSION, type CityFile, type SourceRef } from '@central/data';
-import { EXTENT, LANDSD_DIR, MVP_RECT, ORIGIN, PIPELINE_VERSION, RAW_DIR } from './config';
+import { EXTENT, LANDSD_DIR, MVP_RECT, ORIGIN, OUT_DIR, PIPELINE_VERSION, RAW_DIR } from './config';
 import { groundOf } from './geo/ground';
 import { sha256Hex } from './geo/hash';
 import { LANDMARKS } from './overrides/landmarks';
@@ -17,6 +18,7 @@ import { overtureBuildingSource } from './sources/overture-buildings';
 import { REF_OSM, REF_OVERTURE } from './sources/refs';
 import { addBuildingParts, readModels, type PartsStats } from './stages/building-parts';
 import { buildBuildings } from './stages/buildings';
+import { FACADES_DIR, attachFacades, readFacadeDir, readFacades, verifyFacadeFiles, type FacadesStats } from './stages/facades';
 import { placeLandmarks } from './stages/landmarks';
 import { buildProps } from './stages/props';
 import { projectRectBounds, unproject } from './stages/project';
@@ -25,7 +27,7 @@ import { buildRoads } from './stages/roads';
 import { loadSnapshot } from './stages/snapshot';
 import { buildTerrain, type TerrainBuild } from './stages/terrain';
 import { readLandsdBuildings } from './stages/terrain-buildings';
-import { REF_CEDD_DTM, REF_LANDSD_3DVM } from './stages/terrain-refs';
+import { REF_CEDD_DTM, REF_LANDSD_3DVM, REF_LANDSD_3DVM_TEX } from './stages/terrain-refs';
 import { buildWater } from './stages/water';
 import { buildZones } from './stages/zones';
 
@@ -39,6 +41,8 @@ export interface BuildOptions {
   landsdDir?: string;
   /** 建筑图层来源，默认 'landsd'。 */
   buildings?: BuildingsFrom;
+  /** 贴面贴图目录（校验 sha256 用），默认 client/public/city/facades。 */
+  facadesDir?: string;
 }
 
 export interface CityBuild {
@@ -47,6 +51,8 @@ export interface CityBuild {
   terrain: TerrainBuild;
   /** LOD2 分层体块的统计（Overture 建筑层时为 null）。 */
   parts: PartsStats | null;
+  /** 真实贴面的统计（没有烘焙清单或 Overture 建筑层时为 null）。 */
+  facades: FacadesStats | null;
 }
 
 export async function buildCity(opts: BuildOptions = {}): Promise<CityBuild> {
@@ -69,11 +75,16 @@ export async function buildCity(opts: BuildOptions = {}): Promise<CityBuild> {
   const withParts = landsd
     ? addBuildingParts(built.buildings, placed.buildings, readModels(gov.files), { landmarks, sensitive: zones.sensitive })
     : null;
-  const buildings = withParts?.buildings ?? placed.buildings;
+  // R3 真实贴面：烘焙清单 + public/city/facades/ 的贴图（校验 sha256）→ Building.facade（几何指纹不符的楼不接）
+  const facadesDoc = landsd ? readFacades(gov.files) : null;
+  if (facadesDoc) verifyFacadeFiles(facadesDoc, readFacadeDir(opts.facadesDir ?? path.join(OUT_DIR, FACADES_DIR)));
+  const withFacades = facadesDoc ? attachFacades(withParts?.buildings ?? placed.buildings, facadesDoc, zones.sensitive) : null;
+  const buildings = withFacades?.buildings ?? withParts?.buildings ?? placed.buildings;
 
   const sources = new Map<string, SourceRef>([[REF_OSM.id, REF_OSM], [REF_OVERTURE.id, REF_OVERTURE]]);
   for (const ref of [...roads.refs, ...built.refs]) sources.set(ref.id, ref);
   if (withParts && withParts.stats.buildingsWithParts > 0) sources.set(REF_LANDSD_3DVM.id, REF_LANDSD_3DVM);
+  if (withFacades?.meta) sources.set(REF_LANDSD_3DVM_TEX.id, REF_LANDSD_3DVM_TEX);
   sources.set(REF_CEDD_DTM.id, REF_CEDD_DTM);
 
   const [lon, lat] = unproject(0, 0);
@@ -90,6 +101,7 @@ export async function buildCity(opts: BuildOptions = {}): Promise<CityBuild> {
         pipelineVersion: PIPELINE_VERSION,
         inputsDigest: sha256Hex(`overture ${snapshot.inputsDigest}\nlandsd ${gov.inputsDigest}`),
       },
+      ...(withFacades?.meta ? { facades: withFacades.meta } : {}),
     },
     buildings,
     roads: roads.roads,
@@ -99,5 +111,5 @@ export async function buildCity(opts: BuildOptions = {}): Promise<CityBuild> {
     props: buildProps(ovt.infrastructure, ovt.land, extent, zones.sensitive),
     landmarks,
   };
-  return { city, terrain, parts: withParts?.stats ?? null };
+  return { city, terrain, parts: withParts?.stats ?? null, facades: withFacades?.stats ?? null };
 }

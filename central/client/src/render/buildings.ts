@@ -12,12 +12,13 @@
  *   LOW 档只给最高的一批楼分层（三角形预算约 5k），其余照旧平顶。
  */
 import type { Camera, Object3D } from 'three';
-import type { Building, CityFile, FlatXY, SensitiveZone } from '@central/data';
+import type { Building, CityFile, FacadeMeta, FlatXY, SensitiveZone } from '@central/data';
 import type { HeightFn } from '../data/terrain';
 import { normalizeRing, pointInRing, ringCentroid } from '../geom/ring';
 import { crestPart, isPlantPart, lowTierPartBuildings, mainPart, peakPart, prepareParts, type PreparedPart } from './building-parts';
 import { groupByChunk, chunkOf, type ChunkCoord } from './chunks';
 import { extrudePrism, type WallSpanInfo } from './extrude';
+import { buildingPhoto, prismPhoto, recordPages, ringBounds, type BuildingPhoto } from './facades/layout';
 import { FEATURE, FacadeMode, facadeKey, hash01, newFacadeArrays, styleCode, type BldgAttr } from './facade';
 import { streetWarmth } from './materials/lighting';
 import { createNeonMaterial } from './materials/neon';
@@ -69,6 +70,8 @@ export interface PreparedBuilding {
 export interface PrepareOptions {
   /** 哪些楼按分层体块画（默认全部；LOW 档只挑一批，见 building-parts.lowTierPartBuildings）。 */
   useParts?: (b: Building) => boolean;
+  /** R3 真实贴面的贴图集（city.meta.facades）；省略时一律程序立面。 */
+  facades?: FacadeMeta;
 }
 
 /** 楼底、墙底、楼顶、分层体块与共面墙去重（cutsOf 的楼体序号见 PreparedBuilding.body / PreparedPart.body）。 */
@@ -152,6 +155,10 @@ export interface BuildingPlan {
   /** 是否有静态边缘 LED（tower-lights.ts 画）。 */
   edgeLed: boolean;
   bldg: BldgAttr;
+  /** R3 真实贴面（敏感区与没有照片的楼为 null）。 */
+  photo: BuildingPhoto | null;
+  /** 楼层线相位（米，楼底起算；照片检测到的真楼层，没有时 0）。 */
+  phase: number;
 }
 
 /** 每栋楼的类型、层高、冷暖与特征位（全部确定性）。 */
@@ -170,7 +177,13 @@ export function planBuildings(
     const rnd = hash01(p.b.id);
     const style = styleCode(p.b.style, mode, rnd);
     const heightM = (p.top - p.base) / 10;
-    const f2f = floorToFloor(typology, heightM, p.b.storeys);
+    const photo = sens ? null : buildingPhoto(p.b, opts.facades);
+    // 照片检测到的层高与程序层高（层数推出来的）相差 12 % 以内才用，连同相位（窗灯落在真楼层上）；否则只用程序层高
+    const fp = floorToFloor(typology, heightM, p.b.storeys);
+    const usePhotoFloors = !!photo?.f2f && Math.abs(photo.f2f / fp - 1) <= 0.12;
+    const f2f = usePhotoFloors ? photo!.f2f! : fp;
+    // 相位 > 0 也是着色器「检测到楼层」的标志（building.ts floorsKnown），所以至少 1 cm
+    const phase = usePhotoFloors ? Math.max(photo!.phase, 0.01) : 0;
     const groundM = p.low / 10;
     const tallM = p.top / 10 - groundM;
     const warmth = streetWarmth(p.cx / 10, p.cy / 10, groundM);
@@ -204,6 +217,8 @@ export function planBuildings(
       feature,
       edgeLed,
       bldg: [f2f, warmth, groundM, feature],
+      photo,
+      phase,
     };
   });
   return { plans, cutsOf };
@@ -214,6 +229,18 @@ export interface BuildingChunkOptions {
   onSpan?: (plan: BuildingPlan, span: WallSpanInfo) => void;
   /** 屋顶机房与水箱（默认 true）。 */
   rooftops?: boolean;
+  /** R3 真实贴面的贴图集（与 PrepareOptions.facades 相同）。 */
+  facades?: FacadeMeta;
+}
+
+/** 这栋楼的墙（任何一片）有照片。 */
+export function hasWallPhoto(pl: Pick<BuildingPlan, 'photo'>): boolean {
+  return !!pl.photo?.records.some((r) => r?.rings.some((ring) => ring.some((pc) => pc.page >= 0)));
+}
+
+/** 这栋楼的屋顶（任何一块）有照片。 */
+export function hasRoofPhoto(pl: Pick<BuildingPlan, 'photo'>): boolean {
+  return !!pl.photo?.records.some((r) => r && r.roof.page >= 0);
 }
 
 /** 屋顶机房的宿主：有分层体块时放在顶块上。 */
@@ -229,7 +256,11 @@ function extrudeParts(arrays: MeshArrays, pl: BuildingPlan, parts: readonly Prep
   const noCrown: BldgAttr = [pl.bldg[0], pl.bldg[1], pl.bldg[2], pl.bldg[3] & ~FEATURE.crownMask];
   for (const part of parts) {
     const plant = isPlantPart(part, crest);
+    const ph = pl.photo && opts.facades ? prismPhoto(pl.photo, opts.facades, part.index, part.top, ringBounds(part.ring.outer), null) : null;
     extrudePrism(arrays, {
+      wallPhoto: ph?.wall,
+      roofPhoto: ph?.roof,
+      phase: pl.phase,
       outer: part.ring.outer,
       holes: part.ring.holes,
       bottom: part.bottom,
@@ -258,7 +289,13 @@ export function chunksFromPlans(
       const { p } = pl;
       if (p.parts) extrudeParts(arrays, pl, p.parts, cutsOf, opts);
       else {
+        // 整栋平顶而记录按 parts 分块（LOW 档不分层的楼）：不用照片——只用底座那项要在底座顶切开墙面，
+        // 每面墙多两个三角形，LOW 档全城加起来约 2 万；LOW 只有 4 m/px 的远景图集，这些楼照旧画程序立面
+        const ph = pl.photo && opts.facades && !pl.photo.parted ? prismPhoto(pl.photo, opts.facades, null, p.top, ringBounds(p.ring.outer), null) : null;
         extrudePrism(arrays, {
+          wallPhoto: ph?.wall,
+          roofPhoto: ph?.roof,
+          phase: pl.phase,
           outer: p.ring.outer,
           holes: p.ring.holes,
           bottom: p.bottom,
@@ -271,6 +308,7 @@ export function chunksFromPlans(
           onSpan: opts.onSpan ? (s) => opts.onSpan!(pl, s) : undefined,
         });
       }
+      // 复审修正：照片屋顶上照样加程序机房 / 水箱（照片俯视图把机房压成一张平面，斜看没有体积）
       if (opts.rooftops !== false && !p.crowned) addRooftops(arrays, rooftopHost(pl));
     }
     out.set(key, { coord: g.coord, arrays });
@@ -302,6 +340,60 @@ export interface CityBuildings {
   plans: BuildingPlan[];
   /** 天台灯箱、LED 幕墙等亮面：LOW 档海面发光条的光源。 */
   emitters: Emitter[];
+  /** R3：每个贴图页覆盖的楼群外包盒（模拟坐标米，[minX, minY, minZ, maxX, maxY, maxZ] × 页数；没有楼用到的页全为 0）。 */
+  pageBoxes: Float32Array | null;
+  /** R3：(页号, 楼外包盒) 对，见 facadePageEntries。 */
+  pageEntries: { pageOf: Int32Array; boxes: Float32Array } | null;
+}
+
+/** 每个贴图页覆盖的楼群外包盒（模拟坐标米；流式加载按相机到盒的距离排先后）。 */
+export function facadePageBoxes(plans: readonly BuildingPlan[], pages: number): Float32Array {
+  const out = new Float32Array(pages * 6);
+  const seen = new Uint8Array(pages);
+  for (const pl of plans) {
+    if (!pl.photo) continue;
+    const used = new Set<number>();
+    for (const rec of pl.photo.records) if (rec) for (const pg of recordPages(rec)) used.add(pg);
+    if (used.size === 0) continue;
+    const bb = ringBounds(pl.p.ring.outer);
+    let top = pl.p.top;
+    for (const part of pl.p.parts ?? []) top = Math.max(top, part.top);
+    const box = [bb.minX / 10, bb.minY / 10, pl.p.bottom / 10, bb.maxX / 10, bb.maxY / 10, top / 10];
+    for (const pg of used) {
+      if (pg >= pages) continue;
+      const o = pg * 6;
+      if (!seen[pg]) {
+        out.set(box, o);
+        seen[pg] = 1;
+        continue;
+      }
+      for (let k = 0; k < 3; k++) {
+        out[o + k] = Math.min(out[o + k]!, box[k]!);
+        out[o + 3 + k] = Math.max(out[o + 3 + k]!, box[3 + k]!);
+      }
+    }
+  }
+  return out;
+}
+
+/** 每栋有照片的楼在它用到的每页上各一项 (页号, 楼外包盒)：流式加载按「页上最近一栋楼」排先后（budget.pageNearest）。 */
+export function facadePageEntries(plans: readonly BuildingPlan[], pages: number): { pageOf: Int32Array; boxes: Float32Array } {
+  const pageOf: number[] = [];
+  const boxes: number[] = [];
+  for (const pl of plans) {
+    if (!pl.photo) continue;
+    const used = new Set<number>();
+    for (const rec of pl.photo.records) if (rec) for (const pg of recordPages(rec)) if (pg < pages) used.add(pg);
+    if (used.size === 0) continue;
+    const bb = ringBounds(pl.p.ring.outer);
+    let top = pl.p.top;
+    for (const part of pl.p.parts ?? []) top = Math.max(top, part.top);
+    for (const pg of [...used].sort((a, b) => a - b)) {
+      pageOf.push(pg);
+      boxes.push(bb.minX / 10, bb.minY / 10, pl.p.bottom / 10, bb.maxX / 10, bb.maxY / 10, top / 10);
+    }
+  }
+  return { pageOf: Int32Array.from(pageOf), boxes: Float32Array.from(boxes) };
 }
 
 /** 以北 700 m 内是否有维港海面（10 m 栅格；要 3 个以上水样本，排除喷水池、小水塘）。 */
@@ -345,8 +437,10 @@ export function frontageOf(pl: BuildingPlan, s: WallSpanInfo): FrontageSpan | nu
  */
 export function buildCityBuildings(city: CityFile, ground: HeightFn, tier: 'high' | 'low' = 'high'): CityBuildings {
   const lowParts = tier === 'low' ? lowTierPartBuildings(city.buildings) : null;
+  const facades = city.meta.facades;
   const { plans, cutsOf } = planBuildings(city.buildings, ground, city.zones.sensitive, {
     useParts: lowParts ? (b) => lowParts.has(b.id) : undefined,
+    facades,
   });
   const quads: SignQuad[] = [];
   const acs: AcUnit[] = [];
@@ -354,11 +448,13 @@ export function buildCityBuildings(city: CityFile, ground: HeightFn, tier: 'high
   const roads = new RoadIndex(city.roads);
   const chunks = chunksFromPlans(plans, cutsOf, {
     rooftops: tier === 'high',
+    facades,
     onSpan: (pl, s) => {
       const f = frontageOf(pl, s);
       if (!f || !facesStreet(f, roads)) return;
       quads.push(...placeSigns(f, cells, tier === 'high'));
-      // 窗口冷气机（R2 修复轮 S9）：HIGH 档、住宅 / 唐楼临街面
+      // 窗口冷气机（R2 修复轮 S9）：HIGH 档、住宅 / 唐楼临街面。复审修正：照片 4 px/m 看不出冷气机，
+      // 照片墙也照样加（hasShopfront 已限住宅 / 唐楼临街面；冷气机是独立几何，不依赖程序窗格）
       if (tier === 'high') acs.push(...planAcUnits(f));
     },
   });
@@ -374,5 +470,7 @@ export function buildCityBuildings(city: CityFile, ground: HeightFn, tier: 'high
   objects.push(...towers.objects);
   const ac = buildAcUnits(acs);
   if (ac) objects.push(ac.mesh);
-  return { chunks, objects, plans, emitters: towers.emitters, update: (camera) => ac?.update(camera) };
+  const pageBoxes = facades ? facadePageBoxes(plans, facades.pages.length) : null;
+  const pageEntries = facades ? facadePageEntries(plans, facades.pages.length) : null;
+  return { chunks, objects, plans, emitters: towers.emitters, pageBoxes, pageEntries, update: (camera) => ac?.update(camera) };
 }

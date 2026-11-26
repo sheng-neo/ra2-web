@@ -2,13 +2,14 @@
  * 地形材质（realism C7，契约：线性 HDR、applyHaze、GLSL_FINISH）。
  * - 未建成的坡地 = 树冠：近黑橄榄（反照率 ~0.05，#0e0e0a–#14130e），2–8 m 成团的明暗、沟谷更暗；
  *   只受 cityAmbient 的天光（≈ 0.003 亮度），与 ATMOSPHERE 的山脊树冠同一反照率与光照，接缝处亮度一致。
- * - 建成区平地 = 深色混凝土 / 铺地（反照率 ~0.08–0.12）。
+ * - 建成区平地 = 深色混凝土 / 铺地（反照率 ~0.08–0.12）；平坦的广场、行人区（R3）= 灰花岗岩板，海旁 = 红褐陶土砖（与路面材质同一套铺地）。
  * - 路灯照到的范围（遮罩 R）加街面反光：树冠近路的边缘透出暖光（参考照 05），广场被路灯照亮。
  * - 遮罩 A（水面）且高度 < 0.6 m：不画（海边的地形格子伸进水里的部分交给水面）。
  * 山上零星的住宅灯点由 streets 层的 GlowBatch 画（有最小像素尺寸，远处不闪）。
  */
 import { ShaderMaterial, type Texture } from 'three';
 import { GLSL_HASH } from './common';
+import { GLSL_PAVING, GLSL_WATERFRONT, POOL_LED_HEX } from './road';
 import { GLSL_CITY_LIGHT, GLSL_FINISH, GLSL_HAZE, GLSL_SHARED_PARS, lightColour, sharedUniforms } from './lighting';
 
 /** 树冠反照率（线性，= sRGB #0e0e0a 附近；与 ATMOSPHERE 的山脊同值）。 */
@@ -30,6 +31,8 @@ ${GLSL_SHARED_PARS}
 ${GLSL_HASH}
 ${GLSL_HAZE}
 ${GLSL_CITY_LIGHT}
+${GLSL_WATERFRONT}
+${GLSL_PAVING}
 uniform sampler2D uMask;
 uniform vec4 uMaskRect; // 模拟坐标（米）：minX, minY, sizeX, sizeY
 uniform vec3 uCanopy;
@@ -67,16 +70,13 @@ void main() {
   float open = smoothstep(0.97, 0.995, n.y) * (1.0 - canopy) * (1.0 - smoothstep(12.0, 25.0, vWorld.y));
   float flatK = smoothstep(0.97, 0.995, n.y) * (1.0 - canopy) * max(smoothstep(0.1, 0.5, max(built, lit)), open);
   if (flatK > 0.0) {
-    vec2 g = sim / 0.6;
-    vec2 aaT = fwidth(g);
-    float nearT = 1.0 - smoothstep(0.25, 0.6, max(aaT.x, aaT.y));
-    vec2 t = abs(fract(g) - 0.5);
-    float grout = max(smoothstep(0.44 - aaT.x, 0.46 + aaT.x, t.x), smoothstep(0.44 - aaT.y, 0.46 + aaT.y, t.y)) * nearT;
-    float tone = mix(0.5, hash12(floor(g)), nearT);
+    // R3 STATIONS：广场 / 行人区与人行道同一套铺地——核心区冷灰花岗岩板（不再是暖棕），海旁与码头前地红褐陶土砖；
+    // 码头前地另有 4.8 m 一道的深色拼花带（照片 19：灰米色砌块间酱紫色带，这里用陶土砖深浅两色）
+    float wf = waterfront(sim);
+    vec3 paved = pavingAlbedo(sim, px, 37.0, wf);
     vec2 band = floor(sim / 4.8);
-    float alt = mod(band.x + band.y, 2.0);
-    vec3 granite = mix(vec3(0.15, 0.14, 0.125), vec3(0.11, 0.105, 0.1), alt) * (0.88 + 0.24 * tone) * (1.0 - 0.35 * grout);
-    albedo = mix(albedo, granite, flatK);
+    paved *= 1.0 - 0.12 * mod(band.x + band.y, 2.0) * wf;
+    albedo = mix(albedo, paved * 0.85, flatK);
   }
   // 城区里的陡坡 = 灰色批荡护坡（chunam）：浅灰水泥面、2 m 一格的疏水孔、雨水渍；近路或建成区才有
   float chunamK = smoothstep(0.985, 0.9, n.y) * max(built, smoothstep(0.2, 0.5, lit));
@@ -94,7 +94,8 @@ void main() {
   float warm = m.b;
   vec3 amb = cityAmbient(n, mix(0.0, 200.0, canopy), warm) * mix(0.5, 1.0, canopy);
   // 路灯：遮罩 R 的平方作为照度权重；树冠只在面向路的边缘接到光（法线越朝上越少）
-  vec3 lampC = mix(uLed * 2.3, uSodium * 1.9, warm);
+  // R3：核心区平地（广场、海旁）按白光 LED 照（与路面同一光斑色），半山 / 上环才偏钠灯
+  vec3 lampC = mix(uLed * 2.3, uSodium * 1.9, smoothstep(0.45, 0.8, warm));
   float lampE = lit * lit * mix(0.45 * mix(1.0, 0.35, chunamK), 0.8 * (0.5 + 0.5 * (1.0 - n.y)), canopy);
   // 平地的灯光不是一条均匀的光带：按约 15 m 的团块起伏（灯下亮、两灯之间暗，约 3:1；鸟瞰时一个个光斑）
   lampE *= mix(0.35 + 1.1 * vnoise(sim * 0.07 + 1.3), 1.0, canopy);
@@ -114,7 +115,7 @@ export function createTerrainMaterial(mask: Texture, rect: [number, number, numb
       uMask: { value: mask },
       uMaskRect: { value: rect },
       uCanopy: { value: lightColour(CANOPY_ALBEDO).multiplyScalar(0.05) },
-      uLed: { value: lightColour('ledWhite') },
+      uLed: { value: lightColour(POOL_LED_HEX) },
       uSodium: { value: lightColour('sodium') },
     },
     vertexShader,

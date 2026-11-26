@@ -24,8 +24,9 @@ export const STRIDE_M = 1.37;
 /** 衣着色板（sRGB）。 */
 export const PALETTE = {
   dark: ['#141012', '#1b1b20', '#22232a', '#2a2a30', '#181c26', '#120d0d'],
-  mid: ['#5a5650', '#685749', '#4a4d52', '#6e6a62', '#3d4450', '#7a7266'],
-  light: ['#dbc8a0', '#e8e6e0', '#b9c8da', '#d8d4cc'],
+  // 复审修正：多一些写字楼的蓝（衬衫、西装）、白恤衫与米色
+  mid: ['#5a5650', '#685749', '#4a4d52', '#6e6a62', '#3d4450', '#7a7266', '#3f5f8f', '#5b7aa6', '#8a7a5c'],
+  light: ['#dbc8a0', '#e8e6e0', '#b9c8da', '#d8d4cc', '#f0efe9', '#cdb894', '#c4d4e8'],
   accent: ['#8a2430', '#2f5c8a', '#a8742a', '#3e6b4a'],
   skin: ['#c99c7a', '#b5876a', '#9e7058', '#d8b090'],
   hair: ['#0e0c0b', '#1a1512', '#2a2420', '#5a5550'],
@@ -35,8 +36,8 @@ export type Tone = 'dark' | 'mid' | 'light' | 'accent';
 
 /** 上衣色调的比例（累计阈值）。 */
 const TOP_SHARE: [Tone, number][] = [
-  ['dark', 0.5],
-  ['mid', 0.8],
+  ['dark', 0.47],
+  ['mid', 0.78],
   ['light', 0.96],
   ['accent', 1],
 ];

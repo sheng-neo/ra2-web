@@ -38,10 +38,11 @@ describe('PropBuilder', () => {
     expect(linearRGB('#808080')[0]).toBeCloseTo(0.2158, 3);
   });
 
-  it('车辆三角形数在预算内（私家车 40–80、巴士 ≤ 150、电车 ≤ 160）', () => {
+  // 复审修正：车轮改成十边形轮胎 + 六边形轮毂（每轮 14 个三角形），私家车预算由 80 放到 100
+  it('车辆三角形数在预算内（私家车 40–100、巴士 ≤ 150、电车 ≤ 160）', () => {
     const car = carGeometry().index!.count / 3;
     expect(car).toBeGreaterThanOrEqual(40);
-    expect(car).toBeLessThanOrEqual(80);
+    expect(car).toBeLessThanOrEqual(100);
     expect(busGeometry().index!.count / 3).toBeLessThanOrEqual(150);
     expect(tramGeometry({ lod: 1 }).index!.count / 3).toBeLessThanOrEqual(160); // [r2:trams] 远处一级（近处一级见 tram/tram.test.ts）
   });
