@@ -142,8 +142,8 @@ describe('巴士车队（L-B1–L-B4）', () => {
     expect(Math.abs(ads / N - BUS_AD_SHARE)).toBeLessThan(0.04);
   });
 
-  it('开场停站的巴士挂该站真实停靠的路线（长江集团中心站，站名在数据里已换成虚构地标名「方鏡大廈」：6 / 6X / 681）', () => {
-    const ck = BUS_STOPS.find((s) => s.en === 'Mirror Block')!;
+  it('开场停站的巴士挂该站真实停靠的路线（長江集團中心站：6 / 6X / 681）', () => {
+    const ck = BUS_STOPS.find((s) => s.en === 'Cheung Kong Center')!;
     expect(nearestBusStop(ck.x + 3, ck.y - 4)).toBe(ck);
     for (let i = 0; i < 200; i++) {
       const b = busLook(i, { op: ck.op, routes: ck.routes });

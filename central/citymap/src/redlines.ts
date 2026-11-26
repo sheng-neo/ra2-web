@@ -7,6 +7,9 @@
  */
 const ENCODED = ['R1RB', 'R3JhbmQgVGhlZnQ='];
 
+/** 游戏系列名（ENCODED 解码后）。负责人 D2 放开的交通真名不包括它们：站名、目的地里也不得出现。 */
+export const SERIES_NAMES: readonly string[] = ENCODED.map((s) => Buffer.from(s, 'base64').toString('utf8'));
+
 export const BLACKLIST: readonly string[] = [
   // 地标原型
   'HSBC', '匯豐', '滙豐', 'Bank of China', '中銀', '中國銀行',
@@ -23,7 +26,7 @@ export const BLACKLIST: readonly string[] = [
   'Admiralty Centre', '海富中心', 'Far East Finance', '遠東金融',
   // 以企业/商场命名的街道也一并去名（街道本身保留）
   'Hopewell', '合和', 'Pacific Place', '太古',
-  ...ENCODED.map((s) => Buffer.from(s, 'base64').toString('utf8')),
+  ...SERIES_NAMES,
 ];
 
 const LOWER = BLACKLIST.map((w) => w.toLowerCase());

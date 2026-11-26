@@ -10,7 +10,7 @@
 | `landsd-3dvm-parts.json.gz` | 3D Visualisation Map (Non-textured models) 可視化三維地圖（無紋理模型），只存屋面派生的分层轮廓（R2 新增，见第 7 节） | 地政总署（LandsD）测绘处 | `landsd_rcd_1742809441342_98380` |
 
 条款原文检索日期：**2026-11-24**（由 M0 地形 agent 在云会话里抓取；页面 HTML 的 sha256 记在下表，便于日后对比是否改版）。
-以下引文逐字照录英文原文，没有改动。**这不是法律意见**；商业化前请香港律师复核，并由项目负责人本人打开下列网址核对一次。
+以下引文逐字照录英文原文，没有改动。**这不是法律意见**。本项目只作非商业的学习 / 研究（负责人 2026-11-26，D3，见 PLAN §1「品牌」行）：公开发布前由项目负责人本人打开下列网址核对一次；只有将来改为商业用途，才需请香港律师复核。
 
 | 条款 | 网址 | 版本 | 抓取 HTML sha256 |
 |---|---|---|---|
@@ -100,11 +100,11 @@
   - 不要给这些数据另加许可证（例如不能把它们声明为 ODbL 或 CC-BY 发布），只能写“依 CSDI 条款使用”；
   - **与 ODbL 数据分层**：地形单独放在 `terrain.bin`；若 M2 决定用 LandsD 建筑，就**整层**替换 Overture 建筑，不逐栋混合，避免港府数据成为 ODbL 衍生数据库的一部分（与 PLAN §3.5 一致）；
   - 不暗示政府认可或合作（第 4 节署名里已写明）。
-- **建筑图层的处理超出「复制」**（上线前法律核对的重点）：地形只做了重采样、单位换算和异常值修补；
+- **建筑图层的处理超出「复制」**（条款核对的重点）：地形只做了重采样、单位换算和异常值修补；
   但 LandsD 建筑除换算外，还按 0.3 m 简化轮廓、删掉 < 4 m² 碎片和有盖构筑物、为缺高程的块估算高度，
   并把 7 个块换成风格化地标。这些已不只是 “reproduce”，属于条款没有明文授予的 “modify / adapt”。
   署名里已逐项写明处理方式（`citymap/src/stages/terrain-refs.ts`），但是否需要另行取得许可，
-  由项目负责人在上线前亲自核对条款或咨询律师后决定。
+  由项目负责人在公开发布前亲自核对条款后决定（只有将来改为商业用途才需咨询律师，D3）。
 - **快照处理**：本目录不含楼名、行人通道别名等名称字段（`landsd_fetch.py` 只取几何、ID、高程和类别），以免带入真实企业名（PLAN §1 红线）。
 
 ## 6. 未能核对的条款
@@ -183,7 +183,7 @@ Disclaimer of the platform”，即第 1 节的 CSDI 条款）→ 每幅 1:1000 
   （与 PLAN §1「不放任何 logo」的红线冲突），上线前由负责人决定；本轮不放。
 - **处理方式超出「复制」**：只留屋面派生的分层轮廓（每栋楼按 0.25 m 栅格求最高屋面 → 聚层 → 轮廓 0.25 m 简化；管线再合层、
   套合 2D 轮廓、0.5 m 简化（曲线轮廓逐次放大到最多 4 m；简化后自交的环改用 1 m / 0.5 m 简化或原像素边界环）），不存网格、贴图、名称。与第 5 节建筑图层同样属于条款没有明文授予的 “modify / adapt”，
-  署名里如实写明（`REF_LANDSD_3DVM`，`citymap/src/stages/terrain-refs.ts`），上线前法律核对的范围一并包括它。
+  署名里如实写明（`REF_LANDSD_3DVM`，`citymap/src/stages/terrain-refs.ts`），条款核对（将来改为商业用途时的法律复核）的范围一并包括它。
 - **第 4 节署名的 3D 版本**（原样使用；写进 `meta.sources` 与 ATTRIBUTION.txt）：
 
 > Contains 3D building data from the Lands Department, HKSAR Government (3D Visualisation Map, Non-textured models), obtained from the 3D Visualisation Map website (3d.map.gov.hk) through the Common Spatial Data Infrastructure (CSDI) Portal (portal.csdi.gov.hk). Intellectual property rights in the data are owned by the Government of the Hong Kong Special Administrative Region. The data have been processed (roof surfaces of the 3D models converted to simplified stacked outlines and fitted to the 2D building footprints; no meshes or textures kept) for this game; the Government is not responsible for, and does not endorse, this game.
@@ -231,7 +231,7 @@ PLAN §1 不用」一句由此作废：`fetch/landsd_3d_tex_bake.py` 下载的�
   条件是署名（政府 + 本网站）与声明知识产权。条款没有禁止，所以继续。
 - **处理方式**：不分发模型、网格、原始贴图或 zip。`landsd_3d_tex_bake.py` 把每栋楼的照片按我们自己的简化墙面 / 屋面重新投影、
   按 4 px/m（墙）/ 3 px/m（屋顶）重新取样、去掉白天日照（低频亮度归一）、分出玻璃 / 实墙 / 独立窗（alpha 码），打包成
-  `client/public/city/facades/*.webp`（文件名带内容哈希）。这同样属于条款没有明文授予的 “modify / adapt”，署名如实写明，上线前法律核对的范围一并包括。
+  `client/public/city/facades/*.webp`（文件名带内容哈希）。这同样属于条款没有明文授予的 “modify / adapt”，署名如实写明，条款核对（将来改为商业用途时的法律复核）的范围一并包括它。
 - **不贴照片的楼**：敏感区（军事 / 政府）里的楼与模型（模型本身也不当作邻楼的贴图来源）、地标替换掉的楼（`landmarks[].replaces`，本来就不在楼表里）、
   照片里有脚手架 / 绿网 / 工地围板的楼（自动检测 + 人工复查，清单的 `excluded.scaffold`）。
 - **合理使用**：后台线程一幅一幅顺序下载（同一时刻一条连接、幅间停 3 s），断线按 HTTP Range 续传，不重复下载已缓存的幅。

@@ -1,7 +1,19 @@
+import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { blacklistHit } from '../../../../citymap/src/redlines';
+import { blacklistHit, SERIES_NAMES } from '../../../../citymap/src/redlines';
 import type { SensitiveZone } from '@central/data';
-import { BUS_STOPS, ROUTES, TRAM_STOPS } from '../streets/transit-data';
+import {
+  BUS_STOPS,
+  JOINT_ROUTES,
+  PIER_POINTS,
+  PIER_SERVICES,
+  RED_MINIBUS_PLACES,
+  ROUTES,
+  STAR_FERRY_NAMES,
+  TRAM_DESTINATIONS,
+  TRAM_STOPS,
+} from '../streets/transit-data';
 import { STOP_ANCHORS } from '../streets/tram/stops';
 import { crossingCode } from '../ribbon';
 import { AD_WORDS, FIXED_SIZES, ShelfPacker, StationsAtlas } from './atlas';
@@ -23,27 +35,73 @@ import {
 
 describe('站名查找', () => {
   it('巴士站：15 m 内最近的站名，合并同名站的路线；远处没有', () => {
-    const s = BUS_STOPS.find((b) => b.zh === '方鏡大廈')!;
+    const s = BUS_STOPS.find((b) => b.zh === '長江集團中心')!;
     expect(s).toBeTruthy();
     const info = busStopInfoNear(s.x + 3, s.y - 2)!;
-    expect(info.zh).toBe('方鏡大廈');
-    expect(info.en).toBe('Mirror Block');
+    expect(info.zh).toBe('長江集團中心');
+    expect(info.en).toBe('Cheung Kong Center');
     for (const r of s.routes) expect(info.routes).toContain(r);
     expect(busStopInfoNear(5000, 5000)).toBeNull();
   });
 
-  it('站牌：以地标原型楼命名的站是虚构地标名，以企业 / 楼宇 / 敏感地点命名的站换成街名（复审修正）', () => {
-    const ck = BUS_STOPS.find((b) => b.zh === '方鏡大廈')!;
-    expect(flagSpec(busStopInfoNear(ck.x, ck.y))).toMatchObject({ zh: '方鏡大廈', en: 'Mirror Block' });
-    expect(stopDisplayName('上亞厘畢道', 'Upper Albert Road')).toEqual({ zh: '上亞厘畢道', en: 'Upper Albert Road' });
-    // 复审修正（红线）：数据里任何一个站名、路线目的地都不命中红线词表（真实企业 / 楼宇名），也不写敏感地点名
-    const sens = /禮賓府|Government House|政府總部|Central Government Offices|律政中心|Justice Place|立法會|Legislative Council|終審法院|Court of Final Appeal/i;
+  it('站牌：真实站名照登，不做替换（负责人拍板 D2，2026-11-26：以楼宇 / 企业 / 政府地点命名的站与目的地也用数据原名）', () => {
+    // 交易廣場的站：站牌上是「中環（交易廣場）/ Central (Exchange Square)」
+    const ex = BUS_STOPS.filter((b) => b.en === 'Central (Exchange Square)');
+    expect(ex.length).toBe(17);
+    for (const b of ex) expect(flagSpec(busStopInfoNear(b.x, b.y))).toMatchObject({ zh: '中環（交易廣場）', en: 'Central (Exchange Square)' });
+    // 以政府地点命名的站也照登
+    expect(flagSpec(busStopInfoNear(159.1, -450.6))).toMatchObject({ zh: '香港禮賓府', en: 'Government House' });
+    expect(BUS_STOPS.some((b) => b.zh === '律政中心' && b.en === 'Justice Place')).toBe(true);
+    for (const [zh, en] of [
+      ['置地廣場', 'The Landmark'],
+      ['滙豐總行大廈', 'HSBC Main Building'],
+      ['怡和大廈', 'Jardine House'],
+      ['長江集團中心', 'Cheung Kong Center'],
+    ])
+      expect(BUS_STOPS.some((b) => b.zh === zh && b.en === en), `${zh} ${en}`).toBe(true);
+    // 站牌上的站名与数据逐个相同（stopDisplayName 是恒等映射）
+    expect(stopDisplayName('置地廣場', 'The Landmark')).toEqual({ zh: '置地廣場', en: 'The Landmark' });
     for (const b of BUS_STOPS) {
       const f = flagSpec(b);
-      expect(blacklistHit(f.zh) ?? blacklistHit(f.en) ?? null, `${f.zh} ${f.en}`).toBeNull();
-      expect(sens.test(f.zh) || sens.test(f.en)).toBe(false);
+      expect([f.zh, f.en]).toEqual([b.zh, b.en]);
     }
-    for (const r of ROUTES) for (const d of [r.a, r.b, r.via]) if (d) expect(blacklistHit(d.zh) ?? blacklistHit(d.en) ?? null).toBeNull();
+    // 路线目的地也是数据原名：城巴 6 / 70 / 260 与绿色小巴 1 往「中環(交易廣場)」
+    for (const [op, route] of [
+      ['citybus', '6'],
+      ['citybus', '70'],
+      ['citybus', '260'],
+      ['gmb', '1'],
+    ] as const)
+      expect(ROUTES.find((r) => r.op === op && r.route === route)!.b, `${op} ${route}`).toEqual({ zh: '中環(交易廣場)', en: 'Central (Exchange Square)' });
+    // 放开的只是交通文字：红线词表本身不变（central.json 的楼宇 / 地标名仍按它处理）
+    expect(blacklistHit('中環（交易廣場）')).toBe('交易廣場');
+  });
+
+  it('站名数据整体钉住（D2）：数据行与导演规格附录 A 逐字节相同，真名一个都没被换掉', () => {
+    // 文件头注释（第一个 */ 之前）可以改；之后的数据行按 sha256 钉住，值取自附录 A 原件
+    const src = readFileSync(new URL('../streets/transit-data.ts', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+    const data = src.slice(src.indexOf('*/') + 2);
+    expect(createHash('sha256').update(data).digest('hex')).toBe('ceb655dadd61879db593cce72c2d7f9347552389a5d8aa3eeb4dd2958dd2e786');
+    // 可读的计数（哈希变了时帮着看是哪类站名被换了）：389 个站里 69 个以真实企业 / 楼宇命名、5 个以政府地点命名，4 条路线往交易廣場
+    const sens = /禮賓府|Government House|政府總部|Central Government Offices|律政中心|Justice Place|立法會|Legislative Council|終審法院|Court of Final Appeal/i;
+    expect(BUS_STOPS.length).toBe(389);
+    expect(BUS_STOPS.filter((b) => blacklistHit(b.zh) ?? blacklistHit(b.en)).length).toBe(69);
+    expect(BUS_STOPS.filter((b) => sens.test(b.zh) || sens.test(b.en)).length).toBe(5);
+    expect(ROUTES.filter((r) => [r.a, r.b, r.via].some((d) => d && (blacklistHit(d.zh) ?? blacklistHit(d.en)))).length).toBe(4);
+  });
+
+  it('D2 不放开游戏系列名：交通数据的任何文字（站名、目的地、电车、码头、船名）都不含它们（不分大小写）', () => {
+    expect(SERIES_NAMES.length).toBeGreaterThan(0);
+    for (const g of SERIES_NAMES) expect(blacklistHit(g)).toBe(g);
+    const texts: string[] = [];
+    const walk = (v: unknown): void => {
+      if (typeof v === 'string') texts.push(v);
+      else if (v && typeof v === 'object') for (const x of Object.values(v)) walk(x);
+    };
+    walk([BUS_STOPS, ROUTES, TRAM_STOPS, TRAM_DESTINATIONS, RED_MINIBUS_PLACES, PIER_POINTS, PIER_SERVICES, STAR_FERRY_NAMES, JOINT_ROUTES]);
+    expect(texts.length).toBeGreaterThan(3000);
+    const lower = SERIES_NAMES.map((g) => g.toLowerCase());
+    expect(texts.filter((t) => lower.some((g) => t.toLowerCase().includes(g)))).toEqual([]);
   });
 
   it('站牌：路线排序、最多 8 条、款式按营运商', () => {

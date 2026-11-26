@@ -163,10 +163,11 @@ function attributionText(city: CityFile): string {
           `  (Individualised models) via 3d.map.gov.hk and the CSDI Portal (${CSDI_LICENSE}; not part of the ODbL database).`,
         ]
       : []),
-    // 复审修正：客户端代码里的公共交通站点（client/src/render/streets/transit-data.ts）也是 ODbL 数据
+    // 复审修正：客户端代码里的公共交通站点（client/src/render/streets/transit-data.ts）也是 ODbL 数据；
+    // 站名原样照登（负责人拍板 D2，2026-11-26，真实站名放开）
     '* Bus / minibus / tram stop positions, stop names and route numbers compiled into the client (client/src/render/streets/transit-data.ts): ' +
-      'OpenStreetMap data (© OpenStreetMap contributors, ODbL-1.0) distributed by Overture Maps Foundation; stop names that name ' +
-      'companies, buildings or government sites replaced by street names or fictional landmark names.',
+      'OpenStreetMap data (© OpenStreetMap contributors, ODbL-1.0) distributed by Overture Maps Foundation; stop names are ' +
+      'kept as in the data.',
     `* ${TERRAIN_FILE} (ground elevation): Civil Engineering and Development Department 2020 LiDAR DTM via the ` +
       `CSDI Portal (${CSDI_LICENSE}; not part of the ODbL database).`,
     '',

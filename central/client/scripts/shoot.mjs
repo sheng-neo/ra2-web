@@ -16,6 +16,9 @@
  *
  * R3 复审修正后另加三项：
  * - 红线词扫描：构建产物的 JS 里不得出现 citymap/src/redlines.ts 的词（真实企业 / 楼宇名、某游戏系列名）；
+ *   唯一的豁免是 src/render/streets/transit-data.ts 字符串字面量里的楼宇 / 企业 / 政府地点名（真实站名、路线目的地，
+ *   负责人拍板 D2，2026-11-26）：扫描前把产物里逐字相同的这些字面量（连引号）换成 ""，每个值最多换掉它在 transit-data.ts
+ *   里出现的次数，多出来的（别处用了同一个字符串）算失败；游戏系列名不豁免；其余位置出现红线词照样失败（见 scanDist）；
  * - 贴面 404：city/facades/ 一律回 404 时最多 1 条 console error（熔断：远景图集失败就不再请求近景页），facadesIdle 照样兑现；
  * - 窗口变大：手机 874×402 @2 开场后把窗口拉到 1280×720，DPR 按档位上限重新封顶，显存账本 ≤ 160 MB（拉大后是桌面级窗口）。
  *
@@ -106,34 +109,106 @@ const RUNS = [
 const waitFrames = (page, n) =>
   page.evaluate(`new Promise((r) => { let k = ${n}; const f = () => (--k <= 0 ? r() : requestAnimationFrame(f)); requestAnimationFrame(f); })`);
 
-/** citymap/src/redlines.ts 的红线词（明文词条 + base64 词条），按文本解析（不引 TS）。 */
+/**
+ * citymap/src/redlines.ts 的红线词，按文本解析（不引 TS）：plain 是明文词条（真实企业 / 楼宇名），
+ * series 是 base64 词条（某游戏系列名，D2 不放开）。
+ */
 function redlineWords() {
   const src = fs.readFileSync(path.join(root, '../citymap/src/redlines.ts'), 'utf8');
-  const enc = [...(src.match(/const ENCODED = \[([^\]]*)\]/)?.[1] ?? '').matchAll(/'([^']+)'/g)].map((m) => Buffer.from(m[1], 'base64').toString('utf8'));
+  const series = [...(src.match(/const ENCODED = \[([^\]]*)\]/)?.[1] ?? '').matchAll(/'([^']+)'/g)].map((m) => Buffer.from(m[1], 'base64').toString('utf8'));
   const body = src.split('export const BLACKLIST')[1]?.split('];')[0] ?? '';
   const plain = [...body.matchAll(/'([^']+)'|"([^"]+)"/g)].map((m) => m[1] ?? m[2]);
-  return [...plain, ...enc];
+  return { plain, series };
+}
+
+/**
+ * transit-data.ts 里的全部字符串字面量（站名、目的地、电车站 / 码头 / 船名……）：值 → 在文件里出现的次数。按文本逐字扫描：
+ * 跳过 // 与 /* *\/ 注释（文件头注释里写着真名），只收 '…'、"…"、`…`（这个文件没有 ${} 插值）。
+ */
+function transitLiterals() {
+  const src = fs.readFileSync(path.join(root, 'src/render/streets/transit-data.ts'), 'utf8');
+  const out = new Map();
+  const esc = { n: '\n', r: '\r', t: '\t', b: '\b', f: '\f', v: '\v', 0: '\0' };
+  for (let i = 0; i < src.length; ) {
+    const c = src[i];
+    if (c === '/' && src[i + 1] === '/') i = src.indexOf('\n', i) < 0 ? src.length : src.indexOf('\n', i);
+    else if (c === '/' && src[i + 1] === '*') i = src.indexOf('*/', i + 2) < 0 ? src.length : src.indexOf('*/', i + 2) + 2;
+    else if (c === "'" || c === '"' || c === '`') {
+      let v = '';
+      for (i++; i < src.length && src[i] !== c; i++) {
+        if (src[i] !== '\\') v += src[i];
+        else if (src[i + 1] === 'u') {
+          const m = /^u(?:\{([0-9a-fA-F]+)\}|([0-9a-fA-F]{4}))/.exec(src.slice(i + 1));
+          v += String.fromCodePoint(parseInt(m[1] ?? m[2], 16));
+          i += m[0].length;
+        } else v += esc[src[++i]] ?? src[i];
+      }
+      i++;
+      out.set(v, (out.get(v) ?? 0) + 1);
+    } else i++;
+  }
+  return out;
+}
+
+/** 压缩产物里一个字符串值可能的写法（esbuild 按转义最少挑引号）。 */
+function quotedForms(v) {
+  const b = v.replace(/\\/g, '\\\\').replace(/\n/g, '\\n');
+  return [`"${b.replace(/"/g, '\\"')}"`, `'${b.replace(/'/g, "\\'")}'`, `\`${b.replace(/`/g, '\\`').replace(/\$\{/g, '\\${')}\``];
+}
+
+/** 把 \uXXXX、\u{…}、\xXX 写成的非 ASCII 字符还原（esbuild 用 charset: ascii 时中文是这样写的；ASCII 的转义保持不动）。 */
+function unescapeNonAscii(js) {
+  return js.replace(/(?<!\\)((?:\\\\)*)\\(?:u\{([0-9a-fA-F]+)\}|u([0-9a-fA-F]{4})|x([0-9a-fA-F]{2}))/g, (all, pre, a, b, c) => {
+    const cp = parseInt(a ?? b ?? c, 16);
+    return cp >= 0x80 ? pre + String.fromCodePoint(cp) : all;
+  });
 }
 
 /**
  * 构建产物里命中红线词的 JS 片段（最多 10 条）。按词表原样的大小写匹配（不像数据检查那样不分大小写）：
  * 压缩后的 three.js 着色器代码里有 vClipPosition 之类的标识符，不分大小写会把「Lippo」误报出来。
+ * 负责人拍板 D2（2026-11-26，真实站名放开）：transit-data.ts 字符串字面量里的楼宇 / 企业 / 政府地点名（真实站名、目的地）豁免——
+ * 扫描前先把产物里与这些字面量逐字相同的整段字符串（连引号）换成 ""，再扫；同样的词出现在其他任何地方照样报。
+ * 豁免按出处而不只按值：每个值在产物里（所有 chunk 合计）最多换掉它在 transit-data.ts 里出现的次数（打包不合并相同的字符串，
+ * tree-shaking 只会减少），多出来的说明别处（HUD、地标名、长字符串里带引号的一段……）用了同一个字符串，算失败。
+ * 含游戏系列名（不分大小写）的字面量不豁免（D2 只放开楼宇 / 企业 / 政府地点名），照样扫出来。
+ * 只需剔除本身含红线词的字面量（换掉不含红线词的字面量不会改变扫描结果）；换成 "" 而不是删掉，前后文不会拼出新词。
+ * transit-data 里本来就有含红线词的字面量（如「中環（交易廣場）」），一条都没在产物里认出来说明写法变了，也算失败。
  */
 function scanDist(dist) {
-  const words = redlineWords();
+  const { plain, series } = redlineWords();
+  const words = [...plain, ...series];
+  const counts = transitLiterals();
+  const exempt = [...counts.keys()]
+    .filter((v) => plain.some((w) => v.includes(w)) && !series.some((g) => v.toLowerCase().includes(g.toLowerCase())))
+    .sort((a, b) => b.length - a.length);
   const hits = [];
+  const used = new Map();
   const dir = path.join(dist, 'assets');
   for (const f of fs.existsSync(dir) ? fs.readdirSync(dir).filter((x) => x.endsWith('.js')) : []) {
-    const js = fs.readFileSync(path.join(dir, f), 'utf8');
+    let js = unescapeNonAscii(fs.readFileSync(path.join(dir, f), 'utf8'));
+    for (const v of exempt)
+      for (const q of quotedForms(v)) {
+        const parts = js.split(q);
+        if (parts.length < 2) continue;
+        used.set(v, (used.get(v) ?? 0) + parts.length - 1);
+        js = parts.join('""');
+      }
     for (const w of words) if (js.includes(w)) hits.push(`${f}: ${w}`);
   }
-  return hits.slice(0, 10);
+  const extra = [...used].filter(([v, n]) => n > counts.get(v)).map(([v, n]) => `「${v}」在產物裡 ×${n}，多於 transit-data 裡的 ×${counts.get(v)}（多出的不是站名數據）`);
+  hits.unshift(...extra);
+  const stripped = [...used.values()].reduce((a, n) => a + n, 0);
+  if (exempt.length && !stripped) hits.unshift(`transit-data 的 ${exempt.length} 条含红线词的字面量一条也没在产物里认出来（写法变了？）`);
+  return { hits: hits.slice(0, 10), stripped, found: used.size, exempt: exempt.length };
 }
 
 async function run() {
   fs.mkdirSync(outDir, { recursive: true });
   if (!args.includes('--no-build')) await build({ root, logLevel: 'warn' });
-  const redHits = scanDist(path.join(root, 'dist'));
+  const red = scanDist(path.join(root, 'dist'));
+  const redHits = red.hits;
+  console.log(`紅線詞掃描：transit-data 含紅線詞的字面量 ${red.exempt} 種，產物裡認出 ${red.found} 種、剔除 ${red.stripped} 處；其餘命中 ${redHits.length} 條`);
   const server = await serveLikeProduction(path.join(root, 'dist'));
   const origin = `http://127.0.0.1:${server.address().port}`;
   const base = `${origin}${MOUNT}/`;

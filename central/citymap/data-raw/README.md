@@ -53,6 +53,8 @@
 - `excluded`：敏感区里的楼、照片里有脚手架 / 绿网 / 工地围板的楼（自动检测 + 人工复查）；`stats`：模型数、三角形、投影像素、页数等。
 
 `pnpm citymap` 只读清单、校验每个页文件的 sha256 与字节数、把引用接到楼上（`src/stages/facades.ts`），不碰图像、不需要 Python。
+这些 WebP 存在 Git LFS 里（`.gitattributes`；负责人 2026-11-26，D4）：克隆前 `git lfs install`，或克隆后补跑 `git lfs install && git lfs pull`；
+否则文件只是约 130 字节的指针，这里的 sha256 校验会失败（见 `central/README.md`「怎么跑」）。
 
 ## 哪些文件 M0 用到了
 

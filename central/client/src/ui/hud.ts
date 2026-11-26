@@ -81,7 +81,7 @@ function creditsPanel(meta: CityMeta, close: () => void): HTMLElement {
     h(
       'p',
       { class: 'note' },
-      '電車、巴士、小巴、的士、渡輪及港鐵的名稱、塗裝與標誌屬各營運商所有，僅用以重現街景，各營運商與本作沒有關聯，亦不代表其認可；車身廣告均為虛構。',
+      '電車、巴士、小巴、的士、渡輪及港鐵的名稱、塗裝與標誌屬各營運商所有，站名與目的地按數據照錄，僅用以重現街景；各營運商及站名提及的建築、機構與本作沒有關聯，亦不代表其認可；車身廣告均為虛構。本作只作非商業的學習與研究用途。',
     ),
     h('p', { class: 'note' }, `數據版本：${meta.build.pipelineVersion} · ${meta.build.inputsDigest.slice(0, 12)}`),
   );

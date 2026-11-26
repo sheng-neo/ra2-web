@@ -35,7 +35,7 @@ Which layer comes from which source (one source per layer, never mixed feature b
   (Non-textured models) via 3d.map.gov.hk and the CSDI Portal (CSDI-Terms; not part of the ODbL database).
 * facades/*.webp (facade and roof photo textures of 2816 buildings): Lands Department 3D Visualisation Map
   (Individualised models) via 3d.map.gov.hk and the CSDI Portal (CSDI-Terms; not part of the ODbL database).
-* Bus / minibus / tram stop positions, stop names and route numbers compiled into the client (client/src/render/streets/transit-data.ts): OpenStreetMap data (© OpenStreetMap contributors, ODbL-1.0) distributed by Overture Maps Foundation; stop names that name companies, buildings or government sites replaced by street names or fictional landmark names.
+* Bus / minibus / tram stop positions, stop names and route numbers compiled into the client (client/src/render/streets/transit-data.ts): OpenStreetMap data (© OpenStreetMap contributors, ODbL-1.0) distributed by Overture Maps Foundation; stop names are kept as in the data.
 * terrain.bin (ground elevation): Civil Engineering and Development Department 2020 LiDAR DTM via the CSDI Portal (CSDI-Terms; not part of the ODbL database).
 
 Changes made: features re-projected to HK1980 Grid (EPSG:2326) in local decimetres; footprints simplified

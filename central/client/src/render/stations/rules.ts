@@ -68,9 +68,9 @@ export function flagKind(info: Pick<BusStopInfo, 'op' | 'routes'> | null): FlagK
 }
 
 /**
- * 站名（复审修正）：红线词表（citymap/src/redlines.ts：真实企业 / 楼宇名）与敏感地点名不进产物的任何字符串，
- * 所以在数据源（transit-data.ts）里就已换好——六座地标原型楼命名的站用游戏里的虚构地标名（与 citymap/src/overrides/landmarks.ts 一致），
- * 其余以楼 / 敏感地点命名的站用最近的街名。这里不再保留真名的对照表（原来的正则把真名带进了打包后的 JS）。
+ * 站名：原样用数据里的真实站名（负责人拍板 D2，2026-11-26「真实站名放开」）——以楼宇 / 企业 / 政府地点命名的站
+ * （交易廣場、置地廣場、滙豐總行大廈、香港禮賓府、律政中心……）也照登，不做任何替换，所以这里是恒等映射。
+ * 放开的只是交通文字（站名、目的地）；central.json 里的楼宇 / 地标名照旧按 citymap/src/redlines.ts 处理。
  */
 export function stopDisplayName(zh: string, en: string): { zh: string; en: string } {
   return { zh, en };
