@@ -1,3 +1,5 @@
 # 生成的地图数据须逐字节一致（pnpm citymap --check），禁止换行符转换
 central/client/public/city/** -text
 central/citymap/data-raw/** -text
+# R3 起：楼宇照片贴面（每次重新生成都会整体换页）放 Git LFS，不进普通 git 历史。克隆前先 `git lfs install`。
+central/client/public/city/facades/*.webp filter=lfs diff=lfs merge=lfs -text

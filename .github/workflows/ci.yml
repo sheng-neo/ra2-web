@@ -11,6 +11,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # 楼宇照片贴面（central/client/public/city/facades/*.webp）在 Git LFS 里；
+      # citymap --check 要逐页核对 sha256。按 LFS 对象清单缓存 .git/lfs，省 LFS 流量。
+      - name: List LFS objects
+        run: git lfs ls-files -l | cut -d ' ' -f1 | sort > .lfs-assets-id
+
+      - name: Restore LFS cache
+        uses: actions/cache@v4
+        with:
+          path: .git/lfs
+          key: lfs-${{ hashFiles('.lfs-assets-id') }}
+
+      - name: Fetch LFS files
+        run: git lfs pull
+
       - name: Setup pnpm
         uses: pnpm/action-setup@v4 # 版本读取 package.json 的 packageManager 字段
 
