@@ -35,7 +35,7 @@ async function main(argv: readonly string[]): Promise<number> {
   if (buildings !== 'landsd' && buildings !== 'overture') throw new Error(`--buildings 只能是 landsd 或 overture`);
   const outDir = path.resolve(option(argv, 'out') ?? OUT_DIR);
   const t0 = performance.now();
-  const { city, terrain } = await buildCity({ buildings: buildings satisfies BuildingsFrom });
+  const { city, terrain, parts } = await buildCity({ buildings: buildings satisfies BuildingsFrom });
   const files = packOutputs(city, terrain.grid);
 
   if (debugArg) {
@@ -59,7 +59,10 @@ async function main(argv: readonly string[]): Promise<number> {
   console.log(
     `wrote ${outDir}: buildings ${city.buildings.length} (${buildings}), roads ${city.roads.length}, ` +
       `rails ${city.rails.length}, water ${city.water.length}, sensitive ${city.zones.sensitive.length}, ` +
-      `landmarks ${city.landmarks.length}; ${CITY_FILE} ${files.get(CITY_FILE)!.byteLength} B, ` +
+      `landmarks ${city.landmarks.length}; ` +
+      (parts ? `3D models ${parts.models} (matched ${parts.matched}, to landmarks ${parts.toLandmarks}) → ` +
+        `${parts.buildingsWithParts} buildings with ${parts.parts} parts; ` : '') +
+      `${CITY_FILE} ${files.get(CITY_FILE)!.byteLength} B, ` +
       `${TERRAIN_FILE} ${r.nx}×${r.ny} @ ${r.cell / 10} m ${files.get(TERRAIN_FILE)!.byteLength} B; ` +
       `${Math.round(performance.now() - t0)} ms`,
   );

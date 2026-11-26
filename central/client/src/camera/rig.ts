@@ -50,6 +50,13 @@ export class OrbitRig {
   private goal: View;
   private tween: { from: View; to: View; t: number; duration: number } | null = null;
   private readonly position = new Vector3();
+  /** 跟随机位（R2 搭電車）：每帧给出眼点与注视点（three 坐标）；任何拖动、缩放、换机位都会退出。 */
+  private follow: ((eye: Vector3, target: Vector3) => boolean) | null = null;
+  private readonly fOff = new Vector3();
+  /** 退出跟随时通知（HUD 复位按钮）。 */
+  onFollowEnd: (() => void) | null = null;
+  private readonly fEye = new Vector3();
+  private readonly fTarget = new Vector3();
 
   constructor(
     initial: View,
@@ -62,10 +69,30 @@ export class OrbitRig {
 
   /** 平滑飞到某视图。 */
   flyTo(v: View, duration = 1.6): void {
+    this.endFollow();
     this.tween = { from: cloneView(this.current), to: cloneView(v), t: 0, duration };
   }
 
+  /** 进入跟随机位（fn 返回 false 时本帧保持原状态）。 */
+  setFollow(fn: ((eye: Vector3, target: Vector3) => boolean) | null): void {
+    this.tween = null;
+    this.follow = fn;
+    if (!fn) this.goal = cloneView(this.current);
+  }
+
+  get following(): boolean {
+    return this.follow !== null;
+  }
+
+  private endFollow(): void {
+    if (!this.follow) return;
+    this.follow = null;
+    this.goal = cloneView(this.current);
+    this.onFollowEnd?.();
+  }
+
   private interrupt(): void {
+    this.endFollow();
     if (!this.tween) return;
     this.tween = null;
     this.goal = cloneView(this.current);
@@ -131,6 +158,23 @@ export class OrbitRig {
   /** 把当前状态写进相机（含贴地限制与近裁剪面）。 */
   apply(camera: PerspectiveCamera): void {
     const c = this.current;
+    // 跟随的对象没了（例如搭的电车快到路线终点）：结束跟随，从当前机位接着转
+    if (this.follow && !this.follow(this.fEye, this.fTarget)) this.endFollow();
+    if (this.follow) {
+      // 跟随：相机直接放在眼点；同时把轨道状态同步过去（退出跟随时从这里接着转）
+      const off = this.fOff.copy(this.fEye).sub(this.fTarget);
+      c.target.copy(this.fTarget);
+      c.distance = off.length();
+      c.yaw = Math.atan2(off.x, off.z);
+      c.pitch = Math.asin(MathUtils.clamp(off.y / c.distance, -1, 1));
+      camera.position.copy(this.fEye);
+      camera.lookAt(this.fTarget);
+      if (Math.abs(camera.near - 0.3) > 0.05) {
+        camera.near = 0.3;
+        camera.updateProjectionMatrix();
+      }
+      return;
+    }
     const cp = Math.cos(c.pitch);
     this.position.set(Math.sin(c.yaw) * cp, Math.sin(c.pitch), Math.cos(c.yaw) * cp).multiplyScalar(c.distance).add(c.target);
     const [sx, sy] = threeToSim(this.position.x, 0, this.position.z);

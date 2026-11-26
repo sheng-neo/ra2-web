@@ -5,7 +5,7 @@
  * 灯杆立在最近道路的路缘外 0.6 m 的人行道上（高度 = 该路水平路面 centreZ），只在相机 300 m 内画（HIGH）。
  */
 import type { FlatXY } from '@central/data';
-import { simToThree } from '../../coords';
+import { simToThree, simToThreeVec } from '../../coords';
 import type { HeightFn } from '../../data/terrain';
 import { lightColour, type GlowBatch } from '../materials/lighting';
 import { centreZ, projectOnto, type RoadPlan } from '../roads';
@@ -35,6 +35,38 @@ export interface SignalHead {
 export function signalState(c: number): 0 | 1 | 2 {
   const f = ((c % 1) + 1) % 1;
   return f < GREEN_END ? 0 : f < AMBER_END ? 1 : 2;
+}
+
+/**
+ * 行人灯（R2 STREETLIFE S3）：横过道路 R 的过路处，在 R 的车辆信号周期里——
+ * 绿色行人 [PED_GREEN, PED_FLASH)（R 已是红灯）、绿色闪烁 [PED_FLASH, PED_RED)（2 Hz）、其余红色行人。
+ * c：R 的车辆信号周期相位（t / SIGNAL_CYCLE_S + R 的相位）。返回 0 绿、1 闪、2 红（纯函数）。
+ */
+export const PED_GREEN = 0.52;
+export const PED_FLASH = 0.84;
+export const PED_RED = 0.92;
+/**
+ * 车辆不得驶入过路处的时段（周期相位）：行人绿灯前 12 s 起，到行人闪灯结束。
+ * 行人只在 [PED_GREEN, PED_FLASH) 内踏上车行道，提前封闭让已经驶入的车有时间开出去。
+ */
+export const PED_BLOCK_START = 0.32;
+export const PED_FLASH_HZ = 2;
+
+export function pedSignalState(c: number): 0 | 1 | 2 {
+  const f = ((c % 1) + 1) % 1;
+  return f >= PED_GREEN && f < PED_FLASH ? 0 : f >= PED_FLASH && f < PED_RED ? 1 : 2;
+}
+
+/** 时刻 t（s）、路相位 roadPhase 下的周期相位（0–1）。 */
+export function pedCycle(t: number, roadPhase: number): number {
+  const c = t / SIGNAL_CYCLE_S + roadPhase;
+  return c - Math.floor(c);
+}
+
+/** 车辆此刻是否不得驶入该过路处（纯函数）。 */
+export function crossingClosed(t: number, roadPhase: number): boolean {
+  const f = pedCycle(t, roadPhase);
+  return f >= PED_BLOCK_START && f < PED_RED;
 }
 
 /**
@@ -130,6 +162,25 @@ export function signalPoles(heads: readonly SignalHead[], radiusM: number): Near
 /** 方向（three xz）对应的信号相位：沿东西向 0、沿南北向 0.5（与 signalHeads 的 axis 一致）。 */
 export function axisPhase(dx: number, dz: number): number {
   return Math.abs(dx) >= Math.abs(dz) ? 0 : 0.5;
+}
+
+/**
+ * 过路处所在道路的车辆信号相位（纯函数）：离 (x, y)（模拟米）reachM 内最近一支灯杆的路口相位 + 道路方向（模拟 tx, ty）的相位；
+ * 附近没有灯返回 NaN（无信号的斑马线）。与 laneSignalPhases 同一套相位，所以行人绿灯时这条路的车正好是红灯。
+ */
+export function crossingPhase(heads: readonly SignalHead[], x: number, y: number, tx: number, ty: number, reachM = 45): number {
+  let best = reachM;
+  let out = NaN;
+  const v = simToThreeVec(x, y, 0, 1);
+  const d3 = simToThreeVec(tx, ty, 0, 1);
+  for (const h of heads) {
+    const d = Math.hypot(h.base[0] - v[0], h.base[2] - v[2]);
+    if (d < best) {
+      best = d;
+      out = (h.junction + axisPhase(d3[0], d3[2])) % 1;
+    }
+  }
+  return out;
 }
 
 /**

@@ -252,3 +252,58 @@ function convexHull(r: readonly number[]): number[] {
   }
   return [...lower.slice(0, -1), ...upper.slice(0, -1)].flat();
 }
+
+/** 两线段是否有公共点（含端点接触、共线重叠）。 */
+function segmentsTouch(ax: number, ay: number, bx: number, by: number, cx: number, cy: number, dx: number, dy: number): boolean {
+  const o = (px: number, py: number, qx: number, qy: number, rx: number, ry: number): number => Math.sign((qx - px) * (ry - py) - (qy - py) * (rx - px));
+  const on = (px: number, py: number, qx: number, qy: number, rx: number, ry: number): boolean =>
+    Math.min(px, qx) <= rx && rx <= Math.max(px, qx) && Math.min(py, qy) <= ry && ry <= Math.max(py, qy);
+  const o1 = o(ax, ay, bx, by, cx, cy);
+  const o2 = o(ax, ay, bx, by, dx, dy);
+  const o3 = o(cx, cy, dx, dy, ax, ay);
+  const o4 = o(cx, cy, dx, dy, bx, by);
+  if (o1 * o2 < 0 && o3 * o4 < 0) return true;
+  if (o1 === 0 && on(ax, ay, bx, by, cx, cy)) return true;
+  if (o2 === 0 && on(ax, ay, bx, by, dx, dy)) return true;
+  if (o3 === 0 && on(cx, cy, dx, dy, ax, ay)) return true;
+  if (o4 === 0 && on(cx, cy, dx, dy, bx, by)) return true;
+  return false;
+}
+
+/**
+ * 环是不是简单多边形（R2 修复轮：LoD2 分层环在客户端用 earcut 三角化，自交 / 重复点会让屋顶三角形重叠或盖出墙外）：
+ * 至少 3 个点、没有重复点、不相邻的边没有任何公共点。O(n²)，环不长。
+ */
+export function ringSimple(r: readonly number[]): boolean {
+  const n = r.length >> 1;
+  if (n < 3) return false;
+  const seen = new Set<string>();
+  for (let i = 0; i < n; i++) {
+    const k = `${r[i * 2]},${r[i * 2 + 1]}`;
+    if (seen.has(k)) return false;
+    seen.add(k);
+  }
+  for (let i = 0; i < n; i++) {
+    const i1 = (i + 1) % n;
+    for (let j = i + 1; j < n; j++) {
+      const j1 = (j + 1) % n;
+      if (j === i1 || j1 === i) continue; // 相邻边
+      if (segmentsTouch(r[i * 2]!, r[i * 2 + 1]!, r[i1 * 2]!, r[i1 * 2 + 1]!, r[j * 2]!, r[j * 2 + 1]!, r[j1 * 2]!, r[j1 * 2 + 1]!)) return false;
+    }
+  }
+  return true;
+}
+
+/** 两个环的边有没有任何公共点。 */
+export function ringsTouch(a: readonly number[], b: readonly number[]): boolean {
+  const na = a.length >> 1;
+  const nb = b.length >> 1;
+  for (let i = 0; i < na; i++) {
+    const i1 = (i + 1) % na;
+    for (let j = 0; j < nb; j++) {
+      const j1 = (j + 1) % nb;
+      if (segmentsTouch(a[i * 2]!, a[i * 2 + 1]!, a[i1 * 2]!, a[i1 * 2 + 1]!, b[j * 2]!, b[j * 2 + 1]!, b[j1 * 2]!, b[j1 * 2 + 1]!)) return true;
+    }
+  }
+  return false;
+}

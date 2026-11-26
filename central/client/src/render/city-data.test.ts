@@ -30,8 +30,13 @@ interface Quad {
 function wallQuads(withCuts: boolean): Quad[] {
   const { items, cutsOf } = prepareBuildings(city.buildings, ground);
   const out: Quad[] = [];
-  items.forEach((p, body) =>
-    p.rings.forEach((r, ring) => {
+  // 每栋楼的墙体：没有分层时一块，有分层体块（LOD2）时逐块；body 记楼的序号（同一栋楼的块之间高程不重叠）
+  const walls = items.flatMap((p, body) =>
+    (p.parts ?? [{ body: p.body, rings: p.rings, bottom: p.bottom, top: p.top }]).map((w) => ({ ...w, building: body })),
+  );
+  walls.forEach(({ body: wallBody, building: body, rings, bottom, top }) =>
+    rings.forEach((r, ring) => {
+      const p = { bottom, top };
       const n = r.length >> 1;
       for (let i = 0; i < n; i++) {
         const j = (i + 1) % n;
@@ -41,7 +46,7 @@ function wallQuads(withCuts: boolean): Quad[] {
         if (len < 1e-6) continue;
         const ux = (r[j * 2]! - x0) / len;
         const uy = (r[j * 2 + 1]! - y0) / len;
-        const cuts = withCuts ? cutsOf(body, ring, i) : undefined;
+        const cuts = withCuts ? cutsOf(wallBody, ring, i) : undefined;
         const spans = cuts ? visibleSpans(len, p.bottom, p.top, cuts) : [{ s0: 0, s1: len, z0: p.bottom, z1: p.top }];
         for (const s of spans) out.push({ body, x0: x0 + ux * s.s0, y0: y0 + uy * s.s0, ux, uy, s0: 0, s1: s.s1 - s.s0, z0: s.z0, z1: s.z1 });
       }

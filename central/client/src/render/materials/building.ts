@@ -393,7 +393,7 @@ void shopfront(float u, float lift, int key, int typ, float shopTop, vec3 amb, v
   // 货品（整合时加）：0.4–2.3 m 之间按 0.7 m 一列的低饱和色块，各列明暗不同；远处退成平均（均值 ≈ 1，不改总亮度）
   float fu = float(unit);
   vec3 merch = 0.55 + 0.9 * vec3(hash12(vec2(col7, 3.1 + fu)), hash12(vec2(col7, 5.7 + fu)), hash12(vec2(col7, 8.3 + fu)));
-  merch = mix(vec3(1.0), merch, 0.55 * detS * fband(lift, wl, 0.4, 2.3));
+  merch = mix(vec3(1.0), merch, 0.25 * detS * fband(lift, wl, 0.4, 2.3));
   vec3 inner = kind == 1 ? mix(uTube, uOfficeN, 0.5) * (0.45 + 0.5 * smoothstep(0.5, shopTop - 0.6, lift)) : shopC * B * grad * merch;
   // 近处：视线进入 7 m 深的铺内：天花筒灯阵、后墙货架（逐格略有色差）、亮地面
 #ifdef ROOM_MAPPING
@@ -411,18 +411,19 @@ void shopfront(float u, float lift, int key, int typ, float shopTop, vec3 amb, v
     float sh = hash12(vec2(shelfCol, float(unit) + 0.5));
     // 后墙货架：0.3–0.6 m 的货品块，饱和色（红、黄、绿、蓝、白……）各块明暗不同，块与块之间暗缝；
     // 不再是整排横条纹（照片 16、10：铺内五颜六色、塞得满满）
-    vec2 pc = vec2(rr.x / (0.3 + 0.3 * sh), rr.y / 0.3);
+    // R2 修复轮：货品块加大（0.7–1.1 m 宽、一层 0.45 m 高），三四层货架之间暗缝更宽，颜色淡一些——近看是货架，不是彩色纸屑
+    vec2 pc = vec2(rr.x / (0.7 + 0.4 * sh), rr.y / 0.6);
     vec2 pid = floor(pc);
     float ph = hash12(pid + vec2(float(unit) * 1.3, 7.1));
     vec3 prod = ph < 0.2 ? vec3(1.0, 0.35, 0.3) : ph < 0.38 ? vec3(1.0, 0.85, 0.35) : ph < 0.52 ? vec3(0.4, 0.9, 0.5)
               : ph < 0.64 ? vec3(0.45, 0.6, 1.0) : ph < 0.8 ? vec3(1.0, 0.95, 0.9) : vec3(0.9, 0.55, 0.85);
     vec2 pf = abs(fract(pc) - 0.5);
-    float gap = smoothstep(0.38, 0.47, max(pf.x * 1.1, pf.y));
+    float gap = smoothstep(0.36, 0.45, max(pf.x * 0.9, pf.y * 1.15));
     // 货架层板：每 0.6 m 一道暗横线（货品块之间）；货品只在 0.3–2.2 m 之间
-    float shelfLine = fpulse(rr.y / 0.6, wb / 0.6, 0.02, 0.06);
-    float stocked = step(0.3, rr.y) * step(rr.y, 2.2) * step(0.25, hash12(pid + 9.9));
+    float shelfLine = fpulse(rr.y / 0.6, wb / 0.6, 0.02, 0.12);
+    float stocked = step(0.3, rr.y) * step(rr.y, 2.2) * step(0.35, hash12(pid + 9.9));
     float Lb = kind == 1 ? 0.45 : (0.5 + 0.4 * hash12(pid + 3.3) * stocked) * (1.0 - 0.6 * gap * stocked) * (1.0 - 0.5 * shelfLine);
-    vec3 tintB = kind == 1 ? vec3(1.0) : mix(vec3(1.0), prod, 0.45 * stocked);
+    vec3 tintB = kind == 1 ? vec3(1.0) : mix(vec3(1.0), prod, 0.3 * stocked);
     float Lf = 0.32;
     // 铺内站着的人 / 人台：每间 0–2 个暗剪影（后墙上 0.45 m 宽、1.7 m 高，头部收窄）
     float sil = 0.0;
@@ -516,9 +517,11 @@ void main() {
   vec3 emit = vec3(0.0);
 
   if (roof) {
-    // 屋顶：深色混凝土 + 低频斑驳（≤ 0.015，必须暗于亮着的路面）
+    // 屋顶（R2 修复轮）：深灰混凝土 + 低频斑驳，再加一点夜空雾光（天光托底），从上面看退台、机房的轮廓分得出；
+    // 仍比亮着的立面暗
     float k = vnoise(vWorld.xz * 0.35) * 0.6 + vnoise(vWorld.xz * 0.05) * 0.4;
-    surf = vec3(0.085, 0.083, 0.08) * (0.75 + 0.5 * k) * amb;
+    vec3 conc = vec3(0.18, 0.176, 0.17) * (0.75 + 0.5 * k);
+    surf = conc * amb + conc * uHazeColor * 0.6;
   } else {
     float fres;
     vec3 refl = glassRefl(n, V, warmth, fres);
@@ -542,13 +545,23 @@ void main() {
     } else if (m == 8 && !parapet) {
       podiumUpper(u, lift, v, key, feat, amb, refl, fres, tint, surf, emit);
     } else if (m == 10) {
-      // 屋顶机房 / 水箱 / 楼梯间：深色，横向百叶；30 % 的住宅楼梯间有一扇暖光小窗
+      // 屋顶机房 / 水箱 / 楼梯间（R2 修复轮）：中灰（0.2），横向百叶，顶边一道受光的压顶；
+      // 约三成机房门口有一盏暖色壁灯（门上方小灯 + 门洞一片暖光），从高处看得到屋顶上的一点点灯
       float wv = fwidth(v);
       float wu = fwidth(u);
       float louv = fpulse(v / 0.6, wv / 0.6, 0.5, 0.15);
-      surf = vec3(0.09, 0.088, 0.085) * tint * amb * (1.0 - 0.25 * louv);
-      float lw = fpulse(u / 7.0, wu / 7.0, 0.5, 0.06) * fband(v, wv, 1.0, 2.0);
-      emit = uHomeW * 0.35 * lw * step(hash3(key, 90, 0), 0.3);
+      vec3 pl = vec3(0.2, 0.196, 0.19) * tint;
+      float capP = fband(v, wv, h - 0.12, h);
+      surf = pl * amb * (1.0 - 0.25 * louv) * (1.0 + 0.9 * capP) + pl * uHazeColor * 0.3;
+      float cell = floor(u / 7.0);
+      float du = u - (cell + 0.5) * 7.0;
+      bool lit = hash3(key, int(cell) + OFS, 90) < 0.3 && h > 2.4;
+      if (lit) {
+        float door = fband(du, wu, -0.45, 0.45) * fband(v, wv, 0.0, 2.0);
+        float lamp = fband(du, wu, -0.14, 0.14) * fband(v, wv, 2.12, 2.3);
+        surf = mix(surf, vec3(0.02), door);
+        emit = uHomeW * (2.4 * lamp + 0.18 * door * (0.4 + 0.6 * smoothstep(0.0, 2.0, v)));
+      }
     } else if (parapet) {
       // 女儿墙：素墙 + 顶部压顶线
       vec3 alb = m == 6 || m == 7 ? wallPalette(int(hash3(key, 44, 0) * 6.0), m == 7) * tint : vec3(0.075, 0.075, 0.08) * tint;

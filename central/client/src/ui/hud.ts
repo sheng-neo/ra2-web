@@ -15,6 +15,10 @@ export interface HudOptions {
   active: string;
   onPreset: (id: string) => void;
   meta: CityMeta;
+  /** 「聲音」开关（R2：电车叮叮铃）：muted 为开场状态，onToggle 收到新的静音状态。 */
+  sound?: { muted: boolean; onToggle: (muted: boolean) => void }; // [r2:trams]
+  /** 「搭電車」跟车机位：onRide 返回是否进入跟车。 */
+  ride?: { onRide: () => boolean }; // [r2:trams]
 }
 
 /** 港府数据（CSDI 条款）的 license 标记，与管线 terrain-refs.ts 一致。 */
@@ -78,14 +82,40 @@ function creditsPanel(meta: CityMeta, close: () => void): HTMLElement {
   );
 }
 
-export function createHud(parent: HTMLElement, opts: HudOptions): { setActive(id: string): void } {
-  const badge = h('div', { class: 'badge' }, h('b', {}, '中環急件'), ' Central Rush ', h('span', { class: 'stage' }, '· R1 夜景'));
+export function createHud(parent: HTMLElement, opts: HudOptions): { setActive(id: string): void; setRide(on: boolean): void } {
+  const badge = h('div', { class: 'badge' }, h('b', {}, '中環急件'), ' Central Rush ', h('span', { class: 'stage' }, '· R2 細節'));
   const buttons = opts.presets.map((p) => {
     const b = h('button', { class: 'chip', type: 'button', 'aria-pressed': String(p.id === opts.active), 'data-preset': p.id }, p.label);
     b.addEventListener('click', () => opts.onPreset(p.id));
     return b;
   });
-  const presets = h('div', { class: 'presets', role: 'toolbar', 'aria-label': '機位' }, ...buttons);
+  // [r2:trams] 搭電車（跟车）与 聲音（开 / 关）两个按钮接在机位按钮后面
+  const extra: HTMLElement[] = [];
+  let rideBtn: HTMLElement | null = null;
+  if (opts.ride) {
+    const ride = opts.ride;
+    rideBtn = h('button', { class: 'chip', type: 'button', 'aria-pressed': 'false', 'data-ride': '1' }, '搭電車');
+    rideBtn.addEventListener('click', () => {
+      const on = ride.onRide();
+      for (const b of buttons) b.setAttribute('aria-pressed', 'false');
+      rideBtn!.setAttribute('aria-pressed', String(on));
+    });
+    extra.push(rideBtn);
+  }
+  if (opts.sound) {
+    const sound = opts.sound;
+    let muted = sound.muted;
+    const label = () => (muted ? '聲音：關' : '聲音：開');
+    const btn = h('button', { class: 'chip', type: 'button', 'aria-pressed': String(!muted), 'data-sound': '1' }, label());
+    btn.addEventListener('click', () => {
+      muted = !muted;
+      btn.textContent = label();
+      btn.setAttribute('aria-pressed', String(!muted));
+      sound.onToggle(muted);
+    });
+    extra.push(btn);
+  }
+  const presets = h('div', { class: 'presets', role: 'toolbar', 'aria-label': '機位' }, ...buttons, ...extra);
   const overlay = h('div', { class: 'overlay', hidden: '' });
   const closeOverlay = () => overlay.setAttribute('hidden', '');
   const openOverlay = () => overlay.removeAttribute('hidden');
@@ -109,6 +139,10 @@ export function createHud(parent: HTMLElement, opts: HudOptions): { setActive(id
   return {
     setActive(id) {
       for (const b of buttons) b.setAttribute('aria-pressed', String(b.dataset.preset === id));
+      rideBtn?.setAttribute('aria-pressed', 'false'); // [r2:trams]
+    },
+    setRide(on) {
+      rideBtn?.setAttribute('aria-pressed', String(on)); // [r2:trams]
     },
   };
 }

@@ -4,7 +4,7 @@
  * 写实化（realism spec §iii、§v）：画质档在构造时定（URL → 能力探测），HIGH 走 HDR 目标 + bloom + 输出 pass，
  * LOW 直出画布；雾是契约里的指数高度雾（共享 uniform），不再随视距调整。
  */
-import { PerspectiveCamera, Scene, WebGLRenderer, type Mesh, type Object3D } from 'three';
+import { PerspectiveCamera, Scene, WebGLRenderer, type Camera, type Mesh, type Object3D } from 'three';
 import type { CityFile, TerrainGrid } from '@central/data';
 import type { HeightFn } from '../data/terrain';
 import { buildBackdrop, buildSky } from './backdrop';
@@ -70,6 +70,7 @@ export class CityRenderer {
   private water: WaterLayer | null = null;
   private boats: Boats | null = null;
   private streets: Streets | null = null;
+  private buildingsUpdate: ((camera: Camera) => void) | null = null;
   private dpr: number;
   private css: [number, number] = [1, 1];
   private readonly canvasDepth: boolean;
@@ -111,6 +112,7 @@ export class CityRenderer {
 
     await step('生成建築', 0.72);
     const bld = buildCityBuildings(city, ground, getQuality().tier);
+    this.buildingsUpdate = bld.update;
     const buildings = new ChunkLayer('buildings', bld.chunks, facade);
     this.layers.push(buildings);
     add(buildings.group, ...bld.objects); // 招牌、航空灯、边缘 LED
@@ -120,7 +122,7 @@ export class CityRenderer {
     dropZoneLamps(roadPlans, zones); // 敏感区只做背景：区内的路不装路灯
     const roads = new ChunkLayer('roads', buildRoadChunks(city.roads, ground, roadPlans, getQuality().tier === 'high', footprintTest(city.buildings)), createRoadMaterial()); // 挡土墙遇楼即停（整合）
     this.layers.push(roads);
-    add(roads.group, buildRails(city.rails, ground), readParam('zones') ? buildZoneOutlines(zones, ground) : null);
+    add(roads.group, buildRails(city.rails.filter((r) => r.kind !== 'tram'), ground), readParam('zones') ? buildZoneOutlines(zones, ground) : null); // [r2:trams] 电车路轨改由 streets/trams 画
 
     await step('生成街道', 0.83);
     this.streets = buildStreets(city, roadPlans, ground, relief);
@@ -172,11 +174,17 @@ export class CityRenderer {
     this.sky.position.copy(this.camera.position);
     for (const l of this.layers) l.update(this.camera.position, NEAR_REGION_M);
     this.streets?.update(dt, this.camera);
+    this.buildingsUpdate?.(this.camera);
     this.boats?.update(this.water);
     this.water?.update(this.renderer, this.scene, this.camera); // 平面反射须在主场景之前
     const t = Math.min(Math.max((viewDistance - 150) / 450, 0), 1);
     this.post.render(this.scene, this.camera, 0.3 + 0.7 * t * t * (3 - 2 * t));
   }
+
+  /** 电车系统（调试钩子、打铃音频、跟车机位用）。 */
+  get trams(): Streets['trams'] | null { // [r2:trams]
+    return this.streets?.trams ?? null; // [r2:trams]
+  } // [r2:trams]
 
   /** 自适应 DPR：换像素比后按当前 CSS 尺寸重建画布与目标。 */
   setPixelRatio(dpr: number): void {

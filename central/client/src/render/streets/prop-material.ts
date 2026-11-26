@@ -6,7 +6,9 @@
  *   aAlb  (vec3) 反照率（线性）
  *   aEm   (vec3) 发光（线性 HDR，EMISSIVE 标尺）
  *   aPart (float) 0 = 用 aAlb；1 = 换成实例主色 iBody；2 = 换成实例副色 iBand；3 = 玻璃（暗、带天空菲涅耳）；
- *                 4 = 只在 iEmit > 0.5 的实例上画（出租车顶灯）
+ *                 4 = 只在 iEmit > 0.5 的实例上画（出租车顶灯）；
+ *                 5 / 6 = 灯箱（R2 修复轮）：发光颜色换成 iBand / iBand 的补色（按最亮通道归一，亮度取 aEm 的最大通道，
+ *                 上限 1.2，饱和色不会 bloom 成白块），反照率取同色的 0.3
  * 实例属性（只在 InstancedMesh 上，defines.INST_COLOURS）：
  *   iBody (vec3) 主色，iBand (vec3) 副色，iEmit (float) 发光倍率（0 = 不亮，1 = 正常）
  * 照度 = cityAmbient（天光 + 街面反光，lift 取几何局部 y，即离物件底部的高度）× uLight，
@@ -48,6 +50,18 @@ void main() {
 #endif
   vAlb = alb;
   vEm = aEm * emit;
+#ifdef INST_COLOURS
+  if (aPart > 4.5) {
+    vec3 hue = iBand / max(max(iBand.r, iBand.g), max(iBand.b, 1e-3));
+    // part 6：iBand 的补色（两块颜色撞色，不会都是浅色）
+    if (aPart > 5.5) {
+      hue = max(vec3(1.0) - hue + 0.12, 0.0);
+      hue /= max(max(hue.r, hue.g), max(hue.b, 1e-3));
+    }
+    vEm = hue * min(max(max(aEm.r, aEm.g), aEm.b), 1.2) * emit;
+    vAlb = hue * 0.3;
+  }
+#endif
   vGlass = aPart > 2.5 && aPart < 3.5 ? 1.0 : 0.0;
 #ifdef USE_INSTANCING
   mat4 m = modelMatrix * instanceMatrix;

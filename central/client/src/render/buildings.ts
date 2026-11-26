@@ -5,11 +5,17 @@
  * - 写实化一轮：每栋楼先定类型（typology.ts：写字楼 / 住宅 / 唐楼 / 裙楼 / 敏感区）、层高（height ÷ storeys）、
  *   街面冷暖（lighting.streetWarmth）与少数塔楼的冠顶 / 避难层，写进 aBldg；敏感区内的楼一律素灰石材、无灯。
  * - 屋顶机房与水箱（rooftops.ts）并进同一块的几何，不加 draw call。
+ * - 细节一轮（R2）：有 LOD2 分层体块（Building.parts，地政总署 3D 模型派生）的楼逐块挤出（building-parts.ts）：
+ *   上层块的墙从下一层的顶起，每块各有屋顶；楼层线（v 从楼底量）与窗格（u 按世界坐标投影）跨块连续，
+ *   类型、层高、亮灯按整栋楼算；女儿墙带画在每块顶上（退台边缘）；冠顶泛光只在主体及以上；
+ *   主体之上的小块按屋顶机房立面画；天台机房、灯箱、边缘 LED 放主体上，航空灯放最高块上。
+ *   LOW 档只给最高的一批楼分层（三角形预算约 5k），其余照旧平顶。
  */
-import type { Object3D } from 'three';
+import type { Camera, Object3D } from 'three';
 import type { Building, CityFile, FlatXY, SensitiveZone } from '@central/data';
 import type { HeightFn } from '../data/terrain';
 import { normalizeRing, pointInRing, ringCentroid } from '../geom/ring';
+import { crestPart, isPlantPart, lowTierPartBuildings, mainPart, peakPart, prepareParts, type PreparedPart } from './building-parts';
 import { groupByChunk, chunkOf, type ChunkCoord } from './chunks';
 import { extrudePrism, type WallSpanInfo } from './extrude';
 import { FEATURE, FacadeMode, facadeKey, hash01, newFacadeArrays, styleCode, type BldgAttr } from './facade';
@@ -20,6 +26,7 @@ import { addRooftops } from './rooftops';
 import { atlasLayout, signAtlasTexture } from './signs/atlas';
 import { buildSignMesh } from './signs/material';
 import { RoadIndex, facesStreet, hasShopfront, placeSigns, type FrontageSpan, type SignQuad } from './signs/placement';
+import { buildAcUnits, planAcUnits, type AcUnit } from './ac-units';
 import { buildTowerLights, type NearHarbourFn } from './tower-lights';
 import { isWaterAt, rasterizeWater } from './water/mask';
 import type { Emitter } from './water/strip';
@@ -43,17 +50,35 @@ export interface PreparedBuilding {
   cy: number;
   base: number;
   bottom: number;
+  /** 2D 主屋面（base + height）：类型、层高、楼高都按它算。 */
   top: number;
   /** 整圈墙脚下最低的地面（dm）。 */
   low: number;
+  /** 墙面去重的楼体序号（没有分层体块时用）。 */
+  body: number;
+  /** LOD2 分层体块（逐块挤出）；没有时为 null，整栋按 footprint 从 bottom 挤到 top。 */
+  parts: PreparedPart[] | null;
+  /** 主体（冠顶泛光从这里起）、顶块（天台机房、灯箱、边缘 LED）与最高块（航空灯），见 building-parts.ts；没有分层时都是整栋楼。 */
+  main: { ring: { outer: FlatXY; holes: FlatXY[] }; top: number };
+  crest: { ring: { outer: FlatXY; holes: FlatXY[] }; top: number };
+  peak: { ring: { outer: FlatXY; holes: FlatXY[] }; top: number };
+  /** 顶块之上还有块（机房、桅杆）：不再加程序化屋顶机房。 */
+  crowned: boolean;
 }
 
-/** 楼底、墙底、楼顶与共面墙去重（cutsOf 的楼序号即 items 下标）。 */
+export interface PrepareOptions {
+  /** 哪些楼按分层体块画（默认全部；LOW 档只挑一批，见 building-parts.lowTierPartBuildings）。 */
+  useParts?: (b: Building) => boolean;
+}
+
+/** 楼底、墙底、楼顶、分层体块与共面墙去重（cutsOf 的楼体序号见 PreparedBuilding.body / PreparedPart.body）。 */
 export function prepareBuildings(
   buildings: readonly Building[],
   ground: HeightFn,
+  opts: PrepareOptions = {},
 ): { items: PreparedBuilding[]; cutsOf: WallCutsFn } {
-  const items = buildings.flatMap((b) => {
+  const bodies: { rings: FlatXY[]; bottom: number; top: number }[] = [];
+  const items = buildings.flatMap((b): PreparedBuilding[] => {
     const ring = normalizeRing(b.footprint);
     if (!ring) return [];
     const [cx, cy] = ringCentroid(ring.outer);
@@ -61,9 +86,41 @@ export function prepareBuildings(
     const base = b.base !== 0 ? b.base : ground(cx, cy);
     const low = lowestAlongRings(rings, ground);
     const bottom = Math.min(base, low) - SINK_DM;
-    return [{ b, ring, rings, cx, cy, base, bottom, top: base + Math.max(b.height, MIN_HEIGHT_DM), low }];
+    const top = base + Math.max(b.height, MIN_HEIGHT_DM);
+    const parts = opts.useParts && !opts.useParts(b) ? null : prepareParts(b, ring, bottom, base, b.base !== 0 ? 0 : base);
+    const whole = { ring, top };
+    if (!parts) {
+      bodies.push({ rings, bottom, top });
+      return [{ b, ring, rings, cx, cy, base, bottom, top, low, body: bodies.length - 1, parts: null, main: whole, crest: whole, peak: whole, crowned: false }];
+    }
+    for (const pt of parts) {
+      pt.body = bodies.length;
+      bodies.push({ rings: pt.rings, bottom: pt.bottom, top: pt.top });
+    }
+    const main = mainPart(parts);
+    const crest = crestPart(parts);
+    const peak = peakPart(parts);
+    return [
+      {
+        b,
+        ring,
+        rings,
+        cx,
+        cy,
+        base,
+        bottom,
+        top,
+        low,
+        body: parts[0]!.body,
+        parts,
+        main: { ring: main.ring, top: main.top },
+        crest: { ring: crest.ring, top: crest.top },
+        peak: { ring: peak.ring, top: peak.top },
+        crowned: peak.top > crest.top,
+      },
+    ];
   });
-  return { items, cutsOf: planWallCuts(items) };
+  return { items, cutsOf: planWallCuts(bodies) };
 }
 
 /** 类型 → 立面模式（敏感区沿用 Plain）。 */
@@ -102,8 +159,9 @@ export function planBuildings(
   buildings: readonly Building[],
   ground: HeightFn,
   sensitive: readonly SensitiveZone[],
+  opts: PrepareOptions = {},
 ): { plans: BuildingPlan[]; cutsOf: WallCutsFn } {
-  const { items, cutsOf } = prepareBuildings(buildings, ground);
+  const { items, cutsOf } = prepareBuildings(buildings, ground, opts);
   const plans = items.map((p, k): BuildingPlan => {
     const sens = inSensitive(sensitive, p.cx, p.cy);
     const input = typologyInput(p.b, p.base, sens);
@@ -158,6 +216,35 @@ export interface BuildingChunkOptions {
   rooftops?: boolean;
 }
 
+/** 屋顶机房的宿主：有分层体块时放在顶块上。 */
+function rooftopHost(pl: BuildingPlan): BuildingPlan {
+  return pl.p.parts ? { ...pl, p: { ...pl.p, ring: pl.p.crest.ring, top: pl.p.crest.top } } : pl;
+}
+
+/** 分层体块逐块挤出：顶块之上的小块换屋顶机房立面，冠顶泛光只给主体及以上，只有底座回调墙面（招牌）。 */
+function extrudeParts(arrays: MeshArrays, pl: BuildingPlan, parts: readonly PreparedPart[], cutsOf: WallCutsFn, opts: BuildingChunkOptions): void {
+  const { p } = pl;
+  const main = parts.find((x) => x.ring === p.main.ring) ?? parts[0]!;
+  const crest = parts.find((x) => x.ring === p.crest.ring) ?? main;
+  const noCrown: BldgAttr = [pl.bldg[0], pl.bldg[1], pl.bldg[2], pl.bldg[3] & ~FEATURE.crownMask];
+  for (const part of parts) {
+    const plant = isPlantPart(part, crest);
+    extrudePrism(arrays, {
+      outer: part.ring.outer,
+      holes: part.ring.holes,
+      bottom: part.bottom,
+      base: p.base,
+      top: part.top,
+      style: plant ? styleCode(p.b.style, FacadeMode.Plant, pl.rnd) : pl.style,
+      uOffset: pl.rnd * 97,
+      uProject: true,
+      cuts: (ring, edge) => cutsOf(part.body, ring, edge),
+      bldg: part.top >= main.top ? pl.bldg : noCrown,
+      onSpan: part.index === 0 && opts.onSpan ? (s) => opts.onSpan!(pl, s) : undefined,
+    });
+  }
+}
+
 /** 已规划好的楼 → 按块的立面网格。 */
 export function chunksFromPlans(
   plans: readonly BuildingPlan[],
@@ -169,19 +256,22 @@ export function chunksFromPlans(
     const arrays = newFacadeArrays();
     for (const pl of g.items) {
       const { p } = pl;
-      extrudePrism(arrays, {
-        outer: p.ring.outer,
-        holes: p.ring.holes,
-        bottom: p.bottom,
-        base: p.base,
-        top: p.top,
-        style: pl.style,
-        uOffset: pl.rnd * 97,
-        cuts: (ring, edge) => cutsOf(pl.k, ring, edge),
-        bldg: pl.bldg,
-        onSpan: opts.onSpan ? (s) => opts.onSpan!(pl, s) : undefined,
-      });
-      if (opts.rooftops !== false) addRooftops(arrays, pl);
+      if (p.parts) extrudeParts(arrays, pl, p.parts, cutsOf, opts);
+      else {
+        extrudePrism(arrays, {
+          outer: p.ring.outer,
+          holes: p.ring.holes,
+          bottom: p.bottom,
+          base: p.base,
+          top: p.top,
+          style: pl.style,
+          uOffset: pl.rnd * 97,
+          cuts: (ring, edge) => cutsOf(p.body, ring, edge),
+          bldg: pl.bldg,
+          onSpan: opts.onSpan ? (s) => opts.onSpan!(pl, s) : undefined,
+        });
+      }
+      if (opts.rooftops !== false && !p.crowned) addRooftops(arrays, rooftopHost(pl));
     }
     out.set(key, { coord: g.coord, arrays });
   }
@@ -192,9 +282,9 @@ export function buildBuildingChunks(
   buildings: readonly Building[],
   ground: HeightFn,
   sensitive: readonly SensitiveZone[],
-  opts: BuildingChunkOptions = {},
+  opts: BuildingChunkOptions & PrepareOptions = {},
 ): Map<string, { coord: ChunkCoord; arrays: MeshArrays }> {
-  const { plans, cutsOf } = planBuildings(buildings, ground, sensitive);
+  const { plans, cutsOf } = planBuildings(buildings, ground, sensitive, opts);
   return chunksFromPlans(plans, cutsOf, opts);
 }
 
@@ -207,6 +297,8 @@ export function planCore(pl: BuildingPlan): number {
 export interface CityBuildings {
   chunks: Map<string, { coord: ChunkCoord; arrays: MeshArrays }>;
   objects: Object3D[];
+  /** 每帧（相机附近的实例：窗口冷气机）。 */
+  update(camera: Camera): void;
   plans: BuildingPlan[];
   /** 天台灯箱、LED 幕墙等亮面：LOW 档海面发光条的光源。 */
   emitters: Emitter[];
@@ -235,7 +327,8 @@ export function frontageOf(pl: BuildingPlan, s: WallSpanInfo): FrontageSpan | nu
     typology: pl.typology,
     core: planCore(pl),
     groundM: pl.groundM,
-    topM: pl.p.top / 10,
+    // 整合（R2）：LoD2 多块楼的招牌只挂底座墙，顶取这段墙的顶（退台以上没有墙，直招牌不能伸出去）
+    topM: Math.min(pl.p.top, s.z1) / 10,
     x0: s.x0 / 10,
     y0: s.y0 / 10,
     x1: s.x1 / 10,
@@ -251,15 +344,22 @@ export function frontageOf(pl: BuildingPlan, s: WallSpanInfo): FrontageSpan | nu
  * tier = 'low' 时不加屋顶机房、不出直招牌（三角形预算：HIGH 约 147k、LOW 约 108k，整层未剔除）。没有 DOM（单元测试）时不建招牌。
  */
 export function buildCityBuildings(city: CityFile, ground: HeightFn, tier: 'high' | 'low' = 'high'): CityBuildings {
-  const { plans, cutsOf } = planBuildings(city.buildings, ground, city.zones.sensitive);
+  const lowParts = tier === 'low' ? lowTierPartBuildings(city.buildings) : null;
+  const { plans, cutsOf } = planBuildings(city.buildings, ground, city.zones.sensitive, {
+    useParts: lowParts ? (b) => lowParts.has(b.id) : undefined,
+  });
   const quads: SignQuad[] = [];
+  const acs: AcUnit[] = [];
   const cells = atlasLayout();
   const roads = new RoadIndex(city.roads);
   const chunks = chunksFromPlans(plans, cutsOf, {
     rooftops: tier === 'high',
     onSpan: (pl, s) => {
       const f = frontageOf(pl, s);
-      if (f && facesStreet(f, roads)) quads.push(...placeSigns(f, cells, tier === 'high'));
+      if (!f || !facesStreet(f, roads)) return;
+      quads.push(...placeSigns(f, cells, tier === 'high'));
+      // 窗口冷气机（R2 修复轮 S9）：HIGH 档、住宅 / 唐楼临街面
+      if (tier === 'high') acs.push(...planAcUnits(f));
     },
   });
   const objects: Object3D[] = [];
@@ -268,7 +368,11 @@ export function buildCityBuildings(city: CityFile, ground: HeightFn, tier: 'high
   const kept = tier === 'high' ? quads : quads.filter((_, i) => i % 5 < 3);
   const signs = atlas ? buildSignMesh(kept, atlas) : null;
   if (signs) objects.push(signs);
-  const towers = buildTowerLights(plans, city.landmarks, city.zones.sensitive, createNeonMaterial(), nearHarbourFn(city));
+  // 灯箱、边缘 LED 放顶块上，航空灯放最高块上（没有分层时都是整栋楼）
+  const hosts = plans.map((pl) => ({ ...pl, p: { ...pl.p, ring: pl.p.crest.ring, top: pl.p.crest.top, peak: { outer: pl.p.peak.ring.outer, top: pl.p.peak.top } } }));
+  const towers = buildTowerLights(hosts, city.landmarks, city.zones.sensitive, createNeonMaterial(), nearHarbourFn(city));
   objects.push(...towers.objects);
-  return { chunks, objects, plans, emitters: towers.emitters };
+  const ac = buildAcUnits(acs);
+  if (ac) objects.push(ac.mesh);
+  return { chunks, objects, plans, emitters: towers.emitters, update: (camera) => ac?.update(camera) };
 }

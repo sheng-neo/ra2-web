@@ -15,6 +15,10 @@ central.json and terrain.bin are generated from the following sources:
   部分資料來源：香港特別行政區政府地政總署，經空間數據共享平台（CSDI，portal.csdi.gov.hk）取得；資料的知識產權屬香港特別行政區政府所有。資料已為本遊戲轉換、簡化及篩選輪廓，部分高度為估算，部分建築以風格化地標取代，政府不對本遊戲負責，亦不代表政府認可。
   License: CSDI-Terms
   https://portal.csdi.gov.hk/geoportal/?datasetId=landsd_rcd_1637211194312_35158
+* Contains 3D building data from the Lands Department, HKSAR Government (3D Visualisation Map, Non-textured models), obtained from the 3D Visualisation Map website (3d.map.gov.hk) through the Common Spatial Data Infrastructure (CSDI) Portal (portal.csdi.gov.hk). Intellectual property rights in the data are owned by the Government of the Hong Kong Special Administrative Region. The data have been processed (roof surfaces of the 3D models converted to simplified stacked outlines and fitted to the 2D building footprints; no meshes or textures kept) for this game; the Government is not responsible for, and does not endorse, this game.
+  部分資料來源：香港特別行政區政府地政總署「可視化三維地圖（無紋理模型）」，經可視化三維地圖網站（3d.map.gov.hk）及空間數據共享平台（CSDI，portal.csdi.gov.hk）取得；資料的知識產權屬香港特別行政區政府所有。資料已為本遊戲轉換（三維模型的屋面簡化為分層輪廓並套合二維建築輪廓，不保留網格及紋理），政府不對本遊戲負責，亦不代表政府認可。
+  License: CSDI-Terms
+  https://portal.csdi.gov.hk/geoportal/?datasetId=landsd_rcd_1742809441342_98380
 * Contains data from the Civil Engineering and Development Department, HKSAR Government, obtained from the Common Spatial Data Infrastructure (CSDI) Portal (portal.csdi.gov.hk). Intellectual property rights in the data are owned by the Government of the Hong Kong Special Administrative Region. The data have been processed (resampled/converted, outliers and small gaps repaired, sea set to 0 mPD) for this game; the Government is not responsible for, and does not endorse, this game.
   部分資料來源：香港特別行政區政府土木工程拓展署，經空間數據共享平台（CSDI，portal.csdi.gov.hk）取得；資料的知識產權屬香港特別行政區政府所有。資料已為本遊戲重新取樣及轉換，修補異常值與小空洞，海面設為 0 mPD，政府不對本遊戲負責，亦不代表政府認可。
   License: CSDI-Terms
@@ -23,14 +27,20 @@ central.json and terrain.bin are generated from the following sources:
 Which layer comes from which source (one source per layer, never mixed feature by feature):
 * central.json roads, rails, water, zones, props: OpenStreetMap data (© OpenStreetMap contributors) and some TomTom road segments, both ODbL-1.0, distributed by Overture Maps Foundation.
 * central.json buildings and landmarks (footprints, base and top heights, storey counts): Lands Department Building data via the CSDI Portal (CSDI-Terms; not part of the ODbL database).
+* central.json building parts (stacked setbacks, crowns and roof structures of 1227 buildings): Lands Department 3D Visualisation Map
+  (Non-textured models) via 3d.map.gov.hk and the CSDI Portal (CSDI-Terms; not part of the ODbL database).
 * terrain.bin (ground elevation): Civil Engineering and Development Department 2020 LiDAR DTM via the CSDI Portal (CSDI-Terms; not part of the ODbL database).
 
 Changes made: features re-projected to HK1980 Grid (EPSG:2326) in local decimetres; footprints simplified
 (0.3 m) and slivers under 4 m² removed; missing building heights estimated; all building and business
 names removed; open-sided structures omitted; 6 buildings replaced by fictional landmark placements;
+3D building models reduced to their roof surfaces, converted to simplified stacked outlines (0.5 m, up to 4 m for curved outlines) and
+fitted to the 2D footprints (no meshes, textures or names kept; none inside sensitive zones or landmarks);
 props inside sensitive (military / government) zones removed; terrain resampled to a 5 m grid, outliers
 and small gaps repaired, with the sea set to 0 mPD.
 
 The OpenStreetMap-derived database is licensed under ODbL-1.0; see LICENSE-ODbL.txt.
 Data marked CSDI-Terms is used under the CSDI Portal Terms and Conditions of Use
 (https://portal.csdi.gov.hk/csdi-webpage/doc/TNC); it is not relicensed.
+The building parts also follow the Terms and Conditions of Use of the 3D Visualisation Map website
+(https://3d.map.gov.hk), which require the same attribution.

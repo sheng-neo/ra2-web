@@ -26,6 +26,11 @@ export interface ExtrudeSpec {
   style: number;
   /** 立面 u 的起点（米）。 */
   uOffset: number;
+  /**
+   * u 按世界坐标投影到边的方向（米，再加 uOffset），而不是沿环累计（默认 false）。
+   * 分层体块用：上下两块共面的墙在同一点 u 相同，窗格竖线与租户段跨块对齐。
+   */
+  uProject?: boolean;
   /** 是否封顶（默认 true）。 */
   roof?: boolean;
   /** 各边不画的部分（共面墙去重，见 walls.ts）；ring 0 为外环，1.. 为洞。 */
@@ -76,8 +81,8 @@ function addWalls(m: MeshArrays, ring: FlatXY, ringIndex: number, s: ExtrudeSpec
       const ya = y0 + (dy * w.s0) / len;
       const xb = x0 + (dx * w.s1) / len;
       const yb = y0 + (dy * w.s1) / len;
-      const ua = u + w.s0 * DM_TO_M;
-      const ub = u + w.s1 * DM_TO_M;
+      const ua = s.uProject ? (xa * dx + ya * dy) / len * DM_TO_M + s.uOffset : u + w.s0 * DM_TO_M;
+      const ub = s.uProject ? ua + (w.s1 - w.s0) * DM_TO_M : u + w.s1 * DM_TO_M;
       const va = (w.z0 - s.base) * DM_TO_M;
       const vb = (w.z1 - s.base) * DM_TO_M;
       const a = facadeVertex(m, xa, ya, w.z0, nx, ny, 0, ua, va, h, s.style, s.bldg);

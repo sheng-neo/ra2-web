@@ -542,6 +542,16 @@ export class GlowBatch {
     this.count = Math.max(this.count, i + 1);
   }
 
+  /** set 的不分配版本（热循环：车灯、电车灯）。 */
+  setXYZ(i: number, x: number, y: number, z: number, colour: Color, intensity: number, radiusM: number): void {
+    if (i >= this.capacity) return;
+    this.center.setXYZ(i, x, y, z);
+    this.colour.setXYZ(i, colour.r, colour.g, colour.b);
+    this.glow.setXY(i, intensity, radiusM);
+    this.blink.setXYZ(i, 0, 0, 0.5);
+    this.count = Math.max(this.count, i + 1);
+  }
+
   /** 实例数改为 n（之后的光点不画）。 */
   setCount(n: number): void {
     this.count = Math.min(n, this.capacity);

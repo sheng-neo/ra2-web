@@ -38,3 +38,10 @@ export function simMetresToThree(x: number, y: number, z: number): [number, numb
 export function threeToSim(x: number, y: number, z: number): [number, number, number] {
   return [x / DM_TO_M, -z / DM_TO_M, y / DM_TO_M];
 }
+
+/** threeToSim 的不分配版本（热循环用）：结果写进 out[0..2]（dm）。 */
+export function threeToSimInto(x: number, y: number, z: number, out: { [i: number]: number }): void {
+  out[0] = x / DM_TO_M;
+  out[1] = -z / DM_TO_M;
+  out[2] = y / DM_TO_M;
+}

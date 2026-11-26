@@ -5,10 +5,13 @@
  *   密度：中环核心约 15 %，上环 / 唐楼一带约 40 %。
  * - 直招牌（B12）：唐楼与上环一带每 7–10 m 一块，核心区每 45 m 一块；0.8–1.2 m 宽、2–6 m 高、离街 4.6–6 m 起，
  *   与墙垂直、伸出街外；正反两片各自单面，字从上到下、正立、不镜像。
+ * - R2 STREETLIFE S8：中环 / 上环的横街（支路、街坊路、行人街；威灵顿街、德己立街、摆花街一带，参考照 20、R1-16）
+ *   临街铺面一律加密到每 8–12 m 一块直招牌（0.8–1.0 × 2.5–4 m，底边 4–6 m，伸出 0.4–1.4 m），约 8 % 不亮。
+ *   临哪条街由 facesStreet 顺手记下（RoadIndex 存道路等级），placeSigns 读取，不改建筑模块的调用。
  * 坐标：模拟坐标「米」（x 东、y 北、z mPD）。四边形四角顺序 BL, BR, TR, TL（从正面看逆时针），
  * uv 为格内坐标（可超出 0–1，shader 夹在格内延续底色）。
  */
-import type { Road } from '@central/data';
+import type { Road, RoadClass } from '@central/data';
 import type { Typology } from '../typology';
 import { INT_OFFSET, hash3 } from '../windows';
 import { H_CELL, V_CELL, atlasLayout, styleGain, type AtlasCell, type SignStyle } from './atlas';
@@ -17,6 +20,8 @@ import { H_CELL, V_CELL, atlasLayout, styleGain, type AtlasCell, type SignStyle 
 export class RoadIndex {
   private readonly cells = new Map<number, number[]>();
   private readonly segs: number[] = [];
+  /** 各段所属道路等级。 */
+  private readonly cls: RoadClass[] = [];
   private static readonly CELL = 50;
 
   constructor(roads: readonly Pick<Road, 'pts' | 'cls'>[]) {
@@ -29,6 +34,7 @@ export class RoadIndex {
         const by = r.pts[i + 1]! / 10;
         const k = this.segs.length / 4;
         this.segs.push(ax, ay, bx, by);
+        this.cls.push(r.cls);
         const c = RoadIndex.CELL;
         for (let gx = Math.floor(Math.min(ax, bx) / c); gx <= Math.floor(Math.max(ax, bx) / c); gx++) {
           for (let gy = Math.floor(Math.min(ay, by) / c); gy <= Math.floor(Math.max(ay, by) / c); gy++) {
@@ -44,8 +50,14 @@ export class RoadIndex {
 
   /** (x, y) 到最近道路中线的距离（米），超过 maxM 时返回 Infinity。 */
   distance(x: number, y: number, maxM: number): number {
+    return this.nearest(x, y, maxM).d;
+  }
+
+  /** 最近道路中线的距离（米）与该路等级；超过 maxM 时 d = Infinity、cls = null。 */
+  nearest(x: number, y: number, maxM: number): { d: number; cls: RoadClass | null } {
     const c = RoadIndex.CELL;
     let best = Infinity;
+    let bestCls: RoadClass | null = null;
     for (let gx = Math.floor((x - maxM) / c); gx <= Math.floor((x + maxM) / c); gx++) {
       for (let gy = Math.floor((y - maxM) / c); gy <= Math.floor((y + maxM) / c); gy++) {
         for (const k of this.cells.get(gx * 65536 + gy) ?? []) {
@@ -55,19 +67,35 @@ export class RoadIndex {
           const dy = this.segs[k * 4 + 3]! - ay;
           const l2 = dx * dx + dy * dy;
           const t = l2 > 0 ? Math.min(Math.max(((x - ax) * dx + (y - ay) * dy) / l2, 0), 1) : 0;
-          best = Math.min(best, Math.hypot(x - ax - dx * t, y - ay - dy * t));
+          const d = Math.hypot(x - ax - dx * t, y - ay - dy * t);
+          if (d < best) {
+            best = d;
+            bestCls = this.cls[k]!;
+          }
         }
       }
     }
-    return best <= maxM ? best : Infinity;
+    return best <= maxM ? { d: best, cls: bestCls } : { d: Infinity, cls: null };
   }
+}
+
+/** 横街（直招牌加密）的道路等级。 */
+const SIDE_STREETS: ReadonlySet<RoadClass> = new Set(['tertiary', 'residential', 'unclassified', 'living_street', 'pedestrian']);
+/** facesStreet 记下的「这段墙临的是哪种街」。 */
+const streetOf = new WeakMap<object, RoadClass>();
+
+/** 墙面临的是中环 / 上环的横街（直招牌每 8–12 m 一块）：西至上环、东至毕打街一带，平地（墙脚 < 60 mPD）。 */
+export function sideStreetSpan(span: Pick<FrontageSpan, 'x0' | 'groundM'>, cls: RoadClass | null | undefined): boolean {
+  return !!cls && SIDE_STREETS.has(cls) && span.x0 > -450 && span.x0 < 420 && span.groundM < 60;
 }
 
 /** 墙面是否临街：墙外 6 m 处离道路中线 ≤ 14 m（含路半宽与行人路）。 */
 export function facesStreet(span: Pick<FrontageSpan, 'x0' | 'y0' | 'x1' | 'y1' | 'nx' | 'ny'>, roads: RoadIndex): boolean {
   const mx = (span.x0 + span.x1) / 2 + span.nx * 6;
   const my = (span.y0 + span.y1) / 2 + span.ny * 6;
-  return roads.distance(mx, my, 14) <= 14;
+  const hit = roads.nearest(mx, my, 14);
+  if (hit.cls) streetOf.set(span, hit.cls);
+  return hit.d <= 14;
 }
 
 /** 平贴招牌密度：上环 / 中环西段约 60 %，往东到皇后像广场一带降到约 25 %（只算营业的商铺单元）。 */
@@ -138,7 +166,7 @@ export function hasShopfront(t: Typology): boolean {
   return t === 'office' || t === 'residential' || t === 'tenement' || t === 'podium';
 }
 
-const CORE_STYLES: readonly SignStyle[] = ['boxRed', 'boxBlack', 'boxYellow', 'ledBlue'];
+const CORE_STYLES: readonly SignStyle[] = ['boxRed', 'boxBlack', 'boxYellow', 'ledBlue', 'boxCrimson', 'boxNavy'];
 
 /** 按样式过滤的格子序号表。 */
 function cellsBy(cells: readonly AtlasCell[], vertical: boolean, styles?: readonly SignStyle[]): number[] {
@@ -211,11 +239,13 @@ export function placeSigns(span: FrontageSpan, cells: readonly AtlasCell[] = atl
     });
   }
 
-  // 直招牌：唐楼 / 上环一带每 7–10 m 一块，核心区（中环西段的唐楼）每 45 m 一块
-  const pitch = 8 + 37 * span.core;
+  // 直招牌：唐楼 / 上环一带每 7–10 m 一块，核心区（中环西段的唐楼）每 45 m 一块；
+  // 横街（R2 S8）一律每 8–12 m 一块，较矮（2.5–4 m）、底边 4–6 m，约 8 % 不亮
+  const side = sideStreetSpan(span, streetOf.get(span));
+  const pitch = side ? 8 + 4 * hash3(key, 7, 133) : 8 + 37 * span.core;
   const vCells = cellsBy(cells, true);
   const maxH = span.topM - span.groundM - 6;
-  if (vertical && maxH >= 2 && wantsVerticalSigns(span)) {
+  if (vertical && maxH >= 2 && (wantsVerticalSigns(span) || side)) {
     const firstV = Math.ceil((span.u0 + 1) / pitch);
     const lastV = Math.floor((span.u0 + len - 1) / pitch);
     for (let i = firstV; i <= lastV; i++) {
@@ -223,15 +253,17 @@ export function placeSigns(span: FrontageSpan, cells: readonly AtlasCell[] = atl
       if (h(0) > 0.8) continue;
       const s = i * pitch - span.u0 + (h(1) - 0.5) * 2;
       if (s < 0.6 || s > len - 0.6) continue;
-      const w = 0.8 + 0.4 * h(2);
-      const height = Math.min(2 + 4 * h(3), maxH);
-      const z0 = span.groundM + 4.6 + 1.4 * h(4);
+      const w = side ? 0.8 + 0.2 * h(2) : 0.8 + 0.4 * h(2);
+      const height = Math.min(side ? 2.5 + 1.5 * h(3) : 2 + 4 * h(3), maxH);
+      const z0 = span.groundM + (side ? 4 + 2 * h(4) : 4.6 + 1.4 * h(4));
       const z1 = z0 + height;
-      const inner = 0.3;
+      const inner = side ? 0.4 : 0.3;
       const outer = inner + w;
-      const cell = vCells[Math.floor(h(5) * vCells.length)]!;
+      // 同一栋楼的直招牌字不重复（R2 修复轮）：按楼哈希一个起点，沿墙顺序取，直到 16 格轮完
+      const nV = vCells.length;
+      const cell = vCells[(((Math.floor(hash3(key, 5, 134) * nV) + i) % nV) + nV) % nV]!;
       const uv = quadUv(w, height, V_CELL.w / V_CELL.h);
-      const gain = styleGain(cells[cell]!.style);
+      const gain = side && h(6) < 0.08 ? 0.02 : styleGain(cells[cell]!.style);
       const sep = 0.03;
       // 正面朝 +e：读字方向 Z × e = −n（指向墙），所以左边在外端
       out.push({

@@ -25,7 +25,8 @@ import type { Emitter } from './water/strip';
 
 /** 规划需要的楼参数（BuildingPlan 的子集）。 */
 export interface TowerHost {
-  p: { b: { id: string }; ring: { outer: FlatXY }; top: number };
+  /** ring / top：主体（灯箱、边缘 LED）；peak：最高块（航空灯，省略时同主体）。 */
+  p: { b: { id: string }; ring: { outer: FlatXY }; top: number; peak?: { outer: FlatXY; top: number } };
   typology: string;
   tallM: number;
   feature: number;
@@ -95,8 +96,9 @@ export function planAviation(hosts: readonly TowerHost[], landmarks: readonly La
     .slice(0, AVIATION_MAX_HOSTS);
   for (const h of picked) {
     // 300 m 以下一盏（最外的一个角），以上四角
-    const corners = extremeCorners(h.p.ring.outer);
-    add(h.p.b.id, h.tallM >= 300 ? corners : corners.slice(0, 1), h.p.top / 10 + 0.6);
+    const peak = h.p.peak ?? { outer: h.p.ring.outer, top: h.p.top };
+    const corners = extremeCorners(peak.outer);
+    add(h.p.b.id, h.tallM >= 300 ? corners : corners.slice(0, 1), peak.top / 10 + 0.6);
   }
   for (const l of landmarks) {
     if (zones.some((z) => pointInRing(z.area, l.x, l.y)) || l.height < AVIATION_LANDMARK_M * 10) continue;

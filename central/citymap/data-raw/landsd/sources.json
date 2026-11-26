@@ -1,5 +1,5 @@
 {
-  "dataset": "HKSAR Government open data via the CSDI Portal (CEDD LiDAR DTM 2020; LandsD Building; LandsD 3D Pedestrian Network)",
+  "dataset": "HKSAR Government open data via the CSDI Portal (CEDD LiDAR DTM 2020; LandsD Building; LandsD 3D Pedestrian Network; LandsD 3D Visualisation Map (Non-textured models))",
   "release": "2026-11-24",
   "attribution": [
     "Contains data from the Lands Department and the Civil Engineering and Development Department, HKSAR Government, obtained from the Common Spatial Data Infrastructure (CSDI) Portal (portal.csdi.gov.hk). Intellectual property rights in the data are owned by the Government of the Hong Kong Special Administrative Region. The data have been processed (resampled/converted) for this game; the Government is not responsible for, and does not endorse, this game.",
@@ -251,6 +251,148 @@
       "sha256": "f96fad5ebb265e1aac52c1fe6d919bbf0b9f14147f31c8fd9fa908b566e34f7f",
       "bytes": 873825,
       "rows": 13963
+    },
+    {
+      "file": "landsd-3dvm-parts.json.gz",
+      "layer": "landsd/3dvm-nontextured-buildings",
+      "datasetId": "landsd_rcd_1742809441342_98380",
+      "url": "https://portal.csdi.gov.hk/geoportal/?datasetId=landsd_rcd_1742809441342_98380",
+      "query": "https://portal.csdi.gov.hk/server/rest/services/common/landsd_rcd_1742809441342_98380/FeatureServer/0/query",
+      "release": "2026-09-22",
+      "format": "gzip JSON (written by landsd_3d_fetch.py): per 3D building, stacked roof-level outlines derived from the BUILDING glTF meshes (no meshes, textures or names stored)",
+      "crs": "EPSG:2326 + mPD",
+      "licenses": [
+        "CSDI Portal Terms and Conditions of Use; 3D Visualisation Map Terms and Conditions of Use (see TERMS.md)"
+      ],
+      "attribution": [
+        "Contains 3D building data from the Lands Department, HKSAR Government (3D Visualisation Map, Non-textured models), obtained from the 3D Visualisation Map website (3d.map.gov.hk) through the Common Spatial Data Infrastructure (CSDI) Portal (portal.csdi.gov.hk). Intellectual property rights in the data are owned by the Government of the Hong Kong Special Administrative Region. The data have been processed (roof surfaces of the 3D models converted to simplified stacked outlines and fitted to the 2D building footprints; no meshes or textures kept) for this game; the Government is not responsible for, and does not endorse, this game.",
+        "部分資料來源：香港特別行政區政府地政總署「可視化三維地圖（無紋理模型）」，經可視化三維地圖網站（3d.map.gov.hk）及空間數據共享平台（CSDI，portal.csdi.gov.hk）取得；資料的知識產權屬香港特別行政區政府所有。資料已為本遊戲轉換（三維模型的屋面簡化為分層輪廓並套合二維建築輪廓，不保留網格及紋理），政府不對本遊戲負責，亦不代表政府認可。"
+      ],
+      "fetched": "2026-11-25",
+      "bbox": {
+        "west": 833189.0,
+        "south": 815016.6,
+        "east": 835662.7,
+        "north": 816899.5,
+        "crs": "EPSG:2326"
+      },
+      "sha256": "558f63ccb4bf4c5000e6b36568204ef46aaa911a6f8ee10d6d9323afcdca14c9",
+      "bytes": 1733753,
+      "rows": 3322,
+      "derivedFrom": [
+        {
+          "sheet": "11-SW-13A",
+          "revision": "2026-07-16",
+          "urlNoKey": "https://download.map.gov.hk/api/3d-zip/GLTF0/11-SW-13A.zip",
+          "sha256": "7f66e6ea14e3137e1ba3b03d4263d9705596f46fd43ed8116ed8caec3ff3c128",
+          "bytes": 51587258
+        },
+        {
+          "sheet": "11-SW-13B",
+          "revision": "2025-12-21",
+          "urlNoKey": "https://download.map.gov.hk/api/3d-zip/GLTF0/11-SW-13B.zip",
+          "sha256": "29711299b81dd6c8f12e7d0f259d2d31096548ffacc34ad0cdf5719764eed729",
+          "bytes": 51839547
+        },
+        {
+          "sheet": "11-SW-14A",
+          "revision": "2026-09-22",
+          "urlNoKey": "https://download.map.gov.hk/api/3d-zip/GLTF0/11-SW-14A.zip",
+          "sha256": "280f78d6a3a04313e5f67db19513e6e1933fda2a47517b0163e6ee57acbcda18",
+          "bytes": 57080087
+        },
+        {
+          "sheet": "11-SW-14B",
+          "revision": "2026-09-22",
+          "urlNoKey": "https://download.map.gov.hk/api/3d-zip/GLTF0/11-SW-14B.zip",
+          "sha256": "708fe0ec10d029d15912ab6b10781aa0ed292201936e4c397969ebd73c6bd171",
+          "bytes": 52071356
+        },
+        {
+          "sheet": "11-SW-3C",
+          "revision": "2025-09-28",
+          "urlNoKey": "https://download.map.gov.hk/api/3d-zip/GLTF0/11-SW-3C.zip",
+          "sha256": "06f2eb745cb4a3ea2aeafee9c955bed084f926d188a9ccc4be81e746fac55f08",
+          "bytes": 33772661
+        },
+        {
+          "sheet": "11-SW-3D",
+          "revision": "2025-09-28",
+          "urlNoKey": "https://download.map.gov.hk/api/3d-zip/GLTF0/11-SW-3D.zip",
+          "sha256": "9bf4069e0442e0a53a8d4876058e54b7d4c23e646ea047934aefba645f9b6773",
+          "bytes": 28249671
+        },
+        {
+          "sheet": "11-SW-4C",
+          "revision": "2025-10-27",
+          "urlNoKey": "https://download.map.gov.hk/api/3d-zip/GLTF0/11-SW-4C.zip",
+          "sha256": "103662f4e03e6c48fe248b204594028657125539219ac213fa8ce0646c68f34a",
+          "bytes": 45616516
+        },
+        {
+          "sheet": "11-SW-4D",
+          "revision": "2025-12-21",
+          "urlNoKey": "https://download.map.gov.hk/api/3d-zip/GLTF0/11-SW-4D.zip",
+          "sha256": "ad04fae8c98cd99982fb338f74e1c25c0a2f9b2548962a5b931fb9a112b4a2c4",
+          "bytes": 55723221
+        },
+        {
+          "sheet": "11-SW-8A",
+          "revision": "2026-07-16",
+          "urlNoKey": "https://download.map.gov.hk/api/3d-zip/GLTF0/11-SW-8A.zip",
+          "sha256": "da64c7abae5f8e6d5cca776d88a109f7da9e23876dc55663577a14007f10420a",
+          "bytes": 52863180
+        },
+        {
+          "sheet": "11-SW-8B",
+          "revision": "2026-09-22",
+          "urlNoKey": "https://download.map.gov.hk/api/3d-zip/GLTF0/11-SW-8B.zip",
+          "sha256": "5054d4d5ae3997a3155b6182fc90d26487e987353ca04905fe88e1f863eedc4e",
+          "bytes": 40595331
+        },
+        {
+          "sheet": "11-SW-8C",
+          "revision": "2026-04-23",
+          "urlNoKey": "https://download.map.gov.hk/api/3d-zip/GLTF0/11-SW-8C.zip",
+          "sha256": "18b6bb372937f9c6097578f76db9cc03db0ae07b4b460cc776846dfbc9b33cbd",
+          "bytes": 60452456
+        },
+        {
+          "sheet": "11-SW-8D",
+          "revision": "2026-09-22",
+          "urlNoKey": "https://download.map.gov.hk/api/3d-zip/GLTF0/11-SW-8D.zip",
+          "sha256": "790818dbabd98e1681aadf7e3a54eee8f8fb79ccb898192a36dd4840eb0eb949",
+          "bytes": 62820813
+        },
+        {
+          "sheet": "11-SW-9A",
+          "revision": "2026-09-22",
+          "urlNoKey": "https://download.map.gov.hk/api/3d-zip/GLTF0/11-SW-9A.zip",
+          "sha256": "c3d64c5f0ea272d0f558df66f8656d463ecb6199fcf0ee6b4886952846fe2503",
+          "bytes": 25095265
+        },
+        {
+          "sheet": "11-SW-9B",
+          "revision": "2026-09-22",
+          "urlNoKey": "https://download.map.gov.hk/api/3d-zip/GLTF0/11-SW-9B.zip",
+          "sha256": "bf50a35940d6390bff8ffb90c4d592b46e2f95c7cc16ffa0d278da9ee448f5da",
+          "bytes": 16947354
+        },
+        {
+          "sheet": "11-SW-9C",
+          "revision": "2026-09-22",
+          "urlNoKey": "https://download.map.gov.hk/api/3d-zip/GLTF0/11-SW-9C.zip",
+          "sha256": "c883b44dc4bc6867ef8a9e6985e0ca2a6a53f7d96d4a3440433e458a2a852094",
+          "bytes": 46504762
+        },
+        {
+          "sheet": "11-SW-9D",
+          "revision": "2026-09-22",
+          "urlNoKey": "https://download.map.gov.hk/api/3d-zip/GLTF0/11-SW-9D.zip",
+          "sha256": "40d989c9476358a9a178be4036e55893cd42f287ca6b3aafc773327a0c5a19b0",
+          "bytes": 40964810
+        }
+      ]
     }
   ]
 }

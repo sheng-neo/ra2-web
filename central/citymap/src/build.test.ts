@@ -9,12 +9,13 @@ import { buildCity } from './build';
 import { MVP_RECT } from './config';
 import { groundOf, lowestGround } from './geo/ground';
 import { inRect } from './geo/polyline';
-import { pointInRing, ringCentroid, ringDistance, signedArea2 } from './geo/ring';
+import { pointInRing, ringCentroid, ringDistance, ringSimple, ringsTouch, signedArea2 } from './geo/ring';
 import { LANDMARKS } from './overrides/landmarks';
 import { REF_EAST_ASIA_BUILDINGS, REF_OSM, REF_OVERTURE, REF_TOMTOM } from './sources/refs';
 import { CITY_FILE, collectStrings, packCity, packOutputs, TERRAIN_FILE } from './stages/pack';
 import { project, projectRectBounds } from './stages/project';
-import { REF_CEDD_DTM, REF_LANDSD_BUILDINGS } from './stages/terrain-refs';
+import { REF_CEDD_DTM, REF_LANDSD_3DVM, REF_LANDSD_BUILDINGS } from './stages/terrain-refs';
+import { PARTS } from './stages/building-parts';
 
 let city: CityFile;
 let grid: TerrainGrid;
@@ -27,7 +28,8 @@ beforeAll(async () => {
   grid = build.terrain.grid;
   files = packCity(city);
   outputs = packOutputs(city, grid);
-});
+  // 整条管线（含 LOD2 分层体块的栅格合成）在并行跑测试时要十几秒
+}, 120_000);
 
 /** 原调研范围（PLAN §3.1 的 v2 抽取框）。 */
 const RESEARCH = projectRectBounds({ west: 114.15, south: 22.277, east: 114.166, north: 22.2895 });
@@ -230,6 +232,75 @@ describe('单行（只信数据，已对照实地）', () => {
   });
 });
 
+describe('LOD2 分层体块（地政总署 3D 模型）', () => {
+  const layered = () => city.buildings.filter((b) => b.parts);
+
+  it('一千多栋楼有 parts；塔楼（≥ 100 m）九成以上有；署名列出 3D 数据', () => {
+    expect(layered().length).toBeGreaterThan(1000);
+    const tall = city.buildings.filter((b) => b.height >= 1000);
+    expect(tall.filter((b) => b.parts).length / tall.length).toBeGreaterThan(0.9);
+    expect(city.meta.sources.map((s) => s.id)).toContain(REF_LANDSD_3DVM.id);
+  });
+
+  it('格式：parts[0] 不带环、顶高于楼底；其余逆时针整数环、顶严格高于底座、按顶升序；每栋 ≤ 12 块', () => {
+    for (const b of layered()) {
+      const p = b.parts!;
+      expect(p.length).toBeGreaterThanOrEqual(2);
+      expect(p.length).toBeLessThanOrEqual(PARTS.maxParts);
+      expect(p[0]!.ring).toBeUndefined();
+      expect(p[0]!.top).toBeGreaterThanOrEqual(b.base + PARTS.minHeight);
+      for (let i = 1; i < p.length; i++) {
+        expect(p[i]!.top).toBeGreaterThanOrEqual(p[i - 1]!.top);
+        expect(p[i]!.top).toBeGreaterThan(p[0]!.top);
+        expect(signedArea2(p[i]!.ring!)).toBeGreaterThan(0);
+        expect(p[i]!.ring!.every(Number.isInteger)).toBe(true);
+        for (const h of p[i]!.holes ?? []) expect(signedArea2(h)).toBeLessThan(0);
+      }
+    }
+  });
+
+  it('分层环都是简单多边形：不自交、无重复点；洞简单、顶点都在外环里、与外环和别的洞不相碰（R2 修复轮）', () => {
+    let rings = 0;
+    for (const b of layered())
+      for (const part of b.parts!.slice(1)) {
+        const r = part.ring!;
+        expect(ringSimple(r), `${b.id} 顶 ${part.top}`).toBe(true);
+        rings++;
+        const hs = part.holes ?? [];
+        hs.forEach((h, k) => {
+          expect(ringSimple(h), `${b.id} 洞`).toBe(true);
+          expect(ringsTouch(h, r), `${b.id} 洞碰外环`).toBe(false);
+          for (let i = 0; i < h.length; i += 2) expect(pointInRing(h[i]!, h[i + 1]!, r)).toBe(true);
+          for (const o of hs.slice(k + 1)) expect(ringsTouch(h, o)).toBe(false);
+        });
+      }
+    expect(rings).toBeGreaterThan(2000);
+  });
+
+  it('上层块落在 footprint 里（顶点离 footprint ≤ 1 m）；最高点离 2D 楼顶不离谱', () => {
+    for (const b of layered()) {
+      for (const part of b.parts!.slice(1)) {
+        const r = part.ring!;
+        for (let i = 0; i < r.length; i += 2) {
+          const inside = pointInRing(r[i]!, r[i + 1]!, b.footprint.outer);
+          if (!inside) expect(ringDistance([r[i]!, r[i + 1]!], b.footprint.outer)).toBeLessThanOrEqual(10);
+        }
+      }
+      const peak = Math.max(...b.parts!.map((p) => p.top));
+      expect(peak - (b.base + b.height)).toBeLessThan(Math.max(600, b.height));
+    }
+  });
+
+  it('敏感区里的楼、地标原型都没有 parts', () => {
+    for (const b of layered()) {
+      const [cx, cy] = ringCentroid(b.footprint.outer);
+      expect(city.zones.sensitive.some((z) => pointInRing(cx, cy, z.area.outer))).toBe(false);
+    }
+    const replaced = new Set(city.landmarks.flatMap((l) => l.replaces));
+    expect(city.buildings.some((b) => replaced.has(b.id))).toBe(false);
+  });
+});
+
 describe('区域', () => {
   it('可玩区离每个军事多边形 ≥ 100 m', () => {
     const military = city.zones.sensitive.filter((z) => z.kind === 'military');
@@ -319,7 +390,7 @@ describe('红线与字符串', () => {
   });
 
   it('自由文本只有路名、地标虚构名和署名；其余字符串都是 ID 或枚举', () => {
-    const REFS = [REF_OSM, REF_OVERTURE, REF_TOMTOM, REF_EAST_ASIA_BUILDINGS, REF_LANDSD_BUILDINGS, REF_CEDD_DTM];
+    const REFS = [REF_OSM, REF_OVERTURE, REF_TOMTOM, REF_EAST_ASIA_BUILDINGS, REF_LANDSD_BUILDINGS, REF_LANDSD_3DVM, REF_CEDD_DTM];
     const ENUM = new Set([
       'central-city', 'EPSG:2326', 'dm', 'ovt',
       'tower', 'podium', 'house', 'civic', 'industrial', 'other',
@@ -376,7 +447,8 @@ describe('地形', () => {
 });
 
 describe('打包', () => {
-  it('确定性：再构建一次逐字节相同（含 terrain.bin）', async () => {
+  // 整个管线再跑一遍（R2 加了 LoD2 分层后约 5–6 s，超过默认 5 s）
+  it('确定性：再构建一次逐字节相同（含 terrain.bin）', { timeout: 120000 }, async () => {
     const again = await buildCity();
     const bytes = packOutputs(again.city, again.terrain.grid);
     for (const [name, b] of outputs) expect(Buffer.from(bytes.get(name)!).equals(b), name).toBe(true);

@@ -1,5 +1,6 @@
 /**
  * 开发用合成城市（?fixture=1）：管线产物还没到位时也能调渲染。
+ * 最高的四栋矩形楼带 LOD2 分层体块（Building.parts）：两栋四面退台 + 桅杆，两栋单边退台（三面共面）+ 塔冠机房。
  * 结构照抄真实数据的契约：北面是海港、几条东西向干道、电车轨、一段高架、
  * 一块敏感区、六座地标摆放。内容全部是虚构的，不对应真实楼宇。
  */
@@ -129,6 +130,8 @@ export function makeFixtureCity(): CityFile {
       x += w + 60 + Math.floor(rand() * 60);
     }
   }
+  addParts(buildings);
+
   // 敏感区内的楼（应渲染成无窗灰体）
   const sensitiveArea = rect(11000, 3300, 3000, 2600);
   for (const [i, [cx, cy, w, d, h]] of [
@@ -195,4 +198,34 @@ function lm(
   height: number,
 ): LandmarkPlacement {
   return { id, name: { zh, en }, x, y, rot, base: 0, height, footprint: { outer: rect(x, y, w, d, rot) }, replaces: [] };
+}
+
+/**
+ * 给最高的四栋无洞矩形楼加分层体块（覆盖 Building.parts 的渲染路径）。
+ * 偶数号：45 % 高处四面退台、80 % 再退、顶上 1 m × 1 m 桅杆高 12 m；奇数号：北侧 35 % 在 60 % 高处退台（其余三面共面），
+ * 顶上中间一块 6 m 高的机房。part.top 是绝对高程（fixture 楼底 0）。
+ */
+function addParts(buildings: Building[]): void {
+  const tall = buildings
+    .filter((b) => !b.footprint.holes && b.height >= 700)
+    .sort((a, b) => b.height - a.height || (a.id < b.id ? -1 : 1))
+    .slice(0, 4);
+  tall.forEach((b, i) => {
+    const o = b.footprint.outer;
+    const xs = o.filter((_, k) => k % 2 === 0);
+    const ys = o.filter((_, k) => k % 2 === 1);
+    const [x0, x1, y0, y1] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
+    const cx = (x0 + x1) / 2;
+    const cy = (y0 + y1) / 2;
+    const inset = (f: number) => rect(cx, cy, (x1 - x0) * f, (y1 - y0) * f);
+    const h = b.height;
+    b.parts =
+      i % 2 === 0
+        ? [{ top: Math.round(h * 0.45) }, { ring: inset(0.78), top: Math.round(h * 0.8) }, { ring: inset(0.55), top: h }, { ring: rect(cx, cy, 10, 10), top: h + 120 }]
+        : [
+            { top: Math.round(h * 0.6) },
+            { ring: [x0, y0, x1, y0, x1, Math.round(y1 - (y1 - y0) * 0.35), x0, Math.round(y1 - (y1 - y0) * 0.35)], top: h },
+            { ring: rect(cx, cy - (y1 - y0) * 0.2, (x1 - x0) * 0.3, (y1 - y0) * 0.2), top: h + 60 },
+          ];
+  });
 }

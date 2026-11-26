@@ -2,7 +2,7 @@
  * 冒烟 + 截图：vite build → 仿生产的静态服务器 → Playwright（无头 Chromium，SwiftShader）打开页面，
  * 等 window.__central.ready，按三种视口截图并断言（写实化 realism spec §v 的两档预算）：
  * - 零 console error；地图数据实际下载量 ≤ 1 MB；
- * - draw call ≤ 150（每个机位、两档都是）；三角形 HIGH ≤ 60 万、LOW ≤ 30 万（按 stats().tier 判档）；
+ * - draw call ≤ 150（每个机位、两档都是）；三角形 HIGH ≤ 75 万（R2 细节一轮由 60 万上调）、LOW ≤ 30 万（按 stats().tier 判档）；
  * - 全分辨率后处理 pass ≤ 2（stats().passesFull）；
  * - LOW 档（?q=low#q-low，另跑一轮）：stats().tier === 'low'、bloom 与平面反射都关；
  * - 手机横屏按 iPhone 的 DPR 2、桌面按 2560×1440 各再跑一次：GPU 贴图 + 渲染目标 + 画布 ≤ 64 MB（stats().texMB），
@@ -35,8 +35,8 @@ const outDir = process.env.SHOT_DIR || path.join(os.tmpdir(), 'central-shots');
 const args = process.argv.slice(2);
 const only = args.find((a) => a.startsWith('--only='))?.slice(7);
 const MAX_CALLS = 150;
-/** 三角形上限：HIGH（iPhone 17 / 桌面）60 万、LOW 30 万（realism spec §v）。 */
-const MAX_TRIANGLES = { high: 600_000, low: 300_000 };
+/** 三角形上限：HIGH（iPhone 17 / 桌面）75 万（R2 细节一轮：LOD2 + 电车 + 街头生活，由 60 万上调）、LOW 30 万。 */
+const MAX_TRIANGLES = { high: 750_000, low: 300_000 };
 /** 全分辨率后处理 pass 上限（bloom 在半分辨率以下，不计）。 */
 const MAX_PASSES_FULL = 2;
 /** GPU 贴图 + 渲染目标内存上限（MB，手机 DPR 2）。 */

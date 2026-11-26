@@ -21,8 +21,10 @@ import { createHud } from './ui/hud';
 import { LoadingScreen } from './ui/loading';
 import { Notice } from './ui/notice';
 import { PerfHud } from './ui/perf-hud';
-import { HAZE, SHARED, readParam } from './render/materials/lighting';
+import { HAZE, SHARED, SIM_CLOCK, readParam } from './render/materials/lighting'; // [r2:trams] SIM_CLOCK
+import type { TramCarDebug } from './render/streets/trams'; // [r2:trams]
 import { AdaptiveDpr, DowngradeWatch, adaptiveLadder } from './render/quality';
+import { AudioEngine, initialMute, readStoredMute, writeStoredMute } from './audio/engine'; // [r2:trams]
 
 export interface CentralDebug {
   ready: boolean;
@@ -32,6 +34,10 @@ export interface CentralDebug {
   /** 任意机位（模拟坐标，米），立即生效。 */
   lookFrom(eye: [number, number, number], target: [number, number, number]): void;
   summary(): string;
+  /** 电车（模拟坐标，米；heading 弧度自东逆时针）。 */
+  trams?(): { t: number; cars: TramCarDebug[] }; // [r2:trams]
+  /** 音频状态：AudioContext 是否已建（只在用户手势后）、状态、是否静音、已播铃声数。 */
+  audio?(): { ready: boolean; state: string; muted: boolean; played: number }; // [r2:trams]
 }
 
 declare global {
@@ -158,11 +164,67 @@ async function main(app: HTMLElement, loading: LoadingScreen): Promise<void> {
   const setView = (id: string, instant = false) => {
     const p = PRESETS.find((q) => q.id === id);
     if (!p) return;
-    if (instant) rig.flyTo(presetView(p), 1e-3);
-    else rig.flyTo(presetView(p));
+    // [r2:fix] 「電車」：一按就要看见叮叮——找预设机位 250 m 内停站中（或正驶向机位）的西行车，站到它前方站岛一侧
+    const v = (id === 'tram' && tramFrame(p)) || presetView(p);
+    if (instant) rig.flyTo(v, 1e-3);
+    else rig.flyTo(v);
     hud.setActive(id);
   };
-  const hud = createHud(app, { presets: PRESETS, active: startId, onPreset: (id) => setView(id), meta: city.meta });
+  /** 跟某辆西行车的「站岛前方」机位：车前 13 m、车左（车门 / 站岛一侧）2.6 m（站岛延长线上）、离轨顶 1.8 m，看车身中部（离轨顶 2.3 m）。 */
+  const tramFrame = (p: (typeof PRESETS)[number]) => {
+    const cars = view.trams?.debugCars(SIM_CLOCK.t) ?? [];
+    let best: TramCarDebug | null = null;
+    let score = Infinity;
+    for (const c of cars) {
+      if (c.track !== 0) continue;
+      const d = Math.hypot(c.x - p.eye[0], c.y - p.eye[1]);
+      if (d > 250) continue;
+      // 停站中的优先；其次是朝预设机位方向开来的
+      const toward = (p.eye[0] - c.x) * Math.cos(c.heading) + (p.eye[1] - c.y) * Math.sin(c.heading) > 0;
+      const sc = d + (c.atStop ? 0 : toward ? 120 : 400);
+      if (sc < score) {
+        score = sc;
+        best = c;
+      }
+    }
+    if (!best) return null;
+    const fx = Math.cos(best.heading);
+    const fy = Math.sin(best.heading);
+    const at = (f: number, l: number, u: number): [number, number, number] => [best.x + fx * f - fy * l, best.y + fy * f + fx * l, best.z + u];
+    return viewFromEye(at(13, 2.6, 1.8), at(0, 0, 2.3));
+  };
+  // [r2:trams] 叮叮铃（第一次点按 / 按键后才建 AudioContext）、「聲音」开关、「搭電車」跟车
+  const storage = (() => {
+    try {
+      return window.localStorage;
+    } catch {
+      return null;
+    }
+  })();
+  const audio = new AudioEngine(initialMute(readParam('mute') !== null, readStoredMute(storage)));
+  const rideFrom = () => {
+    const ok = view.trams?.ride({ x: view.camera.position.x, z: view.camera.position.z }) ?? false;
+    if (ok) rig.setFollow((eye, target) => view.trams?.ridePose(eye, target) ?? false);
+    return ok;
+  };
+  rig.onFollowEnd = () => {
+    view.trams?.ride(null);
+    hud.setRide(false);
+  };
+  const hud = createHud(app, {
+    presets: PRESETS,
+    active: startId,
+    onPreset: (id) => setView(id),
+    meta: city.meta,
+    sound: {
+      muted: audio.isMuted,
+      onToggle: (m) => {
+        audio.setMuted(m);
+        writeStoredMute(storage, m);
+      },
+    },
+    ride: { onRide: rideFrom },
+  });
   // 照片模式：隐藏标题牌、机位按钮、鸣谢按钮与提示，只留地图署名（与实拍照片并排比较用）
   if (readParam('photo') !== null) app.classList.add('photo');
   const perfFlag = readParam('perf');
@@ -185,6 +247,8 @@ async function main(app: HTMLElement, loading: LoadingScreen): Promise<void> {
     rig.update(dt);
     rig.apply(view.camera);
     view.frame(dt, rig.current.distance);
+    for (const b of view.trams?.drainBells() ?? []) audio.bell(b.pos, view.camera, b.seed); // [r2:trams]
+    if (audio.ready) audio.motors(view.trams?.nearest(view.camera.position, 2, 80) ?? [], view.camera); // [r2:trams]
     perf?.tick(dt);
     if (adaptive && frames > 30) {
       const next = adaptive.sample(dt * 1000, now);
@@ -201,6 +265,8 @@ async function main(app: HTMLElement, loading: LoadingScreen): Promise<void> {
   debug.setView = setView;
   debug.lookFrom = (eye, target) => rig.flyTo(viewFromEye(eye, target), 1e-3);
   debug.summary = () => view.layerSummary();
+  debug.trams = () => ({ t: SIM_CLOCK.t, cars: view.trams?.debugCars(SIM_CLOCK.t) ?? [] }); // [r2:trams]
+  debug.audio = () => ({ ready: audio.ready, state: audio.state, muted: audio.isMuted, played: audio.played }); // [r2:trams]
 }
 
 /**

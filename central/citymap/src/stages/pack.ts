@@ -17,7 +17,7 @@ export const TERRAIN_FILE = 'terrain.bin';
 
 type Shape =
   | 'city' | 'meta' | 'origin' | 'source' | 'build' | 'building' | 'ring' | 'road' | 'name'
-  | 'rail' | 'zones' | 'zone' | 'props' | 'landmark';
+  | 'rail' | 'zones' | 'zone' | 'props' | 'landmark' | 'part';
 
 const ORDER: Record<Shape, readonly string[]> = {
   city: ['format', 'version', 'meta', 'buildings', 'roads', 'rails', 'water', 'zones', 'props', 'landmarks'],
@@ -25,7 +25,8 @@ const ORDER: Record<Shape, readonly string[]> = {
   origin: ['e', 'n', 'lon', 'lat'],
   source: ['id', 'license', 'attribution', 'url'],
   build: ['pipelineVersion', 'inputsDigest'],
-  building: ['id', 'src', 'footprint', 'base', 'height', 'heightSource', 'kind', 'style', 'storeys'],
+  building: ['id', 'src', 'footprint', 'base', 'height', 'heightSource', 'kind', 'style', 'storeys', 'parts'],
+  part: ['ring', 'holes', 'top'],
   ring: ['outer', 'holes'],
   road: ['id', 'cls', 'pts', 'oneway', 'lanes', 'bridge', 'tunnel', 'level', 'speedKmh', 'name'],
   name: ['zh', 'en'],
@@ -42,7 +43,7 @@ const CHILD: Partial<Record<Shape, Record<string, Shape>>> = {
     zones: 'zones', props: 'props', landmarks: 'landmark',
   },
   meta: { origin: 'origin', sources: 'source', build: 'build' },
-  building: { footprint: 'ring' },
+  building: { footprint: 'ring', parts: 'part' },
   road: { name: 'name' },
   zones: { playable: 'ring', sensitive: 'zone' },
   zone: { area: 'ring' },
@@ -112,6 +113,9 @@ function sourceLines(city: CityFile): string[] {
 /** 建筑图层是否来自港府数据（整层，见 build.ts）。 */
 const govBuildings = (city: CityFile): boolean => city.buildings.some((b) => b.src === 'landsd');
 
+/** 有多少栋楼带 LOD2 分层体块（地政总署 3D 模型派生）。 */
+const partsCount = (city: CityFile): number => city.buildings.filter((b) => b.parts).length;
+
 /** ODbL 图层的来源描述：OSM 为主，用到 TomTom 路段时如实写上。 */
 function odblOrigin(city: CityFile): string {
   const tomtom = city.meta.sources.some((s) => s.id === REF_TOMTOM.id);
@@ -136,6 +140,13 @@ function attributionText(city: CityFile): string {
         `via the CSDI Portal (${CSDI_LICENSE}; not part of the ODbL database).`
       : `* ${CITY_FILE} buildings and landmarks: OpenStreetMap / Overture building footprints (ODbL-1.0; ` +
         'some footprints CC-BY-4.0 as listed above).',
+    ...(partsCount(city) > 0
+      ? [
+          `* ${CITY_FILE} building parts (stacked setbacks, crowns and roof structures of ${partsCount(city)} buildings): ` +
+            'Lands Department 3D Visualisation Map',
+          `  (Non-textured models) via 3d.map.gov.hk and the CSDI Portal (${CSDI_LICENSE}; not part of the ODbL database).`,
+        ]
+      : []),
     `* ${TERRAIN_FILE} (ground elevation): Civil Engineering and Development Department 2020 LiDAR DTM via the ` +
       `CSDI Portal (${CSDI_LICENSE}; not part of the ODbL database).`,
     '',
@@ -143,12 +154,22 @@ function attributionText(city: CityFile): string {
     '(0.3 m) and slivers under 4 m² removed; missing building heights estimated; all building and business',
     `names removed;${gov ? ' open-sided structures omitted;' : ''} ${city.landmarks.length} buildings replaced by ` +
       'fictional landmark placements;',
+    ...(partsCount(city) > 0
+      ? [
+          '3D building models reduced to their roof surfaces, converted to simplified stacked outlines (0.5 m, up to 4 m for curved outlines) and',
+          'fitted to the 2D footprints (no meshes, textures or names kept; none inside sensitive zones or landmarks);',
+        ]
+      : []),
     'props inside sensitive (military / government) zones removed; terrain resampled to a 5 m grid, outliers',
     'and small gaps repaired, with the sea set to 0 mPD.',
     '',
     'The OpenStreetMap-derived database is licensed under ODbL-1.0; see LICENSE-ODbL.txt.',
     `Data marked ${CSDI_LICENSE} is used under the CSDI Portal Terms and Conditions of Use`,
     '(https://portal.csdi.gov.hk/csdi-webpage/doc/TNC); it is not relicensed.',
+    ...(partsCount(city) > 0
+      ? ['The building parts also follow the Terms and Conditions of Use of the 3D Visualisation Map website',
+        '(https://3d.map.gov.hk), which require the same attribution.']
+      : []),
     '',
   ];
   return lines.join('\n');

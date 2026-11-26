@@ -1,29 +1,33 @@
 /**
- * 行人天桥 / 高架行人通道（realism C10）：footway / pedestrian 中标了 bridge 或 level 1–2 的路段
- * （层数规则与 roads.ts 相同：level 1–2，或 bridge；每层 6 m），合并成一个网格（一个 draw call）。
- * - 桥面 3.5 m 宽、0.6 m 厚，底面被街面反光照亮（钠灯下偏橙，参考照 12）；
- * - 两侧 1.1 m 深色玻璃 / 金属栏板（朝外一面）；
- * - 约 60 % 有顶棚（+3 m 薄板），棚底中线一条冷白光管（tubeCool 1.0，参考照 11、12）；
- * - 每 30 m 一根桥墩。三角形约 2 万（全图），一个 draw call。
+ * 行人天桥 / 高架行人通道（realism C10，R2 STREETLIFE S7 细化，参考照 09、R1-11、R1-14）：
+ * footway / pedestrian 中标了 bridge 或 level 1–2 的路段（层数规则与 roads.ts 相同：level 1–2，或 bridge；每层 6 m）。
+ * - 跨车行道的段：封闭玻璃廊——桥面 4.5 m 宽，围合 3.2 m 高；玻璃墙 1.5 m 一根窗框、室内冷白灯（玻璃带 0.5–0.8、
+ *   顶部光管 1.0–1.4）、白色平顶檐口（0.6 m），桥底浅灰、两排筒灯（1.0–1.4）；跨车行道处不立桥墩。
+ * - 其余高架通道：开敞有盖走廊（栏杆 1.1 m、细柱、平顶、棚底筒灯），约 1/4 无盖只有栏杆。
+ * - 桥墩：只立在不在车行道上的地方，30 m 一根。
+ * 合并成网格（life-material）：HIGH 一个网格；LOW 按 120 m 分块，只画相机 150 m 内的块（P1：LOW 也看得到天桥）。
  */
-import { BufferAttribute, Mesh, type BufferGeometry } from 'three';
+import { Group, Mesh, type Camera, type Object3D } from 'three';
 import type { Road } from '@central/data';
-import { simToThree } from '../../coords';
+import { simToThreeVec } from '../../coords';
 import type { HeightFn } from '../../data/terrain';
 import { cleanRing } from '../../geom/ring';
 import { elevationTiers } from '../roads';
 import { drapeResample } from '../ribbon';
 import { seedOf, unit } from './lamp-placement';
-import { createPropMaterial } from './prop-material';
-import { PropBuilder, linearRGB, type V3 } from './prop-geometry';
-import { lightV3 } from './vehicles';
+import { K_GLAZING, K_SOFFIT, LifeBuilder, type Face } from './furniture';
+import { createLifeMaterial } from './life-material';
+import { linearRGB, type V3 } from './prop-geometry';
 
 const TIER_M = 6;
-const HALF_W = 1.75;
+const HALF_W = 2.25;
 const DECK_T = 0.6;
 const PARAPET_H = 1.1;
-const ROOF_H = 3.0;
+const ROOF_H = 3.2;
+const ROOF_T = 0.6;
 const PIER_EVERY_M = 30;
+/** LOW 档分块大小（m）。 */
+const CHUNK_M = 120;
 
 /** 是否画成天桥：footway / pedestrian，且 level 1–2 或标了 bridge，不是隧道。 */
 export function isFootbridge(r: Road): boolean {
@@ -36,24 +40,29 @@ export function footbridgeTiers(r: Road): number {
   return Math.max(elevationTiers(r), r.bridge ? 1 : 0);
 }
 
-export function footbridgeGeometry(roads: readonly Road[], ground: HeightFn): { geometry: BufferGeometry; lift: number[] } | null {
-  const b = new PropBuilder();
-  const lift: number[] = [];
-  const deck = { alb: linearRGB('#5d5953') };
-  const soffit = { alb: linearRGB('#6b665e') };
-  const rail = { alb: linearRGB('#22272b'), part: 3 };
-  const roofTop = { alb: linearRGB('#3a3b3c') };
-  const tube = { alb: [0.6, 0.6, 0.6] as V3, em: lightV3('tubeCool', 1.0) };
-  const pier = { alb: linearRGB('#6f6a62') };
-  const v = [0, 0, 0];
-  const at = (x: number, y: number, z: number): V3 => {
-    simToThree(x, y, z, v);
-    return [v[0]!, v[1]!, v[2]!];
-  };
-  const mark = (from: number, h: (k: number) => number) => {
-    const n = b.pos.length / 3;
-    for (let k = from; k < n; k++) lift.push(h(k));
-  };
+/** 一段桥的样式（纯函数）：跨车行道 → 封闭玻璃廊；否则按种子 3/4 开敞有盖、1/4 无盖。 */
+export function bridgeStyle(overRoad: boolean, seed: number): 'glazed' | 'canopy' | 'open' {
+  if (overRoad) return 'glazed';
+  const r = unit(seed, 9);
+  return r < 0.35 ? 'glazed' : r < 0.8 ? 'canopy' : 'open';
+}
+
+/**
+ * 天桥几何，按 CHUNK_M 分块（键 = 块坐标）。overRoad(x, y)：模拟 dm 处是否在地面车行道上（不立桥墩、用玻璃廊）。
+ */
+export function footbridgeChunks(
+  roads: readonly Road[],
+  ground: HeightFn,
+  overRoad: (xDm: number, yDm: number) => boolean = () => false,
+  /** 敏感区（模拟坐标 dm）：区内与贴着区边（4 m 内）的桥段一律不画（PLAN §1：敏感区只做背景）。 */
+  inZone: (xDm: number, yDm: number) => boolean = () => false,
+): Map<string, LifeBuilder> {
+  const chunks = new Map<string, LifeBuilder>();
+  const deck: Face = { alb: linearRGB('#5d5953') };
+  const edge: Face = { alb: linearRGB('#8a8782') };
+  const roofTop: Face = { alb: linearRGB('#7c7b78') };
+  const pier: Face = { alb: linearRGB('#6f6a62') };
+  const white: Face = { alb: linearRGB('#d8d6d2') };
   for (const r of roads) {
     if (!isFootbridge(r)) continue;
     const tiers = footbridgeTiers(r);
@@ -61,8 +70,8 @@ export function footbridgeGeometry(roads: readonly Road[], ground: HeightFn): { 
     const n = pts.length >> 1;
     if (n < 2) continue;
     const seed = seedOf(r.id);
-    const roofed = unit(seed, 9) < 0.6;
     let sinceP = PIER_EVERY_M;
+    let along = 0;
     for (let i = 0; i + 1 < n; i++) {
       const ax = pts[i * 2]!;
       const ay = pts[i * 2 + 1]!;
@@ -70,6 +79,22 @@ export function footbridgeGeometry(roads: readonly Road[], ground: HeightFn): { 
       const by = pts[i * 2 + 3]!;
       const len = Math.hypot(bx - ax, by - ay);
       if (len < 1) continue;
+      // 敏感区：桥段中线两端、中点与两侧 4 m 处都不能在区内
+      {
+        const nxs = (-(by - ay) / len) * 40;
+        const nys = ((bx - ax) / len) * 40;
+        let hit = false;
+        for (const f of [0, 0.5, 1])
+          for (const k of [-1, 0, 1]) if (inZone(ax + (bx - ax) * f + nxs * k, ay + (by - ay) * f + nys * k)) hit = true;
+        if (hit) continue;
+      }
+      const lenM = len / 10;
+      const key = `${Math.floor((ax + bx) / 2 / 10 / CHUNK_M)},${Math.floor((ay + by) / 2 / 10 / CHUNK_M)}`;
+      let b = chunks.get(key);
+      if (!b) {
+        b = new LifeBuilder();
+        chunks.set(key, b);
+      }
       // 左法线（dm 单位向量）× 半宽
       const lx = (-(by - ay) / len) * HALF_W * 10;
       const ly = ((bx - ax) / len) * HALF_W * 10;
@@ -77,58 +102,140 @@ export function footbridgeGeometry(roads: readonly Road[], ground: HeightFn): { 
       const gb = ground(bx, by);
       const za = ga + tiers * TIER_M * 10;
       const zb = gb + tiers * TIER_M * 10;
-      const from = b.pos.length / 3;
-      const T = (x: number, y: number, z: number, dz: number) => at(x, y, z + dz * 10);
+      const T = (x: number, y: number, z: number, dz: number): V3 => simToThreeVec(x, y, z + dz * 10);
       const aL = (dz: number) => T(ax + lx, ay + ly, za, dz);
       const aR = (dz: number) => T(ax - lx, ay - ly, za, dz);
       const bL = (dz: number) => T(bx + lx, by + ly, zb, dz);
       const bR = (dz: number) => T(bx - lx, by - ly, zb, dz);
-      // 桥面（朝上）、底面（朝下）
-      b.quad(aR(0), bR(0), bL(0), aL(0), deck);
-      b.quad(aL(-DECK_T), bL(-DECK_T), bR(-DECK_T), aR(-DECK_T), soffit);
-      // 两侧：桥面封边 + 栏板合成一块朝外的面（从桥底到栏板顶；桥内侧只有走在桥上才看得到）
-      b.quad(bL(-DECK_T), aL(-DECK_T), aL(PARAPET_H), bL(PARAPET_H), rail);
-      b.quad(aR(-DECK_T), bR(-DECK_T), bR(PARAPET_H), aR(PARAPET_H), rail);
+      // 离地高度（lift）：按本段两端地面平均
+      const base = tiers * TIER_M;
+      const L4 = (d: number) => [base + d, base + d, base + d, base + d];
+      // 每 2 m 取样：段内任一处在车行道 / 电车路上方就算跨路
+      let over = false;
+      for (let k = 0, m = Math.max(1, Math.ceil(lenM / 2)); k <= m && !over; k++) over = overRoad(ax + ((bx - ax) * k) / m, ay + ((by - ay) * k) / m);
+      const style = bridgeStyle(over, seed + i * 31);
+      const u0 = along;
+      const u1 = along + lenM;
+      // 桥面（朝上）、桥底（朝下，筒灯）
+      b.quad(aR(0), bR(0), bL(0), aL(0), deck, undefined, L4(0));
+      b.quad(aL(-DECK_T), bL(-DECK_T), bR(-DECK_T), aR(-DECK_T), { alb: linearRGB('#9d9a95'), kind: K_SOFFIT }, [
+        [u0, HALF_W],
+        [u1, HALF_W],
+        [u1, -HALF_W],
+        [u0, -HALF_W],
+      ], L4(-DECK_T));
+      const roofed = style !== 'open';
+      const top = roofed ? ROOF_H + ROOF_T : PARAPET_H;
+      // 两侧：从桥底到顶（玻璃廊）或到栏杆顶（开敞）；aux 1 = 开敞（栏杆以上透空）
+      const sideFace: Face = { alb: linearRGB('#2a2e31'), kind: K_GLAZING, aux: style === 'glazed' ? 0 : 1 };
+      const sideTop = style === 'glazed' ? top : PARAPET_H;
+      b.quad(bL(-DECK_T), aL(-DECK_T), aL(sideTop), bL(sideTop), sideFace, [
+        [u1, -DECK_T],
+        [u0, -DECK_T],
+        [u0, sideTop],
+        [u1, sideTop],
+      ], [base - DECK_T, base - DECK_T, base + sideTop, base + sideTop]);
+      b.quad(aR(-DECK_T), bR(-DECK_T), bR(sideTop), aR(sideTop), sideFace, [
+        [u0, -DECK_T],
+        [u1, -DECK_T],
+        [u1, sideTop],
+        [u0, sideTop],
+      ], [base - DECK_T, base - DECK_T, base + sideTop, base + sideTop]);
       if (roofed) {
-        b.quad(aR(ROOF_H), bR(ROOF_H), bL(ROOF_H), aL(ROOF_H), roofTop);
-        b.quad(aL(ROOF_H - 0.1), bL(ROOF_H - 0.1), bR(ROOF_H - 0.1), aR(ROOF_H - 0.1), soffit);
-        // 光管：棚底中线 0.3 m 宽
-        const k = 0.3 / (2 * HALF_W);
-        const mid = (p: V3, q: V3, t: number): V3 => [p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t - 0.02, p[2] + (q[2] - p[2]) * t];
-        const A = aL(ROOF_H - 0.1);
-        const B = aR(ROOF_H - 0.1);
-        const C = bL(ROOF_H - 0.1);
-        const D = bR(ROOF_H - 0.1);
-        b.quad(mid(A, B, 0.5 - k), mid(C, D, 0.5 - k), mid(C, D, 0.5 + k), mid(A, B, 0.5 + k), tube);
+        b.quad(aR(top), bR(top), bL(top), aL(top), roofTop, undefined, L4(top));
+        if (style === 'canopy') {
+          // 檐口（白）、棚底（筒灯）、细柱
+          b.quad(bL(ROOF_H), aL(ROOF_H), aL(top), bL(top), white, undefined, [base + ROOF_H, base + ROOF_H, base + top, base + top]);
+          b.quad(aR(ROOF_H), bR(ROOF_H), bR(top), aR(top), white, undefined, [base + ROOF_H, base + ROOF_H, base + top, base + top]);
+          b.quad(aL(ROOF_H), bL(ROOF_H), bR(ROOF_H), aR(ROOF_H), { alb: linearRGB('#b5b2ad'), kind: K_SOFFIT }, [
+            [u0, HALF_W],
+            [u1, HALF_W],
+            [u1, -HALF_W],
+            [u0, -HALF_W],
+          ], L4(ROOF_H));
+          for (const side of [1, -1]) {
+            const c = side > 0 ? aL(0) : aR(0);
+            const inset = simToThreeVec(-lx * 0.06 * side, -ly * 0.06 * side, 0);
+            b.box([c[0] + inset[0], c[1], c[2] + inset[2]], [0.12, ROOF_H, 0.12], edge, { bottom: null, top: null });
+          }
+        }
       }
-      mark(from, (k) => {
-        const y = b.pos[k * 3 + 1]!;
-        // 离地高度：按本段两端地面平均
-        return y - ((ga + gb) / 2) * 0.1;
-      });
-      // 桥墩
-      sinceP += len / 10;
-      if (sinceP >= PIER_EVERY_M) {
+      // 桥墩：不在车行道上才立
+      sinceP += lenM;
+      if (sinceP >= PIER_EVERY_M && !overRoad(ax, ay)) {
         sinceP = 0;
-        const from2 = b.pos.length / 3;
-        const c = at(ax, ay, ga);
+        const c = simToThreeVec(ax, ay, ga);
         const h = tiers * TIER_M - DECK_T;
+        const from = b.vertexCount;
         b.box([c[0], c[1] - 0.5, c[2]], [0.8, h + 0.5, 0.8], pier, { bottom: null, top: null });
-        mark(from2, (k) => b.pos[k * 3 + 1]! - c[1]);
+        for (let k = from; k < b.vertexCount; k++) b.k[k * 3 + 2] = b.pos[k * 3 + 1]! - c[1];
       }
+      along = u1;
     }
   }
-  if (b.pos.length === 0) return null;
-  return { geometry: b.build(), lift };
+  return chunks;
 }
 
-export function buildFootbridges(roads: readonly Road[], ground: HeightFn): Mesh | null {
-  const built = footbridgeGeometry(roads, ground);
-  if (!built) return null;
-  built.geometry.setAttribute('aLift', new BufferAttribute(new Float32Array(built.lift), 1));
-  const mesh = new Mesh(built.geometry, createPropMaterial({ warmth: 0.5, vertexLift: true }));
-  mesh.name = 'footbridges';
-  mesh.matrixAutoUpdate = false;
-  return mesh;
+export interface Footbridges {
+  objects: Object3D[];
+  update(camera: Camera): void;
+  triangles: number;
 }
 
+/**
+ * 天桥网格。nearM = Infinity（HIGH）：合成一个网格；有限值（LOW）：分块，只显示相机 nearM 内的块。
+ */
+export function buildFootbridges(
+  roads: readonly Road[],
+  ground: HeightFn,
+  overRoad?: (xDm: number, yDm: number) => boolean,
+  nearM = Infinity,
+  inZone?: (xDm: number, yDm: number) => boolean,
+): Footbridges {
+  const chunks = footbridgeChunks(roads, ground, overRoad, inZone);
+  const material = createLifeMaterial(0.5);
+  if (nearM === Infinity) {
+    const all = new LifeBuilder();
+    for (const b of chunks.values()) {
+      const off = all.vertexCount;
+      all.pos.push(...b.pos);
+      all.nrm.push(...b.nrm);
+      all.alb.push(...b.alb);
+      all.em.push(...b.em);
+      all.uv.push(...b.uv);
+      all.k.push(...b.k);
+      all.useAux.push(...b.useAux);
+      for (const i of b.index) all.index.push(i + off);
+    }
+    if (all.vertexCount === 0) return { objects: [], update: () => {}, triangles: 0 };
+    const mesh = new Mesh(all.geometry(), material);
+    mesh.name = 'footbridges';
+    mesh.matrixAutoUpdate = false;
+    return { objects: [mesh], update: () => {}, triangles: all.index.length / 3 };
+  }
+  const group = new Group();
+  group.name = 'footbridges';
+  const parts: { mesh: Mesh; cx: number; cz: number }[] = [];
+  let tris = 0;
+  for (const [key, b] of chunks) {
+    if (b.vertexCount === 0) continue;
+    const [i, j] = key.split(',').map(Number) as [number, number];
+    const c = simToThreeVec((i + 0.5) * CHUNK_M, (j + 0.5) * CHUNK_M, 0, 1);
+    const mesh = new Mesh(b.geometry(), material);
+    mesh.name = `footbridges-${key}`;
+    mesh.matrixAutoUpdate = false;
+    mesh.visible = false;
+    group.add(mesh);
+    parts.push({ mesh, cx: c[0], cz: c[2] });
+    tris += b.index.length / 3;
+  }
+  const r = nearM + CHUNK_M * 0.71;
+  return {
+    objects: [group],
+    triangles: tris,
+    update(camera) {
+      const p = camera.position;
+      for (const q of parts) q.mesh.visible = Math.hypot(q.cx - p.x, q.cz - p.z) < r && p.y < 400;
+    },
+  };
+}

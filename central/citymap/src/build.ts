@@ -15,6 +15,7 @@ import { landsdBuildingSource } from './sources/landsd-buildings';
 import { readOverture } from './sources/overture';
 import { overtureBuildingSource } from './sources/overture-buildings';
 import { REF_OSM, REF_OVERTURE } from './sources/refs';
+import { addBuildingParts, readModels, type PartsStats } from './stages/building-parts';
 import { buildBuildings } from './stages/buildings';
 import { placeLandmarks } from './stages/landmarks';
 import { buildProps } from './stages/props';
@@ -24,7 +25,7 @@ import { buildRoads } from './stages/roads';
 import { loadSnapshot } from './stages/snapshot';
 import { buildTerrain, type TerrainBuild } from './stages/terrain';
 import { readLandsdBuildings } from './stages/terrain-buildings';
-import { REF_CEDD_DTM } from './stages/terrain-refs';
+import { REF_CEDD_DTM, REF_LANDSD_3DVM } from './stages/terrain-refs';
 import { buildWater } from './stages/water';
 import { buildZones } from './stages/zones';
 
@@ -44,6 +45,8 @@ export interface CityBuild {
   city: CityFile;
   /** terrain.bin 的内容来源（网格、陆地掩膜、统计报告）。 */
   terrain: TerrainBuild;
+  /** LOD2 分层体块的统计（Overture 建筑层时为 null）。 */
+  parts: PartsStats | null;
 }
 
 export async function buildCity(opts: BuildOptions = {}): Promise<CityBuild> {
@@ -54,18 +57,23 @@ export async function buildCity(opts: BuildOptions = {}): Promise<CityBuild> {
   const terrain = buildTerrain(gov);
   const ground = groundOf(terrain.grid);
 
-  const source =
-    (opts.buildings ?? 'landsd') === 'landsd'
-      ? landsdBuildingSource(readLandsdBuildings(gov.files))
-      : overtureBuildingSource(ovt.buildings);
+  const landsd = (opts.buildings ?? 'landsd') === 'landsd';
+  const source = landsd ? landsdBuildingSource(readLandsdBuildings(gov.files)) : overtureBuildingSource(ovt.buildings);
   const built = buildBuildings(await source.load(), source.src, extent, ground);
-  const { landmarks, buildings } = placeLandmarks(LANDMARKS, built.buildings, ground);
+  const placed = placeLandmarks(LANDMARKS, built.buildings, ground);
+  const { landmarks } = placed;
 
   const roads = buildRoads(ovt.segments, extent);
   const zones = buildZones(ovt.landUse, ovt.buildings, MVP_RECT);
+  // LOD2：地政总署 3D 模型 → 分层体块（只配 LandsD 建筑层；匹配时带上地标原型，免得原型的造型转嫁给邻楼）
+  const withParts = landsd
+    ? addBuildingParts(built.buildings, placed.buildings, readModels(gov.files), { landmarks, sensitive: zones.sensitive })
+    : null;
+  const buildings = withParts?.buildings ?? placed.buildings;
 
   const sources = new Map<string, SourceRef>([[REF_OSM.id, REF_OSM], [REF_OVERTURE.id, REF_OVERTURE]]);
   for (const ref of [...roads.refs, ...built.refs]) sources.set(ref.id, ref);
+  if (withParts && withParts.stats.buildingsWithParts > 0) sources.set(REF_LANDSD_3DVM.id, REF_LANDSD_3DVM);
   sources.set(REF_CEDD_DTM.id, REF_CEDD_DTM);
 
   const [lon, lat] = unproject(0, 0);
@@ -91,5 +99,5 @@ export async function buildCity(opts: BuildOptions = {}): Promise<CityBuild> {
     props: buildProps(ovt.infrastructure, ovt.land, extent, zones.sensitive),
     landmarks,
   };
-  return { city, terrain };
+  return { city, terrain, parts: withParts?.stats ?? null };
 }

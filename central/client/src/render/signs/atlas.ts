@@ -32,12 +32,20 @@ export const SIGN_STYLES = {
   neonGreen: { bg: '#000000', fg: '#38ff7a', main: '#38ff7a', gainY: 2.8 },
   /** 蓝色 LED 灯管带 + 白字（主色按白字算，蓝管约 0.6）。 */
   ledBlue: { bg: '#2f6bff', fg: '#eef3ff', main: '#eef3ff', gainY: 2.6 },
+  /** R2 修复轮（照片 20）：深红底黄字 + 字色霓虹边框（主色按黄字算）。 */
+  boxCrimson: { bg: '#a8141c', fg: '#ffd54a', main: '#ffd54a', gainY: 1.6 },
+  /** 藏青底白字 + 白色霓虹边框。 */
+  boxNavy: { bg: '#1b2a6b', fg: '#ffffff', main: '#ffffff', gainY: 1.5 },
 } as const;
+
+/** 有霓虹边框的样式。 */
+const OUTLINED: ReadonlySet<string> = new Set(['boxCrimson', 'boxNavy', 'boxYellow']);
 
 export type SignStyle = keyof typeof SIGN_STYLES;
 
-export const H_STYLES: readonly SignStyle[] = ['boxRed', 'neonRed', 'boxBlack', 'ledBlue', 'boxYellow', 'neonGreen'];
-export const V_STYLES: readonly SignStyle[] = ['neonRed', 'boxRed', 'boxYellow', 'neonGreen', 'boxBlack'];
+export const H_STYLES: readonly SignStyle[] = ['boxRed', 'neonRed', 'boxCrimson', 'ledBlue', 'boxYellow', 'boxNavy', 'boxBlack', 'neonGreen'];
+/** 直招牌（R2 修复轮）：约六成饱和底色（深红、藏青、黄）、四分之一白底红字、其余霓虹。 */
+export const V_STYLES: readonly SignStyle[] = ['boxCrimson', 'boxNavy', 'boxRed', 'boxYellow', 'boxCrimson', 'neonRed', 'boxNavy', 'boxRed'];
 
 export interface AtlasCell {
   /** 格子在图集里的像素矩形（canvas 坐标，y 向下）。 */
@@ -66,6 +74,8 @@ export function atlasLayout(): AtlasCell[] {
     });
   }
   const multi = SIGN_WORDS.filter((w) => w.length >= 2);
+  // 步长与字数互质：16 格直招牌的字各不相同（原来步长 5、30 个字，只轮到 6 个字）
+  const stride = [7, 11, 13, 17].find((p) => multi.length % p !== 0) ?? 1;
   for (let i = 0; i < V_COUNT; i++) {
     cells.push({
       x: i * V_CELL.w,
@@ -73,7 +83,7 @@ export function atlasLayout(): AtlasCell[] {
       w: V_CELL.w,
       h: V_CELL.h,
       vertical: true,
-      word: multi[(i * 5 + 3) % multi.length]!,
+      word: multi[(i * stride + 3) % multi.length]!,
       style: V_STYLES[i % V_STYLES.length]!,
     });
   }
@@ -160,6 +170,14 @@ function drawCell(g: CanvasRenderingContext2D, c: AtlasCell): void {
     g.globalAlpha = 1;
   } else {
     pass(st.fg, 0);
+  }
+  if (OUTLINED.has(c.style)) {
+    // 霓虹边框：内缩 5 px、3 px 粗，带光晕
+    g.strokeStyle = st.fg;
+    g.lineWidth = 3;
+    g.shadowColor = st.fg;
+    g.shadowBlur = 6;
+    g.strokeRect(c.x + 5, c.y + 5, c.w - 10, c.h - 10);
   }
   g.restore();
 }

@@ -67,6 +67,31 @@ export interface Building {
    * 写实化一轮新增的可选字段（不改 CITY_FORMAT_VERSION）：客户端用 height / storeys 估层高，区分写字楼（约 4 m）与住宅（约 2.9 m）。
    */
   storeys?: number;
+  /**
+   * LOD2 分层体块（细节一轮 R2 新增的可选字段，不改 CITY_FORMAT_VERSION）：由地政总署「可視化三維地圖（無紋理模型）」
+   * 的屋面派生的「叠层棱柱」，表达退台、塔冠、天台机房、坡屋顶台阶。没有 3D 模型、只有一层屋面、在敏感区里、
+   * 或与地标重叠的楼一律省略——客户端照旧画 footprint 从 base 挤到 base + height 的平顶体。
+   *
+   * 约定：
+   * - 按 top 升序（同 top 按面积从大到小）。parts[0] 是底座：ring 省略，即 footprint（含洞），顶 = parts[0].top；
+   * - 其余每块立在「比它低的最高一层」上：底 = 所有 top 小于本块 top 的块里最大的 top（逐层嵌套，
+   *   上层轮廓落在下一层轮廓之内，误差在简化容差 0.5 m 左右）；
+   * - height 仍是地政总署 2D 楼的主屋面高度（TopHeight − BaseHeight）：parts 可以高出它（塔冠、机房、桅杆），
+   *   也可以低于它（退台）。层数、层高、类型等仍按 height / storeys 算；
+   * - 每栋最多 12 块；每块面积 ≥ 4 m²、露出的墙面 ≥ 80 m²（桅杆类：高出下层 ≥ 6 m 的 ≥ 0.5 m²）；
+   *   环都是简单多边形（不自交、无重复点，洞在外环内且不相碰）；简化后通常 ≤ 16 点，个别曲线 / 简化会自交的环用细简化或原像素边界环（可达约 200 点）。
+   */
+  parts?: BuildingPart[];
+}
+
+/** 一块分层体块（见 Building.parts）。 */
+export interface BuildingPart {
+  /** 外环（CCW，dm）。parts[0] 省略，表示用 footprint。 */
+  ring?: FlatXY;
+  /** 洞（CW，dm），≥ 4 m²。省略表示无洞。 */
+  holes?: FlatXY[];
+  /** 本块顶面高程（dm，mPD）。 */
+  top: number;
 }
 
 export type RoadClass =

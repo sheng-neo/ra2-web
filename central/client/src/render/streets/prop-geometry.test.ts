@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { Vector3 } from 'three';
 import { PropBuilder, linearRGB } from './prop-geometry';
 import { busGeometry, carGeometry } from './vehicles';
-import { tramGeometry } from './trams';
+import { tramGeometry } from './tram/body'; // [r2:trams]
 
 describe('PropBuilder', () => {
   it('盒子各面法线朝外、绕向与法线一致', () => {
@@ -43,7 +43,7 @@ describe('PropBuilder', () => {
     expect(car).toBeGreaterThanOrEqual(40);
     expect(car).toBeLessThanOrEqual(80);
     expect(busGeometry().index!.count / 3).toBeLessThanOrEqual(150);
-    expect(tramGeometry().index!.count / 3).toBeLessThanOrEqual(160);
+    expect(tramGeometry({ lod: 1 }).index!.count / 3).toBeLessThanOrEqual(160); // [r2:trams] 远处一级（近处一级见 tram/tram.test.ts）
   });
 });
 

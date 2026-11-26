@@ -308,6 +308,11 @@ def main() -> None:
                  "1 m (see cedd-dtm-2020-1m.json); the original tile zips are listed with their sha256 in derivedFrom.",
         "files": files,
     }
+    # 保留别的抓取脚本写的条目（landsd_3d_fetch.py 的 landsd-3dvm-parts.json.gz）
+    old = OUT / "sources.json"
+    if old.exists():
+        mine = {f["file"] for f in files}
+        manifest["files"] += [f for f in json.loads(old.read_text(encoding="utf-8"))["files"] if f["file"] not in mine]
     (OUT / "sources.json").write_text(json.dumps(manifest, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     total = sum(f["bytes"] for f in files)
     print(f"写入 {OUT}，共 {total} B")

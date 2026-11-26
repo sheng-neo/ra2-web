@@ -18,6 +18,9 @@ export const PRESETS: readonly Preset[] = [
   { id: 'statue', label: '皇后像廣場', eye: [512, -168, 9], target: [510, -320, 50] },
   // 高空俯瞰，北在上
   { id: 'aerial', label: '鳥瞰', eye: [330, -780, 1250], target: [330, 10, 0] },
+  // 德輔道中西行電車站（W1，介乎租庇利街與畢打街）：站在站岛西北端的候车位，沿两条电车轨向东南望——
+  // 右边是遮篷与广告板，左边是轨道板、对面东行站岛，头顶是架空线；开场约 10 s 有一辆西行车进站、停站、打铃开走
+  { id: 'tram', label: '電車', eye: [231.6, -8.6, 6.0], target: [314, -85, 10] },
 ];
 
 export function presetView(p: Preset): View {

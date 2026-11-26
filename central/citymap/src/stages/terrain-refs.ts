@@ -53,6 +53,26 @@ export const REF_CEDD_DTM: SourceRef = {
   url: 'https://portal.csdi.gov.hk/geoportal/?datasetId=cedd_rcd_1629267205233_87895',
 };
 
+/**
+ * 地政总署「可視化三維地圖（無紋理模型）」：经 CSDI 图幅索引与可視化三維地圖网站（3d.map.gov.hk）的下载接口取得，
+ * 两处条款都要求写明政府与网站是来源（TERMS.md 第 7 节）。只留了屋面派生的分层轮廓，不含网格、贴图与名称。
+ */
+export const REF_LANDSD_3DVM: SourceRef = {
+  id: 'landsd/3dvm-nontextured-2026',
+  license: CSDI_LICENSE,
+  attribution:
+    'Contains 3D building data from the Lands Department, HKSAR Government (3D Visualisation Map, Non-textured models), ' +
+    'obtained from the 3D Visualisation Map website (3d.map.gov.hk) through the Common Spatial Data Infrastructure ' +
+    '(CSDI) Portal (portal.csdi.gov.hk). Intellectual property rights in the data are owned by the Government of the ' +
+    'Hong Kong Special Administrative Region. The data have been processed (roof surfaces of the 3D models converted ' +
+    'to simplified stacked outlines and fitted to the 2D building footprints; no meshes or textures kept) for this ' +
+    'game; the Government is not responsible for, and does not endorse, this game.\n' +
+    '部分資料來源：香港特別行政區政府地政總署「可視化三維地圖（無紋理模型）」，經可視化三維地圖網站（3d.map.gov.hk）' +
+    '及空間數據共享平台（CSDI，portal.csdi.gov.hk）取得；資料的知識產權屬香港特別行政區政府所有。資料已為本遊戲轉換' +
+    '（三維模型的屋面簡化為分層輪廓並套合二維建築輪廓，不保留網格及紋理），政府不對本遊戲負責，亦不代表政府認可。',
+  url: 'https://portal.csdi.gov.hk/geoportal/?datasetId=landsd_rcd_1742809441342_98380',
+};
+
 export const REF_LANDSD_BUILDINGS: SourceRef = {
   id: 'landsd/building-2026-10-20',
   license: CSDI_LICENSE,

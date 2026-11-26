@@ -7,6 +7,7 @@
 | `cedd-dtm-2020-1m.*` | LiDAR Data（2020 DTM 瓦片，重采样为 1 m） | 土木工程拓展署（CEDD）土力工程处 | `cedd_rcd_1629267205233_87895` |
 | `landsd-buildings.geojson.gz` | Building（Building_Outline_Public v2026-10-20） | 地政总署（LandsD） | `landsd_rcd_1637211194312_35158` |
 | `landsd-pedestrian-routes.geojson.gz` | 3D Pedestrian Network（PedestrianRoute，2026-06-17） | 地政总署（LandsD） | `landsd_rcd_1637222018065_52265` |
+| `landsd-3dvm-parts.json.gz` | 3D Visualisation Map (Non-textured models) 可視化三維地圖（無紋理模型），只存屋面派生的分层轮廓（R2 新增，见第 7 节） | 地政总署（LandsD）测绘处 | `landsd_rcd_1742809441342_98380` |
 
 条款原文检索日期：**2026-11-24**（由 M0 地形 agent 在云会话里抓取；页面 HTML 的 sha256 记在下表，便于日后对比是否改版）。
 以下引文逐字照录英文原文，没有改动。**这不是法律意见**；商业化前请香港律师复核，并由项目负责人本人打开下列网址核对一次。
@@ -113,3 +114,79 @@
 - CSDI 下载接口 `portal.csdi.gov.hk/csdi-webpage/download/common/...`（含数据规格 PDF）被 WAF 拦截（HTTP 403 “The request is blocked”），所以数据字典未能读取。
 
 上述数据都经 CSDI 取得，适用 CSDI 条款；部门条款如另有要求，应以部门条款为准，需人工补查。
+
+## 7. 可視化三維地圖（無紋理模型）：3d.map.gov.hk 条款（细节一轮 R2 新增，逐字引文）
+
+数据来源链：CSDI 图幅索引（`landsd_rcd_1742809441342_98380` 的 FeatureServer，元数据写 “Please refer to the Terms of Use and
+Disclaimer of the platform”，即第 1 节的 CSDI 条款）→ 每幅 1:1000 图幅的 zip 由可視化三維地圖网站的下载接口
+`https://download.map.gov.hk/api/3d-zip/GLTF0/<图幅>.zip?key=…` 提供（key 写在 CSDI 索引里，`landsd_3d_fetch.py` 每次从索引读，
+仓库里不存 key）。只用 `GLTF0`（无纹理）；不带 0 的 `GLTF/` 是带照片纹理的版本，PLAN §1 不用。zip 里 `TERRAIN(TB)/` 的正射影像 JPG
+从不打开、不解压、不保存。
+
+条款检索日期：**2026-11-25**。3d.map.gov.hk 是单页应用，条款文字在它的 JS 包里（“About”弹窗与 Download API 页共用），
+下面按页面显示的文字逐字照录（去掉 HTML 标签与列表编号）：
+
+| 来源 | 网址 | 抓取内容 sha256 |
+|---|---|---|
+| 网站外壳（`/` 与 `/download-api` 返回同一页） | <https://3d.map.gov.hk/download-api> | `70f7e0f25a7acdaa070e6d8838910b851eb5ef813bbf95053ce88b04fb76b30b` |
+| 条款正文（“Terms and Conditions of Use”各节，英 / 繁 / 简） | <https://3d.map.gov.hk/mapviewer/app/js/app.d1a5765b.js>（`window.OpenUp.VERSION` “V1.0.2”） | `a3958941f935bb40458af598922a41ffb38e649db02e9269054e563190ab5693` |
+| Download API 页面组件（勾选 “I have read and agreed to the Terms and Conditions of Use” 后才显示接口说明） | <https://3d.map.gov.hk/mapviewer/app/js/174.bbc58423.js> | `7a077091c508af229be31b9c87f6b28c20072fc00fe57640768e322747a57f4b` |
+
+**一般规定、使用本网站所载的资料（核心条款）**
+
+> This website is an online geospatial information service provided by the Lands Department of the Government of the Hong Kong Special Administrative Region (the “Government”) to the public for obtaining geo-referenced information.
+>
+> In these Terms and Conditions of Use of this website (“Terms of Use”): “Data” include the “Spatial Data ” (Note 1) and all other contents provided by the Government and / or other organisations (such organisations are referred to as “the relevant organisations”) to the public on this website; “Spatial Data” include all data in the form of digital maps, text, graphics, drawings, diagrams, photographs, compilation of data, data specifications and metadata and Application Programming Interface (“API”).
+
+> You are allowed to browse, download, distribute, reproduce, hyperlink to and print the Data for both commercial and non-commercial purposes on a free-of-charge basis on the condition that:
+>
+> you shall comply with the Terms of Use;
+>
+> you shall identify clearly the Government and this website as the source of the Data and acknowledge the Government  and the relevant organisations’ ownership of the intellectual property rights in the Data and in all copies thereof including but not limited to paper copies, digital copies and copies placed on other websites;
+>
+> you shall indemnify the Government and the relevant organisations against any allegations or claims of infringement of the rights of any person and all costs, losses, damages and liabilities incurred by the Government and the relevant organisations, which in any case arise directly or indirectly in relation to your use, reproduction and/or distribution of the Data.
+
+**免责（节选）、知识产权**
+
+> The Data are provided by the Government and the relevant organisations to you on an “as is” and “as available” basis. No statement, representation or warranty of any kind (whether express or implied) is given by the Government or the relevant organisations in relation to the Data (including its accuracy, correctness, completeness, non-infringement, reliability, security, timeliness and appropriateness of the use of the Data in any particular circumstances).
+
+> In consideration of the Government and the relevant organisations providing the Data on this website, by using this website, you hereby unconditionally accept the Terms of Use. IF YOU DO NOT AGREE TO THE TERMS OF USE, PLEASE DO NOT USE THIS WEBSITE OR THE DATA PROVIDED THEREON. The Terms of Use may be revised and/or amended from time to time by the Government or the relevant organisations without prior notice to any person.
+
+> Unless otherwise indicated, the Government is the owner of the intellectual property rights of all contents available on this website, including but not limited to all Data.
+
+> The Terms of Use shall be governed and construed in accordance with the laws of the Hong Kong Special Administrative Region of the People’s Republic of China (“Hong Kong”). You also agree to submit to the exclusive jurisdiction of the Hong Kong Courts.
+
+**合理使用（接口）**
+
+> The bandwidth of API services is shared by all API users and utilisation by each user will be different. In order to ensure all users can enjoy the best possible experience, a fair usage policy will be applied to manage service performance.
+
+> We may monitor usage of your API service. If in our reasonable opinion, the use of your API service is excessive or adversely affected our API services provided to other users, we may manage access of the API service in a reasonable manner.
+
+**Download API 页的 “Terms and Conditions of Use” 框（逐字）**
+
+> In order to maintain the quality of the Map API service, your application shall not invoke the API with large amount of requests within a short period.
+>
+> The use of the Map APIs (including base map details) provided on this website is subject to the Terms and Conditions as well as the IP Rights Notice of LandsD Map API. You are required to include Lands Department logo on the map face and Copyright Notice to attribute Lands Department’s data in your map applications.
+>
+> Copyright Notice: Map from Lands Department; Aerial Photograph from Lands Department; Earth Image from NASA Earth Observatory; Satellite Imagery from USGS/NASA Landsat
+>
+> Disclaimer Notice: The map information provided on this web site is protected by copyright owned by the Government of the Hong Kong Special Administrative Region (the “Government”). No express or implied warranty is given to the accuracy or completeness of such map information or its appropriateness for use in any particular circumstances. The Government is not responsible for any loss or damage whatsoever arising from any cause in connection with such map information or with this web site.
+
+**结论（不是法律意见）**
+
+- **允许**：与 CSDI 条款同一套措辞——“browse, download, distribute, reproduce … for both commercial and non-commercial purposes on a free-of-charge
+  basis”，无 NC、无 share-alike。没有任何一句禁止从模型派生简化几何或在免费网页游戏里再分发，所以没有停手的理由。
+- **条件**：① 写明**政府**与**本网站**（3d.map.gov.hk）是来源——署名写成「经可視化三維地圖网站（3d.map.gov.hk）及 CSDI 平台取得」；
+  ② 声明知识产权属政府；③ indemnity；④ 下载接口不得短时间大量请求：`landsd_3d_fetch.py` 一幅一幅串行下载，幅间停 3 s，全范围共 16 幅。
+- **Map API 的 logo 要求**针对的是在“map face”上显示地政总署底图（Map API / base map details）的“map applications”。我们不调用
+  Map API、不显示地政总署底图，只用下载接口取模型，所以按网站一般条款署名（上面 ①②）。是否仍需在鸣谢页放地政总署标志
+  （与 PLAN §1「不放任何 logo」的红线冲突），上线前由负责人决定；本轮不放。
+- **处理方式超出「复制」**：只留屋面派生的分层轮廓（每栋楼按 0.25 m 栅格求最高屋面 → 聚层 → 轮廓 0.25 m 简化；管线再合层、
+  套合 2D 轮廓、0.5 m 简化（曲线轮廓逐次放大到最多 4 m；简化后自交的环改用 1 m / 0.5 m 简化或原像素边界环）），不存网格、贴图、名称。与第 5 节建筑图层同样属于条款没有明文授予的 “modify / adapt”，
+  署名里如实写明（`REF_LANDSD_3DVM`，`citymap/src/stages/terrain-refs.ts`），上线前法律核对的范围一并包括它。
+- **第 4 节署名的 3D 版本**（原样使用；写进 `meta.sources` 与 ATTRIBUTION.txt）：
+
+> Contains 3D building data from the Lands Department, HKSAR Government (3D Visualisation Map, Non-textured models), obtained from the 3D Visualisation Map website (3d.map.gov.hk) through the Common Spatial Data Infrastructure (CSDI) Portal (portal.csdi.gov.hk). Intellectual property rights in the data are owned by the Government of the Hong Kong Special Administrative Region. The data have been processed (roof surfaces of the 3D models converted to simplified stacked outlines and fitted to the 2D building footprints; no meshes or textures kept) for this game; the Government is not responsible for, and does not endorse, this game.
+
+> 部分資料來源：香港特別行政區政府地政總署「可視化三維地圖（無紋理模型）」，經可視化三維地圖網站（3d.map.gov.hk）及空間數據共享平台（CSDI，portal.csdi.gov.hk）取得；資料的知識產權屬香港特別行政區政府所有。資料已為本遊戲轉換（三維模型的屋面簡化為分層輪廓並套合二維建築輪廓，不保留網格及紋理），政府不對本遊戲負責，亦不代表政府認可。
+
