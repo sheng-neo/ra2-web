@@ -146,10 +146,10 @@ export class FacadeStreamer {
   private hiDist = new Float64Array(0);
   private hiScratch = new Float64Array(0);
   private hiBytes = 0;
-  /** 相机速度（模拟坐标米 / 秒，墙钟平滑）。 */
+  /** 相机速度（模拟坐标米 / 秒，按帧时钟平滑，见 trackVelocity）。 */
   private readonly vel: [number, number] = [0, 0];
   private lastPos: [number, number] | null = null;
-  private lastPosWall = 0;
+  private lastPosT = 0;
   /** 预取中的高清页数（只进字节缓存）。 */
   private prefetching = 0;
   private boxes: Float32Array | null = null;
@@ -569,17 +569,22 @@ export class FacadeStreamer {
     this.lastSel.set(Infinity, 0, 0);
   }
 
-  /** 相机速度（模拟坐标米 / 秒）：墙钟平滑约 0.6 s；一帧跳过 60 m/s 以上（切视角）当作瞬移，速度清零。 */
-  private trackVelocity(camera: PerspectiveCamera, wall: number): void {
+  /**
+   * 相机速度（模拟坐标米 / 秒）：按帧时钟（performance.now，与相机、电车的模拟时钟同源）平滑约 0.6 s；一帧跳过 60 m/s 以上（切视角）
+   * 当作瞬移，速度清零。[r45:fix] 原来用墙钟（Date.now）：真机上两者一样，但截图 / 端到端脚本的假时钟（每帧固定推进模拟时间、
+   * 帧与帧之间还有脚本取数的空档）下墙钟速度随机器快慢变，LOW「移动中不请求新页」与高清页预测就随机器负载变（同一构建
+   * LOW 整程搭电车 27 / 40 页）。时钟冻结（dt 一直 < 0.05 s）时速度保持不变。
+   */
+  private trackVelocity(camera: PerspectiveCamera, t: number): void {
     const s = threeToSim(camera.position.x, camera.position.y, camera.position.z);
     const x = s[0] * DM_TO_M;
     const y = s[1] * DM_TO_M;
     if (!this.lastPos) {
       this.lastPos = [x, y];
-      this.lastPosWall = wall;
+      this.lastPosT = t;
       return;
     }
-    const dt = (wall - this.lastPosWall) / 1000;
+    const dt = (t - this.lastPosT) / 1000;
     if (dt < 0.05) return;
     const vx = (x - this.lastPos[0]) / dt;
     const vy = (y - this.lastPos[1]) / dt;
@@ -592,7 +597,7 @@ export class FacadeStreamer {
       this.vel[1] += (vy - this.vel[1]) * k;
     }
     this.lastPos = [x, y];
-    this.lastPosWall = wall;
+    this.lastPosT = t;
   }
 
   /** 每帧：挑页、发请求、上传一步、推进淡入。 */
@@ -620,7 +625,7 @@ export class FacadeStreamer {
       return;
     }
     const now = performance.now();
-    if (this.hiLayers > 0 || this.init.tier === 'low') this.trackVelocity(camera, wall);
+    if (this.hiLayers > 0 || this.init.tier === 'low') this.trackVelocity(camera, now); // [r45:fix] 帧时钟，不用墙钟
     if (this.frame % SELECT_EVERY === 0 || camera.position.distanceTo(this.lastSel) > MOVE_M) this.select(camera, now);
     this.pump();
     this.uploads = 0;

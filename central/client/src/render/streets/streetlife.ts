@@ -14,7 +14,7 @@ import type { CityFile } from '@central/data';
 import { simToThreeVec, threeToSim } from '../../coords';
 import type { HeightFn } from '../../data/terrain';
 import type { GlowBatch } from '../materials/lighting';
-import { footprintTest } from '../road-corridor';
+import { footprintTest, landmarkStreetRings } from '../road-corridor';
 import type { RoadPlan } from '../roads';
 import { Crowd, clockDensity, type WaitingArea } from '../people/crowd'; // [r4:street] clockDensity
 import { frontageField, type FrontageSample } from './frontage-field'; // [r4:street]
@@ -179,7 +179,7 @@ export function buildStreetLife(
 ): StreetLife {
   const zones = city.zones.sensitive;
   const tier = opts.high ? 0 : 1;
-  const inBuilding = footprintTest(city.buildings);
+  const inBuilding = footprintTest(city.buildings, landmarkStreetRings(city.landmarks)); // [r45:fix] 地标网格在行人高度的实心范围也算楼里
   const ctx = walkContext(plans, city.rails, inBuilding, zones, opts.core);
   // 巴士站先定（走线要绕开候车亭）
   const tram = opts.tram;

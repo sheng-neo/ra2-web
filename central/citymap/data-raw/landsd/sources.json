@@ -635,6 +635,53 @@
           "pagesDigest": "7b28e97ad61dffd046831e87c3be4d24e965f3993a02602136d60bfb8da00dd9"
         }
       ]
+    },
+    {
+      "file": "landsd-3dvm-landmarks.json.gz",
+      "layer": "landsd/3dvm-individualised-landmarks",
+      "datasetId": "landsd_rcd_1671676915450_88604",
+      "url": "https://portal.csdi.gov.hk/geoportal/?datasetId=landsd_rcd_1671676915450_88604",
+      "release": "2026-09-22",
+      "format": "gzip JSON (written by landsd_3d_landmark_bake.py): per landmark, LandsD model ids, triangle counts, floor height, aviation lights; lists the derived meshes and texture atlases in client/public/city/landmarks/ with sha256",
+      "crs": "EPSG:2326 + mPD",
+      "licenses": [
+        "CSDI Portal Terms and Conditions of Use + 3D Spatial Data Portal terms (see TERMS.md sections 7, 8)"
+      ],
+      "attribution": "Contains data from the Lands Department, HKSAR Government (3D Visualisation Map, Individualised models), obtained from the CSDI Portal; remeshed, re-textured and resampled for this game; the Government is not responsible for, and does not endorse, this game.",
+      "fetched": "2026-11-27",
+      "sha256": "0b852974c7b44197e203330d6749954ce9023ccdc0d7ac981a58e59a97d1f893",
+      "bytes": 2375,
+      "rows": 6,
+      "derivedFrom": [
+        {
+          "sheet": "11-SW-14A",
+          "revision": "2026-09-22",
+          "urlNoKey": "https://download.map.gov.hk/api/3d-zip/GLTF/11-SW-14A.zip",
+          "sha256": "f125b5883ea9076ad17c3176627ebf40775c00cde1eba980c24853878e13cf7f",
+          "bytes": 953511000
+        },
+        {
+          "sheet": "11-SW-8B",
+          "revision": "2026-09-22",
+          "urlNoKey": "https://download.map.gov.hk/api/3d-zip/GLTF/11-SW-8B.zip",
+          "sha256": "2fe64572d546da71e2dafbcd314f893b71a6bd2e8320c8457d096ece282332d4",
+          "bytes": 883129773
+        },
+        {
+          "sheet": "11-SW-8D",
+          "revision": "2026-09-22",
+          "urlNoKey": "https://download.map.gov.hk/api/3d-zip/GLTF/11-SW-8D.zip",
+          "sha256": "d081adde03f670a73389f030d2338fccedfd525ad025f64c3cef0362a168aa3b",
+          "bytes": 2636460399
+        },
+        {
+          "sheet": "11-SW-9C",
+          "revision": "2026-09-22",
+          "urlNoKey": "https://download.map.gov.hk/api/3d-zip/GLTF/11-SW-9C.zip",
+          "sha256": "f0d52d674a25d0cb39aa32881cf74eb92a0e9d87517737ae28494b7a49182574",
+          "bytes": 534406988
+        }
+      ]
     }
   ]
 }

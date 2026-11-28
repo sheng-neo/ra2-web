@@ -46,6 +46,8 @@ export interface CityMeta {
   facades?: FacadeMeta;
   /** 电车走廊高清街面层的贴图集（R4 新增的可选字段，见 Building.hires）；没有时省略。 */
   hires?: HiresMeta;
+  /** R5 地标真实网格与图集（可选字段）；没有烘焙产物时省略。 */
+  landmarkMeshes?: LandmarkMeshMeta;
 }
 
 export type BuildingKind = 'tower' | 'podium' | 'house' | 'civic' | 'industrial' | 'other';
@@ -266,9 +268,9 @@ export interface Props {
   trees: FlatXY;
 }
 
-/** 代码建模的地标摆放参数。地标一律用虚构名，不出现真实楼名和 logo。 */
+/** 地标摆放参数。名字是建筑的真名（负责人 D6，2026-11-27；只限六座地标的名字这一处），不放 logo。 */
 export interface LandmarkPlacement {
-  /** 客户端 builder 的键，如 'harbour-spire'。 */
+  /** 地标 id（客户端的键、资源文件名的一部分），如 'harbour-spire'。 */
   id: string;
   name: { zh: string; en: string };
   /** 地标中心（dm）。 */
@@ -284,6 +286,59 @@ export interface LandmarkPlacement {
   footprint: Ring;
   /** 被这座地标替换掉的建筑 ID（已从 buildings 中删除）。 */
   replaces: string[];
+  /**
+   * R5 真实外观（可选字段，不改 CITY_FORMAT_VERSION；负责人 D5）：地政总署「可視化三維地圖（個別模型）」带照片纹理的原型楼，
+   * 由 fetch/landsd_3d_landmark_bake.py 离线减面、重新展开、去日照烘焙（见 CityMeta.landmarkMeshes）。网格与图集文件里没有名字。
+   * 没有烘焙产物时省略，客户端画轮廓白模。碰撞照旧按 footprint。
+   */
+  mesh?: LandmarkMesh;
+}
+
+/** 一座地标的真实网格引用（见 LandmarkPlacement.mesh）。 */
+export interface LandmarkMesh {
+  /** 近景网格文件名（CLMK v1，相对 city/<CityMeta.landmarkMeshes.dir>/）。 */
+  high: string;
+  /** 三角形数：[近景网格, 在六座合一的远景网格里的份额]。 */
+  tris: [number, number];
+  /** 层高与楼层线相位（cm；楼层线 = 相位 + k × 层高，mPD）。 */
+  floors: [number, number];
+  /** 网格外包盒（dm）：[minX, minY, minZ, maxX, maxY, maxZ]。 */
+  bbox: [number, number, number, number, number, number];
+  /** 航空障碍灯位置（dm，扁平 [x, y, z, …]，在网格最高处）；没有时省略。 */
+  aviation?: number[];
+  /**
+   * 网格在行人高度（离地 0.3–2.0 m）的实心范围（dm 外环，逆时针；R4 + R5 整合复审）。客户端的行人走线、街上设施、路灯杆
+   * 与楼宇轮廓一起避开它（网格在街面高度可能伸出 footprint）。没有时省略。
+   */
+  street?: FlatXY[];
+}
+
+/** 地标真实网格的文件（见 LandmarkPlacement.mesh）。 */
+export interface LandmarkMeshMeta {
+  /** 文件目录（相对 city/）。 */
+  dir: string;
+  /** 六座合一的远景网格（CLMK v1）。 */
+  low: string;
+  /** 照片图集（同一布局；RGB = 去日照的反照率 sRGB，alpha = 玻璃度）。 */
+  atlas: LandmarkAtlas;
+  /** 全部文件的字节数。 */
+  bytes: number;
+}
+
+/** 地标照片图集的几种编码（同一布局，客户端按 GPU 能力与画质档挑一份）。 */
+export interface LandmarkAtlas {
+  /** 全分辨率边长（px）。 */
+  size: number;
+  /** GPU 压缩（CLTX v1，含 mip）：BC3 / DXT5 全分辨率与半分辨率、ETC2 RGBA8 EAC 半分辨率。 */
+  bc3: string;
+  bc3Half: string;
+  etc2Half: string;
+  /** 四分之一分辨率的 BC3 / ETC2（LOW 档；半分辨率文件去掉最大一级 mip，R4 + R5 整合复审）。 */
+  bc3Quarter: string;
+  etc2Quarter: string;
+  /** 不支持这两种压缩时的 RGBA WebP：半分辨率与四分之一分辨率。 */
+  webpHalf: string;
+  webpQuarter: string;
 }
 
 export interface CityFile {

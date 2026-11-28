@@ -22,11 +22,12 @@ import { createHud } from './ui/hud';
 import { LoadingScreen } from './ui/loading';
 import { Notice } from './ui/notice';
 import { PerfHud } from './ui/perf-hud';
-import { HAZE, SHARED, SIM_CLOCK, readParam } from './render/materials/lighting'; // [r2:trams] SIM_CLOCK
+import { HAZE, SHARED, SIM_CLOCK, readParam, textureLedgerEntries } from './render/materials/lighting'; // [r2:trams] SIM_CLOCK [r45:fix] textureLedgerEntries
 import type { TramCarDebug } from './render/streets/trams'; // [r2:trams]
 import type { FacadeDebug } from './render/facades/streamer'; // [r3:facades]
 import type { VehicleDebug } from './render/streets/vehicles'; // [r3:liveries]
 import type { BoatDebug } from './render/boats'; // [r3:liveries]
+import type { LandmarkDebug } from './render/landmarks'; // [r5:landmarks]
 import { AdaptiveDpr, DowngradeWatch, adaptiveLadder } from './render/quality';
 import { AudioEngine, initialMute, readStoredMute, writeStoredMute } from './audio/engine'; // [r2:trams]
 
@@ -47,7 +48,7 @@ export interface CentralDebug {
   /** R3 真实贴面：视野要的贴面页都到了（远景图集 + 近景页）时兑现。 */
   facadesIdle?(): Promise<void>; // [r3:facades]
   /** R3 真实贴面的流式加载状态（页数、常驻、显存、待办、失败、已下载字节、本帧上传、让出次数、排除的楼数）。 */
-  facades?(): (FacadeDebug & { procSuppressed?: number; canopies?: number }) | null; // [r3:facades] [r4:int] procSuppressed / canopies
+  facades?(): (FacadeDebug & { procSuppressed?: number; landmarkSuppressed?: number; canopies?: number }) | null; // [r3:facades] [r4:int] procSuppressed / canopies [r45:int] landmarkSuppressed
   /** 车辆（模拟坐标，米）：车型、营运商、路线、速度（R3 LIVERIES）。 */ // [r3:liveries]
   vehicles?(): VehicleDebug[]; // [r3:liveries]
   /** 船（模拟坐标，米）：是否在开、营运商、船名（R3 LIVERIES）。 */ // [r3:liveries]
@@ -60,6 +61,10 @@ export interface CentralDebug {
   rideState?(): { riding: boolean; car: number; eye: [number, number, number]; rail: number; eyeAboveRail: number; yawDeg: number; pitchDeg: number }; // [r4:street]
   /** R4：行人各级 LOD 的人数与三角形数。 */ // [r4:street]
   people?(): { near: number; mid: number; far: number; triangles: number; nearTriangles: number }; // [r4:street]
+  /** R5 真实地标的加载状态（图集格式与显存、远景是否就绪、每座近景是否已下载 / 在画、离相机距离、已下载字节）。 */
+  landmarks?(): LandmarkDebug | null; // [r5:landmarks]
+  /** 显存账本逐项（键 → 字节，stats().texMB 是它们的和）。 */
+  texLedger?(): [string, number][]; // [r45:fix]
 }
 
 declare global {
@@ -323,6 +328,8 @@ async function main(app: HTMLElement, loading: LoadingScreen): Promise<void> {
     return { riding: rig.lookMode, car: view.trams?.riddenIndex ?? -1, eye: e.eye, rail: e.rail, eyeAboveRail: e.eye[2] - e.rail, yawDeg: (look.yaw * 180) / Math.PI, pitchDeg: (look.pitch * 180) / Math.PI }; // [r4:street]
   }; // [r4:street]
   debug.people = () => view.people(); // [r4:street]
+  debug.landmarks = () => view.landmarksDebug(); // [r5:landmarks]
+  debug.texLedger = () => textureLedgerEntries(); // [r45:fix]
 }
 
 /**

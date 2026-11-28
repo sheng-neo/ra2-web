@@ -8,10 +8,11 @@
  * 敏感区（军营、政府）只做背景：客户端自己生成的道具（路灯、交通灯、山上灯点、树）与车道一律不进去
  * （管线 citymap/src/stages/props.ts 对数据里的道具点也是同一规则）。
  */
-import type { SensitiveZone } from '@central/data';
+import type { LandmarkPlacement, SensitiveZone } from '@central/data';
 import { threeToSim } from '../../coords';
 import type { HeightFn } from '../../data/terrain';
 import { pointInRing } from '../../geom/ring';
+import { footprintTest, landmarkStreetRings } from '../road-corridor';
 import { centreZ, pointAt, type RoadPlan } from '../roads';
 import { ZONE_CLEAR_M, zoneDistance } from '../stations/rules';
 
@@ -95,6 +96,24 @@ export function threeInZones(zones: readonly SensitiveZone[], p: readonly [numbe
 /** 只留不在敏感区里的物件（pos 给出物件的 three 坐标，米）。 */
 export function outsideZones<T>(items: readonly T[], zones: readonly SensitiveZone[], ...pos: ((t: T) => readonly [number, number, number])[]): T[] {
   return items.filter((t) => !pos.some((f) => threeInZones(zones, f(t))));
+}
+
+/**
+ * R4 + R5 整合复审：不在地标网格行人高度的实心范围（LandmarkMesh.street）里、离它 ≥ clearM 的物件（pos：three 坐标）。
+ * 真实网格在街面高度会伸出旧轮廓（steel-frame 西侧约 1.6–3 m），原来有一支路灯杆埋在墙里、灯光却照着巷子。
+ */
+export function outsideLandmarkStreet<T>(items: readonly T[], landmarks: readonly LandmarkPlacement[], pos: (t: T) => readonly [number, number, number], clearM = 0.3): T[] {
+  const rings = landmarkStreetRings(landmarks);
+  if (!rings.length) return [...items];
+  const inside = footprintTest([], rings);
+  const r = clearM * 10;
+  return items.filter((t) => {
+    const p = pos(t);
+    const [x, y] = threeToSim(p[0], p[1], p[2]);
+    if (inside(x, y)) return false;
+    for (let k = 0; k < 8; k++) if (inside(x + Math.cos((k * Math.PI) / 4) * r, y + Math.sin((k * Math.PI) / 4) * r)) return false;
+    return true;
+  });
 }
 
 /**

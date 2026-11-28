@@ -15,7 +15,7 @@ import { laneSignalPhases, signalHeads, signalPoles, writeSignalHeads, type Sign
 import { treeItems, treeProps } from './trees';
 import { buildFootbridges } from './footbridges';
 import { buildLanes, lanePose, type Lane } from './lanes';
-import { RenderedSurface, inZones, outsideZones } from './surface';
+import { RenderedSurface, inZones, outsideLandmarkStreet, outsideZones } from './surface';
 import { laneSweepSamples } from './sweep';
 import { renderedTerrain } from '../road-corridor';
 import { Traffic, isBusKind } from './traffic'; // [r2:streetlife]
@@ -107,7 +107,8 @@ export function buildStreets(city: CityFile, plans: readonly RoadPlan[], ground:
   setPavingField(plans); // [r4:street] 楼前人行道（地形网格）的铺地种类
   // 敏感区只做背景：客户端生成的路灯、交通灯、山上灯点、树都不放进去（数据管线对道具点也是同一规则）
   const zones = city.zones.sensitive;
-  const allLamps = outsideZones(streetLamps(plans), zones, (l) => l.pole, (l) => l.head);
+  // [r45:fix] 路灯杆也不立在地标网格（行人高度的实心范围）里，离它 ≥ 0.3 m
+  const allLamps = outsideLandmarkStreet(outsideZones(streetLamps(plans), zones, (l) => l.pole, (l) => l.head), city.landmarks, (l) => l.pole);
   const mask = relief ? groundMask(city, plans) : null;
   const hills = outsideZones(relief && mask && high ? hillLights(relief, (x, y) => mask.sample(x, y, 1), (x, y) => mask.sample(x, y, 0)) : [], zones, (h) => h.p);
 

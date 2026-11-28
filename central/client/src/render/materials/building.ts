@@ -546,7 +546,7 @@ void office(float u, float v, float h, float F, float M, int key, int fam, float
   vec3 mull = stone ? stoneAlb * amb * 0.9 : vec3(0.035) * amb + refl * fres * 0.5;
   surf = glassU * (glassV * glass + (1.0 - glassV) * spand) + (1.0 - glassU) * mull;
 
-  // 地标镜面大厦：竖梃节点点阵 LED（静态，约 1.5）
+  // 竖梃节点点阵 LED（静态，约 1.5；原来给程序地标 mirror-block 用）
   if ((feat & 64) != 0) {
     float nd = fpulse(bu + 0.5, wbu, 0.5, 0.06 / M) * fpulse(fv + 0.5, wfv, 0.5, 0.06 / F);
     emit += uCrown[0] * nd * 1.5;

@@ -4,21 +4,20 @@
  * 写实化（realism spec §iii、§v）：画质档在构造时定（URL → 能力探测），HIGH 走 HDR 目标 + bloom + 输出 pass，
  * LOW 直出画布；雾是契约里的指数高度雾（共享 uniform），不再随视距调整。
  */
-import { Frustum, Matrix4, PerspectiveCamera, Scene, WebGLRenderer, type Camera, type Mesh, type Object3D } from 'three';
+import { Frustum, Matrix4, PerspectiveCamera, Scene, WebGLRenderer, type Camera, type Material, type Mesh, type Object3D } from 'three';
 import type { CityFile, TerrainGrid } from '@central/data';
 import type { HeightFn } from '../data/terrain';
 import { buildBackdrop, buildSky } from './backdrop';
 import { buildCityBuildings } from './buildings';
 import { ChunkLayer } from './chunk-layer';
 import { buildGround } from './ground';
-import { buildLandmarks } from './landmarks';
+import { RealLandmarks, buildLandmarkFallback, type LandmarkDebug } from './landmarks'; // [r5:landmarks]
+import { desktopAtlasRes } from './landmarks/format'; // [r45:fix]
 import { buildRails, buildZoneOutlines } from './lines';
 import { createBuildingMaterial } from './materials/building';
-import { createNeonMaterial } from './materials/neon';
 import { createRoadMaterial } from './materials/road';
-import { createSolidMaterial } from './materials/solid';
 import { SHARED, advanceShared, installToneMapping } from './materials/lighting';
-import { getQuality, readParam, registerTextureBytes, setQuality, textureBytes, urlTier, type Quality, type Tier } from './materials/lighting';
+import { getQuality, readParam, registerTextureBytes, setQuality, textureBytes, textureLedgerEntries, urlTier, type Quality, type Tier } from './materials/lighting';
 import { footprintTest } from './road-corridor';
 import { buildRoadChunks, planRoads } from './roads';
 import { dropZoneLamps } from './streets/surface';
@@ -72,6 +71,11 @@ export interface RenderStats {
   hiresMB?: number; // [r4:hires]
   hiresPending?: number; // [r4:hires]
   hiresBytes?: number; // [r4:hires]
+  /** R5 真实地标：图集显存（MB，已含在 texMB 里）、还在等的下载、已下载字节、正在画近景网格的座数。 */
+  landmarkMB?: number;
+  landmarkPending?: number;
+  landmarkBytes?: number;
+  landmarkHigh?: number;
 }
 
 /** 贴面贴图的位置（相对页面的目录前缀与文件名后缀，见 main.ts FACADE_SUFFIX）。 */
@@ -98,11 +102,15 @@ export class CityRenderer {
   private streets: Streets | null = null;
   private buildingsUpdate: ((camera: Camera) => void) | null = null;
   private procSuppressed = 0; // [r4:int]
+  private landmarkSuppressed = 0; // [r45:int]
   private canopyPieces = 0; // [r4:int]
   private facades: FacadeStreamer | null = null; // [r3:facades]
+  private landmarks: RealLandmarks | null = null; // [r5:landmarks]
   private dpr: number;
   private css: [number, number] = [1, 1];
   private readonly canvasDepth: boolean;
+  /** 触屏 / 粗指针设备（贴面与地标的手机预算）。 */
+  private readonly mobile: boolean;
   /** 画布自带 MSAA 的采样数（LOW 档；HIGH 为 0）。 */
   private readonly canvasSamples: number;
 
@@ -117,6 +125,7 @@ export class CityRenderer {
     this.canvasDepth = !hdr;
     this.renderer = new WebGLRenderer({ canvas, antialias: spec.canvasAntialias, depth: this.canvasDepth, powerPreference: 'high-performance' });
     this.canvasSamples = spec.canvasAntialias ? Number(this.renderer.getContext().getParameter(this.renderer.getContext().SAMPLES)) || 0 : 0;
+    this.mobile = navigator.maxTouchPoints > 0 || (typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches);
     this.dpr = startDpr(this.quality.tier, window.devicePixelRatio || 1, window.innerWidth, window.innerHeight);
     this.renderer.setPixelRatio(this.dpr);
     installToneMapping(this.renderer);
@@ -136,7 +145,7 @@ export class CityRenderer {
     const zones = city.zones.sensitive;
     // R3 真实贴面：有贴图集时建流式加载器，把它的贴图 uniform 交给建筑材质
     if (city.meta.facades && facadeSrc) {
-      const mobile = navigator.maxTouchPoints > 0 || (typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches);
+      const mobile = this.mobile;
       this.facades = new FacadeStreamer({ renderer: this.renderer, meta: city.meta.facades, ...facadeSrc, tier: this.quality.tier, mobile, hires: city.meta.hires }); // [r4:hires]
     }
     const facade = createBuildingMaterial(this.facades ? { uniforms: this.facades.uniforms, near: this.facades.near, hires: this.facades.hires } : undefined); // [r4:hires]
@@ -148,6 +157,7 @@ export class CityRenderer {
     const bld = buildCityBuildings(city, ground, getQuality().tier); // [r4:int] 雨篷网格（檐口贴照片）在街道建好后再建，见下
     this.buildingsUpdate = bld.update;
     this.procSuppressed = bld.procSuppressed; // [r4:int]
+    this.landmarkSuppressed = bld.landmarkSuppressed; // [r45:int]
     if (bld.pageBoxes) this.facades?.setBoxes(bld.pageBoxes, bld.pageEntries);
     this.facades?.setHires(bld.hiresEntries); // [r4:hires]
     const buildings = new ChunkLayer('buildings', bld.chunks, facade);
@@ -174,11 +184,7 @@ export class CityRenderer {
 
     await step('生成地標與海港', 0.86);
     add(
-      ...buildLandmarks(city.landmarks, ground, zones, {
-        facade, // 地标与楼群共用同一建筑材质
-        solid: createSolidMaterial(),
-        neon: createNeonMaterial(), // 静态发光条（不再变色）
-      }),
+      ...this.buildRealLandmarks(city, ground, facade, facadeSrc), // [r5:landmarks] 真实外观首帧后流式加载，之前画轮廓白模
       ...buildGround(city, relief, false), // 网格外由远景山体高度场接上，不画裙坡
     );
     // 新海面（盖在旧 0 mPD 平面之上）、远景（港岛山体两翼 + 九龙）、船
@@ -231,6 +237,7 @@ export class CityRenderer {
     this.streets?.update(dt, this.camera);
     this.buildingsUpdate?.(this.camera);
     this.facades?.update(this.camera);
+    this.landmarks?.update(this.camera); // [r5:landmarks]
     this.boats?.update(this.water, this.camera); // [r3:liveries] 视野外的船不画
     this.water?.update(this.renderer, this.scene, this.camera); // 平面反射须在主场景之前
     const t = Math.min(Math.max((viewDistance - 150) / 450, 0), 1);
@@ -294,23 +301,40 @@ export class CityRenderer {
       reflCalls: this.water?.reflCalls ?? 0,
       reflTriangles: this.water?.reflTriangles ?? 0,
       ...(this.facades?.stats() ?? { facadeMB: 0, facadePending: 0, facadeBytes: 0, hiresMB: 0, hiresPending: 0, hiresBytes: 0 }), // [r4:hires]
+      ...(this.landmarks?.stats() ?? {}), // [r5:landmarks]
     };
   }
 
   /** 首帧画完：贴面开始流式下载（不算进首帧前的数据量）。 */
   facadesBegin(): void {
     this.facades?.begin();
+    this.landmarks?.begin(); // [r5:landmarks] 地标真实外观也在首帧之后才下载
   }
 
-  /** 视野要的贴面页都到了（没有贴面时立即兑现）。 */
+  /** 视野要的贴面页都到了（没有贴面时立即兑现）；R5 起也等地标的远景网格、图集与视野附近的近景网格。 */
   facadesIdle(): Promise<void> {
-    return this.facades?.idle() ?? Promise.resolve();
+    return Promise.all([this.facades?.idle(), this.landmarks?.idle()]).then(() => undefined);
+  }
+
+  /** 地标真实外观的调试状态（没有烘焙产物时为 null）。 */ // [r5:landmarks]
+  landmarksDebug(): LandmarkDebug | null { // [r5:landmarks]
+    return this.landmarks?.debug() ?? null; // [r5:landmarks]
+  } // [r5:landmarks]
+
+  /** [r5:landmarks] 轮廓白模 + 真实外观（远景网格占位，倒影收集时要已在场景里）。 */
+  private buildRealLandmarks(city: CityFile, ground: HeightFn, facade: Material, src?: FacadeSource): Object3D[] {
+    const mobile = this.mobile;
+    // [r45:fix] 桌面 HIGH 的地标图集分辨率按起始渲染目标的显存定（首帧之后、begin() 时算；见 landmarks/format.ts FULL_ATLAS_MAX_RT_BYTES）
+    const desktopAtlas = () => desktopAtlasRes(renderTargetBytes());
+    const init = { renderer: this.renderer, city, ground, tier: this.quality.tier, mobile, base: src?.base ?? 'city/', suffix: src?.suffix ?? '', desktopAtlas };
+    this.landmarks = new RealLandmarks(init, (list) => buildLandmarkFallback(list, ground, city.zones.sensitive, facade));
+    return this.landmarks.objects;
   }
 
   /** 贴面流式加载的调试状态（没有贴面时为 null）。 */
-  facadesDebug(): (FacadeDebug & { procSuppressed: number; canopies: number }) | null { // [r4:int]
+  facadesDebug(): (FacadeDebug & { procSuppressed: number; landmarkSuppressed: number; canopies: number }) | null { // [r4:int]
     const d = this.facades?.debug();
-    return d ? { ...d, procSuppressed: this.procSuppressed, canopies: this.canopyPieces } : null; // [r4:int]
+    return d ? { ...d, procSuppressed: this.procSuppressed, landmarkSuppressed: this.landmarkSuppressed, canopies: this.canopyPieces } : null; // [r4:int]
   }
 
   /** 各分块图层的区/块数（调试用）。 */
@@ -341,3 +365,9 @@ export class CityRenderer {
     return parts.join(' · ');
   }
 }
+
+/** 显存账本里随 drawing buffer 变的几项（场景 HDR 目标、画布、平面反射、bloom）的字节数合计。 */ // [r45:fix]
+const RT_KEYS: ReadonlySet<string> = new Set(['atmosphere:scene-rt', 'atmosphere:canvas', 'atmosphere:reflection', 'atmosphere:bloom']); // [r45:fix]
+function renderTargetBytes(): number { // [r45:fix]
+  return textureLedgerEntries().reduce((a, [k, v]) => (RT_KEYS.has(k) ? a + v : a), 0); // [r45:fix]
+} // [r45:fix]

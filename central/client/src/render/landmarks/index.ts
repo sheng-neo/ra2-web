@@ -1,77 +1,50 @@
 /**
- * 地标图层：按 placement.id 选参数化 builder；未知 id 用原轮廓挤出白模兜底。
- * 全部地标共用三个缓冲（立面 / 纯色构件 / 静态发光条），各自合成一个对象，最多 3 个 draw call。
+ * 地标图层（R5 起：真实外观，负责人 D5）。真实网格与图集在首帧之后流式加载（real.ts）；到之前、或下载失败时，
+ * 画一个最简单的轮廓白模（原轮廓从地面挤到总高，与楼群同一建筑材质的写字楼立面），一个 draw call。
+ * 旧的参数化「致敬模型」（harbour-spire 的切角收分、prism-tower 的斜撑……）已删除。名字是覆盖表里的建筑真名（负责人 D6），
+ * 只在 central.json 的数据里，客户端不画名字。
  */
-import { Mesh, type Material, type Object3D } from 'three';
+import { Mesh, type Material } from 'three';
 import type { LandmarkPlacement, SensitiveZone } from '@central/data';
 import type { HeightFn } from '../../data/terrain';
 import { normalizeRing } from '../../geom/ring';
+import { inSensitive } from '../buildings';
 import { extrudePrism } from '../extrude';
-import { FacadeMode, newFacadeArrays } from '../facade';
-import { mergeArrays, type MeshArrays } from '../mesh-arrays';
-import { newNeonArrays } from '../materials/neon';
-import { newSolidArrays } from '../materials/solid';
-import { harbourSpire } from './harbour-spire';
-import { Placement, type LandmarkSink } from './kit';
-import { mirrorBlock } from './mirror-block';
-import { neonCentre } from './neon-centre';
-import { portholeHouse } from './porthole-house';
-import { prismTower } from './prism-tower';
-import { steelFrame } from './steel-frame';
+import { FacadeMode, hash01, newFacadeArrays, styleCode, styleSeed } from '../facade';
+import { streetWarmth } from '../materials/lighting';
+import { mergeArrays } from '../mesh-arrays';
+import { lowestAlongRings } from '../walls';
 
-type Builder = (p: Placement, sink: LandmarkSink) => void;
+export { RealLandmarks, type LandmarkDebug } from './real';
 
-export const LANDMARK_BUILDERS: Readonly<Record<string, Builder>> = {
-  'harbour-spire': harbourSpire,
-  'prism-tower': prismTower,
-  'neon-centre': neonCentre,
-  'mirror-block': mirrorBlock,
-  'steel-frame': steelFrame,
-  'porthole-house': portholeHouse,
-};
-
-function fallback(p: Placement, sink: LandmarkSink): void {
-  const ring = normalizeRing(p.p.footprint);
-  if (!ring) return;
-  extrudePrism(sink.facade, {
-    ...ring,
-    bottom: p.base - p.footing * 10,
-    base: p.base,
-    top: p.base + p.p.height,
-    style: p.style(0, FacadeMode.Office),
-    uOffset: p.rnd * 50,
-    bldg: p.bldg(),
-  });
-}
-
-export interface LandmarkMaterials {
-  facade: Material;
-  solid: Material;
-  /** 静态发光条（materials/neon.ts）。 */
-  neon: Material;
-}
-
-export function buildLandmarks(
+/** 轮廓白模（一个网格，名字以 landmarks 开头：进水面倒影）。没有地标时返回 null。 */
+export function buildLandmarkFallback(
   list: readonly LandmarkPlacement[],
   ground: HeightFn,
   zones: readonly SensitiveZone[],
-  mats: LandmarkMaterials,
-): Object3D[] {
-  const sink: LandmarkSink = { facade: newFacadeArrays(), solid: newSolidArrays(), neon: newNeonArrays() };
+  facade: Material,
+): Mesh | null {
+  const arrays = newFacadeArrays();
   for (const l of list) {
-    const p = new Placement(l, ground, zones);
-    (LANDMARK_BUILDERS[l.id] ?? fallback)(p, sink);
+    const ring = normalizeRing(l.footprint);
+    if (!ring) continue;
+    const base = l.base !== 0 ? l.base : ground(l.x, l.y);
+    const bottom = Math.min(base, lowestAlongRings([ring.outer], ground)) - 5;
+    const sensitive = inSensitive(zones, l.x, l.y);
+    const rnd = hash01(l.id + l.x);
+    extrudePrism(arrays, {
+      ...ring,
+      bottom,
+      base,
+      top: base + l.height,
+      style: styleCode(styleSeed(3, 2, 0, 1), sensitive ? FacadeMode.Plain : FacadeMode.Office, rnd),
+      uOffset: rnd * 50,
+      bldg: [4.2, streetWarmth(l.x / 10, l.y / 10, base / 10), bottom / 10 + 0.5, 0],
+    });
   }
-  const out: Object3D[] = [];
-  const mesh = (name: string, arrays: MeshArrays, material: Material) => {
-    if (arrays.index.length === 0) return;
-    const m = new Mesh(mergeArrays([arrays]).geometry, material);
-    m.name = name;
-    m.matrixAutoUpdate = false;
-    out.push(m);
-  };
-  mesh('landmarks-facade', sink.facade, mats.facade);
-  mesh('landmarks-solid', sink.solid, mats.solid);
-  mesh('landmarks-neon', sink.neon, mats.neon);
-  return out;
+  if (arrays.index.length === 0) return null;
+  const m = new Mesh(mergeArrays([arrays]).geometry, facade);
+  m.name = 'landmarks-fallback';
+  m.matrixAutoUpdate = false;
+  return m;
 }

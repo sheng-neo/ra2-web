@@ -8,7 +8,7 @@
  */
 import { encodeTerrain, SOURCE_TREE_URL, type CityFile, type TerrainGrid } from '@central/data';
 import { OVERTURE_RELEASE } from '../config';
-import { blacklistHit } from '../redlines';
+import { blacklistHit, isLandmarkRealName } from '../redlines';
 import { REF_TOMTOM } from '../sources/refs';
 import { CSDI_LICENSE } from './terrain-refs';
 
@@ -17,11 +17,11 @@ export const TERRAIN_FILE = 'terrain.bin';
 
 type Shape =
   | 'city' | 'meta' | 'origin' | 'source' | 'build' | 'building' | 'ring' | 'road' | 'name'
-  | 'rail' | 'zones' | 'zone' | 'props' | 'landmark' | 'part' | 'facade' | 'facades' | 'far' | 'hires' | 'hiresMeta';
+  | 'rail' | 'zones' | 'zone' | 'props' | 'landmark' | 'part' | 'facade' | 'facades' | 'far' | 'hires' | 'hiresMeta' | 'lmesh' | 'lmeta' | 'latlas';
 
 const ORDER: Record<Shape, readonly string[]> = {
   city: ['format', 'version', 'meta', 'buildings', 'roads', 'rails', 'water', 'zones', 'props', 'landmarks'],
-  meta: ['origin', 'crs', 'unit', 'bbox', 'sources', 'build', 'facades', 'hires'],
+  meta: ['origin', 'crs', 'unit', 'bbox', 'sources', 'build', 'facades', 'hires', 'landmarkMeshes'],
   origin: ['e', 'n', 'lon', 'lat'],
   source: ['id', 'license', 'attribution', 'url'],
   build: ['pipelineVersion', 'inputsDigest'],
@@ -40,7 +40,10 @@ const ORDER: Record<Shape, readonly string[]> = {
   zones: ['playable', 'sensitive'],
   zone: ['id', 'kind', 'area'],
   props: ['signals', 'crossings', 'busStops', 'streetLamps', 'trees'],
-  landmark: ['id', 'name', 'x', 'y', 'rot', 'base', 'height', 'footprint', 'replaces'],
+  landmark: ['id', 'name', 'x', 'y', 'rot', 'base', 'height', 'footprint', 'replaces', 'mesh'],
+  lmesh: ['high', 'tris', 'floors', 'bbox', 'aviation', 'street'],
+  lmeta: ['dir', 'low', 'atlas', 'bytes'],
+  latlas: ['size', 'bc3', 'bc3Half', 'etc2Half', 'bc3Quarter', 'etc2Quarter', 'webpHalf', 'webpQuarter'],
 };
 
 const CHILD: Partial<Record<Shape, Record<string, Shape>>> = {
@@ -48,13 +51,14 @@ const CHILD: Partial<Record<Shape, Record<string, Shape>>> = {
     meta: 'meta', buildings: 'building', roads: 'road', rails: 'rail', water: 'ring',
     zones: 'zones', props: 'props', landmarks: 'landmark',
   },
-  meta: { origin: 'origin', sources: 'source', build: 'build', facades: 'facades', hires: 'hiresMeta' },
+  meta: { origin: 'origin', sources: 'source', build: 'build', facades: 'facades', hires: 'hiresMeta', landmarkMeshes: 'lmeta' },
+  lmeta: { atlas: 'latlas' },
   building: { footprint: 'ring', parts: 'part', facade: 'facade', hires: 'hires' },
   facades: { far: 'far' },
   road: { name: 'name' },
   zones: { playable: 'ring', sensitive: 'zone' },
   zone: { area: 'ring' },
-  landmark: { name: 'name', footprint: 'ring' },
+  landmark: { name: 'name', footprint: 'ring', mesh: 'lmesh' },
 };
 
 /** 允许非整数的字段。 */
@@ -101,8 +105,16 @@ export function collectStrings(v: unknown, where = '', out: [string, string][] =
   return out;
 }
 
+/** 负责人 D6：landmarks[i].name.zh / en 正是该地标 id 的真名时豁免（只此一处、逐字相同，见 redlines.ts LANDMARK_REAL_NAMES）。 */
+function landmarkNameExempt(city: CityFile, where: string, s: string): boolean {
+  const m = /^landmarks\[(\d+)\]\.name\.(zh|en)$/.exec(where);
+  const l = m ? city.landmarks[Number(m[1])] : undefined;
+  return !!l && isLandmarkRealName(l.id, m![2] as 'zh' | 'en', s);
+}
+
 export function serializeCity(city: CityFile): string {
   for (const [where, s] of collectStrings(city)) {
+    if (landmarkNameExempt(city, where, s)) continue;
     const hit = blacklistHit(s);
     if (hit) throw new Error(`红线：${where} 含有「${hit}」`);
   }
@@ -126,6 +138,9 @@ const partsCount = (city: CityFile): number => city.buildings.filter((b) => b.pa
 /** 有多少栋楼带真实贴面（R3，地政总署个别模型的照片纹理派生）。 */
 const facadeCount = (city: CityFile): number => city.buildings.filter((b) => b.facade).length;
 
+/** 有多少座地标带真实网格（R5，地政总署个别模型派生）。 */
+const meshCount = (city: CityFile): number => city.landmarks.filter((l) => l.mesh).length;
+
 /** ODbL 图层的来源描述：OSM 为主，用到 TomTom 路段时如实写上。 */
 function odblOrigin(city: CityFile): string {
   const tomtom = city.meta.sources.some((s) => s.id === REF_TOMTOM.id);
@@ -139,8 +154,9 @@ function attributionText(city: CityFile): string {
   const lines = [
     '中環急件 Central Rush — 地圖數據鳴謝 / Map data attribution',
     '',
-    facadeCount(city) > 0
-      ? `${CITY_FILE}, ${TERRAIN_FILE} and ${city.meta.facades?.dir ?? 'facades'}/*.webp are generated from the following sources:`
+    facadeCount(city) > 0 || meshCount(city) > 0
+      ? `${CITY_FILE}, ${TERRAIN_FILE}${facadeCount(city) > 0 ? `, ${city.meta.facades?.dir ?? 'facades'}/*.webp` : ''}` +
+        `${meshCount(city) > 0 ? ` and ${city.meta.landmarkMeshes?.dir ?? 'landmarks'}/*` : ''} are generated from the following sources:`
       : `${CITY_FILE} and ${TERRAIN_FILE} are generated from the following sources:`,
     '',
     ...sourceLines(city),
@@ -166,6 +182,13 @@ function attributionText(city: CityFile): string {
           `  (Individualised models) via 3d.map.gov.hk and the CSDI Portal (${CSDI_LICENSE}; not part of the ODbL database).`,
         ]
       : []),
+    ...(meshCount(city) > 0
+      ? [
+          `* ${city.meta.landmarkMeshes?.dir ?? 'landmarks'}/* (shapes and photo textures of the ${meshCount(city)} landmark buildings; their real names are only ` +
+            'in central.json, the client does not display them): Lands Department 3D Visualisation Map',
+          `  (Individualised models) via 3d.map.gov.hk and the CSDI Portal (${CSDI_LICENSE}; not part of the ODbL database).`,
+        ]
+      : []),
     // 复审修正：客户端代码里的公共交通站点（client/src/render/streets/transit-data.ts）也是 ODbL 数据；
     // 站名原样照登（负责人拍板 D2，2026-11-26，真实站名放开）
     '* Bus / minibus / tram stop positions, stop names and route numbers compiled into the client (client/src/render/streets/transit-data.ts): ' +
@@ -176,12 +199,24 @@ function attributionText(city: CityFile): string {
     '',
     'Changes made: features re-projected to HK1980 Grid (EPSG:2326) in local decimetres; footprints simplified',
     '(0.3 m) and slivers under 4 m² removed; missing building heights estimated; all building and business',
-    `names removed;${gov ? ' open-sided structures omitted;' : ''} ${city.landmarks.length} buildings replaced by ` +
-      'fictional landmark placements;',
+    // [r45:int] 不写「the landmark …」：大小写不敏感时它正是红线词表里的一座真楼名（署名文件同样按词表检查，见 packCity）
+    `names removed${city.landmarks.length > 0 ? ` except the ${city.landmarks.length} landmarks' names` : ''};${gov ? ' open-sided structures omitted;' : ''} ` +
+      `${city.landmarks.length} buildings replaced by landmark placements that keep the buildings' real names (this game is not`,
+    'affiliated with or endorsed by their owners, occupants or the companies named);',
     ...(partsCount(city) > 0
       ? [
           '3D building models reduced to their roof surfaces, converted to simplified stacked outlines (0.5 m, up to 4 m for curved outlines) and',
           'fitted to the 2D footprints (no meshes, textures or names kept; none inside sensitive zones or landmarks);',
+        ]
+      : []),
+    ...(meshCount(city) > 0
+      ? [
+          `the ${meshCount(city)} landmark prototypes' textured 3D models remeshed (free-standing sculptures and low appendages outside the`,
+          'footprints removed, reduced to fewer triangles, bases fitted to the terrain), their photo textures re-projected onto new texture',
+          // [r45:fix] 文件里没有名字字段；照片里本来就有的字（楼名、标志）按 D1 保留——原来写「carry no names」与 README / TERMS 第 9 节矛盾
+          'charts, de-lit, resampled and block-compressed (the mesh and texture files carry no name fields; lettering photographed on the buildings',
+          'is kept as captured; none inside sensitive zones); overlapping building',
+          'footprints cut where a landmark stands;',
         ]
       : []),
     ...(facadeCount(city) > 0
@@ -189,7 +224,8 @@ function attributionText(city: CityFile): string {
           'photo textures of the 3D models projected onto the simplified building walls and roofs, resampled to about 0.25-0.4 m per pixel',
           '(tram-corridor street walls 0.04-0.08 m per pixel), de-lit (daylight shading reduced) and reduced; glass areas, windows,',
           'shop openings and signs detected for night rendering; canopies simplified from the near-horizontal slabs of the models',
-          '(no meshes or names kept; none inside sensitive zones or on landmarks; buildings showing scaffolding or construction netting excluded);',
+          '(no meshes or name fields kept, lettering photographed on the walls kept as captured; none inside sensitive zones or on landmarks;',
+          'buildings showing scaffolding or construction netting excluded);',
         ]
       : []),
     'props inside sensitive (military / government) zones removed; terrain resampled to a 5 m grid, outliers',
@@ -198,7 +234,7 @@ function attributionText(city: CityFile): string {
     'The OpenStreetMap-derived database is licensed under ODbL-1.0; see LICENSE-ODbL.txt.',
     `Data marked ${CSDI_LICENSE} is used under the CSDI Portal Terms and Conditions of Use`,
     '(https://portal.csdi.gov.hk/csdi-webpage/doc/TNC); it is not relicensed.',
-    ...(partsCount(city) > 0 || facadeCount(city) > 0
+    ...(partsCount(city) > 0 || facadeCount(city) > 0 || meshCount(city) > 0
       ? ['The building parts and photo textures also follow the Terms and Conditions of Use of the 3D Visualisation Map website',
         '(https://3d.map.gov.hk), which require the same attribution.']
       : []),
@@ -251,12 +287,21 @@ function odblNotice(city: CityFile): string {
   ].join('\n');
 }
 
+/** 署名 / 许可文本按红线词表逐行检查（这两份文件没有 D6 豁免：地标真名只在 central.json 的地标名处）。 */
+function checkedText(name: string, text: string): string {
+  for (const [i, line] of text.split('\n').entries()) {
+    const hit = blacklistHit(line);
+    if (hit) throw new Error(`红线：${name} 第 ${i + 1} 行含有「${hit}」`);
+  }
+  return text;
+}
+
 /** 文本产物：文件名 → 内容。 */
 export function packCity(city: CityFile): Map<string, string> {
   return new Map([
     [CITY_FILE, serializeCity(city)],
-    ['ATTRIBUTION.txt', attributionText(city)],
-    ['LICENSE-ODbL.txt', odblNotice(city)],
+    ['ATTRIBUTION.txt', checkedText('ATTRIBUTION.txt', attributionText(city))],
+    ['LICENSE-ODbL.txt', checkedText('LICENSE-ODbL.txt', odblNotice(city))],
   ]);
 }
 

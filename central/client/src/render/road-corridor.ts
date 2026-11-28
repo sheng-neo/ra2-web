@@ -8,7 +8,7 @@
  * - HeightFn 本身不变（data/terrain.ts），楼、路、街道物件照旧按原地形取高。
  * 返回新的高度数组（与 grid.heights 同长，dm）；只影响地形网格的画法。
  */
-import type { Building, FlatXY, TerrainGrid } from '@central/data';
+import type { Building, FlatXY, LandmarkPlacement, TerrainGrid } from '@central/data';
 import { reliefHeight, type HeightFn } from '../data/terrain';
 import { pointInFlat } from '../geom/ring';
 import type { RoadPlan } from './roads';
@@ -142,13 +142,13 @@ export function cellsUnderBuildings(grid: TerrainGrid, buildings: readonly Build
 /**
  * 楼宇轮廓点测试（dm）：50 m 网格分桶 + 包围盒预筛 + 奇偶规则（只看外环）。
  * 整合时加：给挡土墙的「坡后取高」用（ribbon.ts cutGround），遇楼即停。
+ * extra：另外几个外环（R4 + R5 整合复审：地标网格在行人高度的实心范围 LandmarkMesh.street，见 landmarkStreetRings）。
  */
-export function footprintTest(buildings: readonly Building[]): (x: number, y: number) => boolean {
+export function footprintTest(buildings: readonly Building[], extra: readonly FlatXY[] = []): (x: number, y: number) => boolean {
   const CELL = 500;
   const buckets = new Map<number, { r: FlatXY; box: [number, number, number, number] }[]>();
   const key = (i: number, j: number) => i * 100003 + j;
-  for (const b of buildings) {
-    const r = b.footprint.outer;
+  for (const r of [...buildings.map((b) => b.footprint.outer), ...extra]) {
     let minX = Infinity;
     let minY = Infinity;
     let maxX = -Infinity;
@@ -178,6 +178,11 @@ export function footprintTest(buildings: readonly Building[]): (x: number, y: nu
     }
     return false;
   };
+}
+
+/** 地标网格在行人高度的实心范围（管线 landmarkStreetSections 写进 LandmarkMesh.street；没有网格的地标没有）。 */ // [r45:fix]
+export function landmarkStreetRings(landmarks: readonly LandmarkPlacement[]): FlatXY[] {
+  return landmarks.flatMap((l) => l.mesh?.street ?? []);
 }
 
 const renderedCache = new WeakMap<TerrainGrid, { grid: TerrainGrid; fn: HeightFn }>();

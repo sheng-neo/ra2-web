@@ -102,6 +102,12 @@ export function planAviation(hosts: readonly TowerHost[], landmarks: readonly La
   }
   for (const l of landmarks) {
     if (zones.some((z) => pointInRing(z.area, l.x, l.y)) || l.height < AVIATION_LANDMARK_M * 10) continue;
+    // R5：有真实网格的地标，灯在网格最高处（桅杆、尖顶顶上；烘焙时量得），不再悬在轮廓中心的总高上
+    const av = l.mesh?.aviation;
+    if (av && av.length >= 3) {
+      for (let i = 0; i + 2 < av.length; i += 3) add(`lm:${l.id}:${i / 3}`, [[av[i]!, av[i + 1]!]], av[i + 2]! / 10);
+      continue;
+    }
     add(`lm:${l.id}`, [[l.x, l.y]], (l.base + l.height) / 10 + 0.5);
   }
   return out;

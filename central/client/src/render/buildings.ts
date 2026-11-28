@@ -319,6 +319,27 @@ export function canopyItems(pl: Pick<BuildingPlan, 'p' | 'hires'>, rec: readonly
   return whole;
 }
 
+/**
+ * R4 + R5 整合：墙外紧贴着地标（墙中点与四分点往外 0.5 m、1.5 m 处落在某座地标的轮廓里）。R5 的真实网格贴着轮廓（局部还伸出轮廓），
+ * 这种墙上的程序招牌、直招牌、冷气机会插进地标里（3696c1687c 的切口墙、4ee3099519 / 28c04dbf68 贴着地标的那几面），一律不挂。
+ * 坐标：span 是模拟米，地标轮廓是 dm。
+ */
+export function facesLandmark(
+  span: Pick<FrontageSpan, 'x0' | 'y0' | 'x1' | 'y1' | 'nx' | 'ny'>,
+  landmarks: readonly Pick<CityFile['landmarks'][number], 'footprint'>[],
+): boolean {
+  for (const t of [0.25, 0.5, 0.75]) {
+    const x = span.x0 + (span.x1 - span.x0) * t;
+    const y = span.y0 + (span.y1 - span.y0) * t;
+    for (const d of [0.5, 1.5]) {
+      const px = (x + span.nx * d) * 10;
+      const py = (y + span.ny * d) * 10;
+      if (landmarks.some((l) => pointInRing(l.footprint, px, py))) return true;
+    }
+  }
+  return false;
+}
+
 /** 这面临街墙（底座、外环）有高清街面段：照片里有真实的铺面与招牌，程序招牌、直招牌、冷气机都不加。 */
 export function hasHiresStreet(pl: Pick<BuildingPlan, 'hires'>, ring: number, edge: number): boolean {
   const secs = pl.hires?.faces.get(hiresFaceKey(0, ring, edge));
@@ -449,6 +470,8 @@ export interface CityBuildings {
   canopies: CanopyItem[];
   /** R4 整合：因为有高清街面照片而不加程序招牌 / 直招牌 / 冷气机的临街墙段数（调试钩子 facades().procSuppressed）。 */
   procSuppressed: number;
+  /** R4 + R5 整合：因为贴着地标（facesLandmark）而不加程序招牌 / 直招牌 / 冷气机的临街墙段数（facades().landmarkSuppressed）。 */
+  landmarkSuppressed: number;
 }
 
 /**
@@ -589,6 +612,7 @@ export function buildCityBuildings(
   const roads = new RoadIndex(city.roads);
   const tracks = trackIndex(city.rails ?? []);
   let procSuppressed = 0;
+  let landmarkSuppressed = 0; // [r45:int]
   const chunks = chunksFromPlans(plans, cutsOf, {
     rooftops: tier === 'high',
     facades,
@@ -596,6 +620,11 @@ export function buildCityBuildings(
     onSpan: (pl, s) => {
       const f = frontageOf(pl, s);
       if (!f || !facesStreet(f, roads)) return;
+      // [r45:int] 贴着地标的墙：不挂程序招牌、直招牌与冷气机（会插进地标的真实网格里）
+      if (facesLandmark(f, city.landmarks)) {
+        landmarkSuppressed++;
+        return;
+      }
       // R4：有高清街面照片的墙（真实的铺面与招牌、窗口冷气机都在照片里）不加程序招牌、直招牌与冷气机
       if (hasHiresStreet(pl, s.ring, s.edge)) {
         procSuppressed++; // [r4:int] 调试钩子 facades().procSuppressed
@@ -630,5 +659,5 @@ export function buildCityBuildings(
   const pageBoxes = facades ? facadePageBoxes(plans, facades.pages.length) : null;
   const pageEntries = facades ? facadePageEntries(plans, facades.pages.length) : null;
   const hiresEntries = hires ? hiresPageEntries(plans, hires.pages.length) : null;
-  return { chunks, objects, plans, emitters: towers.emitters, pageBoxes, pageEntries, hiresEntries, canopies, procSuppressed, update: (camera) => ac?.update(camera) };
+  return { chunks, objects, plans, emitters: towers.emitters, pageBoxes, pageEntries, hiresEntries, canopies, procSuppressed, landmarkSuppressed, update: (camera) => ac?.update(camera) };
 }

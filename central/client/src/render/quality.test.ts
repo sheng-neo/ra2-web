@@ -32,13 +32,17 @@ describe('起始 DPR', () => {
   });
 
   it('超过 buffer 像素上限时沿阶梯下降', () => {
-    // 2560×1440 CSS 在 DPR 2 下 14.7 Mpx：HIGH 上限 2.4 Mpx → 降到 0.75（2.07 Mpx；DPR 1 时 3.7 Mpx，显存超 64 MB）
+    // 2560×1440 CSS 在 DPR 2 下 14.7 Mpx：HIGH 上限 2.1 Mpx → 降到 0.75（2.07 Mpx；DPR 1 时 3.7 Mpx，显存超 64 MB）
     expect(startDpr('high', 2, 2560, 1440)).toBe(0.75);
     expect(startDpr('high', 1, 2560, 1440)).toBe(0.75);
+    // 1920×1200 @1 = 2.30 Mpx 超 2.1 Mpx → 0.95（2.08 Mpx；R4 + R5 整合时账本 162.5 MB 超 160）；1920×1080 @1 = 2.07 Mpx 不降
+    expect(startDpr('high', 1, 1920, 1200)).toBe(0.95);
+    expect(startDpr('high', 1, 1920, 1080)).toBe(1);
     // 4K 桌面窗口 @1：8.3 Mpx → 0.5
     expect(startDpr('high', 1, 3840, 2160)).toBe(0.5);
     for (const [w, h] of [
       [1920, 1080],
+      [1920, 1200],
       [2560, 1440],
       [3840, 2160],
     ] as const) {

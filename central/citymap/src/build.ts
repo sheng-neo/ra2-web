@@ -20,6 +20,18 @@ import { addBuildingParts, readModels, type PartsStats } from './stages/building
 import { buildBuildings } from './stages/buildings';
 import { FACADES_DIR, attachFacades, readFacadeDir, readFacades, verifyFacadeFiles, type FacadesStats } from './stages/facades';
 import { attachHires, readHires, readHiresBays, verifyHiresFiles, type HiresStats } from './stages/hires';
+import {
+  LANDMARKS_DIR,
+  attachLandmarkMeshes,
+  clearCanopiesOfLandmarks,
+  landmarkStreetSections,
+  cutLandmarkFootprints,
+  meshTriangles,
+  readLandmarkDir,
+  readLandmarkMeshes,
+  verifyLandmarkFiles,
+  type LandmarkMeshStats,
+} from './stages/landmark-meshes';
 import { placeLandmarks } from './stages/landmarks';
 import { buildProps } from './stages/props';
 import { projectRectBounds, unproject } from './stages/project';
@@ -44,6 +56,8 @@ export interface BuildOptions {
   buildings?: BuildingsFrom;
   /** 贴面贴图目录（校验 sha256 用），默认 client/public/city/facades。 */
   facadesDir?: string;
+  /** R5 地标网格与图集目录（校验 sha256 用），默认 client/public/city/landmarks。 */
+  landmarksDir?: string;
 }
 
 export interface CityBuild {
@@ -56,6 +70,8 @@ export interface CityBuild {
   facades: FacadesStats | null;
   /** 电车走廊高清街面层的统计（R4；没有清单时为 null）。 */
   hires: HiresStats | null;
+  /** R5 地标真实网格的统计（没有烘焙清单或 Overture 建筑层时为 null）。 */
+  landmarkMeshes: LandmarkMeshStats | null;
 }
 
 export async function buildCity(opts: BuildOptions = {}): Promise<CityBuild> {
@@ -88,12 +104,32 @@ export async function buildCity(opts: BuildOptions = {}): Promise<CityBuild> {
   const afterFacades = withFacades?.buildings ?? withParts?.buildings ?? placed.buildings;
   // [r4:int] 铺位清单（I-1 路面铺面溢光的数据）：页摘要不符时报错
   const withHires = hiresDoc ? attachHires(afterFacades, hiresDoc, zones.sensitive, undefined, readHiresBays(gov.files)) : null;
-  const buildings = withHires?.buildings ?? afterFacades;
+  const facaded = withHires?.buildings ?? afterFacades;
+  // R5 真实地标：烘焙清单 + public/city/landmarks/ 的网格与图集（校验 sha256）→ LandmarkPlacement.mesh；与之重叠的楼切掉重叠部分
+  // [r45:int] 切口在高清层之后：被切的楼连 R3 照片与 R4 高清页一并去掉（按旧轮廓烘的页不能贴到切过的墙上）
+  const lmDoc = landsd ? readLandmarkMeshes(gov.files) : null;
+  const readLm = readLandmarkDir(opts.landmarksDir ?? path.join(OUT_DIR, LANDMARKS_DIR));
+  if (lmDoc) verifyLandmarkFiles(lmDoc, readLm);
+  const withMeshes = lmDoc ? attachLandmarkMeshes(landmarks, lmDoc, zones.sensitive) : null;
+  const cut = withMeshes ? cutLandmarkFootprints(facaded, withMeshes.landmarks) : null;
+  if (withMeshes && cut) withMeshes.stats.cut = cut.cut;
+  // [r45:int] R4 的雨篷让开 R5 的地标网格（网格在街面高度可能伸出旧轮廓；按近景网格的三角形量，文件已校验过 sha256）
+  const meshes = new Map<string, Float64Array>();
+  for (const l of withMeshes?.landmarks ?? []) if (l.mesh) meshes.set(l.id, meshTriangles(readLm(l.mesh.high)!));
+  const cleared = withMeshes && cut ? clearCanopiesOfLandmarks(cut.buildings, withMeshes.landmarks, meshes) : null;
+  if (withMeshes && cleared) {
+    withMeshes.stats.canopiesTrimmed = cleared.trimmed;
+    withMeshes.stats.canopiesDropped = cleared.dropped;
+  }
+  const buildings = cleared?.buildings ?? cut?.buildings ?? facaded;
+  // [r45:fix] 地标网格在行人高度的实心范围（客户端的走线、街上设施、路灯杆避开它；网格在街面高度会伸出旧轮廓）
+  const street = withMeshes ? landmarkStreetSections(withMeshes.landmarks, meshes, ground) : null;
+  if (withMeshes && street) withMeshes.stats.streetRings = street.rings;
 
   const sources = new Map<string, SourceRef>([[REF_OSM.id, REF_OSM], [REF_OVERTURE.id, REF_OVERTURE]]);
   for (const ref of [...roads.refs, ...built.refs]) sources.set(ref.id, ref);
   if (withParts && withParts.stats.buildingsWithParts > 0) sources.set(REF_LANDSD_3DVM.id, REF_LANDSD_3DVM);
-  if (withFacades?.meta || withHires?.meta) sources.set(REF_LANDSD_3DVM_TEX.id, REF_LANDSD_3DVM_TEX);
+  if (withFacades?.meta || withHires?.meta || withMeshes?.meta) sources.set(REF_LANDSD_3DVM_TEX.id, REF_LANDSD_3DVM_TEX);
   sources.set(REF_CEDD_DTM.id, REF_CEDD_DTM);
 
   const [lon, lat] = unproject(0, 0);
@@ -112,6 +148,7 @@ export async function buildCity(opts: BuildOptions = {}): Promise<CityBuild> {
       },
       ...(withFacades?.meta ? { facades: withFacades.meta } : {}),
       ...(withHires?.meta ? { hires: withHires.meta } : {}),
+      ...(withMeshes?.meta ? { landmarkMeshes: withMeshes.meta } : {}),
     },
     buildings,
     roads: roads.roads,
@@ -119,7 +156,14 @@ export async function buildCity(opts: BuildOptions = {}): Promise<CityBuild> {
     water: buildWater(ovt.water),
     zones,
     props: buildProps(ovt.infrastructure, ovt.land, extent, zones.sensitive),
-    landmarks,
+    landmarks: street?.landmarks ?? withMeshes?.landmarks ?? landmarks,
   };
-  return { city, terrain, parts: withParts?.stats ?? null, facades: withFacades?.stats ?? null, hires: withHires?.stats ?? null };
+  return {
+    city,
+    terrain,
+    parts: withParts?.stats ?? null,
+    facades: withFacades?.stats ?? null,
+    hires: withHires?.stats ?? null,
+    landmarkMeshes: withMeshes?.stats ?? null,
+  };
 }

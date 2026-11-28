@@ -17,6 +17,8 @@ function ringPath(r: Ring, x0: number, y1: number): string {
   return [r.outer, ...(r.holes ?? [])].map((p) => `M${pts(p, x0, y1)}Z`).join('');
 }
 
+const xmlText = (s: string): string => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
 const ROAD_STYLE: Partial<Record<string, string>> = {
   motorway: '#e8a33d;2.2', trunk: '#e8a33d;2', primary: '#f2c14e;1.8', secondary: '#f2d27a;1.5',
   tertiary: '#f5e2a8;1.3', footway: '#7a8a99;0.4', steps: '#7a8a99;0.4', pedestrian: '#9aa8b5;0.8',
@@ -55,7 +57,8 @@ export function cityToSvg(city: CityFile): string {
     parts.push(`<path d="${ringPath(l.footprint, x0, y1)}" fill="#d14dff"/>`);
     const lx = ((l.x - x0) * SCALE).toFixed(1);
     const ly = ((y1 - l.y) * SCALE).toFixed(1);
-    parts.push(`<text x="${lx}" y="${ly}" fill="#fff" font-size="10" font-family="sans-serif">${l.name.en}</text>`);
+    // 地标名（D6 起是建筑真名）；只写进本地调试图，按 XML 转义
+    parts.push(`<text x="${lx}" y="${ly}" fill="#fff" font-size="10" font-family="sans-serif">${xmlText(l.name.en)}</text>`);
   }
   parts.push(`<text x="8" y="16" fill="#fff" font-size="12" font-family="sans-serif">N ↑</text>`, '</svg>');
   return parts.join('\n');

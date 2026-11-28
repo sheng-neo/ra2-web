@@ -16,10 +16,14 @@
  *
  * R3 复审修正后另加三项：
  * - 红线词扫描：构建产物的 JS 里不得出现 citymap/src/redlines.ts 的词（真实企业 / 楼宇名、某游戏系列名）；
- *   唯一的豁免是 src/render/streets/transit-data.ts 字符串字面量里的楼宇 / 企业 / 政府地点名（真实站名、路线目的地，
- *   负责人拍板 D2，2026-11-26）：扫描前把产物里逐字相同的这些字面量（连引号）换成 ""，每个值最多换掉它在 transit-data.ts
- *   里出现的次数，多出来的（别处用了同一个字符串）算失败；游戏系列名不豁免；其余位置出现红线词照样失败（见 scanDist）；
+ *   豁免只有两种，都按出处与次数：src/render/streets/transit-data.ts 字符串字面量里的楼宇 / 企业 / 政府地点名（真实站名、路线目的地，
+ *   负责人拍板 D2，2026-11-26），以及六座地标的真名（负责人 D6，2026-11-27：redlines.ts 的 LANDMARK_REAL_NAMES 那 12 个字符串，
+ *   客户端里只有 src/dev/fixture.ts 的地标名用到）：扫描前把产物里逐字相同的这些字面量（连引号）换成 ""，每个值最多换掉它在
+ *   transit-data.ts 里出现的次数，多出来的（别处用了同一个字符串）算失败；D6 的名字在合成城市的 fixture chunk 里须与 fixture.ts 逐个相等；
+ *   游戏系列名不豁免；
+ *   其余位置出现红线词照样失败（见 scanDist）；
  * - 贴面 404：city/facades/ 一律回 404 时最多 1 条 console error（熔断：远景图集失败就不再请求近景页），facadesIdle 照样兑现；
+ *   R5 起 city/landmarks/ 一并 404（地标远景网格失败就不再请求图集），合计最多 2 条；
  * - 窗口变大：手机 874×402 @2 开场后把窗口拉到 1280×720，DPR 按档位上限重新封顶，显存账本 ≤ 160 MB（拉大后是桌面级窗口）。
  *
  * R4 电车走廊高清街面层：手机 DPR 2 与 1440p 两轮另加「電車」街面机位（高清页与 R3 页共用近景池，显存照样按上面的上限查）；
@@ -56,16 +60,20 @@ const MAX_PASSES_FULL = 2;
 /** GPU 贴图 + 渲染目标内存上限（MB）：HIGH 手机 DPR 2、HIGH 2560×1440 桌面、LOW（R3 真实贴面预算）。 */
 const MAX_TEX_MB = { phone: 128, desktop: 160, low: 64 };
 /**
- * R4：每档账本至少留这么多余量（MB）；贴面（远景图集 + 近景池 + 高清页 + 辅助图）各档份额上限（MB）。
+ * R4：每档账本至少留这么多余量（MB；R4 时手机还余 1.9 MB）。R4 + R5 整合复审修正：手机降到 0.5 MB——R5 地标图集（ETC2 1024²，1.3 MB，
+ * R5 预算里本来就有）并入后参考手机 874×402 @2 的账本 127.4 MB（≤ 128），整合时为守 1.5 MB 给所有触屏设备的 HIGH 档加的
+ * 1.34 Mpx buffer 上限（参考手机 DPR 2 → 1.95、平板一律降 DPR）改动了 R1 起的 DPR 规则，复审后撤掉；要恢复 1.5 MB 余量得在手机上
+ * 让出别的显存（例如少一层高清页），留给负责人定。
+ * 贴面（远景图集 + 近景池 + 高清页 + 辅助图）各档份额上限（MB）：
  * 导演规格给贴面的份额是 70 / 85 / 16.5、街道 +6 MB；整合后 HIRES 用了 74.7 / 86.7（共用近景池：桌面 11 + 5 层、手机 9 + 4 层），
- * STREET 只用了 1.3 MB，合计仍在总上限内且余量 ≥ 1.5 MB，所以份额按实际分配记为 75 / 87 / 16.5（总上限与余量照旧断言）。
+ * STREET 只用了 1.3 MB，合计仍在总上限内且余量（R4 时）≥ 1.5 MB，所以份额按实际分配记为 75 / 87 / 16.5（总上限与余量照旧断言）。
  */
-const TEX_MARGIN_MB = 1.5;
+const TEX_MARGIN_MB = { phone: 0.5, desktop: 1.5, low: 1.5 };
 const MAX_FACADE_MB = { phone: 75, desktop: 87, low: 16.5 };
 /** 首帧前地图数据（city/ 下、city/facades/ 以外的请求）实际传输字节上限：R3 起 2.5 MiB，服务器不压缩也要满足。 */
 const MAX_DATA_BYTES = 2.5 * 1024 * 1024;
-/** 流式加载的贴面贴图（city/facades/）：只报告，不计入首帧前的下载。 */
-const isFacade = (url) => url.includes('/city/facades/');
+/** 流式加载的贴面贴图（city/facades/）与 R5 地标网格 / 图集（city/landmarks/）：首帧之后才下载，只报告，不计入首帧前的下载。 */
+const isFacade = (url) => url.includes('/city/facades/') || url.includes('/city/landmarks/');
 /** 产物挂载的子路径（与 Dockerfile 一致）。 */
 const MOUNT = '/central';
 
@@ -99,7 +107,8 @@ function serveLikeProduction(dist) {
 }
 
 const VIEWPORTS = [
-  { name: 'desktop', width: 1280, height: 720, mobile: false, presets: ['harbour', 'statue', 'aerial'] },
+  // R4 + R5 整合复审：1280×720 @1（MSAA 2）的起始渲染目标 41 MiB，地标用全分辨率图集（landmarks/format.ts desktopAtlasRes），账本照桌面上限查
+  { name: 'desktop', width: 1280, height: 720, mobile: false, presets: ['harbour', 'statue', 'aerial'], memCheck: 'desktop' },
   { name: 'phone-land', width: 874, height: 402, mobile: true, presets: ['harbour', 'statue'] },
   { name: 'phone-port', width: 402, height: 874, mobile: true, presets: ['harbour'] },
   // iPhone 17 横屏的真实像素（DPR 2 → 1748×804 ≈ 1.4 Mpx）：查显存账本与 MSAA 规则
@@ -132,11 +141,21 @@ function redlineWords() {
 }
 
 /**
- * transit-data.ts 里的全部字符串字面量（站名、目的地、电车站 / 码头 / 船名……）：值 → 在文件里出现的次数。按文本逐字扫描：
- * 跳过 // 与 /* *\/ 注释（文件头注释里写着真名），只收 '…'、"…"、`…`（这个文件没有 ${} 插值）。
+ * 负责人 D6：redlines.ts 里 LANDMARK_REAL_NAMES 的 12 个字符串（六座地标的繁中 / 英文真名），按文本解析（不引 TS）。
  */
-function transitLiterals() {
-  const src = fs.readFileSync(path.join(root, 'src/render/streets/transit-data.ts'), 'utf8');
+function landmarkRealNames() {
+  const src = fs.readFileSync(path.join(root, '../citymap/src/redlines.ts'), 'utf8');
+  const body = src.split('export const LANDMARK_REAL_NAMES')[1]?.split('};\n')[0] ?? '';
+  return [...body.matchAll(/\b(?:zh|en): '([^']+)'/g)].map((m) => m[1]);
+}
+
+/**
+ * 一个源文件里的全部字符串字面量：值 → 在文件里出现的次数。按文本逐字扫描：跳过 // 与 /* *\/ 注释（transit-data.ts 的文件头注释里写着真名），
+ * 只收 '…'、"…"、`…`（transit-data.ts 与 fixture.ts 都没有带真名的 ${} 插值）。
+ * transit-data.ts：站名、目的地、电车站 / 码头 / 船名……；fixture.ts：合成城市的地标名（D6 真名）。
+ */
+function stringLiterals(file) {
+  const src = fs.readFileSync(path.join(root, file), 'utf8');
   const out = new Map();
   const esc = { n: '\n', r: '\r', t: '\t', b: '\b', f: '\f', v: '\v', 0: '\0' };
   for (let i = 0; i < src.length; ) {
@@ -188,29 +207,49 @@ function unescapeNonAscii(js) {
 function scanDist(dist) {
   const { plain, series } = redlineWords();
   const words = [...plain, ...series];
-  const counts = transitLiterals();
-  const exempt = [...counts.keys()]
+  const transit = stringLiterals('src/render/streets/transit-data.ts');
+  // D6：六座地标的真名。合成城市（fixture.ts）是动态 import 的独立 chunk（fixture-*.js）：它的名字只许出现在那个 chunk 里、
+  // 次数与 fixture.ts 逐个相等（少了 = 写法变了或挪走了；复审 R5b 修正二：原来按全部 chunk 合计、只查「至少一次」，
+  // 12 个名字又都在 transit-data 里，fixture 里少一个或挪到别处都查不出来）；其余 chunk 里只许 transit-data（同名的站）的次数
+  const d6 = landmarkRealNames();
+  const fixture = stringLiterals('src/dev/fixture.ts');
+  const fixAllow = new Map(d6.filter((v) => (fixture.get(v) ?? 0) > 0).map((v) => [v, fixture.get(v)]));
+  const values = new Set([...transit.keys(), ...fixAllow.keys()]);
+  const exempt = [...values]
     .filter((v) => plain.some((w) => v.includes(w)) && !series.some((g) => v.toLowerCase().includes(g.toLowerCase())))
     .sort((a, b) => b.length - a.length);
   const hits = [];
   const used = new Map();
+  const usedFix = new Map();
+  let fixChunks = 0;
   const dir = path.join(dist, 'assets');
   for (const f of fs.existsSync(dir) ? fs.readdirSync(dir).filter((x) => x.endsWith('.js')) : []) {
+    const isFix = /^fixture-/.test(f);
+    if (isFix) fixChunks++;
+    const tally = isFix ? usedFix : used;
     let js = unescapeNonAscii(fs.readFileSync(path.join(dir, f), 'utf8'));
     for (const v of exempt)
       for (const q of quotedForms(v)) {
         const parts = js.split(q);
         if (parts.length < 2) continue;
-        used.set(v, (used.get(v) ?? 0) + parts.length - 1);
+        tally.set(v, (tally.get(v) ?? 0) + parts.length - 1);
         js = parts.join('""');
       }
     for (const w of words) if (js.includes(w)) hits.push(`${f}: ${w}`);
   }
-  const extra = [...used].filter(([v, n]) => n > counts.get(v)).map(([v, n]) => `「${v}」在產物裡 ×${n}，多於 transit-data 裡的 ×${counts.get(v)}（多出的不是站名數據）`);
-  hits.unshift(...extra);
-  const stripped = [...used.values()].reduce((a, n) => a + n, 0);
+  const extra = [...used]
+    .filter(([v, n]) => n > (transit.get(v) ?? 0))
+    .map(([v, n]) => `「${v}」在產物裡 ×${n}，多於 transit-data 裡的 ×${transit.get(v) ?? 0}（多出的不是站名數據）`);
+  const fixWrong = [...new Set([...fixAllow.keys(), ...usedFix.keys()])]
+    .filter((v) => (usedFix.get(v) ?? 0) !== (fixAllow.get(v) ?? 0))
+    .map((v) => `「${v}」在 fixture chunk 裡 ×${usedFix.get(v) ?? 0}，fixture.ts 裡 ×${fixAllow.get(v) ?? 0}（D6 地標名應逐個相等）`);
+  hits.unshift(...extra, ...fixWrong);
+  const stripped = [...used.values(), ...usedFix.values()].reduce((a, n) => a + n, 0);
   if (exempt.length && !stripped) hits.unshift(`transit-data 的 ${exempt.length} 条含红线词的字面量一条也没在产物里认出来（写法变了？）`);
-  return { hits: hits.slice(0, 10), stripped, found: used.size, exempt: exempt.length };
+  if (d6.length !== 12) hits.unshift(`redlines.ts 的 LANDMARK_REAL_NAMES 解析出 ${d6.length} 个名字（应为 12）`);
+  if (fixAllow.size && fixChunks !== 1) hits.unshift(`fixture chunk（fixture-*.js）應正好 1 個，產物裡 ${fixChunks} 個`);
+  const d6Stripped = d6.reduce((a, v) => a + (used.get(v) ?? 0) + (usedFix.get(v) ?? 0), 0);
+  return { hits: hits.slice(0, 10), stripped, found: new Set([...used.keys(), ...usedFix.keys()]).size, exempt: exempt.length, d6: d6.length, d6Stripped };
 }
 
 async function run() {
@@ -218,7 +257,10 @@ async function run() {
   if (!args.includes('--no-build')) await build({ root, logLevel: 'warn' });
   const red = scanDist(path.join(root, 'dist'));
   const redHits = red.hits;
-  console.log(`紅線詞掃描：transit-data 含紅線詞的字面量 ${red.exempt} 種，產物裡認出 ${red.found} 種、剔除 ${red.stripped} 處；其餘命中 ${redHits.length} 條`);
+  console.log(
+    `紅線詞掃描：transit-data 含紅線詞的字面量與 D6 地標真名共 ${red.exempt} 種（D6 ${red.d6} 個），產物裡認出 ${red.found} 種、剔除 ${red.stripped} 處` +
+      `（其中 D6 名字 ${red.d6Stripped} 處）；其餘命中 ${redHits.length} 條`,
+  );
   const server = await serveLikeProduction(path.join(root, 'dist'));
   const origin = `http://127.0.0.1:${server.address().port}`;
   const base = `${origin}${MOUNT}/`;
@@ -232,13 +274,15 @@ async function run() {
   if (redHits.length) failures.push(`構建產物含紅線詞：${redHits.join(' | ')}`);
   try {
     if (targets.some((t) => t.name === 'city') && (!only || only === 'city')) {
-      // 贴面文件全部 404：最多 1 条 console error，facadesIdle 照样兑现（熔断，见 facades/streamer.ts）
+      // 贴面文件全部 404：最多 1 条 console error，facadesIdle 照样兑现（熔断，见 facades/streamer.ts）；
+      // R5 起地标网格与图集（city/landmarks/）也一并 404：远景网格失败就不再请求图集（同样熔断），console.warn 一次、留着轮廓白模，
+      // facadesIdle 照样兑现；所以浏览器的网络错误最多 2 条（贴面 1 + 地标 1）
       const page = await browser.newPage({ viewport: { width: 800, height: 450 } });
       const errors = [];
       page.on('console', (m) => m.type() === 'error' && errors.push(m.text()));
       page.on('pageerror', (e) => errors.push(String(e)));
       let facadeReq = 0;
-      await page.route('**/city/facades/**', (r) => {
+      await page.route((u) => isFacade(u.href), (r) => {
         facadeReq++;
         return r.fulfill({ status: 404, body: '' });
       });
@@ -247,7 +291,7 @@ async function run() {
       await page.evaluate(`window.__central.setView('statue', true)`);
       const idle = await page.evaluate('Promise.race([window.__central.facadesIdle?.().then(() => true) ?? Promise.resolve(true), new Promise((r) => setTimeout(() => r(false), 60000))])');
       await page.waitForTimeout(3000);
-      if (errors.length > 1 || !idle) failures.push(`city/facades-404: console error ×${errors.length}（≤ 1）、idle ${idle}、請求 ${facadeReq} 次`);
+      if (errors.length > 2 || !idle) failures.push(`city/facades-404: console error ×${errors.length}（≤ 2）、idle ${idle}、請求 ${facadeReq} 次`);
       report.push({ target: 'facades-404', errors: errors.length, idle, requests: facadeReq });
       await page.close();
       // 窗口变大：DPR 重新封顶，显存仍在手机上限内
@@ -301,6 +345,28 @@ async function run() {
         const sizes = [];
         page.on('requestfinished', (r) => sizes.push(r.sizes().then((s) => ({ url: r.url(), bytes: s.responseBodySize }))));
         const t0 = Date.now();
+        // R5：记下 __central.ready 变真的时刻（首帧，与流式加载开始同一帧），检查贴面 / 地标的请求都不早于它
+        await page.addInitScript(() => {
+          /* global window, performance */
+          let dbg;
+          Object.defineProperty(window, '__central', {
+            configurable: true,
+            get: () => dbg,
+            set: (v) => {
+              dbg = v;
+              let r = v.ready;
+              Object.defineProperty(v, 'ready', {
+                configurable: true,
+                enumerable: true,
+                get: () => r,
+                set: (x) => {
+                  if (x && !r) window.__readyAt = performance.now();
+                  r = x;
+                },
+              });
+            },
+          });
+        });
         const qs = [t.query.replace(/^\?/, ''), run.query].filter(Boolean).join('&');
         await page.goto(`${base}${qs ? `?${qs}` : ''}${run.hash}`);
         await page.waitForFunction('window.__central && (window.__central.ready || window.__central.error)', null, {
@@ -313,6 +379,11 @@ async function run() {
         const totalBytes = done.reduce((n, s) => n + s.bytes, 0);
         const dataBytes = done.filter((s) => s.url.includes('/city/') && !isFacade(s.url)).reduce((n, s) => n + s.bytes, 0);
         if (dataBytes > MAX_DATA_BYTES) failures.push(`${tag}: 地圖數據下載 ${dataBytes} B > ${MAX_DATA_BYTES}`);
+        // 流式数据（贴面、地标）只能在首帧之后请求：否则上面按网址排除就漏算了首帧前的下载
+        const early = await page.evaluate(
+          `performance.getEntriesByType('resource').filter((e) => (e.name.includes('/city/facades/') || e.name.includes('/city/landmarks/')) && !(e.startTime >= window.__readyAt)).map((e) => e.name)`,
+        );
+        if (early.length) failures.push(`${tag}: 首幀前就請求了流式數據 ${early.length} 個（${early.slice(0, 3).join(', ')}）`);
         // 等加载层淡出
         await page.waitForTimeout(900);
         for (const preset of vp.presets) {
@@ -338,7 +409,7 @@ async function run() {
             if (stats.bloom !== false) failures.push(`${at}: LOW 檔不應開 bloom`);
             if (stats.reflection !== false) failures.push(`${at}: LOW 檔不應開平面反射`);
           }
-          if (run.name === 'low' && t.name === 'city' && !(stats.texMB <= MAX_TEX_MB.low - TEX_MARGIN_MB)) failures.push(`${at}: GPU 貼圖 ${stats.texMB} MB > ${MAX_TEX_MB.low} − ${TEX_MARGIN_MB}（LOW，R4 留餘量）`);
+          if (run.name === 'low' && t.name === 'city' && !(stats.texMB <= MAX_TEX_MB.low - TEX_MARGIN_MB.low)) failures.push(`${at}: GPU 貼圖 ${stats.texMB} MB > ${MAX_TEX_MB.low} − ${TEX_MARGIN_MB.low}（LOW，R4 留餘量）`);
           if (run.name === 'low' && t.name === 'city' && !((stats.facadeMB ?? 0) <= MAX_FACADE_MB.low)) failures.push(`${at}: 貼面 ${stats.facadeMB} MB > ${MAX_FACADE_MB.low}（LOW）`);
           // R4 高清街面层：只给 HIGH（LOW 不应有高清显存）；等贴面到齐后视野要的高清页不该还缺
           if (t.name === 'city' && stats.tier === 'low' && (stats.hiresMB ?? 0) > 0) failures.push(`${at}: LOW 檔不應載入高清街面（${stats.hiresMB} MB）`);
@@ -350,7 +421,7 @@ async function run() {
             if (fd && !(fd.canopies > 0)) failures.push(`${at}: 沒有雨篷（${fd.canopies}）`);
           }
           if (vp.memCheck) {
-            if (!(stats.texMB <= MAX_TEX_MB[vp.memCheck] - TEX_MARGIN_MB)) failures.push(`${at}: GPU 貼圖 ${stats.texMB} MB > ${MAX_TEX_MB[vp.memCheck]} − ${TEX_MARGIN_MB}（R4 留餘量）`);
+            if (!(stats.texMB <= MAX_TEX_MB[vp.memCheck] - TEX_MARGIN_MB[vp.memCheck])) failures.push(`${at}: GPU 貼圖 ${stats.texMB} MB > ${MAX_TEX_MB[vp.memCheck]} − ${TEX_MARGIN_MB[vp.memCheck]}（R4 留餘量）`);
             if (t.name === 'city' && !((stats.facadeMB ?? 0) <= MAX_FACADE_MB[vp.memCheck])) failures.push(`${at}: 貼面 ${stats.facadeMB} MB > ${MAX_FACADE_MB[vp.memCheck]}`);
             if (stats.tier === 'high' && stats.bufferPx > 1.2e6 && stats.msaa !== 0) failures.push(`${at}: 起始 buffer ${stats.bufferPx} px > 1.2 Mpx 卻開了 MSAA ${stats.msaa}`);
           }

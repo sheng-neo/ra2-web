@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { makeFixtureCity } from '../dev/fixture';
 import { flatGround } from '../data/terrain';
 import { normalizeRing, ringCentroid } from '../geom/ring';
-import { buildBuildingChunks, crownColour, hasRoofPhoto, hasWallPhoto, inSensitive, modeOf } from './buildings';
+import { buildBuildingChunks, crownColour, facesLandmark, hasRoofPhoto, hasWallPhoto, inSensitive, modeOf } from './buildings';
 import { parseRecord } from './facades/layout';
 import { buildingChunk, chunkKey } from './chunks';
 import { FacadeMode } from './facade';
@@ -104,5 +104,17 @@ describe('照片墙 / 屋顶（R3）', () => {
     expect(hasRoofPhoto(pl(rec(-1, 0)))).toBe(false);
     expect(hasRoofPhoto({ photo: null })).toBe(false);
     expect(hasWallPhoto({ photo: null })).toBe(false);
+  });
+});
+
+describe('R4 + R5 整合：贴着地标的墙不挂程序招牌', () => {
+  // 地标轮廓 x 10–30 m、y 0–20 m（dm）；墙在 x = 9 m（朝东，外法线 +x）、x = 5 m（离地标 5 m）、x = 9 m 但朝西
+  const lm = [{ footprint: { outer: [100, 0, 300, 0, 300, 200, 100, 200] } }];
+  const wall = (x: number, nx: number) => ({ x0: x, y0: 2, x1: x, y1: 18, nx, ny: 0 });
+  it('墙外 0.5–1.5 m 落在地标轮廓里才算；离得远、背朝地标的不算', () => {
+    expect(facesLandmark(wall(9, 1), lm)).toBe(true);
+    expect(facesLandmark(wall(5, 1), lm)).toBe(false);
+    expect(facesLandmark(wall(9, -1), lm)).toBe(false);
+    expect(facesLandmark(wall(9, 1), [])).toBe(false);
   });
 });

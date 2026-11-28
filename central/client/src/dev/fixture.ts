@@ -2,7 +2,8 @@
  * 开发用合成城市（?fixture=1）：管线产物还没到位时也能调渲染。
  * 最高的四栋矩形楼带 LOD2 分层体块（Building.parts）：两栋四面退台 + 桅杆，两栋单边退台（三面共面）+ 塔冠机房。
  * 结构照抄真实数据的契约：北面是海港、几条东西向干道、电车轨、一段高架、
- * 一块敏感区、六座地标摆放。内容全部是虚构的，不对应真实楼宇。
+ * 一块敏感区、六座地标摆放。几何全部是虚构的，不对应真实楼宇；六座地标的名字照真实数据用建筑的真名（负责人 D6，
+ * 与 citymap/src/redlines.ts 的 LANDMARK_REAL_NAMES 逐字相同；冒烟脚本按这个文件里的次数豁免它们）。
  */
 import {
   CITY_FORMAT,
@@ -81,12 +82,12 @@ export function makeFixtureCity(): CityFile {
   ];
 
   const landmarks: LandmarkPlacement[] = [
-    lm('harbour-spire', '海港塔', 'Harbour Spire', 2500, 3350, 0, 560, 560, 4120),
-    lm('neon-centre', '霓虹中心', 'Neon Centre', -500, 1500, 0, 480, 480, 3460),
-    lm('porthole-house', '圓窗大廈', 'Porthole House', 5500, 1500, 0, 440, 440, 1785),
-    lm('steel-frame', '鋼架大樓', 'Steel Frame', 2500, -1000, 0, 700, 550, 1788),
-    lm('mirror-block', '鏡面大廈', 'Mirror Block', 5500, -1000, 0.1, 560, 560, 2830),
-    lm('prism-tower', '三稜塔', 'Prism Tower', 2500, -4300, 0.35, 520, 520, 3674),
+    lm('harbour-spire', '國際金融中心二期', 'Two International Finance Centre', 2500, 3350, 0, 560, 560, 4120),
+    lm('neon-centre', '中環中心', 'The Center', -500, 1500, 0, 480, 480, 3460),
+    lm('porthole-house', '怡和大廈', 'Jardine House', 5500, 1500, 0, 440, 440, 1785),
+    lm('steel-frame', '滙豐總行大廈', 'HSBC Main Building', 2500, -1000, 0, 700, 550, 1788),
+    lm('mirror-block', '長江集團中心', 'Cheung Kong Center', 5500, -1000, 0.1, 560, 560, 2830),
+    lm('prism-tower', '中銀大廈', 'Bank of China Tower', 2500, -4300, 0.35, 520, 520, 3674),
   ];
 
   const blocks: Block[] = [];

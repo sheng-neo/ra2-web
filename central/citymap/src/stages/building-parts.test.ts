@@ -193,7 +193,7 @@ describe('addBuildingParts（遮罩与确定性）', () => {
   const lmFoot = box(2000, 0, 2400, 400);
   const landmark: LandmarkPlacement = {
     id: 'harbour-spire',
-    name: { zh: '海港塔', en: 'Harbour Spire' },
+    name: { zh: '國際金融中心二期', en: 'Two International Finance Centre' },
     x: 2200,
     y: 200,
     rot: 0,

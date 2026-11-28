@@ -1,5 +1,6 @@
 /**
  * 构建期红线词表（PLAN §1、§8）：真实企业/楼宇名与某游戏系列名不得出现在产物任何字符串里。
+ * 唯一的例外是负责人 D6 的六座地标真名，只在地标名的位置（见下面的 LANDMARK_REAL_NAMES）。
  * 匹配大小写不敏感。游戏系列名本身也不以明文写进仓库，这里用 base64 存。
  *
  * 词条只收不会误伤街道名的完整写法：例如收「文華東方」不收「文華」（文華里是街），
@@ -36,6 +37,28 @@ export function blacklistHit(s: string): string | undefined {
   const l = s.toLowerCase();
   const i = LOWER.findIndex((w) => l.includes(w));
   return i >= 0 ? BLACKLIST[i] : undefined;
+}
+
+/**
+ * 负责人 D6（2026-11-27）：六座地标用建筑的真名（繁中 / 英文），键是地标 id（代码键与资源文件名不变）。
+ * 豁免很窄：只有这 12 个字符串、只在「地标名」的位置（central.json 的 landmarks[i].name.zh / en，且与该地标的 id 对得上）
+ * 不算红线命中；同样的字出现在任何别处（道路、天桥、通道名、署名文件……）照旧拦截，BLACKLIST 不变，游戏系列名不豁免。
+ * 冒烟脚本扫描构建产物时同样只按出处与次数豁免这 12 个字面量（见 client/scripts/shoot.mjs 的 scanDist）。
+ */
+export const LANDMARK_REAL_NAMES: Readonly<Record<string, { readonly zh: string; readonly en: string }>> = {
+  'harbour-spire': { zh: '國際金融中心二期', en: 'Two International Finance Centre' },
+  'prism-tower': { zh: '中銀大廈', en: 'Bank of China Tower' },
+  'neon-centre': { zh: '中環中心', en: 'The Center' },
+  'mirror-block': { zh: '長江集團中心', en: 'Cheung Kong Center' },
+  'steel-frame': { zh: '滙豐總行大廈', en: 'HSBC Main Building' },
+  'porthole-house': { zh: '怡和大廈', en: 'Jardine House' },
+};
+
+/** s 是否正是地标 id 的 D6 真名（field 指定繁中 / 英文，逐字相同；含游戏系列名的一律不算）。 */
+export function isLandmarkRealName(id: string, field: 'zh' | 'en', s: string): boolean {
+  const n = Object.prototype.hasOwnProperty.call(LANDMARK_REAL_NAMES, id) ? LANDMARK_REAL_NAMES[id] : undefined;
+  const l = s.toLowerCase();
+  return !!n && n[field] === s && !SERIES_NAMES.some((g) => l.includes(g.toLowerCase()));
 }
 
 /** 楼宇式名称的标志词（行人天桥、通道常借楼名命名，词表收不全，靠它兜底）。 */

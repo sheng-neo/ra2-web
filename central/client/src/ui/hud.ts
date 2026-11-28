@@ -76,7 +76,7 @@ function creditsPanel(meta: CityMeta, close: () => void): HTMLElement {
     h(
       'p',
       { class: 'note' },
-      '所有地標均為虛構命名的風格化造型，不含任何標誌，並非真實建築的複製品。本作是獨立的原創作品，與任何公司、品牌或機構均無關聯，亦不代表其認可。',
+      '地標的外觀（造型與照片紋理）取自地政總署的三維建築模型及其照片紋理，夜景燈光按實拍照片重現；地標名稱是這些建築的真實名稱，照片紋理上原有的字樣照錄，本作沒有另加任何標誌。本作是獨立的原創作品，與這些建築的業主、使用者及名稱所指的公司、機構均無關聯，亦不代表其認可。',
     ),
     h(
       'p',
@@ -88,7 +88,7 @@ function creditsPanel(meta: CityMeta, close: () => void): HTMLElement {
 }
 
 export function createHud(parent: HTMLElement, opts: HudOptions): { setActive(id: string): void; setRide(on: boolean): void } {
-  const badge = h('div', { class: 'badge' }, h('b', {}, '中環急件'), ' Central Rush ', h('span', { class: 'stage' }, '· R4 電車街景')); // [r4:int]
+  const badge = h('div', { class: 'badge' }, h('b', {}, '中環急件'), ' Central Rush ', h('span', { class: 'stage' }, '· R5 真實地標')); // [r45:int] 最新一轮（R4 電車街景之后并入 R5 真實地標）
   const buttons = opts.presets.map((p) => {
     const b = h('button', { class: 'chip', type: 'button', 'aria-pressed': String(p.id === opts.active), 'data-preset': p.id }, p.label);
     b.addEventListener('click', () => opts.onPreset(p.id));

@@ -3,19 +3,22 @@
  * 默认建筑图层是地政总署（LandsD）；Overture 建筑层另建一次，只验楼数。
  */
 import { decodeTerrain, SOURCE_TREE_URL, type CityFile, type Road, type TerrainGrid } from '@central/data';
+import path from 'node:path';
 import { gzipSync } from 'node:zlib';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { buildCity } from './build';
-import { MVP_RECT } from './config';
+import { MVP_RECT, OUT_DIR } from './config';
 import { groundOf, lowestGround } from './geo/ground';
 import { inRect } from './geo/polyline';
 import { pointInRing, ringCentroid, ringDistance, ringSimple, ringsTouch, signedArea2 } from './geo/ring';
 import { LANDMARKS } from './overrides/landmarks';
+import { blacklistHit, isLandmarkRealName, LANDMARK_REAL_NAMES, SERIES_NAMES } from './redlines';
 import { REF_EAST_ASIA_BUILDINGS, REF_OSM, REF_OVERTURE, REF_TOMTOM } from './sources/refs';
-import { CITY_FILE, collectStrings, packCity, packOutputs, TERRAIN_FILE } from './stages/pack';
+import { CITY_FILE, collectStrings, packCity, packOutputs, serializeCity, TERRAIN_FILE } from './stages/pack';
 import { project, projectRectBounds } from './stages/project';
 import { REF_CEDD_DTM, REF_LANDSD_3DVM, REF_LANDSD_3DVM_TEX, REF_LANDSD_BUILDINGS } from './stages/terrain-refs';
 import { PARTS } from './stages/building-parts';
+import { LANDMARKS_DIR, clearCanopiesOfLandmarks, meshTriangles, readLandmarkDir } from './stages/landmark-meshes';
 
 let city: CityFile;
 let grid: TerrainGrid;
@@ -162,13 +165,14 @@ describe('地标', () => {
     }
   });
 
-  it('六座虚构地标，高度取核实表，原轮廓已从 buildings 删除', () => {
+  it('六座地标，名字是 D6 真名表里对应 id 的那一个，高度取核实表，原轮廓已从 buildings 删除', () => {
     expect(city.landmarks.map((l) => l.id).sort()).toEqual(LANDMARKS.map((l) => l.id).sort());
     const ids = new Set(city.buildings.map((b) => b.id));
     for (const l of city.landmarks) {
       const spec = LANDMARKS.find((s) => s.id === l.id)!;
       expect(l.height).toBe(Math.round(spec.heightM * 10));
       expect(l.name).toEqual(spec.name);
+      expect(l.name).toEqual(LANDMARK_REAL_NAMES[l.id]);
       expect(l.replaces.length).toBeGreaterThan(0);
       for (const r of l.replaces) expect(ids.has(r)).toBe(false);
       expect(pointInRing(l.x, l.y, l.footprint.outer)).toBe(true);
@@ -176,6 +180,20 @@ describe('地标', () => {
       // at 取自 Overture 轮廓质心；LandsD 同一座楼的轮廓质心离它不到 5 m
       expect(Math.hypot(l.x - ax, l.y - ay)).toBeLessThan(50);
     }
+  });
+
+  it('R4 + R5 整合：R4 的雨篷都让开了 R5 的地标网格（再清一遍什么都不改），被切的楼没有 R3 / R4 照片', () => {
+    const read = readLandmarkDir(path.join(OUT_DIR, LANDMARKS_DIR));
+    const meshes = new Map(city.landmarks.filter((l) => l.mesh).map((l) => [l.id, meshTriangles(read(l.mesh!.high)!)] as const));
+    expect(meshes.size).toBe(6);
+    const again = clearCanopiesOfLandmarks(city.buildings, city.landmarks, meshes);
+    expect([again.trimmed, again.dropped]).toEqual([0, 0]);
+    // 地标网格离旁边有雨篷的楼最近的那几座（steel-frame 西邻、neon-centre 北邻）确实有雨篷：上面这条不是空转
+    const near = city.buildings.filter((b) => ['eb57668b9d', '43f53468f8'].includes(b.id));
+    expect(near.map((b) => b.hires?.c?.length ?? 0).every((n) => n > 0)).toBe(true);
+    const cut = city.buildings.find((b) => b.id === '3696c1687c')!;
+    expect(cut.facade).toBeUndefined();
+    expect(cut.hires).toBeUndefined();
   });
 });
 
@@ -393,14 +411,74 @@ describe('红线与字符串', () => {
     'Jardine', '怡和', 'Cheung Kong', '長江', 'The Center', '中環中心', ...GENRE,
   ];
 
-  it('产物（含署名文件）不含任何红线词', () => {
-    for (const [name, text] of files) {
+  // 负责人 D6：central.json 里六座地标的 name 是真名（各出现一次）；把这 12 处（连引号）换成 "" 之后，产物里不得再有任何红线词
+  const D6 = Object.values(LANDMARK_REAL_NAMES).flatMap((n) => [n.zh, n.en]);
+
+  it('产物（含署名文件）不含任何红线词；唯一例外是 central.json 里六座地标的真名（D6，各一次、只在地标名处）', () => {
+    for (const [name, raw] of files) {
+      let text = raw;
+      if (name === CITY_FILE) {
+        for (const v of D6) {
+          const parts = text.split(JSON.stringify(v));
+          expect(parts.length - 1, `${v} 在 ${name} 里出现的次数`).toBe(1);
+          text = parts.join('""');
+        }
+        // 换掉的 12 处都在地标的 name 里（每座一对）
+        expect(text.split('"name":{"zh":"","en":""}').length - 1).toBe(city.landmarks.length);
+      }
       const lower = text.toLowerCase();
       for (const w of BLACKLIST) expect(lower.includes(w.toLowerCase()), `${name} 含有 ${w}`).toBe(false);
     }
   });
 
-  it('自由文本只有路名、地标虚构名和署名；其余字符串都是 ID 或枚举', () => {
+  it('署名与许可文本按 redlines.ts 的完整词表逐行也没有命中（这两份没有 D6 豁免；R4 + R5 整合：不写「the landmark …」）', () => {
+    for (const [name, text] of files) {
+      if (name === CITY_FILE) continue;
+      for (const line of text.split('\n')) expect(blacklistHit(line), `${name}: ${line}`).toBeUndefined();
+    }
+    expect(files.get('ATTRIBUTION.txt')!.toLowerCase()).not.toContain('the landmark');
+  });
+
+  it('D6 豁免表逐字钉死负责人拍板的 12 个字符串（PLAN §1；放宽豁免要同时改这里与 redlines.ts 两处）', () => {
+    expect(LANDMARK_REAL_NAMES).toStrictEqual({
+      'harbour-spire': { zh: '國際金融中心二期', en: 'Two International Finance Centre' },
+      'prism-tower': { zh: '中銀大廈', en: 'Bank of China Tower' },
+      'neon-centre': { zh: '中環中心', en: 'The Center' },
+      'mirror-block': { zh: '長江集團中心', en: 'Cheung Kong Center' },
+      'steel-frame': { zh: '滙豐總行大廈', en: 'HSBC Main Building' },
+      'porthole-house': { zh: '怡和大廈', en: 'Jardine House' },
+    });
+  });
+
+  it('D6 豁免很窄：真名只在对应 id 的地标名处放行；别处、别的地标、改过一个字、未知 id 一律报红线', () => {
+    expect(Object.keys(LANDMARK_REAL_NAMES).sort()).toEqual(LANDMARKS.map((l) => l.id).sort());
+    for (const v of D6) {
+      // 不豁免时它们本来就是红线词（BLACKLIST 不变）；也不含游戏系列名
+      expect(blacklistHit(v), v).toBeDefined();
+      for (const g of SERIES_NAMES) expect(v.toLowerCase().includes(g.toLowerCase())).toBe(false);
+    }
+    expect(isLandmarkRealName('steel-frame', 'zh', '滙豐總行大廈')).toBe(true);
+    expect(isLandmarkRealName('steel-frame', 'en', '滙豐總行大廈')).toBe(false);
+    expect(isLandmarkRealName('prism-tower', 'zh', '滙豐總行大廈')).toBe(false);
+    expect(isLandmarkRealName('steel-frame', 'zh', '滙豐總行大廈 ')).toBe(false);
+    expect(isLandmarkRealName('toString', 'zh', '滙豐總行大廈')).toBe(false);
+    expect(() => serializeCity(city)).not.toThrow();
+    const mutate = (f: (c: CityFile) => void) => {
+      const c = structuredClone(city);
+      f(c);
+      return () => serializeCity(c);
+    };
+    const named = city.roads.findIndex((r) => r.name);
+    expect(mutate((c) => (c.roads[named]!.name = { zh: '怡和大廈', en: 'Jardine House' }))).toThrow(/红线/);
+    expect(mutate((c) => (c.landmarks[0]!.name = { ...LANDMARK_REAL_NAMES[c.landmarks[1]!.id]! }))).toThrow(/红线/);
+    expect(mutate((c) => (c.landmarks[0]!.name = { zh: `${c.landmarks[0]!.name.zh}商場`, en: c.landmarks[0]!.name.en }))).toThrow(/红线/);
+    expect(mutate((c) => (c.landmarks[0]!.name = { zh: c.landmarks[0]!.name.en, en: c.landmarks[0]!.name.zh }))).toThrow(/红线/);
+    expect(mutate((c) => (c.landmarks[0]!.id = 'other-tower'))).toThrow(/红线/);
+    expect(mutate((c) => (c.landmarks[0]!.replaces = ['怡和大廈']))).toThrow(/红线/);
+    expect(mutate((c) => (c.landmarks[0]!.name = { zh: c.landmarks[0]!.name.zh, en: SERIES_NAMES[0]! }))).toThrow(/红线/);
+  });
+
+  it('自由文本只有路名、地标名（D6 真名）和署名；其余字符串都是 ID 或枚举', () => {
     const REFS = [REF_OSM, REF_OVERTURE, REF_TOMTOM, REF_EAST_ASIA_BUILDINGS, REF_LANDSD_BUILDINGS, REF_LANDSD_3DVM, REF_LANDSD_3DVM_TEX, REF_CEDD_DTM];
     const ENUM = new Set([
       'central-city', 'EPSG:2326', 'dm', 'ovt',
@@ -428,6 +506,12 @@ describe('红线与字符串', () => {
         // R4 高清街面层：同一目录名、带内容哈希的页文件名（hs 街面段 / hu 上段）
         if (where === 'meta.hires.dir') expect(s).toBe('facades');
         else expect(s, where).toMatch(/^h[su]\d{3}-[0-9a-f]{8}\.webp$/);
+      } else if (/^meta\.landmarkMeshes\./.test(where)) {
+        // R5 真实地标：目录名与带内容哈希的网格 / 图集文件名
+        if (where === 'meta.landmarkMeshes.dir') expect(s).toBe('landmarks');
+        else expect(s, where).toMatch(/^lm(l|t-bc3|t-bc3h|t-etch|t-bc3q|t-etcq|a-h|a-q)-[0-9a-f]{8}\.(bin|webp)$/);
+      } else if (/^landmarks\[\d+\]\.mesh\.high$/.test(where)) {
+        expect(s, where).toMatch(/^lmh-[a-z-]+-[0-9a-f]{8}\.bin$/);
       } else if (/^landmarks\[\d+\]\.id$/.test(where)) {
         expect(landmarkIds.has(s)).toBe(true);
       } else if (/\.id$|\.replaces\[\d+\]$/.test(where)) {
@@ -438,9 +522,13 @@ describe('红线与字符串', () => {
     }
   });
 
-  it('路名只出现在道路上，地标名都是覆盖表里的虚构名', () => {
-    const names = new Set(LANDMARKS.flatMap((l) => [l.name.zh, l.name.en]));
-    for (const l of city.landmarks) expect(names.has(l.name.zh) && names.has(l.name.en)).toBe(true);
+  it('路名只出现在道路上，地标名都是覆盖表里对应 id 的真名（D6）', () => {
+    for (const l of city.landmarks) {
+      expect(isLandmarkRealName(l.id, 'zh', l.name.zh) && isLandmarkRealName(l.id, 'en', l.name.en), l.id).toBe(true);
+      expect(LANDMARKS.find((s) => s.id === l.id)!.name).toEqual(l.name);
+    }
+    const lmNames = new Set(D6);
+    expect(city.roads.filter((r) => [r.name?.zh, r.name?.en].some((n) => n !== undefined && lmNames.has(n)))).toEqual([]);
     expect(city.roads.filter((r) => r.name).length).toBeGreaterThan(1000);
   });
 });

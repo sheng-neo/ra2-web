@@ -3,3 +3,5 @@ central/client/public/city/** -text
 central/citymap/data-raw/** -text
 # R3 起：楼宇照片贴面（每次重新生成都会整体换页）放 Git LFS，不进普通 git 历史。克隆前先 `git lfs install`。
 central/client/public/city/facades/*.webp filter=lfs diff=lfs merge=lfs -text
+# R5 起：地标真实外观（网格 .bin 与图集 .bin / .webp，每次重新烘焙整体换名）也放 Git LFS。
+central/client/public/city/landmarks/** filter=lfs diff=lfs merge=lfs -text

@@ -28,9 +28,11 @@ export interface TierSpec {
 }
 
 export const TIER_SPECS: Readonly<Record<Tier, TierSpec>> = {
-  // HIGH 的阶梯降到 DPR 1 以下：1440p / 4K 桌面窗口的 CSS 尺寸本身就超过 2.4 Mpx，DPR 1 时场景 HDR 目标 + bloom +
-  // 反射会超出 64 MB 显存预算；降到 0.5–0.85 后由浏览器放大画布（复审：2560×1440@1 原为 74 MB + 画布 28 MB）
-  high: { dprMax: 2, ladder: [2, 1.75, 1.5, 1.25, 1, 0.85, 0.75, 0.6, 0.5], bufferCapPx: 2.4e6, canvasAntialias: false },
+  // HIGH 的阶梯降到 DPR 1 以下：1440p / 4K 桌面窗口的 CSS 尺寸本身就超过 buffer 上限，DPR 1 时场景 HDR 目标 + bloom +
+  // 反射会超出 64 MB 显存预算；降到 0.5–0.95 后由浏览器放大画布（复审：2560×1440@1 原为 74 MB + 画布 28 MB）。
+  // R4 + R5 整合后上限由 2.4 Mpx 降到 2.1 Mpx，并加 0.95 / 0.9 两级：起始 buffer 2.1–2.4 Mpx 的桌面窗口（如 1920×1200 @1，
+  // 2.30 Mpx）原来账本 162.5 MB 超 160，现在 DPR 0.95（2.08 Mpx），与 1920×1080 @1 / 2560×1440 同一档 buffer
+  high: { dprMax: 2, ladder: [2, 1.75, 1.5, 1.25, 1, 0.95, 0.9, 0.85, 0.75, 0.6, 0.5], bufferCapPx: 2.1e6, canvasAntialias: false },
   // LOW 画布自带 4× MSAA，每像素约 40 B：R3 整合把上限由 1.6 Mpx 降到 1.3 Mpx（画布 ≤ 52 MB），加上贴面远景、
   // 涂装与车站字图集约 12 MB 后守得住 64 MB（1280×720 @2 原来停在 DPR 1.25 = 1.44 Mpx，账本 68 MB）
   low: { dprMax: 1.5, ladder: [1.5, 1.25, 1, 0.85, 0.75, 0.6, 0.5], bufferCapPx: 1.3e6, canvasAntialias: true },
