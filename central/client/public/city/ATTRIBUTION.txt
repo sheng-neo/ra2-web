@@ -33,7 +33,7 @@ Which layer comes from which source (one source per layer, never mixed feature b
 * central.json buildings and landmarks (footprints, base and top heights, storey counts): Lands Department Building data via the CSDI Portal (CSDI-Terms; not part of the ODbL database).
 * central.json building parts (stacked setbacks, crowns and roof structures of 1227 buildings): Lands Department 3D Visualisation Map
   (Non-textured models) via 3d.map.gov.hk and the CSDI Portal (CSDI-Terms; not part of the ODbL database).
-* facades/*.webp (facade and roof photo textures of 2816 buildings): Lands Department 3D Visualisation Map
+* facades/*.webp (facade and roof photo textures of 2813 buildings): Lands Department 3D Visualisation Map
   (Individualised models) via 3d.map.gov.hk and the CSDI Portal (CSDI-Terms; not part of the ODbL database).
 * Bus / minibus / tram stop positions, stop names and route numbers compiled into the client (client/src/render/streets/transit-data.ts): OpenStreetMap data (© OpenStreetMap contributors, ODbL-1.0) distributed by Overture Maps Foundation; stop names are kept as in the data.
 * terrain.bin (ground elevation): Civil Engineering and Development Department 2020 LiDAR DTM via the CSDI Portal (CSDI-Terms; not part of the ODbL database).
@@ -43,9 +43,10 @@ Changes made: features re-projected to HK1980 Grid (EPSG:2326) in local decimetr
 names removed; open-sided structures omitted; 6 buildings replaced by fictional landmark placements;
 3D building models reduced to their roof surfaces, converted to simplified stacked outlines (0.5 m, up to 4 m for curved outlines) and
 fitted to the 2D footprints (no meshes, textures or names kept; none inside sensitive zones or landmarks);
-photo textures of the 3D models projected onto the simplified building walls and roofs, resampled to about 0.25-0.4 m per pixel,
-de-lit (daylight shading reduced) and reduced; glass areas detected for night rendering (no meshes or names kept; none
-inside sensitive zones; buildings showing scaffolding or construction netting excluded);
+photo textures of the 3D models projected onto the simplified building walls and roofs, resampled to about 0.25-0.4 m per pixel
+(tram-corridor street walls 0.04-0.08 m per pixel), de-lit (daylight shading reduced) and reduced; glass areas, windows,
+shop openings and signs detected for night rendering; canopies simplified from the near-horizontal slabs of the models
+(no meshes or names kept; none inside sensitive zones or on landmarks; buildings showing scaffolding or construction netting excluded);
 props inside sensitive (military / government) zones removed; terrain resampled to a 5 m grid, outliers
 and small gaps repaired, with the sea set to 0 mPD.
 

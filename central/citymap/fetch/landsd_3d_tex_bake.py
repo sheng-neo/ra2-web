@@ -2337,7 +2337,8 @@ def main() -> None:
         fdir = CITY_DIR / FACADE_DIR
         raw = RAW
     fdir.mkdir(parents=True, exist_ok=True)
-    for old in fdir.glob("*.webp"):
+    # 只删本脚本自己的页（p*.webp、far*.webp）：同目录还有 R4 高清街面层的 h*.webp（landsd_3d_hires_bake.py）
+    for old in [*fdir.glob("p*.webp"), *fdir.glob("far*.webp")]:
         old.unlink()
     log(f"打包：{len(sheets)} 幅、{len(key_dirs)} 栋有投影")
     result = finalize(plans, meta["bbox"], fdir, stats,

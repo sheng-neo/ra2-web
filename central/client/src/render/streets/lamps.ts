@@ -3,7 +3,7 @@
  * 灯杆 + 灯臂只在相机 ~350 m 内画（一个 InstancedMesh，相机移动 > 50 m 时重排）。
  * 灯位与路面 shader 的光斑来自同一组 RoadPlan 参数（lamp-placement.ts）。
  */
-import { InstancedMesh, Matrix4, Quaternion, Vector3, type BufferGeometry, type Camera, type Material } from 'three';
+import { Color, InstancedMesh, Matrix4, Quaternion, Vector3, type BufferGeometry, type Camera, type Material } from 'three';
 import { simToThree } from '../../coords';
 import type { GlowBatch } from '../materials/lighting';
 import { lightColour } from '../materials/lighting';
@@ -22,6 +22,8 @@ export interface StreetLamp {
   dirZ: number;
   headH: number;
   sodium: boolean;
+  /** R4：暖白 LED 比例 0–1（与钠灯色线性混合，见 roads.ts LampPlan.warm）。 */
+  warm?: number;
 }
 
 /** 全部路灯位置（已去重：不同道路的两盏灯头 < 12 m 时只留先到的一盏）。 */
@@ -73,6 +75,7 @@ export function streetLamps(plans: readonly RoadPlan[]): StreetLamp[] {
         dirZ: az / al,
         headH: l.headH,
         sodium: l.sodium,
+        warm: l.warm ?? 0,
       });
     }
   }
@@ -87,8 +90,12 @@ export function writeLampHeads(batch: GlowBatch, lamps: readonly StreetLamp[], s
   const sodium = lightColour('sodium');
   const led = lightColour('ledWhite');
   let i = start;
+  const warmC = new Color();
   for (const l of lamps) {
-    batch.set(i++, l.head, l.sodium ? sodium : led, l.sodium ? HEAD_SODIUM : HEAD_LED, HEAD_RADIUS_M);
+    const w = l.sodium ? 0 : (l.warm ?? 0);
+    // 两个亮度归一（Y = 1）的颜色线性混合，结果仍是 Y = 1
+    const c = w > 0 ? warmC.copy(led).lerp(sodium, w) : l.sodium ? sodium : led;
+    batch.set(i++, l.head, c, l.sodium ? HEAD_SODIUM : HEAD_LED, HEAD_RADIUS_M);
   }
   return i;
 }

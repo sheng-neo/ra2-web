@@ -44,6 +44,8 @@ export interface CityMeta {
   build: { pipelineVersion: string; inputsDigest: string };
   /** 真实贴面的贴图集（R3 新增的可选字段）；没有贴面数据时省略。 */
   facades?: FacadeMeta;
+  /** 电车走廊高清街面层的贴图集（R4 新增的可选字段，见 Building.hires）；没有时省略。 */
+  hires?: HiresMeta;
 }
 
 export type BuildingKind = 'tower' | 'podium' | 'house' | 'civic' | 'industrial' | 'other';
@@ -90,6 +92,63 @@ export interface Building {
    * 没有照片、在敏感区里、被判为有脚手架 / 绿网、或几何指纹与烘焙时不同的楼一律省略（客户端照旧画程序立面）。
    */
   facade?: BuildingFacade;
+  /**
+   * 电车走廊高清街面层（R4 新增的可选字段，不改 CITY_FORMAT_VERSION）：电车沿线街墙的高清照片（离地 0–45 m）、
+   * 夜景分类（店面开口、招牌、玻璃 / 独立窗）、墙面后退深度与雨篷，由 fetch/landsd_3d_hires_bake.py 离线生成（见 CityMeta.hires）。
+   * 不在走廊里、在敏感区里、六座地标、照片里有脚手架 / 绿网 / 围板、或几何指纹与烘焙时不同的楼一律省略（客户端照旧用 R3 贴面）。
+   */
+  hires?: BuildingHires;
+}
+
+/**
+ * 一栋楼的高清街面层（见 Building.hires）。坐标约定（客户端 render/facades/hires-layout.ts 按此计算纹理坐标）：
+ * - 一个「面」是某块棱柱（parts 序号；没有 parts 时 0）某个环（外环 0、洞 1..，归一后的顺序）的第 edge 条边（第 edge 个顶点到下一个顶点）；
+ *   s = 从这条边起点沿边的米数（0..边长），z = 高程（dm，mPD）。
+ * - 每个面分段（街面段 kind 0：离地 0–15 m；上段 kind 1：15–45 m），段内列 c = s × d、行 r = (zTop − z) × d，d = dq / densityQ px/m；
+ *   每片 (页, x, y, c0, r0, w, h)：列 [c0, c0 + w)、行 [r0, r0 + h) 在页里 (x, y) 起，纹素 = (x + c − c0, y + r − r0)；片外没有照片。
+ */
+export interface BuildingHires {
+  /** 每段一项：[part, ring, edge, kind, dq, zTop dm, zBot dm, n, n × (页, x, y, c0, r0, w, h)]。 */
+  f: number[][];
+  /**
+   * 雨篷（照片模型里伸出外墙的近水平板；没有时省略）：每块 [x0, y0, x1, y1, 伸出 dm, 顶面高程 dm, 厚 cm, 顶色, 底色, 檐口色]，
+   * (x0, y0)–(x1, y1) 是贴外墙的一边（模拟坐标 dm），雨篷向这条边的右手侧（外法线）伸出；颜色为 0xRRGGBB（sRGB）。
+   */
+  c?: number[][];
+  /**
+   * 铺位（R4 整合，可选；接口 I-1 路面铺面溢光的数据）：街面段照片里每间铺的开口，由 fetch/landsd_3d_hires_bays.py 从已打包的页读出。
+   * 每项 [part, ring, edge, s0 cm, s1 cm, 店铺种子, 开口顶高程 dm, 开口底高程 dm, 覆盖率 %]：面键与 f 相同，s 为沿这条边的厘米数；
+   * 种子与页辅助图 A 通道相同（着色器按「楼 key × 种子」的哈希决定这间铺亮不亮、什么色温，客户端 render/facades/frontage.ts 同一公式）。
+   */
+  b?: number[][];
+  /**
+   * 不贴照片的面（R4 整合，可选；红线）：高清烘焙人工 / 自动排除的面（竹棚、棚网、围板样平板、源数据贴图错误），每项 [part, ring, edge]
+   * （面键与 f 相同）。客户端这些墙连 R3 贴面也不贴（画程序立面）。只有这一项、没有 f 的楼（f 为空数组）没有高清层。
+   */
+  x?: number[][];
+}
+
+/** 高清街面层的贴图集（见 Building.hires）。 */
+export interface HiresMeta {
+  /** 贴图文件目录（相对 city/，与 R3 贴面同一目录）。 */
+  dir: string;
+  /** 颜色页边长、辅助图边长（= page / 2）、切片宽（px）、密度量化。 */
+  page: number;
+  aux: number;
+  tile: number;
+  densityQ: number;
+  /**
+   * 页文件名（下标即页号）。每个文件是 page × 1.5 page 的 RGBA WebP：上面 page 行是颜色（sRGB，有损）+ alpha 码（无损，同 R3：
+   * 0 无照片、135–255 连续玻璃度、24 + k 独立窗种子）；下面 page / 2 行的左半是半分辨率辅助图：R = 墙面后退深度（0–reliefMaxM 米），
+   * G = 店面开口（夜里亮的铺内，0–1），B = 招牌（按自己的颜色发光，0–1），A = 店铺种子（无损，1–255，0 = 不是店面）。
+   */
+  pages: string[];
+  /** 前 streetPages 页是街面段的页，其余是上段的页（手机可以只取近处的上段页）。 */
+  streetPages: number;
+  /** 墙面后退深度的满量程（米）。 */
+  reliefMaxM: number;
+  /** 全部页文件的字节数。 */
+  bytes: number;
 }
 
 /**

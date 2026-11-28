@@ -18,7 +18,7 @@ export interface HudOptions {
   /** 「聲音」开关（R2：电车叮叮铃）：muted 为开场状态，onToggle 收到新的静音状态。 */
   sound?: { muted: boolean; onToggle: (muted: boolean) => void }; // [r2:trams]
   /** 「搭電車」跟车机位：onRide 返回是否进入跟车。 */
-  ride?: { onRide: () => boolean }; // [r2:trams]
+  ride?: { onRide: () => boolean; onFront?: () => void }; // [r2:trams] [r4:street] onFront：搭车时「向前」回正
 }
 
 /** 港府数据（CSDI 条款）的 license 标记，与管线 terrain-refs.ts 一致。 */
@@ -88,7 +88,7 @@ function creditsPanel(meta: CityMeta, close: () => void): HTMLElement {
 }
 
 export function createHud(parent: HTMLElement, opts: HudOptions): { setActive(id: string): void; setRide(on: boolean): void } {
-  const badge = h('div', { class: 'badge' }, h('b', {}, '中環急件'), ' Central Rush ', h('span', { class: 'stage' }, '· R3 真實貼面'));
+  const badge = h('div', { class: 'badge' }, h('b', {}, '中環急件'), ' Central Rush ', h('span', { class: 'stage' }, '· R4 電車街景')); // [r4:int]
   const buttons = opts.presets.map((p) => {
     const b = h('button', { class: 'chip', type: 'button', 'aria-pressed': String(p.id === opts.active), 'data-preset': p.id }, p.label);
     b.addEventListener('click', () => opts.onPreset(p.id));
@@ -104,9 +104,17 @@ export function createHud(parent: HTMLElement, opts: HudOptions): { setActive(id
       const on = ride.onRide();
       for (const b of buttons) b.setAttribute('aria-pressed', 'false');
       rideBtn!.setAttribute('aria-pressed', String(on));
+      frontBtn?.toggleAttribute('hidden', !on); // [r4:street]
     });
     extra.push(rideBtn);
   }
+  let frontBtn: HTMLElement | null = null; // [r4:street] 搭车时才出现的「向前」：把转头看的视线转回车头前方
+  if (opts.ride?.onFront) { // [r4:street]
+    const onFront = opts.ride.onFront; // [r4:street]
+    frontBtn = h('button', { class: 'chip', type: 'button', 'data-front': '1', hidden: '' }, '向前'); // [r4:street]
+    frontBtn.addEventListener('click', () => onFront()); // [r4:street]
+    extra.push(frontBtn); // [r4:street]
+  } // [r4:street]
   if (opts.sound) {
     const sound = opts.sound;
     let muted = sound.muted;
@@ -145,9 +153,11 @@ export function createHud(parent: HTMLElement, opts: HudOptions): { setActive(id
     setActive(id) {
       for (const b of buttons) b.setAttribute('aria-pressed', String(b.dataset.preset === id));
       rideBtn?.setAttribute('aria-pressed', 'false'); // [r2:trams]
+      frontBtn?.toggleAttribute('hidden', true); // [r4:street]
     },
     setRide(on) {
       rideBtn?.setAttribute('aria-pressed', String(on)); // [r2:trams]
+      frontBtn?.toggleAttribute('hidden', !on); // [r4:street]
     },
   };
 }

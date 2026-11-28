@@ -5,7 +5,9 @@
  * - 过路的人：每个过路处两侧路缘各一群，在行人红灯时陆续到达候车（淡入），绿色行人亮起后按排先后起步，
  *   横过车行道（只在斑马线的 ±1.7 m 内、只在 [PED_GREEN, PED_FLASH) 内踏上车行道），到对面后沿人行道走几米淡出；
  * - 候车的人：巴士站、电车站台（setWaitingAreas）原地站着轻微晃动。
- * 衣着（参考照 11，20:00 中环）：上衣约 50 % 深色、30 % 中灰 / 卡其、15 % 白 / 浅蓝衬衫、≤ 5 % 鲜色；裤子多为深色。
+ * 衣着（R4，route-facts §9 照片 12，2026-11 18:45）：上衣约 45 % 深色、30 % 白 / 浅色（白恤衫、浅蓝衬衫）、15 % 中灰 / 卡其 / 橄榄、
+ * 10 % 饱和色（粉、紫、红）；下装多为深色长裤 / 牛仔裤，部分卡其与裙；约四成背背包、三成五拿着手机（低头）、少数戴口罩。
+ * 近景人形（figure.ts）另用发型、外套、袖长、裙、鞋、包、口罩等字段；远景低模只用上衣 / 下装 / 肤色 / 发色。
  */
 import { hash32 } from '../streets/lamp-placement';
 import { PED_GREEN, SIGNAL_CYCLE_S } from '../streets/signals';
@@ -17,28 +19,68 @@ const unit = (seed: number, salt: number) => hash32(Math.imul(seed + 1, 0x9e3779
 /** 每米（单侧行人路，两个方向合计）人数：20:00，核心区；核心区外 × OUTSIDE。 */
 export const DENSITY: Record<WalkClass, number> = { main: 0.45, side: 0.2, street: 0.25, bridge: 0.35 };
 export const OUTSIDE = 0.3;
+/**
+ * R4（route-facts §9）：行人密度随钟点的倍率（纯函数）。DENSITY 是 20:00 前的满员值；德辅道中 20:00–21:00 约 0.3 人/米，
+ * 21:30 后约 0.07–0.1，金钟道 18:45 下班高峰约 0.8。
+ */
+const CLOCK_DENSITY: readonly (readonly [number, number])[] = [
+  [18, 1.5],
+  [18.75, 1.6],
+  [19.5, 1.0],
+  [20, 0.75],
+  [21, 0.55],
+  [21.5, 0.28],
+  [23, 0.14],
+  [26, 0.05],
+];
+export function clockDensity(clock: number): number {
+  const t = CLOCK_DENSITY;
+  if (clock <= t[0]![0]) return t[0]![1];
+  for (let i = 1; i < t.length; i++) {
+    const [x1, y1] = t[i]!;
+    if (clock <= x1) {
+      const [x0, y0] = t[i - 1]!;
+      return y0 + ((y1 - y0) * (clock - x0)) / (x1 - x0);
+    }
+  }
+  return t[t.length - 1]![1];
+}
+
 /** 步行速度（m/s）与步幅（一个完整步态周期两步，m）。 */
 export const WALK_SPEED = 1.25;
 export const STRIDE_M = 1.37;
 
 /** 衣着色板（sRGB）。 */
 export const PALETTE = {
-  dark: ['#141012', '#1b1b20', '#22232a', '#2a2a30', '#181c26', '#120d0d'],
-  // 复审修正：多一些写字楼的蓝（衬衫、西装）、白恤衫与米色
-  mid: ['#5a5650', '#685749', '#4a4d52', '#6e6a62', '#3d4450', '#7a7266', '#3f5f8f', '#5b7aa6', '#8a7a5c'],
-  light: ['#dbc8a0', '#e8e6e0', '#b9c8da', '#d8d4cc', '#f0efe9', '#cdb894', '#c4d4e8'],
-  accent: ['#8a2430', '#2f5c8a', '#a8742a', '#3e6b4a'],
+  // R4：照片 12 实测深色上衣 #100d0c–#262027
+  dark: ['#100d0c', '#1b1b20', '#22232a', '#262027', '#181c26', '#141012'],
+  // 中灰 / 卡其 / 橄榄 / 写字楼的蓝
+  mid: ['#5a5650', '#685749', '#4a4d52', '#6e6a62', '#5b6048', '#7a7266', '#3f5f8f', '#5b7aa6', '#8a7a5c'],
+  // 白恤衫、浅蓝衬衫（照片 12 #b1bcb2）、米色
+  light: ['#e8e6e0', '#f0efe9', '#b1bcb2', '#c4d4e8', '#d8d4cc', '#dbc8a0', '#b9c8da'],
+  // 饱和色：粉（照片 12 #ae605d）、紫、红、蓝、芥末黄
+  accent: ['#ae605d', '#6a4a8a', '#8a2430', '#2f5c8a', '#a8742a', '#c25a7a'],
   skin: ['#c99c7a', '#b5876a', '#9e7058', '#d8b090'],
-  hair: ['#0e0c0b', '#1a1512', '#2a2420', '#5a5550'],
+  // 八成以上黑 / 深褐，部分染棕，少数花白
+  hair: ['#0b0908', '#120e0c', '#1a1512', '#2a2018', '#4a3020', '#6a5a50'],
+  shoe: ['#141414', '#1e1a18', '#d8d6d0', '#5a3e2a', '#2a2e36'],
+  bag: ['#121212', '#1c1c20', '#2a2e3a', '#4a4440', '#6a4a36', '#c8a8b0', '#3a4a3a'],
 } as const;
+
+/** 发型（近景人形）：0 短发、1 侧分、2 齐耳短发、3 长发、4 马尾、5 棒球帽。 */
+export const HAIR_STYLES = ['short', 'sidePart', 'bob', 'long', 'ponytail', 'cap'] as const;
+/** 发型的「长发」形变量（figure.ts aMorph 的倍数）。 */
+export const HAIR_LENGTH = [0, 0, 0.45, 1, 0, 0] as const;
+/** 随身包：0 无、1 背包、2 斜挎包、3 托特包 / 手袋、4 公文包。 */
+export type Carry = 0 | 1 | 2 | 3 | 4;
 
 export type Tone = 'dark' | 'mid' | 'light' | 'accent';
 
 /** 上衣色调的比例（累计阈值）。 */
 const TOP_SHARE: [Tone, number][] = [
-  ['dark', 0.47],
-  ['mid', 0.78],
-  ['light', 0.96],
+  ['dark', 0.45],
+  ['light', 0.75],
+  ['mid', 0.9],
   ['accent', 1],
 ];
 const BOTTOM_SHARE: [Tone, number][] = [
@@ -59,8 +101,24 @@ export interface Look {
   height: number;
   /** 体型宽度系数（肩宽 0.42–0.48 m 对应 0.93–1.07）。 */
   build: number;
-  /** 手上亮着手机屏幕（约 10 %）。 */
+  /** 手上亮着手机屏幕（R4：约 35 %，低头看手机）。 */
   phone: boolean;
+  /** R4 近景人形：女性（身高、肩宽、发型的分布不同）。 */
+  female: boolean;
+  /** 发型下标（HAIR_STYLES）。 */
+  hairStyle: number;
+  /** 外套（深色西装外套 / 夹克，胸前 V 领露出衬衫 shirt）。 */
+  jacket: boolean;
+  shirt: V3;
+  /** 短袖（前臂与上臂下半露皮肤）。 */
+  shortSleeve: boolean;
+  /** 裙（膝上露腿；约三成女性）。 */
+  skirt: boolean;
+  shoe: V3;
+  carry: Carry;
+  bag: V3;
+  /** 口罩（约 12 %）。 */
+  mask: boolean;
 }
 
 /** 由种子定外形（纯函数）。 */
@@ -68,17 +126,40 @@ export function lookOf(seed: number): Look {
   const topTone = pick(TOP_SHARE, unit(seed, 1));
   const botTone = pick(BOTTOM_SHARE, unit(seed, 2));
   const from = (list: readonly string[], r: number) => linearRGB(list[Math.floor(r * list.length) % list.length]!);
-  // 身高：两个均匀数平均（近似三角分布）
-  const h = 1.55 + 0.3 * ((unit(seed, 5) + unit(seed, 6)) / 2) + (unit(seed, 7) < 0.5 ? -0.02 : 0.03);
+  // R4：女性平均 1.59 m（1.55–1.72，偏低的三角分布）、男性平均 1.71 m（1.60–1.82）
+  const female = unit(seed, 12) < 0.5;
+  const u5 = unit(seed, 5);
+  const u6 = unit(seed, 6);
+  const h = female ? 1.55 + 0.17 * u5 * u6 : 1.6 + 0.22 * ((u5 + u6) / 2);
+  // 发型：男 短 55 %、侧分 35 %、帽 7 %、长 3 %；女 齐耳 30 %、长 30 %、马尾 25 %、短 10 %、帽 5 %
+  const hr = unit(seed, 13);
+  const hairStyle = female ? (hr < 0.3 ? 2 : hr < 0.6 ? 3 : hr < 0.85 ? 4 : hr < 0.95 ? 0 : 5) : hr < 0.55 ? 0 : hr < 0.9 ? 1 : hr < 0.97 ? 5 : 3;
+  // 外套：深色或中色上衣的人约三成（写字楼西装外套），衬衫白 / 浅蓝
+  const jacket = (topTone === 'dark' || topTone === 'mid') && unit(seed, 14) < 0.32;
+  // 发色：八成五黑 / 深褐，一成染棕，少数花白（u² 偏向前面的黑色）
+  const hc = unit(seed, 9);
+  const hair = linearRGB(PALETTE.hair[hc < 0.86 ? Math.floor((hc / 0.86) * 3) : hc < 0.96 ? 3 + Math.floor(((hc - 0.86) / 0.1) * 2) : 5]!);
+  const cr = unit(seed, 16);
+  const carry: Carry = cr < 0.4 ? 1 : cr < 0.6 ? 2 : cr < 0.72 ? 3 : cr < 0.77 && !female ? 4 : 0;
   return {
     topTone,
     top: from(PALETTE[topTone], unit(seed, 3)),
     bottom: from(PALETTE[botTone], unit(seed, 4)),
     skin: from(PALETTE.skin, unit(seed, 8)),
-    hair: from(PALETTE.hair, unit(seed, 9) * unit(seed, 9)),
+    hair,
     height: Math.min(Math.max(h, 1.55), 1.85),
-    build: 0.93 + 0.14 * unit(seed, 10),
-    phone: unit(seed, 11) < 0.1,
+    build: 0.96 + 0.08 * unit(seed, 10),
+    phone: unit(seed, 11) < 0.35,
+    female,
+    hairStyle,
+    jacket,
+    shirt: from(['#f0efe9', '#e8e6e0', '#c4d4e8', '#b1bcb2'], unit(seed, 15)),
+    shortSleeve: !jacket && unit(seed, 17) < 0.4,
+    skirt: female && unit(seed, 18) < 0.3,
+    shoe: from(PALETTE.shoe, unit(seed, 19) * (0.6 + 0.4 * unit(seed, 20))),
+    carry,
+    bag: from(PALETTE.bag, unit(seed, 21) * unit(seed, 21) * 0.999),
+    mask: unit(seed, 22) < 0.12,
   };
 }
 

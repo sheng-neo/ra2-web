@@ -9,8 +9,10 @@
  */
 import { ShaderMaterial, type Texture } from 'three';
 import { GLSL_HASH } from './common';
-import { GLSL_PAVING, GLSL_WATERFRONT, POOL_LED_HEX } from './road';
-import { GLSL_CITY_LIGHT, GLSL_FINISH, GLSL_HAZE, GLSL_SHARED_PARS, lightColour, sharedUniforms } from './lighting';
+import { GLSL_PAVING, GLSL_PAVING_KIND, GLSL_WATERFRONT, POOL_LED_HEX } from './road'; // [r4:street] GLSL_PAVING_KIND
+import { GLSL_CITY_LIGHT, GLSL_FINISH, GLSL_HAZE, GLSL_SHARED_PARS, getQuality, lightColour, sharedUniforms } from './lighting'; // [r4:street] getQuality
+import { FRONTAGE_UNIFORMS, GLSL_FRONTAGE } from '../streets/frontage-field'; // [r4:street] 铺面溢光场（门前空地 / 广场）
+import { GLSL_PAVE_FIELD, PAVING_UNIFORMS } from '../streets/paving-field'; // [r4:street] 楼前人行道的铺地种类
 
 /** 树冠反照率（线性，= sRGB #0e0e0a 附近；与 ATMOSPHERE 的山脊同值）。 */
 export const CANOPY_ALBEDO = '#0e0e0a';
@@ -33,6 +35,9 @@ ${GLSL_HAZE}
 ${GLSL_CITY_LIGHT}
 ${GLSL_WATERFRONT}
 ${GLSL_PAVING}
+${GLSL_PAVING_KIND}
+${GLSL_FRONTAGE}
+${GLSL_PAVE_FIELD}
 uniform sampler2D uMask;
 uniform vec4 uMaskRect; // 模拟坐标（米）：minX, minY, sizeX, sizeY
 uniform vec3 uCanopy;
@@ -73,7 +78,11 @@ void main() {
     // R3 STATIONS：广场 / 行人区与人行道同一套铺地——核心区冷灰花岗岩板（不再是暖棕），海旁与码头前地红褐陶土砖；
     // 码头前地另有 4.8 m 一道的深色拼花带（照片 19：灰米色砌块间酱紫色带，这里用陶土砖深浅两色）
     float wf = waterfront(sim);
-    vec3 paved = pavingAlbedo(sim, px, 37.0, wf);
+    // R4 STREET：德辅道中 / 金钟道两旁楼前那截人行道换成该街的铺地，砖缝顺街
+    vec2 pk = paveKindAt(sim);
+    vec2 sdir = vec2(cos(pk.y), sin(pk.y));
+    vec2 sp = pk.x > 0.5 ? vec2(dot(sim, sdir), dot(sim, vec2(-sdir.y, sdir.x))) : sim;
+    vec3 paved = pavingAlbedoKind(sp, px, 37.0, wf, pk.x);
     vec2 band = floor(sim / 4.8);
     paved *= 1.0 - 0.12 * mod(band.x + band.y, 2.0) * wf;
     albedo = mix(albedo, paved * 0.85, flatK);
@@ -102,7 +111,9 @@ void main() {
   // 广场 / 步道的庭园灯：约 12 m 一团的光斑（皇后像广场在地面看不再是一片无光的空地）
   float garden = smoothstep(0.45, 0.8, vnoise(sim * 0.085 + 7.7));
   lampE += open * (1.0 - lit) * (0.06 + 0.3 * garden);
-  vec3 col = applyHaze(albedo * (amb + lampC * lampE), vec3(0.0), vWorld);
+  // R4 STREET：铺面溢光（门前空地、骑楼底、广场边的亮铺位）；树冠与陡坡不受
+  vec3 spill = frontageSpill(sim) * (1.0 - canopy) * smoothstep(0.9, 0.98, n.y);
+  vec3 col = applyHaze(albedo * (amb + lampC * lampE + spill), vec3(0.0), vWorld);
   ${GLSL_FINISH}
 }
 `;
@@ -112,12 +123,15 @@ export function createTerrainMaterial(mask: Texture, rect: [number, number, numb
   return new ShaderMaterial({
     uniforms: {
       ...sharedUniforms(),
+      ...FRONTAGE_UNIFORMS, // [r4:street]
+      ...PAVING_UNIFORMS, // [r4:street]
       uMask: { value: mask },
       uMaskRect: { value: rect },
       uCanopy: { value: lightColour(CANOPY_ALBEDO).multiplyScalar(0.05) },
       uLed: { value: lightColour(POOL_LED_HEX) },
       uSodium: { value: lightColour('sodium') },
     },
+    defines: getQuality().tier === 'low' ? { FRONT_MAX: 4 } : {}, // [r4:street] LOW 档每格只取 4 个亮铺位
     vertexShader,
     fragmentShader,
   });

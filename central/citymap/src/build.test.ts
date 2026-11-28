@@ -424,6 +424,10 @@ describe('红线与字符串', () => {
         else if (/^meta\.facades\.pages\[\d+\]$/.test(where)) expect(s, where).toMatch(/^p\d{3}-[0-9a-f]{8}\.webp$/);
         else if (/^meta\.facades\.far\.(file|low)$/.test(where)) expect(s, where).toMatch(/^far(-low)?-[0-9a-f]{8}\.webp$/);
         else expect(s, where).toMatch(/^[0-9a-f]{10}$/);
+      } else if (/^meta\.hires\./.test(where)) {
+        // R4 高清街面层：同一目录名、带内容哈希的页文件名（hs 街面段 / hu 上段）
+        if (where === 'meta.hires.dir') expect(s).toBe('facades');
+        else expect(s, where).toMatch(/^h[su]\d{3}-[0-9a-f]{8}\.webp$/);
       } else if (/^landmarks\[\d+\]\.id$/.test(where)) {
         expect(landmarkIds.has(s)).toBe(true);
       } else if (/\.id$|\.replaces\[\d+\]$/.test(where)) {

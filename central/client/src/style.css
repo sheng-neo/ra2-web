@@ -73,6 +73,9 @@ body {
   -webkit-backdrop-filter: blur(6px);
   white-space: nowrap;
 }
+.chip[hidden] {
+  display: none; /* [r4:street] 「向前」只在搭车时出现 */
+}
 .chip:hover {
   border-color: rgba(255, 255, 255, 0.45);
 }

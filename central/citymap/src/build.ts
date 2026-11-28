@@ -19,6 +19,7 @@ import { REF_OSM, REF_OVERTURE } from './sources/refs';
 import { addBuildingParts, readModels, type PartsStats } from './stages/building-parts';
 import { buildBuildings } from './stages/buildings';
 import { FACADES_DIR, attachFacades, readFacadeDir, readFacades, verifyFacadeFiles, type FacadesStats } from './stages/facades';
+import { attachHires, readHires, readHiresBays, verifyHiresFiles, type HiresStats } from './stages/hires';
 import { placeLandmarks } from './stages/landmarks';
 import { buildProps } from './stages/props';
 import { projectRectBounds, unproject } from './stages/project';
@@ -53,6 +54,8 @@ export interface CityBuild {
   parts: PartsStats | null;
   /** 真实贴面的统计（没有烘焙清单或 Overture 建筑层时为 null）。 */
   facades: FacadesStats | null;
+  /** 电车走廊高清街面层的统计（R4；没有清单时为 null）。 */
+  hires: HiresStats | null;
 }
 
 export async function buildCity(opts: BuildOptions = {}): Promise<CityBuild> {
@@ -79,12 +82,18 @@ export async function buildCity(opts: BuildOptions = {}): Promise<CityBuild> {
   const facadesDoc = landsd ? readFacades(gov.files) : null;
   if (facadesDoc) verifyFacadeFiles(facadesDoc, readFacadeDir(opts.facadesDir ?? path.join(OUT_DIR, FACADES_DIR)));
   const withFacades = facadesDoc ? attachFacades(withParts?.buildings ?? placed.buildings, facadesDoc, zones.sensitive) : null;
-  const buildings = withFacades?.buildings ?? withParts?.buildings ?? placed.buildings;
+  // R4 电车走廊高清街面层：同一目录的 h*.webp（校验 sha256）→ Building.hires（几何指纹同 R3）
+  const hiresDoc = landsd ? readHires(gov.files) : null;
+  if (hiresDoc) verifyHiresFiles(hiresDoc, readFacadeDir(opts.facadesDir ?? path.join(OUT_DIR, FACADES_DIR)));
+  const afterFacades = withFacades?.buildings ?? withParts?.buildings ?? placed.buildings;
+  // [r4:int] 铺位清单（I-1 路面铺面溢光的数据）：页摘要不符时报错
+  const withHires = hiresDoc ? attachHires(afterFacades, hiresDoc, zones.sensitive, undefined, readHiresBays(gov.files)) : null;
+  const buildings = withHires?.buildings ?? afterFacades;
 
   const sources = new Map<string, SourceRef>([[REF_OSM.id, REF_OSM], [REF_OVERTURE.id, REF_OVERTURE]]);
   for (const ref of [...roads.refs, ...built.refs]) sources.set(ref.id, ref);
   if (withParts && withParts.stats.buildingsWithParts > 0) sources.set(REF_LANDSD_3DVM.id, REF_LANDSD_3DVM);
-  if (withFacades?.meta) sources.set(REF_LANDSD_3DVM_TEX.id, REF_LANDSD_3DVM_TEX);
+  if (withFacades?.meta || withHires?.meta) sources.set(REF_LANDSD_3DVM_TEX.id, REF_LANDSD_3DVM_TEX);
   sources.set(REF_CEDD_DTM.id, REF_CEDD_DTM);
 
   const [lon, lat] = unproject(0, 0);
@@ -102,6 +111,7 @@ export async function buildCity(opts: BuildOptions = {}): Promise<CityBuild> {
         inputsDigest: sha256Hex(`overture ${snapshot.inputsDigest}\nlandsd ${gov.inputsDigest}`),
       },
       ...(withFacades?.meta ? { facades: withFacades.meta } : {}),
+      ...(withHires?.meta ? { hires: withHires.meta } : {}),
     },
     buildings,
     roads: roads.roads,
@@ -111,5 +121,5 @@ export async function buildCity(opts: BuildOptions = {}): Promise<CityBuild> {
     props: buildProps(ovt.infrastructure, ovt.land, extent, zones.sensitive),
     landmarks,
   };
-  return { city, terrain, parts: withParts?.stats ?? null, facades: withFacades?.stats ?? null };
+  return { city, terrain, parts: withParts?.stats ?? null, facades: withFacades?.stats ?? null, hires: withHires?.stats ?? null };
 }

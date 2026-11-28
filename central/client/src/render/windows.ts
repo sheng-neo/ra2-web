@@ -45,14 +45,15 @@ function piecewise(table: readonly (readonly [number, number])[], x: number): nu
   return table[table.length - 1]![1];
 }
 
+// R4 复审修正（route-facts §6、参考照片 08）：写字楼 20:00 约 27 %、21:00 约 20 %（原来 38 % / 25 %，整层成片亮成斑马纹）
 export const OFFICE_LIT_TABLE = [
-  [18.5, 0.6],
-  [19, 0.58],
-  [20, 0.38],
-  [21, 0.25],
-  [22, 0.18],
-  [23, 0.12],
-  [25, 0.08],
+  [18.5, 0.55],
+  [19, 0.48],
+  [20, 0.27],
+  [21, 0.2],
+  [22, 0.15],
+  [23, 0.1],
+  [25, 0.07],
 ] as const;
 
 export const HOME_LIT_TABLE = [

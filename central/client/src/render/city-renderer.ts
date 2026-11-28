@@ -29,6 +29,13 @@ import { WaterLayer } from './water';
 import { Boats, type BoatDebug } from './boats'; // [r3:liveries]
 import type { VehicleDebug } from './streets/vehicles'; // [r3:liveries]
 import { FacadeStreamer, type FacadeDebug } from './facades/streamer';
+import { setFrontageLights } from './streets/frontage-field'; // [r4:street]
+import { stubFrontageLights } from './streets/frontage-stub'; // [r4:street]
+import { canopyLights, dropOnHiresFaces, frontageLights, hiresStreetWalls } from './facades/frontage'; // [r4:int]
+import { buildCanopies } from './facades/canopies'; // [r4:int]
+import { fitCanopies } from './facades/canopy-fit'; // [r4:int]
+import { canopyObstacles } from './canopy-obstacles'; // [r4:int]
+import { tramStopIslands } from './streets/trams'; // [r4:int]
 
 /** 相机离区包围盒小于此距离（米）时拆成逐块绘制。 */
 const NEAR_REGION_M = 220;
@@ -61,6 +68,10 @@ export interface RenderStats {
   facadeMB?: number;
   facadePending?: number;
   facadeBytes?: number;
+  /** R4 高清街面层：常驻高清页显存（MB，含在 facadeMB 里）、视野要的高清页还没到的、已下载的高清页字节。 */
+  hiresMB?: number; // [r4:hires]
+  hiresPending?: number; // [r4:hires]
+  hiresBytes?: number; // [r4:hires]
 }
 
 /** 贴面贴图的位置（相对页面的目录前缀与文件名后缀，见 main.ts FACADE_SUFFIX）。 */
@@ -86,6 +97,8 @@ export class CityRenderer {
   private boats: Boats | null = null;
   private streets: Streets | null = null;
   private buildingsUpdate: ((camera: Camera) => void) | null = null;
+  private procSuppressed = 0; // [r4:int]
+  private canopyPieces = 0; // [r4:int]
   private facades: FacadeStreamer | null = null; // [r3:facades]
   private dpr: number;
   private css: [number, number] = [1, 1];
@@ -124,17 +137,19 @@ export class CityRenderer {
     // R3 真实贴面：有贴图集时建流式加载器，把它的贴图 uniform 交给建筑材质
     if (city.meta.facades && facadeSrc) {
       const mobile = navigator.maxTouchPoints > 0 || (typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches);
-      this.facades = new FacadeStreamer({ renderer: this.renderer, meta: city.meta.facades, ...facadeSrc, tier: this.quality.tier, mobile });
+      this.facades = new FacadeStreamer({ renderer: this.renderer, meta: city.meta.facades, ...facadeSrc, tier: this.quality.tier, mobile, hires: city.meta.hires }); // [r4:hires]
     }
-    const facade = createBuildingMaterial(this.facades ? { uniforms: this.facades.uniforms, near: this.facades.near } : undefined);
+    const facade = createBuildingMaterial(this.facades ? { uniforms: this.facades.uniforms, near: this.facades.near, hires: this.facades.hires } : undefined); // [r4:hires]
     const add = (...objs: (Object3D | null)[]) => {
       for (const o of objs) if (o) this.scene.add(o);
     };
 
     await step('生成建築', 0.72);
-    const bld = buildCityBuildings(city, ground, getQuality().tier);
+    const bld = buildCityBuildings(city, ground, getQuality().tier); // [r4:int] 雨篷网格（檐口贴照片）在街道建好后再建，见下
     this.buildingsUpdate = bld.update;
+    this.procSuppressed = bld.procSuppressed; // [r4:int]
     if (bld.pageBoxes) this.facades?.setBoxes(bld.pageBoxes, bld.pageEntries);
+    this.facades?.setHires(bld.hiresEntries); // [r4:hires]
     const buildings = new ChunkLayer('buildings', bld.chunks, facade);
     this.layers.push(buildings);
     add(buildings.group, ...bld.objects); // 招牌、航空灯、边缘 LED
@@ -149,6 +164,13 @@ export class CityRenderer {
     await step('生成街道', 0.83);
     this.streets = buildStreets(city, roadPlans, ground, relief);
     add(...this.streets.objects);
+    // [r4:int] 雨篷让开路灯 / 交通灯 / 架空线杆、候车亭、港铁出口、电车行车线与天桥后再建（全城一个 draw call）；
+    // I-1 铺面光源 = 高清街面的真实铺位（照片里亮着的铺）+ 同一组雨篷的雨篷灯 + 没有高清街面的墙上的占位铺位（今天的程序铺位）
+    const tramPoles = this.streets.trams.overhead.supports.filter((p) => p.kind === 'pole').map((p) => [p.x, p.y] as const); // [r4:int]
+    const fit = fitCanopies(bld.canopies, canopyObstacles(city.roads, { ...this.streets.canopyParts, routes: this.streets.trams.routes, islands: tramStopIslands(), overheadPoles: tramPoles })); // [r4:int]
+    add(buildCanopies(fit.items, this.facades ? { uniforms: this.facades.uniforms, hires: this.facades.hires } : undefined)); // [r4:int]
+    this.canopyPieces = fit.items.length; // [r4:int]
+    setFrontageLights([...frontageLights(bld.plans), ...canopyLights(fit.items), ...dropOnHiresFaces(stubFrontageLights(bld.plans, city.roads), hiresStreetWalls(bld.plans))], zones, SHARED.uClock.value); // [r4:int]
 
     await step('生成地標與海港', 0.86);
     add(
@@ -224,6 +246,10 @@ export class CityRenderer {
   vehicles(): VehicleDebug[] { // [r3:liveries]
     return this.streets?.vehicles() ?? []; // [r3:liveries]
   } // [r3:liveries]
+  /** R4 调试钩子：行人各级 LOD 的人数与三角形数。 */ // [r4:street]
+  people(): ReturnType<Streets['people']> { // [r4:street]
+    return this.streets?.people() ?? { near: 0, mid: 0, far: 0, triangles: 0, nearTriangles: 0 }; // [r4:street]
+  } // [r4:street]
   boatList(): BoatDebug[] { // [r3:liveries]
     return this.boats?.debug() ?? []; // [r3:liveries]
   } // [r3:liveries]
@@ -267,7 +293,7 @@ export class CityRenderer {
       texMB: Math.round((textureBytes() / (1024 * 1024)) * 10) / 10,
       reflCalls: this.water?.reflCalls ?? 0,
       reflTriangles: this.water?.reflTriangles ?? 0,
-      ...(this.facades?.stats() ?? { facadeMB: 0, facadePending: 0, facadeBytes: 0 }),
+      ...(this.facades?.stats() ?? { facadeMB: 0, facadePending: 0, facadeBytes: 0, hiresMB: 0, hiresPending: 0, hiresBytes: 0 }), // [r4:hires]
     };
   }
 
@@ -282,8 +308,9 @@ export class CityRenderer {
   }
 
   /** 贴面流式加载的调试状态（没有贴面时为 null）。 */
-  facadesDebug(): FacadeDebug | null {
-    return this.facades?.debug() ?? null;
+  facadesDebug(): (FacadeDebug & { procSuppressed: number; canopies: number }) | null { // [r4:int]
+    const d = this.facades?.debug();
+    return d ? { ...d, procSuppressed: this.procSuppressed, canopies: this.canopyPieces } : null; // [r4:int]
   }
 
   /** 各分块图层的区/块数（调试用）。 */

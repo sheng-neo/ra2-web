@@ -1,5 +1,8 @@
 /**
- * 行人渲染（R2 STREETLIFE S1）：两级 LOD，各一个实例化网格（2 个 draw call）。
+ * 行人渲染。R4 STREET（S-P0-1）：HIGH 档再加一级近景 LOD（near-layer.ts / figure.ts 的平滑人形，≤ 900 个三角形，
+ * 30 m 内、≤ 64 人，受路灯与铺面溢光照明），原来的低模人退到 30–60 m，广告牌照旧；LOW 档不变（30 m 内低模人）。
+ *
+ * 以下为 R2 的说明（两级 LOD，各一个实例化网格，2 个 draw call）：
  * - LOD0（近，HIGH 60 m / LOW 30 m 内）：约 146 个三角形的低模人（六棱头与躯干、斜肩、膝盖、鞋、头发盖住后脑与两侧，
  *   可选手机屏），顶点着色器做步态（腿 ±18°、膝盖弯曲、手臂反向摆、身体起伏；每人步频 ±18 %、相位错开），不用骨骼；
  * - LOD1（远，至 HIGH 150 m / LOW 80 m）：2 个三角形的竖直广告牌，片元着色器画剪影（头、躯干、两腿开合）。
@@ -19,6 +22,8 @@ import {
 import { simToThree, threeToSim } from '../../coords';
 import { GLSL_CITY_LIGHT, GLSL_FINISH, GLSL_HAZE, GLSL_SHARED_PARS, lightColour, sharedUniforms } from '../materials/lighting';
 import { lookOf, type AgentPose, type Crowd, type Look } from './crowd';
+import { nearFigureGeometry } from './figure'; // [r4:street]
+import { NearLayer, nearPeopleMaterial, type PersonLight } from './near-layer'; // [r4:street]
 
 /** 体部件编号（aPart）与肢体编号（aLimb）。 */
 const P_SKIN = 0;
@@ -462,7 +467,14 @@ export interface PedestrianOptions {
   nearCap: number;
   /** 街面主光冷暖。 */
   warmth?: number;
+  /** R4：近景平滑人形（HIGH）：距离（m）与上限；省略 = 不画近景层（LOW）。 */
+  detail?: { m: number; cap: number };
+  /** R4：近景人的照明（路灯、铺面溢光）；返回 false 表示没有光源数据。 */
+  light?: (three: readonly number[], sim: readonly [number, number], out: { lamp: [number, number, number]; shop: [number, number, number]; shopYaw: number }) => void;
 }
+
+/** 低模人（R2）的三角形数：people() 统计用。 */
+export const MID_TRIANGLES = 182;
 
 /** 行人渲染器：update(camera, t) 每帧调用。 */
 export class Pedestrians {
@@ -476,6 +488,12 @@ export class Pedestrians {
   private readonly dist: Float32Array;
   /** 上一帧画了多少人（调试）。 */
   drawn = 0;
+  /** R4：近景层（HIGH）。 */
+  private readonly detail: NearLayer | null;
+  readonly detailTriangles: number;
+  private readonly lit = { lamp: [0, 0, 0] as [number, number, number], shop: [0, 0, 0] as [number, number, number], shopYaw: 0 };
+  private readonly sim2: [number, number] = [0, 0];
+  private static readonly DARK: PersonLight = { lamp: [0, 0, 0], shop: [0, 0, 0], shopYaw: 0 };
   /** 按距离排序的比较函数（建一次，每帧不再分配闭包）。 */
   private readonly byDist = (a: number, b: number): number => this.dist[a]! - this.dist[b]!;
 
@@ -486,7 +504,15 @@ export class Pedestrians {
     const warmth = opts.warmth ?? 0.35;
     this.near = new Layer(figureGeometry(), material(FIGURE_VERT, FIGURE_FRAG, warmth), opts.nearCap, 'pedestrians-near');
     this.far = new Layer(billboardGeometry(), material(BILLBOARD_VERT, BILLBOARD_FRAG, warmth), opts.cap, 'pedestrians-far');
-    this.objects = [this.near.mesh, this.far.mesh];
+    if (opts.detail) {
+      const g = nearFigureGeometry();
+      this.detailTriangles = (g.index?.count ?? 0) / 3;
+      this.detail = new NearLayer(g, nearPeopleMaterial(warmth), opts.detail.cap);
+    } else {
+      this.detail = null;
+      this.detailTriangles = 0;
+    }
+    this.objects = [...(this.detail ? [this.detail.mesh] : []), this.near.mesh, this.far.mesh];
     const poolN = opts.cap * 3;
     this.pool = Array.from({ length: poolN }, () => ({ x: 0, y: 0, z: 0, hx: 1, hy: 0, walk: 0, phase: 0, scale: 1, seed: 0 }));
     this.dist = new Float32Array(poolN);
@@ -516,9 +542,12 @@ export class Pedestrians {
       this.dist[i] = Math.hypot(a.x - cx, a.y - cy, a.z - cz);
       this.order.push(i);
     }
-    if (n > this.opts.cap) this.order.sort(this.byDist);
+    // R4：近景层只给最近的那些人，人多时按距离排序（近景 / 低模的上限都按最近的先给）
+    if (n > this.opts.cap || this.detail) this.order.sort(this.byDist);
     this.near.count = 0;
     this.far.count = 0;
+    if (this.detail) this.detail.count = 0;
+    const det = this.opts.detail;
     const m = Math.min(n, this.opts.cap);
     for (let k = 0; k < m; k++) {
       const i = this.order[k]!;
@@ -529,11 +558,33 @@ export class Pedestrians {
       const yaw = Math.atan2(a.hy, a.hx);
       const look = this.look(a.seed);
       // 实例属性当场写进缓冲，直接传暂存数组（每帧不分配）
-      if (this.dist[i]! < this.opts.nearM && this.near.count < this.near.capacity) this.near.put(this.v, yaw, a, look);
+      if (det && this.detail && this.dist[i]! < det.m && this.detail.count < this.detail.capacity) {
+        let light = Pedestrians.DARK;
+        if (this.opts.light) {
+          this.sim2[0] = a.x;
+          this.sim2[1] = a.y;
+          this.opts.light(this.v, this.sim2, this.lit);
+          light = this.lit;
+        }
+        this.detail.put(this.v, yaw, a.phase, a.walk, a.scale, look, light);
+      } else if (this.dist[i]! < this.opts.nearM && this.near.count < this.near.capacity) this.near.put(this.v, yaw, a, look);
       else this.far.put(this.v, yaw, a, look);
     }
     this.near.commit();
     this.far.commit();
-    this.drawn = this.near.count + this.far.count;
+    this.detail?.commit();
+    this.drawn = this.near.count + this.far.count + (this.detail?.count ?? 0);
+  }
+
+  /** R4 调试钩子 __central.people()：各级 LOD 的人数与三角形数。 */
+  stats(): { near: number; mid: number; far: number; triangles: number; nearTriangles: number } {
+    const near = this.detail?.count ?? 0;
+    return {
+      near,
+      mid: this.near.count,
+      far: this.far.count,
+      triangles: near * this.detailTriangles + this.near.count * MID_TRIANGLES + this.far.count * 2,
+      nearTriangles: this.detailTriangles,
+    };
   }
 }

@@ -8,6 +8,11 @@
  *   LOW 的 drawing buffer 封顶 1.3 Mpx（quality.ts），画布 + 4× MSAA 在任何窗口下都不超过约 43 MB，加上本包仍 ≤ 64 MB。
  * 挑页（choosePages）：有效距离 = 到页上最近一栋楼外包盒的距离 ×（视野外：100 m 内 1.25、更远 2.5）×（已常驻 0.75：滞回，
  * 新页要近 25 % 以上才换掉常驻页，转身、走动时不来回换页）。
+ *
+ * R4 电车走廊高清街面层（HIRES）：高清页与 R3 近景页共用同一个近景池（颜色层），另有一个半边长的辅助图数组（每个常驻高清页一层：
+ * 后退深度 / 店面 / 招牌 / 店铺种子）。HIGH 手机 4 层、桌面 5 层辅助图，颜色层数按份额减去远景与辅助图后重算（各少约一层）。
+ * 挑页（chooseMixed）：高清页只在 HIRES_MAX_M 内参加，有效距离再乘 HIRES_FACTOR（近处高清页比同距离的 R3 页更值），
+ * 同时常驻的高清页不超过辅助图层数；距离用预测位置（相机速度外推，见 predictDistance）——搭电车时前方 150–200 m 的页提前到。
  */
 import type { Tier } from '../materials/lighting';
 
@@ -17,6 +22,8 @@ const MIP = 4 / 3;
 export interface FacadeBudget {
   /** 近景池层数（0 = 不建近景池）。 */
   nearLayers: number;
+  /** R4：高清页辅助图层数（= 同时常驻的高清页上限；0 = 不用高清层）。 */
+  hiresLayers: number;
   /** 用哪份远景图集。 */
   far: 'full' | 'low';
   /** 近景页的最远有效距离（米）。 */
@@ -40,15 +47,33 @@ export function layerBytes(page: number): number {
   return page * page * 4 * MIP;
 }
 
-/** 档位与设备 → 预算。mobile：触屏 / 粗指针设备（手机、平板）；farFull：全分辨率远景图集的显存（字节）；page：页边长。 */
-export function facadeBudget(tier: Tier, mobile: boolean, farFull: number, page: number): FacadeBudget {
+/** 高清辅助图一层的显存（字节；RGBA8，边长 = 页边长 / 2）。 */
+export function auxLayerBytes(aux: number): number {
+  return aux * aux * 4 * MIP;
+}
+
+/** 高清辅助图层数（HIGH）：手机 4、桌面 5。 */
+export const HIRES_LAYERS = { phone: 4, desktop: 5 } as const;
+/** 高清页参加挑页的最远距离（米）与有效距离系数；手机的上段页（15–45 m）只在 HIRES_UPPER_PHONE_M 内要（省下载量）。 */
+export const HIRES_MAX_M = 160;
+export const HIRES_UPPER_PHONE_M = 50;
+export const HIRES_FACTOR = 0.4;
+
+/**
+ * 档位与设备 → 预算。mobile：触屏 / 粗指针设备（手机、平板）；farFull：全分辨率远景图集的显存（字节）；page：页边长；
+ * hiresAux：高清辅助图边长（没有高清层时省略或 0）。LOW 不用高清层。
+ */
+export function facadeBudget(tier: Tier, mobile: boolean, farFull: number, page: number, hiresAux = 0): FacadeBudget {
   if (tier === 'low') {
     const n = Math.floor((FACADE_SHARE_MB.low * 1024 * 1024 - farFull / 4) / layerBytes(page));
-    return { nearLayers: Math.max(0, Math.min(LOW_LAYERS, n)), far: 'low', nearMaxM: LOW_NEAR_M };
+    return { nearLayers: Math.max(0, Math.min(LOW_LAYERS, n)), hiresLayers: 0, far: 'low', nearMaxM: LOW_NEAR_M };
   }
   const share = (mobile ? FACADE_SHARE_MB.phone : FACADE_SHARE_MB.desktop) * 1024 * 1024;
-  const n = Math.floor((share - farFull) / layerBytes(page));
-  return { nearLayers: Math.max(MIN_LAYERS, Math.min(MAX_LAYERS, n)), far: 'full', nearMaxM: HIGH_NEAR_M };
+  const h = hiresAux > 0 ? (mobile ? HIRES_LAYERS.phone : HIRES_LAYERS.desktop) : 0;
+  const n = Math.floor((share - farFull - h * auxLayerBytes(hiresAux)) / layerBytes(page));
+  const near = Math.max(MIN_LAYERS, Math.min(MAX_LAYERS, n));
+  // 高清页至少要比辅助图层数多留两层给 R3 页
+  return { nearLayers: near, hiresLayers: Math.max(0, Math.min(h, near - 2)), far: 'full', nearMaxM: HIGH_NEAR_M };
 }
 
 /** 远景图集（RGBA，w × h）的显存（字节）。 */
@@ -101,6 +126,77 @@ export function choosePages(
   }
   cand.sort((a, b) => a.e - b.e || a.p - b.p);
   return cand.slice(0, cap).map((c) => c.p);
+}
+
+/**
+ * R3 页与高清页一起挑（R4）：dist、inView 按虚拟页号（0..nR3−1 为 R3 页，其后为高清页，hi(p) 为真）。
+ * 高清页：距离 ≤ hiMax 才参加，有效距离再 × HIRES_FACTOR，入选的高清页不超过 capHi（辅助图层数）；其余同 choosePages。
+ */
+export function chooseMixed(
+  dist: ArrayLike<number>,
+  inView: ArrayLike<boolean>,
+  hi: (page: number) => boolean,
+  cap: number,
+  capHi: number,
+  maxDist: number,
+  hiMax: number | ((page: number) => number),
+  resident?: (page: number) => boolean,
+): number[] {
+  const cand: { p: number; e: number; h: boolean }[] = [];
+  for (let p = 0; p < dist.length; p++) {
+    const d = dist[p]!;
+    const h = hi(p);
+    if (h && (capHi <= 0 || d > (typeof hiMax === 'number' ? hiMax : hiMax(p)))) continue;
+    let e = d * (inView[p] ? 1 : d < OUT_OF_VIEW_NEAR_M ? 1.25 : 2.5);
+    if (h) e *= HIRES_FACTOR;
+    if (resident?.(p)) e *= RESIDENT_BONUS;
+    if (e <= maxDist) cand.push({ p, e, h });
+  }
+  cand.sort((a, b) => a.e - b.e || a.p - b.p);
+  const out: number[] = [];
+  let nh = 0;
+  for (const c of cand) {
+    if (out.length >= cap) break;
+    if (c.h) {
+      if (nh >= capHi) continue;
+      nh++;
+    }
+    out.push(c.p);
+  }
+  return out;
+}
+
+/**
+ * 预测距离（R4 预取）：相机位置 (x, y, z) 按速度 (vx, vy)（米 / 秒）外推到 t = 0、2、4、7、11、16 s（最远 PREDICT_MAX_M），
+ * 每页取 min(到页的距离 + 0.3 × 走过的路)。out 预先分配（页数），scratch 同长。
+ */
+const PREDICT_T = [0, 2, 4, 7, 11, 16];
+export const PREDICT_MAX_M = 200;
+export function predictDistance(
+  pageOf: Int32Array,
+  boxes: Float32Array,
+  x: number,
+  y: number,
+  z: number,
+  vx: number,
+  vy: number,
+  out: Float64Array,
+  scratch: Float64Array,
+): Float64Array {
+  out.fill(Infinity);
+  const v = Math.hypot(vx, vy);
+  for (const t of PREDICT_T) {
+    const run = Math.min(v * t, PREDICT_MAX_M);
+    if (t > 0 && v < 0.5) break;
+    const k = v > 0 ? run / v : 0;
+    pageNearest(pageOf, boxes, x + vx * k, y + vy * k, z, scratch);
+    for (let i = 0; i < out.length; i++) {
+      const d = scratch[i]! + 0.3 * run;
+      if (d < out[i]!) out[i] = d;
+    }
+    if (run >= PREDICT_MAX_M) break;
+  }
+  return out;
 }
 
 /**

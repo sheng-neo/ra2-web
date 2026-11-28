@@ -56,6 +56,26 @@
 这些 WebP 存在 Git LFS 里（`.gitattributes`；负责人 2026-11-26，D4）：克隆前 `git lfs install`，或克隆后补跑 `git lfs install && git lfs pull`；
 否则文件只是约 130 字节的指针，这里的 sha256 校验会失败（见 `central/README.md`「怎么跑」）。
 
+## `landsd/landsd-3dvm-hires.json.gz` 与 `client/public/city/facades/h*.webp`（电车走廊高清街面层 R4）
+
+由 `fetch/landsd_3d_hires_bake.py` 生成（Python 3.11+、numpy、Pillow；不需要额外工具；条款见 `landsd/TERMS.md` 第 8.1 节）。
+同一数据集（带照片纹理的个别模型），只做电车沿线的街墙：先按轨道、楼外环与平面视线挑「走廊面」（307 栋、1012 个面、约 13.8 km），
+只下载走廊触到的图幅（一幅一幅、Range 续传），把照片投影到这些面离地 0–45 m 的「高清带」（街面段 0–15 m 按 36 px/m 累积、输出 24 px/m；
+上段 15–45 m 累积 18、输出 12 px/m），逐幅缓存到仓库外，投影完删 zip。某幅还没有高清缓存时，碰到这幅的走廊楼退回 R3 已缓存的
+6 px/m 投影（同样的分类与浮雕）。竹棚、灰色棚网、围板样平板、临时横幅与源数据贴图错误按人工复查清单整面 / 整栋排除（脚本里的
+`MANUAL_EXCLUDE_FACES` / `MANUAL_EXCLUDE_BUILDINGS`）。
+打包时逐段：去日照（与 R3 同一参考亮度）、补树、绿网复查、玻璃 / 独立窗（R3 码）、**店面开口**（街面段里暗的 / 玻璃 / 凹进去的、落到街面的块，
+逐铺种子）、**招牌**（饱和、有笔画的板，按自己的颜色发光）、绿化墙（不亮窗）、**墙面后退深度**（最外面的面到立面前沿，0–2.5 m，视差用）、
+**雨篷**（模型里伸出外墙的近水平板；没有模型时按深度图里凸出的檐口）。页是 1024 × 1536 的 RGBA WebP：上 1024 行颜色 + R3 alpha 码，
+下 512 行左半是半分辨率辅助图（R 后退深度、G 店面、B 招牌、A 店铺种子，A 无损）；街面段与上段分两套页（`hs*` / `hu*`），按沿线顺序装箱。
+清单记每个面每段的密度、高程范围与切片位置、每栋的雨篷、页文件 sha256、排除的楼 / 面与统计；`pnpm citymap`（`src/stages/hires.ts`）
+只校验 sha256 并按几何指纹接到 `Building.hires`，`meta.hires` 给出页表。页文件同样在 Git LFS 里（`.gitattributes` 已覆盖 `facades/*.webp`）。
+
+`landsd/landsd-3dvm-hires-bays.json.gz`（R4 整合，路面铺面溢光的数据）：由 `fetch/landsd_3d_hires_bays.py` 从**已打包的**街面页
+（`hs*.webp` 的辅助图 G 店面开口 / A 店铺种子）读出每间铺在墙上的位置、种子与开口高度（不联网、不需要烘焙缓存，Python + numpy + Pillow；
+gzip mtime 0，逐字节可复现，`--check` 只比较）。清单记全部页的摘要 `pagesDigest`，`stages/hires.ts` 只在摘要与高清清单一致时把铺位接到
+`Building.hires.b`，否则报错。**重新烘焙高清页（`--finalize-only`）之后必须重跑这个脚本**，再 `pnpm citymap`。
+
 ## 哪些文件 M0 用到了
 
 - 用到：`segment`、`infrastructure`、`land_use`、`water`、`land`（Overture）；`landsd-buildings`、`cedd-dtm-2020-1m`、

@@ -17,19 +17,22 @@ export const TERRAIN_FILE = 'terrain.bin';
 
 type Shape =
   | 'city' | 'meta' | 'origin' | 'source' | 'build' | 'building' | 'ring' | 'road' | 'name'
-  | 'rail' | 'zones' | 'zone' | 'props' | 'landmark' | 'part' | 'facade' | 'facades' | 'far';
+  | 'rail' | 'zones' | 'zone' | 'props' | 'landmark' | 'part' | 'facade' | 'facades' | 'far' | 'hires' | 'hiresMeta';
 
 const ORDER: Record<Shape, readonly string[]> = {
   city: ['format', 'version', 'meta', 'buildings', 'roads', 'rails', 'water', 'zones', 'props', 'landmarks'],
-  meta: ['origin', 'crs', 'unit', 'bbox', 'sources', 'build', 'facades'],
+  meta: ['origin', 'crs', 'unit', 'bbox', 'sources', 'build', 'facades', 'hires'],
   origin: ['e', 'n', 'lon', 'lat'],
   source: ['id', 'license', 'attribution', 'url'],
   build: ['pipelineVersion', 'inputsDigest'],
-  building: ['id', 'src', 'footprint', 'base', 'height', 'heightSource', 'kind', 'style', 'storeys', 'parts', 'facade'],
+  building: ['id', 'src', 'footprint', 'base', 'height', 'heightSource', 'kind', 'style', 'storeys', 'parts', 'facade', 'hires'],
   part: ['ring', 'holes', 'top'],
   facade: ['f', 'p'],
   facades: ['dir', 'page', 'tile', 'densityQ', 'pages', 'far', 'bytes', 'excluded'],
   far: ['file', 'low', 'cols', 'rows', 'cell'],
+  // R4 电车走廊高清街面层
+  hires: ['f', 'c', 'b', 'x'],
+  hiresMeta: ['dir', 'page', 'aux', 'tile', 'densityQ', 'pages', 'streetPages', 'reliefMaxM', 'bytes'],
   ring: ['outer', 'holes'],
   road: ['id', 'cls', 'pts', 'oneway', 'lanes', 'bridge', 'tunnel', 'level', 'speedKmh', 'name'],
   name: ['zh', 'en'],
@@ -45,8 +48,8 @@ const CHILD: Partial<Record<Shape, Record<string, Shape>>> = {
     meta: 'meta', buildings: 'building', roads: 'road', rails: 'rail', water: 'ring',
     zones: 'zones', props: 'props', landmarks: 'landmark',
   },
-  meta: { origin: 'origin', sources: 'source', build: 'build', facades: 'facades' },
-  building: { footprint: 'ring', parts: 'part', facade: 'facade' },
+  meta: { origin: 'origin', sources: 'source', build: 'build', facades: 'facades', hires: 'hiresMeta' },
+  building: { footprint: 'ring', parts: 'part', facade: 'facade', hires: 'hires' },
   facades: { far: 'far' },
   road: { name: 'name' },
   zones: { playable: 'ring', sensitive: 'zone' },
@@ -55,7 +58,7 @@ const CHILD: Partial<Record<Shape, Record<string, Shape>>> = {
 };
 
 /** 允许非整数的字段。 */
-const FLOAT_KEYS = new Set(['origin.lon', 'origin.lat', 'landmark.rot']);
+const FLOAT_KEYS = new Set(['origin.lon', 'origin.lat', 'landmark.rot', 'hiresMeta.reliefMaxM']);
 
 function canon(v: unknown, shape: Shape | undefined, where: string, allowFloat = false): unknown {
   if (Array.isArray(v)) return v.map((e, i) => canon(e, shape, `${where}[${i}]`, allowFloat));
@@ -183,9 +186,10 @@ function attributionText(city: CityFile): string {
       : []),
     ...(facadeCount(city) > 0
       ? [
-          'photo textures of the 3D models projected onto the simplified building walls and roofs, resampled to about 0.25-0.4 m per pixel,',
-          'de-lit (daylight shading reduced) and reduced; glass areas detected for night rendering (no meshes or names kept; none',
-          'inside sensitive zones; buildings showing scaffolding or construction netting excluded);',
+          'photo textures of the 3D models projected onto the simplified building walls and roofs, resampled to about 0.25-0.4 m per pixel',
+          '(tram-corridor street walls 0.04-0.08 m per pixel), de-lit (daylight shading reduced) and reduced; glass areas, windows,',
+          'shop openings and signs detected for night rendering; canopies simplified from the near-horizontal slabs of the models',
+          '(no meshes or names kept; none inside sensitive zones or on landmarks; buildings showing scaffolding or construction netting excluded);',
         ]
       : []),
     'props inside sensitive (military / government) zones removed; terrain resampled to a 5 m grid, outliers',

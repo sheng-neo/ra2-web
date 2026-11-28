@@ -22,6 +22,9 @@
  * - 贴面 404：city/facades/ 一律回 404 时最多 1 条 console error（熔断：远景图集失败就不再请求近景页），facadesIdle 照样兑现；
  * - 窗口变大：手机 874×402 @2 开场后把窗口拉到 1280×720，DPR 按档位上限重新封顶，显存账本 ≤ 160 MB（拉大后是桌面级窗口）。
  *
+ * R4 电车走廊高清街面层：手机 DPR 2 与 1440p 两轮另加「電車」街面机位（高清页与 R3 页共用近景池，显存照样按上面的上限查）；
+ * 等贴面到齐后视野要的高清页不能还缺（stats().hiresPending = 0）；LOW 档不载高清（hiresMB = 0）；报告高清显存与已下载字节。
+ *
  * 用法：node central/client/scripts/shoot.mjs [--no-build] [--only=fixture|city]
  * 截图目录：环境变量 SHOT_DIR（默认系统临时目录下的 central-shots）。
  * 有 dist/city/central.json 时同时测真实数据（city）与合成数据（fixture）。
@@ -52,6 +55,13 @@ const MAX_TRIANGLES = { high: 750_000, low: 300_000 };
 const MAX_PASSES_FULL = 2;
 /** GPU 贴图 + 渲染目标内存上限（MB）：HIGH 手机 DPR 2、HIGH 2560×1440 桌面、LOW（R3 真实贴面预算）。 */
 const MAX_TEX_MB = { phone: 128, desktop: 160, low: 64 };
+/**
+ * R4：每档账本至少留这么多余量（MB）；贴面（远景图集 + 近景池 + 高清页 + 辅助图）各档份额上限（MB）。
+ * 导演规格给贴面的份额是 70 / 85 / 16.5、街道 +6 MB；整合后 HIRES 用了 74.7 / 86.7（共用近景池：桌面 11 + 5 层、手机 9 + 4 层），
+ * STREET 只用了 1.3 MB，合计仍在总上限内且余量 ≥ 1.5 MB，所以份额按实际分配记为 75 / 87 / 16.5（总上限与余量照旧断言）。
+ */
+const TEX_MARGIN_MB = 1.5;
+const MAX_FACADE_MB = { phone: 75, desktop: 87, low: 16.5 };
 /** 首帧前地图数据（city/ 下、city/facades/ 以外的请求）实际传输字节上限：R3 起 2.5 MiB，服务器不压缩也要满足。 */
 const MAX_DATA_BYTES = 2.5 * 1024 * 1024;
 /** 流式加载的贴面贴图（city/facades/）：只报告，不计入首帧前的下载。 */
@@ -93,9 +103,9 @@ const VIEWPORTS = [
   { name: 'phone-land', width: 874, height: 402, mobile: true, presets: ['harbour', 'statue'] },
   { name: 'phone-port', width: 402, height: 874, mobile: true, presets: ['harbour'] },
   // iPhone 17 横屏的真实像素（DPR 2 → 1748×804 ≈ 1.4 Mpx）：查显存账本与 MSAA 规则
-  { name: 'phone-dpr2', width: 874, height: 402, mobile: true, dsf: 2, presets: ['harbour', 'statue'], memCheck: 'phone', onlyCity: true },
+  { name: 'phone-dpr2', width: 874, height: 402, mobile: true, dsf: 2, presets: ['harbour', 'statue', 'tram'], memCheck: 'phone', onlyCity: true },
   // 1440p 桌面窗口：CSS 尺寸本身就超过 HIGH 的 buffer 上限，DPR 要降到 1 以下才守得住 64 MB（含画布）
-  { name: 'desktop-1440', width: 2560, height: 1440, mobile: false, presets: ['harbour', 'statue'], memCheck: 'desktop', onlyCity: true },
+  { name: 'desktop-1440', width: 2560, height: 1440, mobile: false, presets: ['harbour', 'statue', 'tram'], memCheck: 'desktop', onlyCity: true },
   // LOW 档最吃显存的一种（R3 整合）：1280×720 @2 的画布 4× MSAA；只在 LOW 轮跑，账本 ≤ 64 MB
   { name: 'desktop-dpr2', width: 1280, height: 720, mobile: false, dsf: 2, presets: ['harbour'], memCheck: 'low', lowOnly: true },
 ];
@@ -328,9 +338,20 @@ async function run() {
             if (stats.bloom !== false) failures.push(`${at}: LOW 檔不應開 bloom`);
             if (stats.reflection !== false) failures.push(`${at}: LOW 檔不應開平面反射`);
           }
-          if (run.name === 'low' && t.name === 'city' && !(stats.texMB <= MAX_TEX_MB.low)) failures.push(`${at}: GPU 貼圖 ${stats.texMB} MB > ${MAX_TEX_MB.low}（LOW）`);
+          if (run.name === 'low' && t.name === 'city' && !(stats.texMB <= MAX_TEX_MB.low - TEX_MARGIN_MB)) failures.push(`${at}: GPU 貼圖 ${stats.texMB} MB > ${MAX_TEX_MB.low} − ${TEX_MARGIN_MB}（LOW，R4 留餘量）`);
+          if (run.name === 'low' && t.name === 'city' && !((stats.facadeMB ?? 0) <= MAX_FACADE_MB.low)) failures.push(`${at}: 貼面 ${stats.facadeMB} MB > ${MAX_FACADE_MB.low}（LOW）`);
+          // R4 高清街面层：只给 HIGH（LOW 不应有高清显存）；等贴面到齐后视野要的高清页不该还缺
+          if (t.name === 'city' && stats.tier === 'low' && (stats.hiresMB ?? 0) > 0) failures.push(`${at}: LOW 檔不應載入高清街面（${stats.hiresMB} MB）`);
+          if (t.name === 'city' && (stats.hiresPending ?? 0) > 0) failures.push(`${at}: 高清街面還有 ${stats.hiresPending} 頁未到`);
+          // R4 整合：HIGH 档有高清街面的墙不加程序招牌（facades().procSuppressed > 0）、雨篷让开街上障碍后仍在
+          if (t.name === 'city' && stats.tier === 'high') {
+            const fd = await page.evaluate('window.__central.facades?.() ?? null');
+            if (fd && !(fd.procSuppressed > 0)) failures.push(`${at}: 高清街面沒有壓掉程序招牌（procSuppressed ${fd.procSuppressed}）`);
+            if (fd && !(fd.canopies > 0)) failures.push(`${at}: 沒有雨篷（${fd.canopies}）`);
+          }
           if (vp.memCheck) {
-            if (!(stats.texMB <= MAX_TEX_MB[vp.memCheck])) failures.push(`${at}: GPU 貼圖 ${stats.texMB} MB > ${MAX_TEX_MB[vp.memCheck]}`);
+            if (!(stats.texMB <= MAX_TEX_MB[vp.memCheck] - TEX_MARGIN_MB)) failures.push(`${at}: GPU 貼圖 ${stats.texMB} MB > ${MAX_TEX_MB[vp.memCheck]} − ${TEX_MARGIN_MB}（R4 留餘量）`);
+            if (t.name === 'city' && !((stats.facadeMB ?? 0) <= MAX_FACADE_MB[vp.memCheck])) failures.push(`${at}: 貼面 ${stats.facadeMB} MB > ${MAX_FACADE_MB[vp.memCheck]}`);
             if (stats.tier === 'high' && stats.bufferPx > 1.2e6 && stats.msaa !== 0) failures.push(`${at}: 起始 buffer ${stats.bufferPx} px > 1.2 Mpx 卻開了 MSAA ${stats.msaa}`);
           }
         }
@@ -347,7 +368,7 @@ async function run() {
   for (const r of report) console.log(JSON.stringify(r));
   // 首帧前的地图数据与首帧后流式加载的贴面贴图分开报告（R3）
   for (const r of report.filter((x) => x.preset && x.dataBytes !== undefined)) {
-    console.log(`數據 ${r.target}/${r.run}/${r.viewport}/${r.preset}: 首幀前 ${r.dataBytes} B；貼面串流 ${r.streamedFacadeBytes ?? 0} B；GPU ${r.texMB} MB（貼面 ${r.facadeMB ?? 0} MB）`);
+    console.log(`數據 ${r.target}/${r.run}/${r.viewport}/${r.preset}: 首幀前 ${r.dataBytes} B；貼面串流 ${r.streamedFacadeBytes ?? 0} B（高清 ${r.hiresBytes ?? 0} B）；GPU ${r.texMB} MB（貼面 ${r.facadeMB ?? 0} MB，高清 ${r.hiresMB ?? 0} MB，待載 ${r.hiresPending ?? 0}）`);
   }
   console.log(`截圖：${outDir}`);
   if (failures.length) {

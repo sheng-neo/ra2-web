@@ -35,7 +35,7 @@ async function main(argv: readonly string[]): Promise<number> {
   if (buildings !== 'landsd' && buildings !== 'overture') throw new Error(`--buildings 只能是 landsd 或 overture`);
   const outDir = path.resolve(option(argv, 'out') ?? OUT_DIR);
   const t0 = performance.now();
-  const { city, terrain, parts, facades } = await buildCity({ buildings: buildings satisfies BuildingsFrom });
+  const { city, terrain, parts, facades, hires } = await buildCity({ buildings: buildings satisfies BuildingsFrom });
   const files = packOutputs(city, terrain.grid);
 
   if (debugArg) {
@@ -64,6 +64,9 @@ async function main(argv: readonly string[]): Promise<number> {
         `${parts.buildingsWithParts} buildings with ${parts.parts} parts; ` : '') +
       (facades ? `facades ${facades.attached}/${facades.listed} buildings (stale ${facades.stale}, scaffold excluded ` +
         `${facades.scaffold.length}) on ${facades.pages} pages ${facades.bytes} B; ` : '') +
+      (hires ? `hires ${hires.attached}/${hires.listed} buildings (stale ${hires.stale}), ${hires.faces} face sections, ` +
+        `${hires.canopies} canopies, ${hires.bays} shop bays on ${hires.pages} pages ${hires.bytes} B ` +
+        `(red lines: R3 photo dropped on ${hires.r3Dropped} buildings, ${hires.noPhotoFaces} faces); ` : '') +
       `${CITY_FILE} ${files.get(CITY_FILE)!.byteLength} B, ` +
       `${TERRAIN_FILE} ${r.nx}×${r.ny} @ ${r.cell / 10} m ${files.get(TERRAIN_FILE)!.byteLength} B; ` +
       `${Math.round(performance.now() - t0)} ms`,

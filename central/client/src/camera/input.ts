@@ -3,6 +3,7 @@
  * - 鼠标：左键拖动旋转，右键（或 Shift/Ctrl + 左键、中键）拖动平移，滚轮缩放；
  * - 触屏：单指旋转，双指捏合缩放 + 平移 + 扭转；
  * - 键盘：WASD / 方向键平移，Q/E 旋转，R/F 或 +/− 缩放。
+ * R4：搭電車时（rig.lookMode）拖动 / 单指拖动 / 方向键是转头看，捏合、滚轮、平移不理（不下车）。
  */
 import type { OrbitRig } from './rig';
 
@@ -91,6 +92,13 @@ export function attachCameraInput(el: HTMLElement, rig: OrbitRig, fov: () => num
   return {
     tick(dt) {
       if (keys.size === 0) return;
+      // R4 搭電車：方向键 / Q、E 转头（左右 ±120°、上下 −35°…+25°），不平移、不缩放、不下车
+      if (rig.lookMode) {
+        const yaw = (held('arrowleft', 'a', 'q') ? 1 : 0) - (held('arrowright', 'd', 'e') ? 1 : 0);
+        const pitch = (held('arrowup', 'w') ? 1 : 0) - (held('arrowdown', 's') ? 1 : 0);
+        if (yaw || pitch) rig.lookBy(yaw * 1.6 * dt, pitch * 1.0 * dt);
+        return;
+      }
       const step = rig.current.distance * 0.9 * dt;
       const r = (held('d', 'arrowright') ? 1 : 0) - (held('a', 'arrowleft') ? 1 : 0);
       const f = (held('w', 'arrowup') ? 1 : 0) - (held('s', 'arrowdown') ? 1 : 0);

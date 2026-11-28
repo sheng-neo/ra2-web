@@ -12,14 +12,17 @@
  *   LOW 档只给最高的一批楼分层（三角形预算约 5k），其余照旧平顶。
  */
 import type { Camera, Object3D } from 'three';
-import type { Building, CityFile, FacadeMeta, FlatXY, SensitiveZone } from '@central/data';
+import type { Building, CityFile, FacadeMeta, FlatXY, HiresMeta, SensitiveZone } from '@central/data';
 import type { HeightFn } from '../data/terrain';
 import { normalizeRing, pointInRing, ringCentroid } from '../geom/ring';
 import { crestPart, isPlantPart, lowTierPartBuildings, mainPart, peakPart, prepareParts, type PreparedPart } from './building-parts';
 import { groupByChunk, chunkOf, type ChunkCoord } from './chunks';
 import { extrudePrism, type WallSpanInfo } from './extrude';
 import { buildingPhoto, prismPhoto, recordPages, ringBounds, type BuildingPhoto } from './facades/layout';
-import { FEATURE, FacadeMode, facadeKey, hash01, newFacadeArrays, styleCode, type BldgAttr } from './facade';
+import { buildingHires, hiresAttr, hiresCutsS, hiresFaceKey, hiresPieceAt, noPhotoFaces, sectionPages, type BuildingHiresPlan } from './facades/hires-layout';
+import { canopyThicknessDm, type CanopyHires, type CanopyItem } from './facades/canopies';
+import { isCorridorWall, trackIndex } from './facades/corridor';
+import { FEATURE, FacadeMode, LUXURY_PODIUMS, facadeKey, hash01, newFacadeArrays, styleCode, type BldgAttr } from './facade';
 import { streetWarmth } from './materials/lighting';
 import { createNeonMaterial } from './materials/neon';
 import type { MeshArrays } from './mesh-arrays';
@@ -72,6 +75,8 @@ export interface PrepareOptions {
   useParts?: (b: Building) => boolean;
   /** R3 真实贴面的贴图集（city.meta.facades）；省略时一律程序立面。 */
   facades?: FacadeMeta;
+  /** R4 电车走廊高清街面层（city.meta.hires）；省略时没有高清层。 */
+  hires?: HiresMeta;
 }
 
 /** 楼底、墙底、楼顶、分层体块与共面墙去重（cutsOf 的楼体序号见 PreparedBuilding.body / PreparedPart.body）。 */
@@ -157,6 +162,10 @@ export interface BuildingPlan {
   bldg: BldgAttr;
   /** R3 真实贴面（敏感区与没有照片的楼为 null）。 */
   photo: BuildingPhoto | null;
+  /** R4 电车走廊高清街面层（不在走廊、敏感区里的楼为 null）。 */
+  hires: BuildingHiresPlan | null;
+  /** R4 整合（红线）：不贴照片（连 R3 贴面也不贴）的面键（hiresFaceKey）；没有时 null。 */
+  noPhoto: Set<number> | null;
   /** 楼层线相位（米，楼底起算；照片检测到的真楼层，没有时 0）。 */
   phase: number;
 }
@@ -178,6 +187,7 @@ export function planBuildings(
     const style = styleCode(p.b.style, mode, rnd);
     const heightM = (p.top - p.base) / 10;
     const photo = sens ? null : buildingPhoto(p.b, opts.facades);
+    const hires = sens ? null : buildingHires(p.b.hires, opts.hires);
     // 照片检测到的层高与程序层高（层数推出来的）相差 12 % 以内才用，连同相位（窗灯落在真楼层上）；否则只用程序层高
     const fp = floorToFloor(typology, heightM, p.b.storeys);
     const usePhotoFloors = !!photo?.f2f && Math.abs(photo.f2f / fp - 1) <= 0.12;
@@ -203,6 +213,7 @@ export function planBuildings(
       if (h < 0.5) feature |= FEATURE.mall;
       else if (h < 0.65) feature |= FEATURE.carPark;
     }
+    if (!sens && LUXURY_PODIUMS.has(p.b.id)) feature |= FEATURE.luxury | FEATURE.mall;
     return {
       p,
       k,
@@ -218,6 +229,8 @@ export function planBuildings(
       edgeLed,
       bldg: [f2f, warmth, groundM, feature],
       photo,
+      hires,
+      noPhoto: noPhotoFaces(p.b.hires),
       phase,
     };
   });
@@ -231,6 +244,85 @@ export interface BuildingChunkOptions {
   rooftops?: boolean;
   /** R3 真实贴面的贴图集（与 PrepareOptions.facades 相同）。 */
   facades?: FacadeMeta;
+  /** R4 高清街面层的贴图集（与 PrepareOptions.hires 相同）。 */
+  hires?: HiresMeta;
+}
+
+/** 这栋楼第 part 块棱柱第 ring 个环第 edge 条边的高清段（没有时 undefined）。 */
+function hiresFn(pl: BuildingPlan, part: number) {
+  const faces = pl.hires?.faces;
+  if (!faces || faces.size === 0) return undefined;
+  return (ring: number, edge: number) => faces.get(hiresFaceKey(part, ring, edge));
+}
+
+/** R4 整合（红线）：这栋楼第 part 块第 ring 个环第 edge 条边不贴照片（BuildingHires.x）。 */
+function noPhotoFn(pl: Pick<BuildingPlan, 'noPhoto'>, part: number) {
+  const set = pl.noPhoto;
+  if (!set) return undefined;
+  return (ring: number, edge: number) => set.has(hiresFaceKey(part, ring, edge));
+}
+
+/**
+ * 雨篷檐口四角的 aHires：雨篷贴墙的一边落在底座外环的哪条边上（两端离边线 ≤ 0.4 m、在边的范围内），
+ * 再按这面墙的高清段取片（檐口照片就是投影到墙上的那几行）。找不到边或没有片时 null。
+ */
+export function canopyFascia(pl: Pick<BuildingPlan, 'p' | 'hires'>, rec: readonly number[], page: number): CanopyItem['fascia'] {
+  return canopyItems(pl, rec, page)[0]?.fascia ?? null;
+}
+
+/**
+ * 雨篷记录 → 雨篷项（复审修正：檐口跨过高清片的左右边时在片边切开，每段取自己的片——原来按中点那一片的仿射关系外推，
+ * 片外的檐口贴到了页里别的墙、别的楼）。没有高清段的雨篷原样一项（fascia null）。
+ */
+export function canopyItems(pl: Pick<BuildingPlan, 'p' | 'hires'>, rec: readonly number[], page: number): CanopyItem[] {
+  const whole: CanopyItem[] = [{ rec, fascia: null }];
+  const faces = pl.hires?.faces;
+  if (!faces || faces.size === 0 || rec.length !== 10) return whole;
+  const base = pl.p.parts?.find((x) => x.index === 0)?.ring.outer ?? pl.p.ring.outer;
+  const [x0, y0, x1, y1, , zt, th] = rec as [number, number, number, number, number, number, number];
+  const zb = zt - canopyThicknessDm(th);
+  const n = base.length >> 1;
+  for (let e = 0; e < n; e++) {
+    const ax = base[e * 2]!;
+    const ay = base[e * 2 + 1]!;
+    const bx = base[((e + 1) % n) * 2]!;
+    const by = base[((e + 1) % n) * 2 + 1]!;
+    const L = Math.hypot(bx - ax, by - ay);
+    if (L < 1) continue;
+    const tx = (bx - ax) / L;
+    const ty = (by - ay) / L;
+    const off = (x: number, y: number) => Math.abs((x - ax) * ty - (y - ay) * tx);
+    const along = (x: number, y: number) => (x - ax) * tx + (y - ay) * ty;
+    const s0 = along(x0, y0);
+    const s1 = along(x1, y1);
+    if (off(x0, y0) > 4 || off(x1, y1) > 4 || s0 < -4 || s1 > L + 4 || s1 <= s0) continue;
+    const secs = faces.get(hiresFaceKey(0, 0, e));
+    if (!secs) return whole;
+    // 片的左右边（米，沿边）→ dm
+    const cuts = [s0, ...hiresCutsS(secs, s0 / 10, s1 / 10).map((c) => c * 10), s1];
+    const out: CanopyItem[] = [];
+    for (let i = 0; i + 1 < cuts.length; i++) {
+      const a0 = cuts[i]!;
+      const a1 = cuts[i + 1]!;
+      if (a1 - a0 < 1) continue;
+      const t0 = (a0 - s0) / (s1 - s0);
+      const t1 = (a1 - s0) / (s1 - s0);
+      const sub = [x0 + (x1 - x0) * t0, y0 + (y1 - y0) * t0, x0 + (x1 - x0) * t1, y0 + (y1 - y0) * t1, ...rec.slice(4)];
+      const hit = hiresPieceAt(secs, (a0 + a1) / 20, (zt + zb) / 2);
+      // 檐口上下沿也要在同一片里（片按行切成带，檐口跨带时不贴照片）
+      const fit = !!hit && hiresPieceAt(secs, (a0 + a1) / 20, zt - 0.01)?.pc === hit.pc && hiresPieceAt(secs, (a0 + a1) / 20, zb + 0.01)?.pc === hit.pc;
+      const at = (sd: number, z: number): CanopyHires => hiresAttr(hit, sd / 10, z, page);
+      out.push({ rec: sub, fascia: hit && fit ? [at(a0, zb), at(a1, zb), at(a1, zt), at(a0, zt)] : null });
+    }
+    return out.length ? out : whole;
+  }
+  return whole;
+}
+
+/** 这面临街墙（底座、外环）有高清街面段：照片里有真实的铺面与招牌，程序招牌、直招牌、冷气机都不加。 */
+export function hasHiresStreet(pl: Pick<BuildingPlan, 'hires'>, ring: number, edge: number): boolean {
+  const secs = pl.hires?.faces.get(hiresFaceKey(0, ring, edge));
+  return !!secs?.some((s) => s.kind === 0 && s.pieces.length > 0);
 }
 
 /** 这栋楼的墙（任何一片）有照片。 */
@@ -260,6 +352,9 @@ function extrudeParts(arrays: MeshArrays, pl: BuildingPlan, parts: readonly Prep
     extrudePrism(arrays, {
       wallPhoto: ph?.wall,
       roofPhoto: ph?.roof,
+      hires: hiresFn(pl, part.index),
+      noPhoto: noPhotoFn(pl, part.index), // [r4:int] 红线：排除的面不贴 R3 照片
+      hiresPage: opts.hires?.page,
       phase: pl.phase,
       outer: part.ring.outer,
       holes: part.ring.holes,
@@ -295,6 +390,10 @@ export function chunksFromPlans(
         extrudePrism(arrays, {
           wallPhoto: ph?.wall,
           roofPhoto: ph?.roof,
+          // R4：整栋平顶（数据里也没有 parts）时第 0 块就是整栋；LOW 档按 parts 分块的楼画成平顶时不用高清层
+          hires: p.b.parts?.length ? undefined : hiresFn(pl, 0),
+          noPhoto: noPhotoFn(pl, 0), // [r4:int] 第 0 块的环 = footprint（parts[0] 省略环）
+          hiresPage: opts.hires?.page,
           phase: pl.phase,
           outer: p.ring.outer,
           holes: p.ring.holes,
@@ -344,6 +443,41 @@ export interface CityBuildings {
   pageBoxes: Float32Array | null;
   /** R3：(页号, 楼外包盒) 对，见 facadePageEntries。 */
   pageEntries: { pageOf: Int32Array; boxes: Float32Array } | null;
+  /** R4：高清页的 (页号, 面外包盒) 对，见 hiresPageEntries。 */
+  hiresEntries: { pageOf: Int32Array; boxes: Float32Array } | null;
+  /** R4 雨篷项（HIGH 档；网格在街道建好后由 city-renderer 让开障碍再建，见 facades/canopy-fit.ts）。 */
+  canopies: CanopyItem[];
+  /** R4 整合：因为有高清街面照片而不加程序招牌 / 直招牌 / 冷气机的临街墙段数（调试钩子 facades().procSuppressed）。 */
+  procSuppressed: number;
+}
+
+/**
+ * R4 高清页：每个用到它的面一项 (页号, 面外包盒)（模拟坐标米，[minX, minY, minZ, maxX, maxY, maxZ]）。
+ * 面外包盒 = 这栋楼外环外包框在 xy 上、段的高程范围在 z 上（面比楼更细的盒要几何；楼盒已足够让「页上最近的面」排序有效）。
+ */
+export function hiresPageEntries(plans: readonly BuildingPlan[], pages: number): { pageOf: Int32Array; boxes: Float32Array } {
+  const pageOf: number[] = [];
+  const boxes: number[] = [];
+  for (const pl of plans) {
+    if (!pl.hires) continue;
+    const bb = ringBounds(pl.p.ring.outer);
+    const z: Map<number, [number, number]> = new Map();
+    for (const secs of pl.hires.faces.values()) {
+      for (const sec of secs) {
+        for (const pg of sectionPages([sec])) {
+          if (pg < 0 || pg >= pages) continue;
+          const cur = z.get(pg);
+          z.set(pg, cur ? [Math.min(cur[0], sec.zBot), Math.max(cur[1], sec.zTop)] : [sec.zBot, sec.zTop]);
+        }
+      }
+    }
+    for (const pg of [...z.keys()].sort((a, b) => a - b)) {
+      const [z0, z1] = z.get(pg)!;
+      pageOf.push(pg);
+      boxes.push(bb.minX / 10, bb.minY / 10, z0 / 10, bb.maxX / 10, bb.maxY / 10, z1 / 10);
+    }
+  }
+  return { pageOf: Int32Array.from(pageOf), boxes: Float32Array.from(boxes) };
 }
 
 /** 每个贴图页覆盖的楼群外包盒（模拟坐标米；流式加载按相机到盒的距离排先后）。 */
@@ -435,24 +569,42 @@ export function frontageOf(pl: BuildingPlan, s: WallSpanInfo): FrontageSpan | nu
  * CityRenderer 的「生成建築」一步：分块立面网格 + 招牌（1 个 draw call）+ 航空灯（1）+ 边缘 LED（1）。
  * tier = 'low' 时不加屋顶机房、不出直招牌（三角形预算：HIGH 约 147k、LOW 约 108k，整层未剔除）。没有 DOM（单元测试）时不建招牌。
  */
-export function buildCityBuildings(city: CityFile, ground: HeightFn, tier: 'high' | 'low' = 'high'): CityBuildings {
+export function buildCityBuildings(
+  city: CityFile,
+  ground: HeightFn,
+  tier: 'high' | 'low' = 'high',
+): CityBuildings {
   const lowParts = tier === 'low' ? lowTierPartBuildings(city.buildings) : null;
   const facades = city.meta.facades;
+  // R4：高清街面层只给 HIGH 档（LOW 档显存份额放不下，见 facades/budget.ts）
+  const hires = tier === 'high' ? city.meta.hires : undefined;
   const { plans, cutsOf } = planBuildings(city.buildings, ground, city.zones.sensitive, {
     useParts: lowParts ? (b) => lowParts.has(b.id) : undefined,
     facades,
+    hires,
   });
   const quads: SignQuad[] = [];
   const acs: AcUnit[] = [];
   const cells = atlasLayout();
   const roads = new RoadIndex(city.roads);
+  const tracks = trackIndex(city.rails ?? []);
+  let procSuppressed = 0;
   const chunks = chunksFromPlans(plans, cutsOf, {
     rooftops: tier === 'high',
     facades,
+    hires,
     onSpan: (pl, s) => {
       const f = frontageOf(pl, s);
       if (!f || !facesStreet(f, roads)) return;
-      quads.push(...placeSigns(f, cells, tier === 'high'));
+      // R4：有高清街面照片的墙（真实的铺面与招牌、窗口冷气机都在照片里）不加程序招牌、直招牌与冷气机
+      if (hasHiresStreet(pl, s.ring, s.edge)) {
+        procSuppressed++; // [r4:int] 调试钩子 facades().procSuppressed
+        return;
+      }
+      // 复审修正：没有高清照片的电车走廊墙（排除的面、没有照片的楼、LOW 档）不挂程序招牌 / 直招牌，只留暗一点的程序铺面
+      const corridor = isCorridorWall(tracks, f.x0, f.y0, f.x1, f.y1, f.nx, f.ny);
+      if (corridor) procSuppressed++;
+      else quads.push(...placeSigns(f, cells, tier === 'high'));
       // 窗口冷气机（R2 修复轮 S9）：HIGH 档、住宅 / 唐楼临街面。复审修正：照片 4 px/m 看不出冷气机，
       // 照片墙也照样加（hasShopfront 已限住宅 / 唐楼临街面；冷气机是独立几何，不依赖程序窗格）
       if (tier === 'high') acs.push(...planAcUnits(f));
@@ -470,7 +622,13 @@ export function buildCityBuildings(city: CityFile, ground: HeightFn, tier: 'high
   objects.push(...towers.objects);
   const ac = buildAcUnits(acs);
   if (ac) objects.push(ac.mesh);
+  // R4：走廊楼的雨篷（HIGH 档才有高清层）。[r4:int] 这里只给出雨篷项（檐口照片坐标、墙脚地面）；网格由 city-renderer 在街道建好后
+  // 按 facades/canopy-fit.ts 让开路灯 / 交通灯杆、候车亭、港铁出口、电车行车线与天桥再建（全城一个 draw call，buildCanopies）
+  const canopies = hires
+    ? plans.flatMap((pl) => (pl.hires?.canopies ?? []).flatMap((rec) => canopyItems(pl, rec, hires.page).map((it): CanopyItem => ({ ...it, groundM: pl.groundM }))))
+    : [];
   const pageBoxes = facades ? facadePageBoxes(plans, facades.pages.length) : null;
   const pageEntries = facades ? facadePageEntries(plans, facades.pages.length) : null;
-  return { chunks, objects, plans, emitters: towers.emitters, pageBoxes, pageEntries, update: (camera) => ac?.update(camera) };
+  const hiresEntries = hires ? hiresPageEntries(plans, hires.pages.length) : null;
+  return { chunks, objects, plans, emitters: towers.emitters, pageBoxes, pageEntries, hiresEntries, canopies, procSuppressed, update: (camera) => ac?.update(camera) };
 }

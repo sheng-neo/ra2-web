@@ -242,3 +242,29 @@ PLAN §1 不用」一句由此作废：`fetch/landsd_3d_tex_bake.py` 下载的�
 > Contains 3D building data and photo textures from the Lands Department, HKSAR Government (3D Visualisation Map, Individualised models), obtained from the 3D Visualisation Map website (3d.map.gov.hk) through the Common Spatial Data Infrastructure (CSDI) Portal (portal.csdi.gov.hk). Intellectual property rights in the data are owned by the Government of the Hong Kong Special Administrative Region. The photo textures have been processed (projected onto simplified building walls and roofs, resampled, re-lit for night and reduced) for this game; the Government is not responsible for, and does not endorse, this game.
 
 > 部分資料來源：香港特別行政區政府地政總署「可視化三維地圖（個別模型）」的三維建築及照片紋理，經可視化三維地圖網站（3d.map.gov.hk）及空間數據共享平台（CSDI，portal.csdi.gov.hk）取得；資料的知識產權屬香港特別行政區政府所有。照片紋理已為本遊戲處理（投影到簡化的建築牆面及屋頂、重新取樣、按夜景重新打光及縮小），政府不對本遊戲負責，亦不代表政府認可。
+
+### 8.1 电车走廊高清街面层与雨篷（R4 新增）：同一数据集、同一条款、同一署名
+
+条款核对日期：**2026-11-27**（数据集、下载口、条款页与第 8 节相同；本轮只是同一批照片的另一种派生方式）。
+`fetch/landsd_3d_hires_bake.py` 只处理电车沿线的街墙（走廊：轨道 60 m 内正对、35 m 内街角看得见的墙面，离地 0–45 m），
+把同一批带纹理模型的照片按我们的墙面重新投影成较高密度的贴图（街面段 24 px/m、上段 12 px/m；下载口不可用时退回 R3 已缓存的 6 px/m 投影），
+并派生夜景所需的逐纹素分类（店面开口、招牌、玻璃 / 独立窗）、墙面后退深度，与从模型近水平板简化出来的雨篷（贴墙扁盒：位置、伸出、高度、厚度、三种取样颜色）。
+仓库里仍然**只有派生结果**（`client/public/city/facades/h*.webp` 与 `landsd-3dvm-hires.json.gz`），没有模型、网格、原始贴图或 zip。
+
+- 照片里真实的招牌、楼名按原样出现（负责人决定 D1，PLAN §1）；广告、车身仍是虚构的。
+- 不做高清层的楼：敏感区与敏感区 3 m 内的楼、六座地标、R3 已排除的脚手架 / 绿网 / 围板楼；高清下再查一次绿网（`netting_faces`），
+  整面不用高清（清单 `excluded.faces`），退回 R3 的 4 px/m 贴面。另外逐页人工看过全部高清页（联系表），把竹棚（常常没有绿网）、
+  灰色棚网、像围板的大片平板、临时节庆横幅，以及源数据贴图错误（竖墙贴了航拍俯视图、拉成斜条纹）的面 / 楼写进
+  `MANUAL_EXCLUDE_FACES` / `MANUAL_EXCLUDE_BUILDINGS`（脚本里，带原因；清单 `excluded` 里同样记着）。管线把整面排除的面记进
+  `Building.hires.x`、整栋排除的楼连 R3 贴面一起删掉，客户端这些面 / 楼在所有档位都不贴照片（画程序立面；R4 整合）。
+  R4 复审修正：离六座地标外环 3 m 内的楼（镜面大厦旁的裙楼）也整栋不做高清、不用 R3 贴面；两处围板面另行排除；
+  R3 绿网检测排除、但在走廊 25 m 内的 29 栋按高清投影逐栋人工复查，12 栋没有竹棚 / 绿网 / 围板的放行做高清（`R3_RELEASE`，
+  R3 的 4 px/m 贴面照旧不用）；街面带（离地 0–4.6 m）里空白、拉花的竖条 / 斜条、伸出墙外的东西（招牌侧面、帘状网格）按 3 m 一窗
+  自动剔除（`gf_quality`），另有人工列出的航拍俯视图街面（`MANUAL_GF_REJECT`），这些地方画暗的程序铺面。
+- 下载仍是一幅一幅、Range 续传、幅间停顿；key 只在内存里。2026-11-27 下载口 `download.map.gov.hk` 的 TLS 证书曾过期
+  （2026-11-26 08:20 UTC 到期）：**没有绕过证书校验**，等它在 2026-11-27 更新后才下载（11-SW-8D / 8B / 8A / 14B / 14A，
+  sha256 与 R3 记录的同一修订一致）；11-SW-9C 用本机已有的同一修订 zip。投影完 zip 即删。
+- 署名与第 8 节完全相同（`meta.sources` 里同一条 `REF_LANDSD_3DVM_TEX`）；处理说明「projected onto simplified building walls and roofs,
+  resampled, re-lit for night and reduced」也涵盖高清层；雨篷是模型几何的简化派生，与第 7 节的分层屋面同类。
+- 铺位清单 `landsd-3dvm-hires-bays.json.gz`（R4 整合）只是从已打包的街面页（上面的派生结果）读出的每间铺的位置与种子，
+  给路面的铺面溢光用；同一条款、同一署名，不含任何原始数据。

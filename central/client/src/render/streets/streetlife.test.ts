@@ -50,7 +50,7 @@ describe('车流扩充（S3 让行、S5 车型、巴士站）', () => {
     expect(laneThrough(l, cw)![0]).toBeCloseTo(40, 5);
   });
 
-  it('车型比例：核心区巴士走廊约 15 % 双层巴士、7 % 小巴、28 % 出租车；车长对得上', () => {
+  it('车型比例：核心区巴士走廊约 15 % 双层巴士、7 % 小巴、34 % 出租车（约占小车四成）；车长对得上', () => {
     const n = 20000;
     const count = new Map<number, number>();
     for (let i = 0; i < n; i++) {
@@ -59,7 +59,7 @@ describe('车流扩充（S3 让行、S5 车型、巴士站）', () => {
     }
     expect(count.get(VehicleKind.Bus)! / n).toBeCloseTo(0.15, 2);
     expect(count.get(VehicleKind.Minibus)! / n).toBeCloseTo(0.07, 2);
-    expect(count.get(VehicleKind.Taxi)! / n).toBeCloseTo(0.28, 2);
+    expect(count.get(VehicleKind.Taxi)! / n).toBeCloseTo(0.34, 2);
     expect(pickKind(0.01, 'residential', false, false)).not.toBe(VehicleKind.Bus);
     expect(KIND_LEN_M[VehicleKind.Bus]).toBe(BUS_LEN_M);
     expect(KIND_LEN_M[VehicleKind.Minibus]).toBeCloseTo(7.2);

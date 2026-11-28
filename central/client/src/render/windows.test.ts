@@ -60,10 +60,10 @@ describe('hash3 / mix32（与 GLSL 逐位一致的整数哈希）', () => {
 
 describe('写字楼亮灯（规格 B3）', () => {
   it('钟点表：20:00 = 0.38，18:30 0.60 … 01:00 0.08，单调不增', () => {
-    expect(officeLitTarget(20)).toBeCloseTo(0.38);
-    expect(officeLitTarget(18.5)).toBeCloseTo(0.6);
-    expect(officeLitTarget(25)).toBeCloseTo(0.08);
-    expect(officeLitTarget(20.5)).toBeCloseTo((0.38 + 0.25) / 2);
+    expect(officeLitTarget(20)).toBeCloseTo(0.27);
+    expect(officeLitTarget(18.5)).toBeCloseTo(0.55);
+    expect(officeLitTarget(25)).toBeCloseTo(0.07);
+    expect(officeLitTarget(20.5)).toBeCloseTo((0.27 + 0.2) / 2);
     for (let i = 1; i < OFFICE_LIT_TABLE.length; i++) expect(OFFICE_LIT_TABLE[i]![1]).toBeLessThanOrEqual(OFFICE_LIT_TABLE[i - 1]![1]);
   });
 

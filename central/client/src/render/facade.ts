@@ -18,6 +18,9 @@
  * - s、t：贴图页里的纹理坐标（0–1，左上为原点，见 facades/layout.ts）；
  * - page：贴图页号（整数），−1 = 这块面没有照片（程序立面）；
  * - phase：楼层线相位（米，楼底起算；照片检测到的真楼层，窗灯按它排），没有时为 0。
+ *
+ * aHires = (s, t, page, d)（R4 电车走廊高清街面层新增，见 facades/hires-layout.ts）：
+ * - s、t：高清页里的纹理坐标（0–1）；page：高清页号，−1 = 没有高清照片；d：这一段的密度（px/m，视差换算用）。
  */
 import { simToThree } from '../coords';
 import { MeshArrays, type AttrSpec } from './mesh-arrays';
@@ -28,6 +31,7 @@ export const FACADE_LAYOUT: readonly AttrSpec[] = [
   { name: 'aFacade', size: 4 },
   { name: 'aBldg', size: 4 },
   { name: 'aPhoto', size: 4 },
+  { name: 'aHires', size: 4 },
 ];
 
 /** 立面模式（shader 里按 floor(style / 256) 分支）。 */
@@ -98,7 +102,12 @@ export const FEATURE = {
   nodeLeds: 64,
   /** bit 7：亮灯率按 19:00 计（约 60 %，地标鋼架大樓：深色钢架衬亮窗）。 */
   litBoost: 128,
+  /** bit 8（R4 复审修正）：街面带是连续的亮玻璃墙（名店裙楼），程序铺面不画闸、不分铺。 */
+  luxury: 256,
 } as const;
+
+/** R4 复审修正：街面带画成连续亮玻璃墙的楼（毕打街口的名店裙楼：照片面因源数据错误排除，程序立面原来是铺 + 闸 + 牙科灯箱）。 */
+export const LUXURY_PODIUMS: ReadonlySet<string> = new Set(['3891de5b97']);
 
 /** 逐栋的 aBldg 值（见文件头）。 */
 export type BldgAttr = readonly [f2f: number, warmth: number, ground: number, feature: number];
@@ -110,7 +119,12 @@ export type PhotoAttr = readonly [s: number, t: number, page: number, phase: num
 
 export const NO_PHOTO: PhotoAttr = [0, 0, -1, 0];
 
-const scratch = new Float32Array(18);
+/** 逐顶点 aHires 值（见文件头）。 */
+export type HiresVertexAttr = readonly [s: number, t: number, page: number, d: number];
+
+export const NO_HIRES_ATTR: HiresVertexAttr = [0, 0, -1, 0];
+
+const scratch = new Float32Array(22);
 
 /** 写一个立面顶点：位置为模拟坐标（dm），法线为模拟坐标系方向（单位向量）。bldg 省略时为全 0（旧调用方），photo 省略时没有照片。 */
 export function facadeVertex(
@@ -127,6 +141,7 @@ export function facadeVertex(
   style: number,
   bldg: BldgAttr = NO_BLDG,
   photo: PhotoAttr = NO_PHOTO,
+  hires: HiresVertexAttr = NO_HIRES_ATTR,
 ): number {
   simToThree(x, y, z, scratch, 0);
   simToThree(nx, ny, nz, scratch, 3, 1);
@@ -142,6 +157,10 @@ export function facadeVertex(
   scratch[15] = photo[1];
   scratch[16] = photo[2];
   scratch[17] = photo[3];
+  scratch[18] = hires[0];
+  scratch[19] = hires[1];
+  scratch[20] = hires[2];
+  scratch[21] = hires[3];
   return m.push(scratch);
 }
 

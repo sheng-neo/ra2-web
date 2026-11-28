@@ -16,7 +16,8 @@
 import { ShaderMaterial, Vector4 } from 'three';
 import { ROAD_TEXT_M, stationsAtlas, type AtlasRect } from '../stations/atlas';
 import { GLSL_HASH } from './common';
-import { GLSL_CITY_LIGHT, GLSL_FINISH, GLSL_HAZE, GLSL_SHARED_PARS, lightColour, sharedUniforms } from './lighting';
+import { GLSL_CITY_LIGHT, GLSL_FINISH, GLSL_HAZE, GLSL_SHARED_PARS, getQuality, lightColour, sharedUniforms } from './lighting'; // [r4:street] getQuality
+import { FRONTAGE_UNIFORMS, GLSL_FRONTAGE } from '../streets/frontage-field'; // [r4:street] 铺面溢光场
 
 /**
  * 海旁铺地（红褐陶土砖）的分界半平面（模拟米）：a·x + b·y + c > 0 为海旁（码头前地、海滨长廊，约在民耀街 / 龙和道以北）。
@@ -104,6 +105,53 @@ vec3 pavingAlbedo(vec2 p, float px, float seed, float wf) {
 }
 `;
 
+/**
+ * R4 STREET：按街分的人行道铺地（route-facts §8；aStreet.w 的整数部分 = 铺地种类，见 roads.ts pavingKindOf）：
+ * 1 = 德辅道中的红褐 / 灰陶土砖（200 × 100 mm，长边横过人行道，顺街错缝；约六成红褐、两成深红褐、两成灰），
+ * 2 = 金钟道的灰色混凝土砖（200 × 100 mm 人字纹，转 45°）；其余 = pavingAlbedo（核心区花岗岩板 / 海旁陶土砖）。
+ * p.x 沿街、p.y 横过人行道（米）。像素大于砖缝时退成平均色（远处不闪）。
+ */
+export const GLSL_PAVING_KIND = /* glsl */ `
+// 复审修正（route-facts §8：#74665b–#857158，红绿差约一半）：红褐 50 %、深红褐 20 %、灰 30 %，颜色收敛、不再是三文鱼粉
+vec3 clayBrick(float h) {
+return h < 0.5 ? vec3(0.13, 0.085, 0.068) : (h < 0.7 ? vec3(0.105, 0.07, 0.058) : vec3(0.1, 0.092, 0.08));
+}
+vec3 pavingAlbedoKind(vec2 p, float px, float seed, float wf, float kind) {
+if (kind < 0.5) return pavingAlbedo(p, px, seed, wf);
+float near = 1.0 - smoothstep(0.012, 0.05, px);
+float mid = 1.0 - smoothstep(0.05, 0.22, px);
+if (kind < 1.5) {
+vec2 q = vec2(p.x / 0.1, p.y / 0.2);
+float row = floor(q.x);
+q.y += 0.5 * mod(row, 2.0);
+vec2 id = vec2(row, floor(q.y));
+vec2 f = abs(fract(q) - 0.5);
+vec2 aa = max(fwidth(q), vec2(1e-4));
+float joint = max(smoothstep(0.45 - aa.x, 0.5, f.x), smoothstep(0.475 - aa.y, 0.5, f.y)) * mid;
+float h = hash12(id + seed * 1.3);
+vec3 avg = vec3(0.118, 0.082, 0.068);
+// 逐块 ±6 %；远处砖格淡出（mid）
+vec3 c = mix(avg, clayBrick(h) * (0.94 + 0.12 * hash12(id * 1.7 + 3.1)), mid);
+c *= 0.94 + 0.12 * mix(0.5, hash12(floor(p * 80.0)), near);
+return c * (1.0 - 0.35 * joint);
+}
+vec2 r = vec2(p.x + p.y, p.y - p.x) * 0.70711 / 0.1;
+vec2 c0 = floor(r);
+vec2 cf = fract(r);
+float d = mod(c0.x - c0.y, 4.0);
+vec2 id = d < 0.5 ? c0 : (d < 1.5 ? c0 - vec2(1.0, 0.0) : (d < 2.5 ? c0 : c0 + vec2(0.0, 1.0)));
+vec2 aa = max(fwidth(r), vec2(1e-4)) * 1.5;
+float jl = d > 0.5 && d < 1.5 ? 0.0 : 1.0 - smoothstep(0.0, 0.05 + aa.x, cf.x);
+float jr = d < 0.5 ? 0.0 : 1.0 - smoothstep(0.0, 0.05 + aa.x, 1.0 - cf.x);
+float jb = d > 1.5 && d < 2.5 ? 0.0 : 1.0 - smoothstep(0.0, 0.05 + aa.y, cf.y);
+float jt = d > 2.5 ? 0.0 : 1.0 - smoothstep(0.0, 0.05 + aa.y, 1.0 - cf.y);
+float joint = max(max(jl, jr), max(jb, jt)) * mid;
+float h = hash12(id * vec2(1.0, 1.3) + seed + (d > 1.5 ? 7.7 : 0.0));
+vec3 c = vec3(0.112, 0.104, 0.092) * mix(1.0, 0.88 + 0.24 * h, mid);
+return c * (1.0 - 0.45 * joint);
+}
+`;
+
 /** 路灯在灯下路面的照度（乘反照率 = 出射亮度）：白光 LED / 钠灯。 */
 export const POOL_LED = 2.3;
 export const POOL_SODIUM = 1.9;
@@ -148,7 +196,9 @@ ${GLSL_HAZE}
 ${GLSL_CITY_LIGHT}
 ${GLSL_WATERFRONT}
 ${GLSL_PAVING}
+${GLSL_PAVING_KIND}
 ${GLSL_YELLOW_BOX}
+${GLSL_FRONTAGE}
 uniform sampler2D uAtlas;
 uniform vec4 uLookR;
 uniform vec4 uLookL;
@@ -251,7 +301,12 @@ void main() {
   float warmth = vLamp.w;
   vec3 ambient = cityAmbient(vec3(0.0, 1.0, 0.0), 0.0, warmth) * 0.6;
   vec3 light = ambient + lampC * E;
-  float seed = vStreet.w * 97.0;
+  // R4：aStreet.w 的整数部分是铺地种类（roads.ts pavingKindOf），小数部分是种子
+  float paveKind = floor(vStreet.w + 1e-3);
+  float seed = fract(vStreet.w) * 97.0;
+  // R4 STREET：铺面溢光场（亮铺位门前的光斑、雨篷下的亮带；关门 / 落闸的铺位没有光斑）；没有数据时退回旧的程序溢光
+  bool front = frontageOn();
+  vec3 spill = front ? frontageSpill(vec2(vWorld.x, -vWorld.z)) : vec3(0.0);
 
   vec3 albedo;
   float wetK = 1.0;
@@ -271,10 +326,10 @@ void main() {
   } else if (ped) {
     // 行人街（R3）：与人行道同一套花岗岩板 / 海旁陶土砖
     float px0 = max(length(fwidth(g2)), 1e-4);
-    albedo = pavingAlbedo(g2, px0, seed, waterfront(vec2(vWorld.x, -vWorld.z)));
+    albedo = pavingAlbedoKind(g2, px0, seed, waterfront(vec2(vWorld.x, -vWorld.z)), paveKind);
     wetK = 0.85;
     specK = 0.6;
-    light += uShop * 0.35 * vStreet.z * step(0.35, hash12(vec2(floor(along / 6.0), sign(across) + seed)));
+    light += front ? spill + uShop * 0.04 * vStreet.z : uShop * 0.35 * vStreet.z * step(0.35, hash12(vec2(floor(along / 6.0), sign(across) + seed)));
   } else if (aacross > hw) {
     // ---- 人行道 + 路缘石（R3：灰花岗岩板、#a8a294 花岗岩路缘、海旁陶土砖、过路处降低路缘 + 黄色触觉砖） ----
     float pav = crossing ? 3.0 : (across > 0.0 ? vPav.x : vPav.y);
@@ -282,7 +337,7 @@ void main() {
     vec2 pp = vec2(along, outM - 0.3);
     float pxP = max(length(fwidth(pp)), 1e-4);
     float wf = waterfront(vec2(vWorld.x, -vWorld.z));
-    vec3 paving = pavingAlbedo(pp, pxP, seed, wf);
+    vec3 paving = pavingAlbedoKind(pp, pxP, seed, wf, paveKind);
     // 路缘石：顶面 0.3 m，每 1 m 一道缝；外沿 0.15 m 立面在俯视里是一道暗边（过路处降低成平的，没有暗边）
     float kerb = 1.0 - smoothstep(0.29, 0.31, outM);
     float kj = 1.0 - smoothstep(0.0, max(fwidth(along), 1e-3) * 1.5 + 0.004, abs(fract(along) - 0.5) * -1.0 + 0.5);
@@ -311,7 +366,7 @@ void main() {
     // 铺面溢光：近楼一侧最强；约每 7 m 一个铺位，部分铺位落闸（暗）
     float bay = step(0.3, hash12(vec2(floor(along / 7.0), sign(across) * 3.0 + seed)));
     float toward = smoothstep(0.0, max(pav, 0.5), outM);
-    light += uShop * vStreet.z * (0.12 + 0.45 * toward * bay);
+    light += front ? spill + uShop * vStreet.z * 0.05 : uShop * vStreet.z * (0.12 + 0.45 * toward * bay);
     wetK = 0.85;
     specK = 0.5;
   } else {
@@ -348,7 +403,7 @@ void main() {
     // 路边排水暗线（路缘内 0.4 m）
     albedo *= 1.0 - 0.35 * (1.0 - smoothstep(0.2, 0.45, hw - aacross));
     // 近路缘的铺面溢光
-    light += uShop * vStreet.z * 0.25 * exp(-(hw - aacross) / 2.0);
+    light += front ? spill : uShop * vStreet.z * 0.25 * exp(-(hw - aacross) / 2.0);
 
     float fade = (1.0 - smoothstep(0.06, 0.22, aa)) * smoothstep(3.0, 8.0, min(along, len - along));
     float white = 0.0;
@@ -446,6 +501,7 @@ export function createRoadMaterial(): ShaderMaterial {
   return new ShaderMaterial({
     uniforms: {
       ...sharedUniforms(),
+      ...FRONTAGE_UNIFORMS, // [r4:street] 按引用：setFrontageLights 之后自动用上新数据
       uAtlas: { value: atlas.texture },
       uHasAtlas: { value: atlas.texture ? 1 : 0 },
       uLookR: { value: rectVec(atlas.rect('look-right')) },
@@ -456,6 +512,7 @@ export function createRoadMaterial(): ShaderMaterial {
       uHeadLed: { value: HEAD_LED },
       uHeadSodium: { value: HEAD_SODIUM },
     },
+    defines: getQuality().tier === 'low' ? { FRONT_MAX: 4 } : {}, // [r4:street] LOW 档每格只取 4 个亮铺位
     vertexShader,
     fragmentShader,
   });

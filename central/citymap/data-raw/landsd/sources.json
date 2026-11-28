@@ -528,6 +528,113 @@
           "bytes": 605894332
         }
       ]
+    },
+    {
+      "file": "landsd-3dvm-hires.json.gz",
+      "layer": "landsd/3dvm-individualised-hires",
+      "datasetId": "landsd_rcd_1671676915450_88604",
+      "url": "https://portal.csdi.gov.hk/geoportal/?datasetId=landsd_rcd_1671676915450_88604",
+      "query": "https://portal.csdi.gov.hk/server/rest/services/common/landsd_rcd_1671676915450_88604/FeatureServer/0/query",
+      "release": "2026-09-22",
+      "format": "gzip JSON (written by landsd_3d_hires_bake.py): tram-corridor street walls, per building face the hi-res facade atlas references (photo, night classes, recess depth) and canopies; lists the derived WebP pages in client/public/city/facades/ with sha256",
+      "crs": "EPSG:2326 + mPD",
+      "licenses": [
+        "CSDI Portal Terms and Conditions of Use; 3D Visualisation Map Terms and Conditions of Use (see TERMS.md)"
+      ],
+      "attribution": [
+        "Contains 3D building data and photo textures from the Lands Department, HKSAR Government (3D Visualisation Map, Individualised models), obtained from the 3D Visualisation Map website (3d.map.gov.hk) through the Common Spatial Data Infrastructure (CSDI) Portal (portal.csdi.gov.hk). Intellectual property rights in the data are owned by the Government of the Hong Kong Special Administrative Region. The photo textures have been processed (projected onto simplified building walls and roofs, resampled, re-lit for night and reduced) for this game; the Government is not responsible for, and does not endorse, this game.",
+        "部分資料來源：香港特別行政區政府地政總署「可視化三維地圖（個別模型）」的三維建築及照片紋理，經可視化三維地圖網站（3d.map.gov.hk）及空間數據共享平台（CSDI，portal.csdi.gov.hk）取得；資料的知識產權屬香港特別行政區政府所有。照片紋理已為本遊戲處理（投影到簡化的建築牆面及屋頂、重新取樣、按夜景重新打光及縮小），政府不對本遊戲負責，亦不代表政府認可。"
+      ],
+      "fetched": "2026-11-27",
+      "sha256": "2914282b043253b807f92b370c7a5344d475c53bbab5bf652721af517cb254c0",
+      "bytes": 49166,
+      "rows": 269,
+      "derivedFrom": [
+        {
+          "sheet": "11-SW-14A",
+          "revision": "2026-09-22",
+          "urlNoKey": "https://download.map.gov.hk/api/3d-zip/GLTF/11-SW-14A.zip",
+          "sha256": "f125b5883ea9076ad17c3176627ebf40775c00cde1eba980c24853878e13cf7f",
+          "bytes": 953511000,
+          "source": "zip"
+        },
+        {
+          "sheet": "11-SW-14B",
+          "revision": "2026-09-22",
+          "urlNoKey": "https://download.map.gov.hk/api/3d-zip/GLTF/11-SW-14B.zip",
+          "sha256": "4eccbd3aff7948c069d72c6b80d37fbb4af86308aeba3051af4f6a3a4d6f3458",
+          "bytes": 1393988772,
+          "source": "zip"
+        },
+        {
+          "sheet": "11-SW-8A",
+          "revision": "2026-07-16",
+          "urlNoKey": "https://download.map.gov.hk/api/3d-zip/GLTF/11-SW-8A.zip",
+          "sha256": "1cc1fe2c47022ca1e65c3ad7661572126b4ba9a918f89bd1942e84b1ffe0e2ba",
+          "bytes": 1504528495,
+          "source": "zip"
+        },
+        {
+          "sheet": "11-SW-8B",
+          "revision": "2026-09-22",
+          "urlNoKey": "https://download.map.gov.hk/api/3d-zip/GLTF/11-SW-8B.zip",
+          "sha256": "2fe64572d546da71e2dafbcd314f893b71a6bd2e8320c8457d096ece282332d4",
+          "bytes": 883129773,
+          "source": "zip"
+        },
+        {
+          "sheet": "11-SW-8D",
+          "revision": "2026-09-22",
+          "urlNoKey": "https://download.map.gov.hk/api/3d-zip/GLTF/11-SW-8D.zip",
+          "sha256": "d081adde03f670a73389f030d2338fccedfd525ad025f64c3cef0362a168aa3b",
+          "bytes": 2636460399,
+          "source": "zip"
+        },
+        {
+          "sheet": "11-SW-9C",
+          "revision": "2026-09-22",
+          "urlNoKey": "https://download.map.gov.hk/api/3d-zip/GLTF/11-SW-9C.zip",
+          "sha256": "f0d52d674a25d0cb39aa32881cf74eb92a0e9d87517737ae28494b7a49182574",
+          "bytes": 534406988,
+          "source": "zip"
+        },
+        {
+          "sheet": "11-SW-13B",
+          "revision": "2025-12-21",
+          "urlNoKey": "https://download.map.gov.hk/api/3d-zip/GLTF/11-SW-13B.zip",
+          "sha256": "c42b59848be53a53e3a77f85f9b7d16e827ef3c266623797cccbf5baa780b561",
+          "bytes": 1085289747,
+          "source": "r3-cache"
+        }
+      ]
+    },
+    {
+      "file": "landsd-3dvm-hires-bays.json.gz",
+      "layer": "landsd/3dvm-individualised-hires-bays",
+      "datasetId": "landsd_rcd_1671676915450_88604",
+      "url": "https://portal.csdi.gov.hk/geoportal/?datasetId=landsd_rcd_1671676915450_88604",
+      "query": "https://portal.csdi.gov.hk/server/rest/services/common/landsd_rcd_1671676915450_88604/FeatureServer/0/query",
+      "release": "2026-09-22",
+      "crs": "EPSG:2326 + mPD",
+      "licenses": [
+        "CSDI Portal Terms and Conditions of Use; 3D Visualisation Map Terms and Conditions of Use (see TERMS.md)"
+      ],
+      "attribution": [
+        "Contains 3D building data and photo textures from the Lands Department, HKSAR Government (3D Visualisation Map, Individualised models), obtained from the 3D Visualisation Map website (3d.map.gov.hk) through the Common Spatial Data Infrastructure (CSDI) Portal (portal.csdi.gov.hk). Intellectual property rights in the data are owned by the Government of the Hong Kong Special Administrative Region. The photo textures have been processed (projected onto simplified building walls and roofs, resampled, re-lit for night and reduced) for this game; the Government is not responsible for, and does not endorse, this game.",
+        "部分資料來源：香港特別行政區政府地政總署「可視化三維地圖（個別模型）」的三維建築及照片紋理，經可視化三維地圖網站（3d.map.gov.hk）及空間數據共享平台（CSDI，portal.csdi.gov.hk）取得；資料的知識產權屬香港特別行政區政府所有。照片紋理已為本遊戲處理（投影到簡化的建築牆面及屋頂、重新取樣、按夜景重新打光及縮小），政府不對本遊戲負責，亦不代表政府認可。"
+      ],
+      "fetched": "2026-11-27",
+      "format": "gzip JSON (written by landsd_3d_hires_bays.py from the packed hi-res street pages): per building the shop bays (face, extent along the wall, shop seed, opening height) that the night shader lights, for the pavement light pools",
+      "sha256": "a188744d5078e971c39d242b03bc07703269180a26d5cc40a4e2838185890c55",
+      "bytes": 7817,
+      "rows": 195,
+      "derivedFrom": [
+        {
+          "file": "landsd-3dvm-hires.json.gz",
+          "sha256": "2914282b043253b807f92b370c7a5344d475c53bbab5bf652721af517cb254c0",
+          "pagesDigest": "7b28e97ad61dffd046831e87c3be4d24e965f3993a02602136d60bfb8da00dd9"
+        }
+      ]
     }
   ]
 }

@@ -58,9 +58,11 @@ export class LampField {
           const e = q * q * (l.sodium ? POOL_SODIUM : POOL_LED);
           if (e < 1e-3) continue;
           const c = l.sodium ? this.sodium : this.led;
-          out[0] += c.r * e;
-          out[1] += c.g * e;
-          out[2] += c.b * e;
+          // R4：暖白 LED（金钟道）按比例混钠灯色
+          const w = l.sodium ? 0 : (l.warm ?? 0);
+          out[0] += (c.r + (this.sodium.r - c.r) * w) * e;
+          out[1] += (c.g + (this.sodium.g - c.g) * w) * e;
+          out[2] += (c.b + (this.sodium.b - c.b) * w) * e;
           sum += e;
           if (l.sodium) sod += e;
         }

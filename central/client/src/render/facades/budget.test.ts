@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { FACADE_SHARE_MB, SlotLru, boxDistance, choosePages, facadeBudget, farBytes, layerBytes, pageNearest } from './budget';
+import { FACADE_SHARE_MB, SlotLru, auxLayerBytes, boxDistance, chooseMixed, choosePages, facadeBudget, farBytes, layerBytes, pageNearest, predictDistance } from './budget';
 
 const MB = 1024 * 1024;
 
@@ -7,11 +7,11 @@ describe('facadeBudget', () => {
   it('近景层数 = 份额减远景后放得下的层数（2–12 层）；LOW 半分辨率远景 + 2 层近景池（80 m 内）', () => {
     const far = farBytes(2048, 2048);
     // 远景 2048 × 2048 RGBA ≈ 21.3 MB：手机 (76.5 − 21.3) / 5.33 → 10 层，桌面 (87 − 21.3) / 5.33 → 12 层
-    expect(facadeBudget('high', true, far, 1024)).toEqual({ nearLayers: 10, far: 'full', nearMaxM: 900 });
-    expect(facadeBudget('high', false, far, 1024)).toEqual({ nearLayers: 12, far: 'full', nearMaxM: 900 });
+    expect(facadeBudget('high', true, far, 1024)).toEqual({ nearLayers: 10, hiresLayers: 0, far: 'full', nearMaxM: 900 });
+    expect(facadeBudget('high', false, far, 1024)).toEqual({ nearLayers: 12, hiresLayers: 0, far: 'full', nearMaxM: 900 });
     expect(facadeBudget('high', true, farBytes(2048, 2816), 1024).nearLayers).toBe(8);
     expect(facadeBudget('high', true, 200 * MB, 1024).nearLayers).toBe(2);
-    expect(facadeBudget('low', true, far, 1024)).toEqual({ nearLayers: 2, far: 'low', nearMaxM: 80 });
+    expect(facadeBudget('low', true, far, 1024)).toEqual({ nearLayers: 2, hiresLayers: 0, far: 'low', nearMaxM: 80 });
     // LOW 远景太大时近景池让出（不低于 0 层）
     expect(facadeBudget('low', true, farBytes(4096, 4096), 1024).nearLayers).toBe(0);
   });
@@ -111,5 +111,47 @@ describe('SlotLru', () => {
     lru.commit(5, 2, 1);
     expect(lru.page(0)).toBe(-1);
     expect(lru.slot(5)).toBe(2);
+  });
+});
+
+describe('chooseMixed（R4 高清页与 R3 页一起挑）', () => {
+  const hi = (p: number) => p >= 3;
+  it('高清页只在 hiMax 内参加、有效距离 × HIRES_FACTOR；同时入选的高清页不超过 capHi', () => {
+    // R3 页 0–2 距离 30、60、90；高清页 3–5 距离 40、70、200
+    const dist = [30, 60, 90, 40, 70, 200];
+    const view = dist.map(() => true);
+    // 有效距离：R3 30、60、90；高清 16、28（200 > 160 不参加）
+    expect(chooseMixed(dist, view, hi, 4, 5, 900, 160)).toEqual([3, 4, 0, 1]);
+    expect(chooseMixed(dist, view, hi, 4, 1, 900, 160)).toEqual([3, 0, 1, 2]);
+    expect(chooseMixed(dist, view, hi, 4, 0, 900, 160)).toEqual([0, 1, 2]);
+  });
+});
+
+describe('facadeBudget（R4 高清辅助图）', () => {
+  it('有高清层：手机 4、桌面 5 层辅助图，颜色层数扣掉辅助图后重算，总量仍在份额内', () => {
+    const far = farBytes(2048, 2048);
+    for (const mobile of [true, false]) {
+      const b = facadeBudget('high', mobile, far, 1024, 512);
+      expect(b.hiresLayers).toBe(mobile ? 4 : 5);
+      expect((far + b.nearLayers * layerBytes(1024) + b.hiresLayers * auxLayerBytes(512)) / MB).toBeLessThanOrEqual(mobile ? FACADE_SHARE_MB.phone : FACADE_SHARE_MB.desktop);
+    }
+    expect(facadeBudget('low', true, far, 1024, 512).hiresLayers).toBe(0);
+  });
+});
+
+describe('predictDistance（R4 预取）', () => {
+  it('沿速度外推：前方的页按「到达时的距离 + 0.3 × 走过的路」排，静止时就是当前距离', () => {
+    // 两页：页 0 在前方 100 m（x 100–110），页 1 在身后 50 m
+    const pageOf = Int32Array.from([0, 1]);
+    const boxes = Float32Array.from([100, -5, 0, 110, 5, 10, -60, -5, 0, -50, 5, 10]);
+    const out = new Float64Array(2);
+    const scr = new Float64Array(2);
+    predictDistance(pageOf, boxes, 0, 0, 5, 0, 0, out, scr);
+    expect(out[0]).toBeCloseTo(100);
+    expect(out[1]).toBeCloseTo(50);
+    // 8 m/s 向东：t = 11 s 到 x = 88（距离 12，路 88）
+    predictDistance(pageOf, boxes, 0, 0, 5, 8, 0, out, scr);
+    expect(out[0]).toBeCloseTo(12 + 0.3 * 88, 5);
+    expect(out[1]).toBeCloseTo(50);
   });
 });

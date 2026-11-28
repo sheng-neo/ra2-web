@@ -12,39 +12,69 @@ import { CORE_RECT_M } from '../streets';
 import { buildStreetLife } from '../streets/streetlife';
 import { RenderedSurface, dropZoneLamps, inZones, outsideZones } from '../streets/surface';
 import { SIM_DT, Traffic, isBusKind } from '../streets/traffic';
-import { Crowd, DENSITY, PALETTE, greenStart, lookOf, type AgentPose } from './crowd';
+import { Crowd, DENSITY, PALETTE, clockDensity, greenStart, lookOf, type AgentPose } from './crowd';
 import { CROSSING_HALF_M, TRAM_CLEAR_M, buildCrossingSites, buildWalkPaths, crossingRect, walkContext } from './walkways';
 import { linearRGB } from '../streets/prop-geometry';
 
 describe('外形（纯函数）', () => {
   const looks = Array.from({ length: 4000 }, (_, i) => lookOf(i * 7919 + 3));
-  it('上衣色调比例：约一半深色、约三成中灰卡其、10–20 % 浅色衬衫、≤ 5 % 鲜色', () => {
+  it('上衣色调比例（R4 route-facts §9）：约 45 % 深色、30 % 白 / 浅色、15 % 中灰卡其、10 % 饱和色', () => {
     const share = (t: string) => looks.filter((l) => l.topTone === t).length / looks.length;
-    expect(share('dark')).toBeGreaterThan(0.45);
-    expect(share('dark')).toBeLessThan(0.56);
-    expect(share('mid')).toBeGreaterThan(0.25);
-    expect(share('mid')).toBeLessThan(0.36);
-    expect(share('light')).toBeGreaterThan(0.1);
-    expect(share('light')).toBeLessThan(0.2);
-    expect(share('accent')).toBeLessThanOrEqual(0.06);
+    expect(share('dark')).toBeGreaterThan(0.4);
+    expect(share('dark')).toBeLessThan(0.5);
+    expect(share('light')).toBeGreaterThan(0.25);
+    expect(share('light')).toBeLessThan(0.35);
+    expect(share('mid')).toBeGreaterThan(0.11);
+    expect(share('mid')).toBeLessThan(0.19);
+    expect(share('accent')).toBeGreaterThan(0.07);
+    expect(share('accent')).toBeLessThan(0.13);
     // 颜色确实来自色板
     const all = new Set(Object.values(PALETTE).flat().map((h) => linearRGB(h).join(',')));
     for (const l of looks.slice(0, 200)) expect(all.has(l.top.join(','))).toBe(true);
   });
 
-  it('身高 1.55–1.85 m（平均约 1.68），约 10 % 拿着亮屏手机；同一种子外形相同', () => {
-    let sum = 0;
+  it('身高 1.55–1.85 m（女平均约 1.59、男约 1.71），约 35 % 拿着亮屏手机；同一种子外形相同', () => {
+    const mean = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
     for (const l of looks) {
       expect(l.height).toBeGreaterThanOrEqual(1.55);
       expect(l.height).toBeLessThanOrEqual(1.85);
-      sum += l.height;
     }
-    expect(sum / looks.length).toBeGreaterThan(1.64);
-    expect(sum / looks.length).toBeLessThan(1.72);
+    const f = mean(looks.filter((l) => l.female).map((l) => l.height));
+    const m = mean(looks.filter((l) => !l.female).map((l) => l.height));
+    expect(f).toBeGreaterThan(1.57);
+    expect(f).toBeLessThan(1.61);
+    expect(m).toBeGreaterThan(1.69);
+    expect(m).toBeLessThan(1.73);
     const phones = looks.filter((l) => l.phone).length / looks.length;
-    expect(phones).toBeGreaterThan(0.07);
-    expect(phones).toBeLessThan(0.13);
+    expect(phones).toBeGreaterThan(0.3);
+    expect(phones).toBeLessThan(0.4);
     expect(lookOf(42)).toEqual(lookOf(42));
+  });
+
+  it('R4 近景外形：≥ 5 种发型、八成以上黑 / 深褐发、约四成背包、≥ 12 种上衣 × 下装组合、裙只给女性、口罩约一成', () => {
+    const share = (f: (l: (typeof looks)[number]) => boolean) => looks.filter(f).length / looks.length;
+    expect(new Set(looks.map((l) => l.hairStyle)).size).toBeGreaterThanOrEqual(5);
+    const dark = linearRGB(PALETTE.hair[2]);
+    expect(share((l) => l.hair[0] <= dark[0] + 1e-9)).toBeGreaterThan(0.8);
+    expect(share((l) => l.carry === 1)).toBeGreaterThan(0.35);
+    expect(share((l) => l.carry === 1)).toBeLessThan(0.45);
+    expect(share((l) => l.skirt && !l.female)).toBe(0);
+    expect(share((l) => l.skirt)).toBeGreaterThan(0.1);
+    expect(share((l) => l.mask)).toBeGreaterThan(0.08);
+    expect(share((l) => l.mask)).toBeLessThan(0.16);
+    expect(share((l) => l.jacket)).toBeGreaterThan(0.1);
+    expect(new Set(looks.map((l) => `${l.top.join()}|${l.bottom.join()}`)).size).toBeGreaterThanOrEqual(12);
+  });
+
+  it('密度随钟点（route-facts §9）：18:45 下班高峰最多，20:00 约 0.75，21:30 后约三成以下', () => {
+    expect(clockDensity(18.75)).toBeCloseTo(1.6);
+    expect(clockDensity(20)).toBeCloseTo(0.75);
+    expect(clockDensity(21.5)).toBeLessThan(0.3);
+    expect(clockDensity(26)).toBeLessThan(0.1);
+    for (let t = 18; t < 26; t += 0.25) expect(clockDensity(t + 0.25)).toBeLessThanOrEqual(clockDensity(t) + (t < 18.75 ? 1 : 1e-9));
+    // DVRC 主街 20:00：核心区密度 × 0.75 ≈ 0.3 人 / 米
+    expect(DENSITY.main * clockDensity(20)).toBeGreaterThan(0.25);
+    expect(DENSITY.main * clockDensity(20)).toBeLessThan(0.4);
   });
 
   it('绿灯周期起点：greenStart ≤ t < greenStart + 60，且那一刻正好是行人绿灯开始', () => {

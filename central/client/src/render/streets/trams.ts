@@ -20,7 +20,7 @@ import {
   type Object3D,
 } from 'three';
 import type { CityFile } from '@central/data';
-import { simToThree } from '../../coords';
+import { simToThree, threeToSim } from '../../coords';
 import type { HeightFn } from '../../data/terrain';
 import { lightColour, type GlowBatch } from '../materials/lighting';
 import type { RoadPlan } from '../roads';
@@ -30,7 +30,9 @@ import { destAtlasTexture } from './tram/atlas';
 import { CLUSTER_Y_M, CLUSTER_Z_M, LAMP_Y_M, STACK_Y_M, STACK_Z_M, TRAM_BULGE_M, TRAM_HALF_SIDE_M, tramGeometry } from './tram/body'; // [r3:liveries]
 import { aimPole } from './tram/pole';
 import { tramContext } from './tram/context';
-import { NearInstances, RIDE_FRAME_SCALE, islandGeometry, placeMatrix, poleGeometry, rideFrameGeometry, type NearItem } from './tram/infra';
+import { NearInstances, RIDE_FRAME_SCALE, islandGeometry, placeMatrix, poleGeometry, type NearItem } from './tram/infra';
+import { rideInteriorGeometry } from './tram/ride-interior'; // [r4:street] 上层车厢内景（车头墙 + 侧窗 + 座椅）
+import { RideMotion } from './tram/ride-motion'; // [r4:street]
 import { createPropMaterial } from './prop-material';
 import { LiveryKind, hash01, tramFleet, type CarLivery } from './tram/livery'; // [r3:liveries]
 import { TRAM_DESTINATIONS } from './transit-data'; // [r3:liveries]
@@ -132,6 +134,9 @@ const TAIL = lightColour('tailLight');
 
 /** 架空线杆顶（m，infra.ts poleGeometry：9 m 杆 + 杆帽）。 */
 const POLE_TOP_M = 9.2;
+
+/** R4：搭电车的眼高（离轨顶，m）：上层地板约 2.4 m + 坐姿 / 半站眼高约 1.4 m（route-facts §0：坐 3.5、站 4.0）。 */
+export const RIDE_EYE_M = 3.8;
 
 /** 每车光点：车头中线头灯 + 车尾两角红灯 + 车尾观者左侧的红灯（R3：照片 01–03 只有一盏头灯）。 */ // [r3:liveries]
 const LIGHTS_PER_CAR = 4;
@@ -285,8 +290,8 @@ export class TramSystem {
     this.poles = poleItems.length ? new NearInstances(poleGeometry(), poleItems, high ? 300 : 120, 'tram-poles', false) : null;
     if (this.islands) this.objects.push(this.islands.mesh);
     if (this.poles) this.objects.push(this.poles.mesh);
-    // 搭电车：上层车头内景（只在跟车时画，1 个 draw call）
-    this.cab = new Mesh(rideFrameGeometry(), createPropMaterial({ light: 0.6 }));
+    // 搭电车：上层车厢内景（只在跟车时画，1 个 draw call）；R4：整个上层（车头墙、侧窗、座椅），转头看两侧也在车里
+    this.cab = new Mesh(rideInteriorGeometry(), createPropMaterial({ light: 0.6 }));
     this.cab.name = 'tram-ride-cab';
     this.cab.matrixAutoUpdate = false;
     this.cab.frustumCulled = false;
@@ -296,6 +301,15 @@ export class TramSystem {
   }
 
   private readonly cab: Mesh;
+  /** R4：搭电车的车身晃动（俯仰、侧倾、起伏）。 */
+  readonly motion = new RideMotion();
+  /** R4：最近一次 ridePose 的眼点（three）与轨顶高（mPD）。 */
+  private readonly lastEye = new Vector3();
+  private lastRail = 0;
+  private readonly basis = new Matrix4();
+  private readonly fwd3 = new Vector3();
+  private readonly left3 = new Vector3();
+  private readonly up3 = new Vector3();
 
   /** [r3:liveries] 时刻 t0 之后（逐秒扫到 t1）第一辆停在锚点站 anchor 的车的下标；没有返回 −1（纯计算）。 */
   private firstAtAnchor(anchor: string, t0: number, t1: number): number {
@@ -353,6 +367,16 @@ export class TramSystem {
         }
       }
       if (i === this.ridden) {
+        // R4：车身晃动按本帧的车速、沿线曲率（前后 4 m 的航向差）推进
+        const dt = this.lastT >= 0 && t > this.lastT && t - this.lastT < 1 ? t - this.lastT : 0;
+        if (dt > 0) {
+          routePose(r, car.state.s + 4, this.pose2, 3);
+          const h1 = Math.atan2(this.pose2.hy, this.pose2.hx);
+          routePose(r, car.state.s - 4, this.pose2, 3);
+          const h0 = Math.atan2(this.pose2.hy, this.pose2.hx);
+          const dh = Math.atan2(Math.sin(h1 - h0), Math.cos(h1 - h0));
+          this.motion.update(dt, car.state.v, dh / 8, car.state.s);
+        }
         routePose(r, car.state.s, pose);
         simToThree(pose.x, pose.y, pose.z, v, 0, 1);
         this.writeCarPos(i, v[0]!, v[1]! + 1.2, v[2]!, car.state.v);
@@ -519,7 +543,7 @@ export class TramSystem {
   }
 
   /**
-   * 跟车：选离 (x, z)（three 坐标）最近的一辆西行车；返回是否选中。ride(null) 取消。
+   * 跟车：选离 (x, z)（three 坐标）最近的一辆车（R4：东行、西行都可以）；返回是否选中。ride(null) 取消。
    */
   ride(from: { x: number; z: number } | null): boolean {
     if (!from) {
@@ -531,7 +555,6 @@ export class TramSystem {
     let best = -1;
     let bd = Infinity;
     this.cars.forEach((car, i) => {
-      if (!this.routes[car.route]!.westbound) return;
       routePose(this.routes[car.route]!, car.state.s, this.pose);
       simToThree(this.pose.x, this.pose.y, this.pose.z, v, 0, 1);
       const dd = Math.hypot(v[0]! - from.x, v[2]! - from.z);
@@ -543,11 +566,37 @@ export class TramSystem {
       }
     });
     this.ridden = best;
+    this.motion.reset();
     return best >= 0;
   }
 
-  /** 跟车机位（three 坐标）：上层车头后 0.6 m、离轨顶 3.7 m，向前看、俯 13°。没在跟车返回 false。 */
-  ridePose(eye: Vector3, target: Vector3): boolean {
+  /** R4 调试钩子 rideStart({car})：搭第 i 辆车（debugCars 的下标）；车快到路线终点时不上。 */
+  rideIndex(i: number): boolean {
+    const car = this.cars[i];
+    if (!car) return false;
+    carState(this.profiles[car.route]!, car.tt, this.lastT >= 0 ? this.lastT : 0, car.state);
+    if (car.state.s > this.routes[car.route]!.len - 120) return false;
+    this.ridden = i;
+    this.motion.reset();
+    return true;
+  }
+
+  /** 正在搭的车（debugCars 的下标，没有为 −1）。 */
+  get riddenIndex(): number {
+    return this.ridden;
+  }
+
+  /** R4 调试：最近一次搭车机位的眼点（模拟坐标米）与轨顶高（mPD）。 */
+  rideEye(): { eye: [number, number, number]; rail: number } {
+    const [x, y, z] = threeToSim(this.lastEye.x, this.lastEye.y, this.lastEye.z);
+    return { eye: [x / 10, y / 10, z / 10], rail: this.lastRail };
+  }
+
+  /**
+   * 跟车机位（three 坐标）：R4——上层车头第一排、离轨顶 RIDE_EYE_M（3.8 m）、车身中线；look = 相对车头的偏航（左正）/ 俯仰（上正，rad），
+   * 省略时正前方俯 6°；up 给出时写进相机的上方向（含车身侧倾）。车身晃动（俯仰、侧倾、起伏）来自 RideMotion。没在跟车返回 false。
+   */
+  ridePose(eye: Vector3, target: Vector3, up?: Vector3, look?: { yaw: number; pitch: number }): boolean {
     if (this.ridden < 0) {
       this.cab.visible = false;
       return false;
@@ -566,10 +615,37 @@ export class TramSystem {
     simToThree(this.pose.x, this.pose.y, this.pose.z, v, 0, 1);
     simToThree(this.pose.hx, this.pose.hy, 0, d, 0, 1);
     const fwd = TRAM_HALF_SIDE_M + 0.35 - 0.6;
-    eye.set(v[0]! + d[0]! * fwd, v[1]! + 3.7, v[2]! + d[2]! * fwd);
-    target.set(eye.x + d[0]! * 20, eye.y - Math.tan((13 * Math.PI) / 180) * 20, eye.z + d[2]! * 20);
-    // 车头内景：以相机为原点、跟车头朝向，放大 RIDE_FRAME_SCALE 倍（透视不变）
-    this.q.setFromAxisAngle(this.up, Math.atan2(-d[2]!, d[0]!));
+    const m = this.motion;
+    eye.set(v[0]! + d[0]! * fwd, v[1]! + RIDE_EYE_M + m.lift, v[2]! + d[2]! * fwd);
+    this.lastEye.copy(eye);
+    this.lastRail = this.pose.z;
+    // 车身坐标轴（three）：前 F（含俯仰）、上 U（含侧倾）、左 L
+    const F = this.fwd3.set(d[0]!, 0, d[2]!).normalize();
+    const L = this.left3.set(F.z, 0, -F.x);
+    const cp = Math.cos(m.pitch);
+    const sp = Math.sin(m.pitch);
+    F.multiplyScalar(cp).y = sp;
+    const U = this.up3.set(-d[0]! * sp, cp, -d[2]! * sp);
+    // 侧倾：右侧下沉为正 → 上方向往右倒（右 = −L）
+    const cr = Math.cos(m.roll);
+    const sr = Math.sin(m.roll);
+    U.multiplyScalar(cr).addScaledVector(L, -sr);
+    L.multiplyScalar(cr).addScaledVector(this.p.set(-d[0]! * sp, cp, -d[2]! * sp), sr);
+    // 视线：先在车身坐标里转偏航（左正）、再俯仰
+    const yaw = look?.yaw ?? 0;
+    const pitch = look?.pitch ?? (-6 * Math.PI) / 180;
+    const cy = Math.cos(yaw);
+    const sy = Math.sin(yaw);
+    const cpl = Math.cos(pitch);
+    const spl = Math.sin(pitch);
+    const dx = (F.x * cy + L.x * sy) * cpl + U.x * spl;
+    const dy = (F.y * cy + L.y * sy) * cpl + U.y * spl;
+    const dz = (F.z * cy + L.z * sy) * cpl + U.z * spl;
+    target.set(eye.x + dx * 20, eye.y + dy * 20, eye.z + dz * 20);
+    up?.copy(U);
+    // 车厢内景：以相机为原点、跟车身坐标轴（局部 x 前、y 上、z 右），放大 RIDE_FRAME_SCALE 倍（透视不变）
+    this.basis.makeBasis(F, U, this.p2.copy(L).negate());
+    this.q.setFromRotationMatrix(this.basis);
     this.cab.matrix.compose(this.p.copy(eye), this.q, this.p2.setScalar(RIDE_FRAME_SCALE));
     this.cab.matrixWorld.copy(this.cab.matrix);
     this.cab.visible = true;

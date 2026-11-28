@@ -16,7 +16,9 @@ import type { HeightFn } from '../../data/terrain';
 import type { GlowBatch } from '../materials/lighting';
 import { footprintTest } from '../road-corridor';
 import type { RoadPlan } from '../roads';
-import { Crowd, type WaitingArea } from '../people/crowd';
+import { Crowd, clockDensity, type WaitingArea } from '../people/crowd'; // [r4:street] clockDensity
+import { frontageField, type FrontageSample } from './frontage-field'; // [r4:street]
+import type { LampField } from './tram/trackbed'; // [r4:street]
 import { Pedestrians } from '../people/pedestrians';
 import { buildCrossingSites, buildWalkPaths, crossingRect, footOk, walkContext, type CrossingSite, type WalkPath } from '../people/walkways'; // [r3:stations] footOk
 import {
@@ -61,10 +63,20 @@ export interface StreetLife {
   setWaitingAreas(areas: readonly WaitingArea[]): void;
   update(camera: Camera, t: number): void;
   summary(): string;
+  /** R4 调试钩子 __central.people()。 */
+  people(): { near: number; mid: number; far: number; triangles: number; nearTriangles: number };
 }
+
+/** R4：近景平滑人形的距离（m）与上限（规格 S-P0-1：≤ 30 m、≤ 64 人）。 */
+export const DETAIL_M = 30;
+export const DETAIL_CAP = 52;
 
 export interface StreetLifeOptions {
   high: boolean;
+  /** R4：路灯照度场（近景行人的照明）；省略时近景人只受环境光与铺面溢光。 */
+  lamps?: LampField;
+  /** R4：钟点（18–26），行人密度按它取倍率（crowd.clockDensity）；省略按 20:00。 */
+  clock?: number;
   core: readonly [number, number, number, number];
   /** 整合（R2）：电车站岛与架空线杆（模拟坐标米）。路边设施让开站岛和杆，站岛上放候车的人。 */
   tram?: TramKeepClear;
@@ -105,8 +117,45 @@ function tramClash(t: TramKeepClear | undefined, x: number, y: number, islandM: 
   return inIsland(t.islands, x, y, islandM);
 }
 
+/**
+ * R4（route-facts §9）：核心区以外也按核心区密度走人的街（上环德辅道中饭店一带）。金钟道的下班人潮（18:45 约 0.8 人/米）
+ * 没有加：20:00 已散，而且金钟道两侧行人路长、上层看得远，按核心区密度会超出三角形预算（+50k）。
+ */
+export const BUSY_STREETS: ReadonlySet<string> = new Set(['Des Voeux Road Central', 'Des Voeux Road West', 'Queensway', 'Hennessy Road', 'Johnston Road']); // 复审修正：金钟道、轩尼诗道的商场段也是人多的走廊
+
+/** 走线中心离这些街的中线 ≤ 18 m 的，标成核心区（只影响人数）。原地改 paths。 */
+export function markBusyPaths(paths: WalkPath[], plans: readonly Pick<RoadPlan, 'road' | 'pts'>[]): number {
+  const segs: number[] = [];
+  for (const p of plans) {
+    if (!BUSY_STREETS.has(p.road.name?.en ?? '')) continue;
+    for (let i = 2; i < p.pts.length; i += 2) segs.push(p.pts[i - 2]! / 10, p.pts[i - 1]! / 10, p.pts[i]! / 10, p.pts[i + 1]! / 10);
+  }
+  let n = 0;
+  for (const w of paths) {
+    if (w.core) continue;
+    const cx = (w.box[0] + w.box[2]) / 2;
+    const cy = (w.box[1] + w.box[3]) / 2;
+    for (let k = 0; k < segs.length; k += 4) {
+      const ax = segs[k]!;
+      const ay = segs[k + 1]!;
+      const dx = segs[k + 2]! - ax;
+      const dy = segs[k + 3]! - ay;
+      const l2 = dx * dx + dy * dy || 1;
+      const t = Math.min(Math.max(((cx - ax) * dx + (cy - ay) * dy) / l2, 0), 1);
+      if (Math.hypot(cx - ax - dx * t, cy - ay - dy * t) <= 18) {
+        w.core = true;
+        n++;
+        break;
+      }
+    }
+  }
+  return n;
+}
+
 /** 巴士走廊（核心区内双层巴士比例 15 %）：街道名是事实信息，可以用。 */
-export const BUS_STREETS: ReadonlySet<string> = new Set(['Des Voeux Road Central', 'Connaught Road Central', "Queen's Road Central", 'Pedder Street']);
+export const BUS_STREETS: ReadonlySet<string> = new Set(['Des Voeux Road Central', 'Connaught Road Central', "Queen's Road Central", 'Pedder Street', 'Queensway', 'Hennessy Road']);
+/** 复审修正：电车走廊上的干道，核心区矩形以外（上环、金钟、湾仔）也按核心区密度刷车与行人。 */
+export const CORRIDOR_STREETS: ReadonlySet<string> = new Set(['Des Voeux Road Central', 'Des Voeux Road West', 'Connaught Road Central', 'Queensway', 'Hennessy Road', 'Johnston Road']);
 
 /** 车辆入口外扩（m）：车身半宽 1.25 m + 余量。 */
 const VEHICLE_GROW_M = 1.6;
@@ -147,7 +196,8 @@ export function buildStreetLife(
   const plaza = buildStatueSquare(ctx, surface, paths.length, opts.high);
   paths.push(...plaza.paths);
   const sites = buildCrossingSites(plans, ctx, surface, (x, y, tx, ty) => crossingPhase(signals, x, y, tx, ty));
-  const crowd = new Crowd(paths, sites, ctx, { density: opts.high ? 1 : 0.6 });
+  markBusyPaths(paths, plans); // [r4:street] 电车走廊（上环德辅道中、金钟道）的行人路按核心区密度
+  const crowd = new Crowd(paths, sites, ctx, { density: (opts.high ? 1 : 0.6) * clockDensity(opts.clock ?? 20) }); // [r4:street] 密度随钟点
   // 车辆让行：有人过路的过路处 + 全部灯控过路处
   const trafficCrossings: TrafficCrossing[] = [];
   const siteToTraffic = new Map<number, number>();
@@ -221,7 +271,20 @@ export function buildStreetLife(
   const shelterGlass = new NearFurniture(glassT, glassItems, createLifeMaterial(0.4, true), opts.high ? 4000 : 1500, opts.high ? 6000 : 2400, 'shelter-glass');
   shelterGlass.mesh.renderOrder = 2;
 
-  const peds = new Pedestrians(crowd, opts.high ? { radius: 150, nearM: 60, cap: 600, nearCap: 260 } : { radius: 80, nearM: 30, cap: 150, nearCap: 50 });
+  // R4：HIGH 档 30 m 内 ≤ 64 人画近景平滑人形（受路灯与铺面溢光照明），低模人退到 30–60 m；LOW 档不变
+  const sample: FrontageSample = { r: 0, g: 0, b: 0, dirX: 0, dirY: 0 };
+  const light = (p: readonly number[], sim: readonly [number, number], out: { lamp: [number, number, number]; shop: [number, number, number]; shopYaw: number }) => {
+    if (opts.lamps) opts.lamps.at(p[0]!, p[1]!, p[2]!, out.lamp, 1.0);
+    else out.lamp.fill(0);
+    const f = frontageField();
+    if (f) f.sample(sim[0], sim[1], sample);
+    else sample.r = sample.g = sample.b = sample.dirX = sample.dirY = 0;
+    out.shop[0] = sample.r;
+    out.shop[1] = sample.g;
+    out.shop[2] = sample.b;
+    out.shopYaw = Math.atan2(sample.dirY, sample.dirX);
+  };
+  const peds = new Pedestrians(crowd, opts.high ? { radius: 150, nearM: 60, cap: 600, nearCap: 260, detail: { m: DETAIL_M, cap: DETAIL_CAP }, light } : { radius: 80, nearM: 30, cap: 150, nearCap: 50 });
   // 候车的人：巴士站 + 电车站岛（整合 R2：站岛不再自带剪影，统一用行人系统）
   const base: WaitingArea[] = [...busWaitingAreas(stops, plans), ...(tram ? tramWaitingAreas(tram.islands) : [])];
   crowd.setWaitingAreas(base);
@@ -254,6 +317,7 @@ export function buildStreetLife(
       shelterGlass.update(camera);
       peds.update(camera, t);
     },
+    people: () => peds.stats(),
     summary: () =>
       `行人 ${crowd.walkers.length + crowd.crossers.length + crowd.waiters.length}（畫 ${peds.drawn}）· 過路處 ${sites.filter((s) => s.kerbs).length}/${sites.length} · 欄杆 ${rails.length} · 巴士站 ${stops.length} · 設施 ${furniture.drawnItems}/${items.length} · 站牌 ${st.counts.flags} 站名 ${st.counts.plates} 港鐵 ${st.counts.mtr} 碼頭 ${st.counts.piers}`, // [r3:stations]
   };

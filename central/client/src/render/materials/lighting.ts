@@ -186,8 +186,8 @@ export const SHARED = {
   uGlowMinPx: { value: 2 } as IUniform<number>,
   /** drawing buffer 尺寸（像素，含 DPR）；CityRenderer.resize 负责更新。 */
   uViewportPx: { value: new Vector2(1280, 720) } as IUniform<Vector2>,
-  /** 路面湿度 0–1（0.25 = 刚下过微雨的微湿反光）。 */
-  uWetness: { value: 0.25 } as IUniform<number>,
+  /** 路面湿度 0–1（R4 复审修正：默认干路面 0——微湿的灯光竖向倒影在路面上像一根根半透明的「鬼柱」；雨夜模式再调高）。 */
+  uWetness: { value: 0 } as IUniform<number>,
 };
 
 export type SharedUniforms = typeof SHARED;

@@ -6,11 +6,11 @@
 import type { Camera, Object3D } from 'three';
 import type { CityFile, TerrainGrid } from '@central/data';
 import type { HeightFn } from '../../data/terrain';
-import { GlowBatch, SIM_CLOCK, getQuality, lightColour } from '../materials/lighting';
+import { GlowBatch, SHARED, SIM_CLOCK, getQuality, lightColour } from '../materials/lighting'; // [r4:street] SHARED（钟点）
 import type { RoadPlan } from '../roads';
 import { groundMask } from './ground-mask';
 import { hillLights } from './hill-lights';
-import { lampPoles, streetLamps, writeLampHeads } from './lamps';
+import { lampPoles, streetLamps, writeLampHeads, type StreetLamp } from './lamps'; // [r4:int] StreetLamp
 import { laneSignalPhases, signalHeads, signalPoles, writeSignalHeads, type SignalHead } from './signals';
 import { treeItems, treeProps } from './trees';
 import { buildFootbridges } from './footbridges';
@@ -19,14 +19,15 @@ import { RenderedSurface, inZones, outsideZones } from './surface';
 import { laneSweepSamples } from './sweep';
 import { renderedTerrain } from '../road-corridor';
 import { Traffic, isBusKind } from './traffic'; // [r2:streetlife]
-import { BUS_STREETS, buildStreetLife, type StreetLife } from './streetlife'; // [r2:streetlife]
-import { busStopLanes } from './kerbside'; // [r2:streetlife]
+import { BUS_STREETS, CORRIDOR_STREETS, buildStreetLife, type StreetLife } from './streetlife'; // [r2:streetlife]
+import { busStopLanes, type BusStop } from './kerbside'; // [r2:streetlife] [r4:int] BusStop
 import { TramSystem, tramStopIslands } from './trams'; // [r2:trams]
 import { POLE_CLEAR_M, TramOccupancy, tramLaneConflicts, tramRouteProximity } from './tram-traffic'; // [r2:fix] 车流给电车让路、杆不立在路轨上
 import { threeToSim } from '../../coords';
 import { VehicleRenderer, type VehicleDebug, type VehiclePose } from './vehicles'; // [r3:liveries]
 import { busStopHints } from './liveries/fleet'; // [r3:liveries]
 import { LampField } from './tram/trackbed';
+import { setPavingField } from './paving-field'; // [r4:street]
 
 /** MVP 核心区（模拟坐标，米）：经度 114.155–114.1612、纬度 22.2785–22.2875 换算到本地原点。 */
 export const CORE_RECT_M = [14, -485, 652, 512] as const;
@@ -37,6 +38,9 @@ export interface Streets {
   objects: Object3D[];
   trams: TramSystem; // [r2:trams]
   vehicles(): VehicleDebug[]; // [r3:liveries] 调试钩子 __central.vehicles()
+  people(): ReturnType<StreetLife['people']>; // [r4:street] 调试钩子 __central.people()
+  /** 雨篷要让开的东西（R4 整合：render/canopy-obstacles.ts）：画出来的路灯、交通灯、巴士站、看得见的地面（dm → dm）。 */ // [r4:int]
+  canopyParts: { lamps: StreetLamp[]; signals: SignalHead[]; stops: BusStop[]; surface: (xDm: number, yDm: number) => number }; // [r4:int]
   update(dt: number, camera: Camera): void;
   /** 调试摘要。 */
   summary(): string;
@@ -71,7 +75,14 @@ export function buildTraffic(
   const tramConflicts = tramLaneConflicts(lanes, trams.routes, { samples: sweeps });
   const blockedLane = lanes.map((l) => inZones(zones, l.mid[0] * 10, l.mid[1] * 10) || tramConflicts.shared.has(l.id));
   for (const l of lanes) l.next = blockedLane[l.id] ? [] : l.next.filter((n) => !blockedLane[n]);
-  const traffic = new Traffic(lanes, { cap, seed: TRAFFIC_SEED, core: CORE_RECT_M, sweeps, busy: (l) => BUS_STREETS.has(plans[l.plan]?.road.name?.en ?? '') }); // [r2:streetlife]
+  const traffic = new Traffic(lanes, {
+    cap,
+    seed: TRAFFIC_SEED,
+    core: CORE_RECT_M,
+    sweeps,
+    busy: (l) => BUS_STREETS.has(plans[l.plan]?.road.name?.en ?? ''),
+    corridor: (l) => CORRIDOR_STREETS.has(plans[l.plan]?.road.name?.en ?? ''), // 复审修正：电车走廊干道全程核心密度
+  }); // [r2:streetlife]
   traffic.setSignals(
     laneSignalPhases(
       lanes.map((l) => {
@@ -93,6 +104,7 @@ export function buildTraffic(
 export function buildStreets(city: CityFile, plans: readonly RoadPlan[], ground: HeightFn, relief: TerrainGrid | null): Streets {
   const q = getQuality();
   const high = q.tier === 'high';
+  setPavingField(plans); // [r4:street] 楼前人行道（地形网格）的铺地种类
   // 敏感区只做背景：客户端生成的路灯、交通灯、山上灯点、树都不放进去（数据管线对道具点也是同一规则）
   const zones = city.zones.sensitive;
   const allLamps = outsideZones(streetLamps(plans), zones, (l) => l.pole, (l) => l.head);
@@ -110,7 +122,8 @@ export function buildStreets(city: CityFile, plans: readonly RoadPlan[], ground:
   const lamps = keepOffTramRoutes(allLamps, trams, (l) => l.pole);
   const signalsShown = keepOffTramRoutes(signals, trams, (s) => s.base);
   const tramClear = { islands: tramStopIslands(), poles: trams.overhead.supports.filter((s) => s.kind === 'pole').map((s) => [s.x, s.y] as const) }; // [r2:integrate] 站岛 / 杆给街头生活让位、站岛上候车
-  const life = buildStreetLife(city, plans, ground, surfaceAt, signals, { high, core: CORE_RECT_M, tram: tramClear }); // [r2:streetlife]
+  const lampField = new LampField(allLamps); // [r4:street] 近景行人的路灯照明（与车身同一配光）
+  const life = buildStreetLife(city, plans, ground, surfaceAt, signals, { high, core: CORE_RECT_M, tram: tramClear, lamps: lampField, clock: SHARED.uClock.value }); // [r2:streetlife] [r4:street] lamps / clock
   const glow = new GlowBatch(lamps.length + hills.length + signalsShown.length * 3 + 8 + life.glowCount, 'street-lights'); // [r2:streetlife]
   let n = writeLampHeads(glow, lamps, 0);
   n = writeSignalHeads(glow, signalsShown, n);
@@ -133,10 +146,10 @@ export function buildStreets(city: CityFile, plans: readonly RoadPlan[], ground:
 
   // 车流 + 电车：车身 3 个 draw call（私家车 / 出租车、巴士、电车），车灯 1 个
   const lanes = buildLanes(plans);
-  const traffic = buildTraffic(lanes, plans, zones, signals, life, trams, high ? 900 : 260); // [r2:fix]
+  const traffic = buildTraffic(lanes, plans, zones, signals, life, trams, high ? 1150 : 260); // [r2:fix] 复审修正：HIGH 900 → 1150（走廊干道全程刷车）
   let buses = 0;
   for (let i = 0; i < traffic.n; i++) if (isBusKind(traffic.kind[i]!)) buses++; // [r2:streetlife]
-  const vehicles = new VehicleRenderer(traffic.n - buses, buses, new LampField(allLamps), high ? 60 : 30); // [r2:fix] 近处车身受路灯照；[r3:liveries] 字 60 m（LOW 30 m）内画
+  const vehicles = new VehicleRenderer(traffic.n - buses, buses, lampField, high ? 60 : 30); // [r2:fix] 近处车身受路灯照；[r3:liveries] 字 60 m（LOW 30 m）内画
   vehicles.setStopHints(busStopHints(traffic.initialDwellers(), lanes)); // [r3:liveries] 开场停站的巴士挂该站真实路线
   const moving = new GlowBatch(traffic.n * 4 + trams.lightCapacity + 8, 'traffic-lights'); // [r2:trams]
   const poses: VehiclePose[] = Array.from({ length: traffic.n }, () => ({ x: 0, y: 0, z: 0, hx: 1, hz: 0, kind: 0, brake: false, seed: 0 }));
@@ -146,6 +159,8 @@ export function buildStreets(city: CityFile, plans: readonly RoadPlan[], ground:
     objects: [glow.mesh, poles.mesh, sigPoles.mesh, ...trees.map((t) => t.mesh), ...bridges.objects, vehicles.cars, vehicles.buses, ...trams.objects, moving.mesh, ...life.objects], // [r2:trams] [r2:streetlife]
     trams, // [r2:trams]
     vehicles: () => vehicles.debug(poses, traffic.v), // [r3:liveries]
+    people: () => life.people(), // [r4:street]
+    canopyParts: { lamps, signals: signalsShown, stops: life.stops, surface: surfaceAt }, // [r4:int]
     update(_dt, camera) {
       poles.update(camera);
       bridges.update(camera); // [r2:streetlife]

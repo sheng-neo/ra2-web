@@ -45,7 +45,8 @@ export const isBusKind = (k: number): boolean => k === VehicleKind.Bus || k === 
 export function pickKind(r: number, cls: RoadClass, core: boolean, busy: boolean): number {
   const bus = BUS_CLASSES.has(cls) ? (busy ? 0.15 : cls === 'tertiary' ? 0.03 : 0.1) : 0;
   const mini = core && cls !== 'residential' && cls !== 'living_street' ? 0.07 : 0.03;
-  const taxi = core ? 0.28 : 0.2;
+  // 复审修正：核心区的红的士约占小车四成（参考照片 08：毕打街口一排红的士）
+  const taxi = core ? 0.34 : 0.2;
   const van = 0.05;
   const mpv = 0.12;
   let c = bus;
@@ -152,6 +153,8 @@ export interface TrafficOptions {
   outside?: number;
   /** 车道是否属于巴士走廊（双层巴士比例 15 %）。 */
   busy?: (lane: Lane) => boolean;
+  /** 复审修正：电车走廊上的干道（德辅道、金钟道、轩尼诗道……）——核心区矩形以外也按核心区的密度刷车（原来上环、金钟道只有一成五）。 */
+  corridor?: (lane: Lane) => boolean;
   /** 车身中心轨迹采样（sweep.ts laneSweepSamples）；不给就自己算。 */
   sweeps?: SweepSample[][][];
 }
@@ -236,7 +239,7 @@ export class Traffic {
     const want: number[] = [];
     for (const l of lanes) {
       const sp = SPACING_M[l.cls];
-      const core = l.mid[0] >= cx0 && l.mid[0] <= cx1 && l.mid[1] >= cy0 && l.mid[1] <= cy1;
+      const core = (l.mid[0] >= cx0 && l.mid[0] <= cx1 && l.mid[1] >= cy0 && l.mid[1] <= cy1) || (opts.corridor?.(l) ?? false);
       const w = sp && l.next.length > 0 ? (l.len / sp) * (core ? 1 : outside) : 0;
       want.push(w);
       total += w;
@@ -252,7 +255,7 @@ export class Traffic {
         const u = unitOf(opts.seed, l.id, 10 + k);
         const s = ((k + 0.5 + 0.5 * (u - 0.5)) * l.len) / count;
         const kr = unitOf(opts.seed, l.id, 100 + k);
-        const core = l.mid[0] >= cx0 && l.mid[0] <= cx1 && l.mid[1] >= cy0 && l.mid[1] <= cy1;
+        const core = (l.mid[0] >= cx0 && l.mid[0] <= cx1 && l.mid[1] >= cy0 && l.mid[1] <= cy1) || (opts.corridor?.(l) ?? false);
         const kind = pickKind(kr, l.cls, core, core && (opts.busy?.(l) ?? false));
         this.initial.push({ lane: l.id, s, kind, v0: l.speed * (0.8 + 0.4 * unitOf(opts.seed, l.id, 200 + k)) });
       }

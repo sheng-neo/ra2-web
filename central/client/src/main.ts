@@ -12,7 +12,8 @@ import './style.css';
 import type { CityFile } from '@central/data';
 import { attachCameraInput } from './camera/input';
 import { PRESETS, presetView } from './camera/presets';
-import { OrbitRig, viewFromEye } from './camera/rig';
+import { DEBUG_CLEARANCE_M, OrbitRig, viewFromEye } from './camera/rig'; // [r4:street] DEBUG_CLEARANCE_M
+import { RideLook } from './camera/ride-look'; // [r4:street]
 import { simToThreeVec } from './coords';
 import { loadCity } from './data/load-city';
 import { flatGround, loadTerrain, reliefGrid, reliefHeight, wantsTerrain } from './data/terrain';
@@ -46,11 +47,19 @@ export interface CentralDebug {
   /** R3 真实贴面：视野要的贴面页都到了（远景图集 + 近景页）时兑现。 */
   facadesIdle?(): Promise<void>; // [r3:facades]
   /** R3 真实贴面的流式加载状态（页数、常驻、显存、待办、失败、已下载字节、本帧上传、让出次数、排除的楼数）。 */
-  facades?(): FacadeDebug | null; // [r3:facades]
+  facades?(): (FacadeDebug & { procSuppressed?: number; canopies?: number }) | null; // [r3:facades] [r4:int] procSuppressed / canopies
   /** 车辆（模拟坐标，米）：车型、营运商、路线、速度（R3 LIVERIES）。 */ // [r3:liveries]
   vehicles?(): VehicleDebug[]; // [r3:liveries]
   /** 船（模拟坐标，米）：是否在开、营运商、船名（R3 LIVERIES）。 */ // [r3:liveries]
   boats?(): BoatDebug[]; // [r3:liveries]
+  /** R4：搭第 car 辆电车（trams().cars 的下标），游戏自己的「搭電車」机位；车快到终点时返回 false。 */ // [r4:street]
+  rideStart?(opts: { car: number }): boolean; // [r4:street]
+  /** R4：搭车时转头（相对车头，度；偏航左正、俯仰上正），立即生效且不自动回正。 */ // [r4:street]
+  rideLook?(yawDeg: number, pitchDeg: number): void; // [r4:street]
+  /** R4：搭车状态（眼点模拟坐标米、轨顶 mPD、眼离轨顶、视线角度）。 */ // [r4:street]
+  rideState?(): { riding: boolean; car: number; eye: [number, number, number]; rail: number; eyeAboveRail: number; yawDeg: number; pitchDeg: number }; // [r4:street]
+  /** R4：行人各级 LOD 的人数与三角形数。 */ // [r4:street]
+  people?(): { near: number; mid: number; far: number; triangles: number; nearTriangles: number }; // [r4:street]
 }
 
 declare global {
@@ -223,9 +232,16 @@ async function main(app: HTMLElement, loading: LoadingScreen): Promise<void> {
     }
   })();
   const audio = new AudioEngine(initialMute(readParam('mute') !== null, readStoredMute(storage)));
+  const look = new RideLook(); // [r4:street] 搭電車时转头看（拖动 / 方向键），停手 6 s 或按「向前」回正
+  const follow = () => rig.setFollow((eye, target, up) => view.trams?.ridePose(eye, target, up, look) ?? false, look); // [r4:street]
   const rideFrom = () => {
+    if (rig.following) { // [r4:street] 再按「搭電車」下车
+      rig.stopFollow(); // [r4:street]
+      return false; // [r4:street]
+    } // [r4:street]
     const ok = view.trams?.ride({ x: view.camera.position.x, z: view.camera.position.z }) ?? false;
-    if (ok) rig.setFollow((eye, target) => view.trams?.ridePose(eye, target) ?? false);
+    look.reset(); // [r4:street]
+    if (ok) follow(); // [r4:street]
     return ok;
   };
   rig.onFollowEnd = () => {
@@ -244,7 +260,7 @@ async function main(app: HTMLElement, loading: LoadingScreen): Promise<void> {
         writeStoredMute(storage, m);
       },
     },
-    ride: { onRide: rideFrom },
+    ride: { onRide: rideFrom, onFront: () => look.front() }, // [r4:street] 「向前」
   });
   // 照片模式：隐藏标题牌、机位按钮、鸣谢按钮与提示，只留地图署名（与实拍照片并排比较用）
   if (readParam('photo') !== null) app.classList.add('photo');
@@ -285,7 +301,7 @@ async function main(app: HTMLElement, loading: LoadingScreen): Promise<void> {
 
   debug.stats = () => view.stats();
   debug.setView = setView;
-  debug.lookFrom = (eye, target) => rig.flyTo(viewFromEye(eye, target), 1e-3);
+  debug.lookFrom = (eye, target) => rig.flyTo(viewFromEye(eye, target), 1e-3, DEBUG_CLEARANCE_M); // [r4:street] 行人路机位可到 1.5 m 眼高
   debug.summary = () => view.layerSummary();
   debug.drawCounts = () => view.drawCounts();
   debug.trams = () => ({ t: SIM_CLOCK.t, cars: view.trams?.debugCars(SIM_CLOCK.t) ?? [] }); // [r2:trams]
@@ -294,6 +310,19 @@ async function main(app: HTMLElement, loading: LoadingScreen): Promise<void> {
   debug.facades = () => view.facadesDebug(); // [r3:facades]
   debug.vehicles = () => view.vehicles(); // [r3:liveries]
   debug.boats = () => view.boatList(); // [r3:liveries]
+  debug.rideStart = ({ car }) => { // [r4:street]
+    if (!view.trams?.rideIndex(car)) return false; // [r4:street]
+    look.reset(); // [r4:street]
+    follow(); // [r4:street]
+    hud.setRide(true); // [r4:street]
+    return true; // [r4:street]
+  }; // [r4:street]
+  debug.rideLook = (yawDeg, pitchDeg) => look.set((yawDeg * Math.PI) / 180, (pitchDeg * Math.PI) / 180, true, true); // [r4:street]
+  debug.rideState = () => { // [r4:street]
+    const e = view.trams?.rideEye() ?? { eye: [0, 0, 0] as [number, number, number], rail: 0 }; // [r4:street]
+    return { riding: rig.lookMode, car: view.trams?.riddenIndex ?? -1, eye: e.eye, rail: e.rail, eyeAboveRail: e.eye[2] - e.rail, yawDeg: (look.yaw * 180) / Math.PI, pitchDeg: (look.pitch * 180) / Math.PI }; // [r4:street]
+  }; // [r4:street]
+  debug.people = () => view.people(); // [r4:street]
 }
 
 /**

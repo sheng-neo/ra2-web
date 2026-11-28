@@ -33,7 +33,7 @@ describe('facadeVertex', () => {
     const m = newFacadeArrays();
     facadeVertex(m, 0, 0, 0, 0, 0, 1, 1, 2, 3, styleCode(0, FacadeMode.Windows, 0));
     facadeVertex(m, 0, 0, 0, 0, 0, 1, 1, 2, 3, 0, [4, 0.5, 12, 8]);
-    expect(m.layout.map((a) => a.name)).toEqual(['position', 'normal', 'aFacade', 'aBldg', 'aPhoto']);
+    expect(m.layout.map((a) => a.name)).toEqual(['position', 'normal', 'aFacade', 'aBldg', 'aPhoto', 'aHires']);
     expect(m.data[3]!.slice(0, 4)).toEqual([...NO_BLDG]);
     expect(m.data[3]!.slice(4, 8)).toEqual([4, 0.5, 12, 8]);
   });

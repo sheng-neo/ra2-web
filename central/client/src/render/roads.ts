@@ -86,6 +86,26 @@ const MAIN_CLASSES: ReadonlySet<RoadClass> = new Set(['motorway', 'trunk', 'prim
 /** 中环核心区（模拟米，与 streets/index.ts CORE_RECT_M 相同；这里另写一份，免得 roads.ts 依赖街道层）。 */
 const CORE_RECT: readonly [number, number, number, number] = [14, -485, 652, 512];
 /** 核心区一律白光 LED 的街（街名是事实信息）：电车与巴士走廊，分车道时有的车道标成 tertiary。 */
+/**
+ * R4 STREET：电车走廊的街一律 LED（route-facts §7：德辅道中 2025 年约 4900 K 中性白光；原来上环段按概率抽到钠灯，
+ * 路面、人行道一片均匀的橙褐）。上环段略暖（warm ≤ 0.12）。
+ */
+const TRAM_LED_STREETS: ReadonlySet<string> = new Set(['Des Voeux Road Central', 'Des Voeux Road West', 'Queensway', 'Hennessy Road']);
+
+/** R4 STREET：暖白 LED 路灯的街（route-facts §7：金钟道 2026 年灯头约 3400 K）→ 暖色比例（与钠灯色线性混合）。 */
+const WARM_LED_STREETS: ReadonlyMap<string, number> = new Map([['Queensway', 0.35]]);
+
+/**
+ * R4 STREET：人行道铺地种类（route-facts §8）：1 = 德辅道中的红褐 / 灰陶土砖（顺街错缝），2 = 金钟道的灰色混凝土人字砖，
+ * 0 = 其余（核心区花岗岩板、海旁陶土砖，materials/road.ts pavingAlbedo）。写进 aStreet.w 的整数部分。
+ */
+export function pavingKindOf(road: { name?: { en?: string } | null }): number {
+  const en = road.name?.en ?? '';
+  if (en === 'Des Voeux Road Central' || en === 'Des Voeux Road West') return 1;
+  if (en === 'Queensway' || en === 'Hennessy Road') return 2;
+  return 0;
+}
+
 const CORE_LED_STREETS: ReadonlySet<string> = new Set(['Des Voeux Road Central', 'Connaught Road Central', "Queen's Road Central", 'Pedder Street']);
 const inCoreRect = (x: number, y: number) => x >= CORE_RECT[0] && x <= CORE_RECT[2] && y >= CORE_RECT[1] && y <= CORE_RECT[3];
 /** 复审修正：核心区一律白光 LED 的范围（模拟米，含街市与码头前地；半山由 streetWarmth ≥ 0.45 排除）。 */
@@ -125,6 +145,8 @@ export interface LampPlan {
   phase: number;
   pattern: LampPatternCode;
   sodium: boolean;
+  /** R4 STREET：暖白 LED 比例 0–1（金钟道 2026 年灯头约 3400 K，照片 10；0 = 中性白光 LED）。钠灯时不用。 */
+  warm?: number;
   /** 灯头离路面高度（m）。 */
   headH: number;
   /** 灯头离中线横距（m，正值；左右由 side 决定）。 */
@@ -432,7 +454,8 @@ export function planRoads(roads: readonly Road[], ground: HeightFn, props: Parti
         // [r3:stations] 中环核心区的主干道（德辅道中、干诺道中、皇后大道中……）一律白光 LED：照片 14 / 22 的主路都是中性白光，
         // 路面饱和度 ≤ 0.22。复审修正：核心区（不上山的部分）的横街、服务路、行人路也一律白光（原来约四成钠灯，
         // 德辅道中电车轨、人行道上一块块橙褐色光斑）；钠灯只留在半山与上环
-        sodium: !(inLedCore(mid.x / 10, mid.y / 10) && warmth < 0.45) && !(inCoreRect(mid.x / 10, mid.y / 10) && warmth < 0.45 && (MAIN_CLASSES.has(r.cls) || CORE_LED_STREETS.has(r.name?.en ?? ''))) && unit(lampSeed, 3) < sodiumProbability(r.cls, warmth),
+        sodium: !TRAM_LED_STREETS.has(r.name?.en ?? '') && !(inLedCore(mid.x / 10, mid.y / 10) && warmth < 0.45) && !(inCoreRect(mid.x / 10, mid.y / 10) && warmth < 0.45 && (MAIN_CLASSES.has(r.cls) || CORE_LED_STREETS.has(r.name?.en ?? ''))) && unit(lampSeed, 3) < sodiumProbability(r.cls, warmth),
+        warm: WARM_LED_STREETS.get(r.name?.en ?? '') ?? (TRAM_LED_STREETS.has(r.name?.en ?? '') ? 0.12 * smooth(-60, -260, mid.x / 10) : 0), // [r4:street] 上环段略暖
         headH: rule.headH,
         inset: rule.postTop ? Math.max(hwM - 0.4, 0.5) : Math.max(hwM + POLE_KERB_OFFSET_M - rule.overhang, 0.5),
         poleLat: rule.postTop ? Math.max(hwM - 0.4, 0.5) : hwM + POLE_KERB_OFFSET_M,
@@ -636,8 +659,8 @@ function ribbonOf(p: RoadPlan, ground: HeightFn | null, blocked?: (x: number, y:
     deck: p.elev > 0 ? DECK_DM : 0,
     pavL: p.pavL,
     pavR: p.pavR,
-    lamp: l ? [l.spacing, l.phase, l.pattern, l.sodium ? 1 : 0] : [0, 0, LampPattern.None, 0],
-    street: [l?.headH ?? 8, l?.inset ?? 0, p.shops, p.seed],
+    lamp: l ? [l.spacing, l.phase, l.pattern, l.sodium ? 1 : (l.warm ?? 0)] : [0, 0, LampPattern.None, 0], // [r4:street] 暖白 LED
+    street: [l?.headH ?? 8, l?.inset ?? 0, p.shops, pavingKindOf(r) + Math.min(p.seed, 0.999)], // [r4:street] 整数部分 = 铺地种类
     level: p.level,
     levelK: p.levelK,
     zc: p.zc,
